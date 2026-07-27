@@ -302,7 +302,9 @@ struct PortfolioListView: View {
     }
 
     private func downloadSampleFile() {
-        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true)
+        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true) { message in
+            self.importAlert = message
+        }
     }
 
     private func createPortfolio() {

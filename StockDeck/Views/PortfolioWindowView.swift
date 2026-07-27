@@ -352,7 +352,9 @@ struct PortfolioWindowView: View {
     }
 
     private func downloadSampleFile() {
-        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: false)
+        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: false) { message in
+            importAlert = message
+        }
     }
 
     // MARK: - Aggregation helpers (reuse the shared valuation math)

@@ -87,28 +87,24 @@ enum PortfolioIO {
         }
     }
 
-    /// Generates a clean sample Excel (.xlsx) file for users to edit and import.
-    static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool) {
+    /// Generates a clean sample Excel (.xlsx) file and saves it directly to ~/Downloads.
+    static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool, onAlert: ((String) -> Void)? = nil) {
         guard let data = SpreadsheetIO.generateSampleXLSXData() else { return }
-        let panel = NSSavePanel()
-        if let xlsxType = UTType(filenameExtension: "xlsx") {
-            panel.allowedContentTypes = [xlsxType]
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+
+        var targetURL = downloadsURL.appendingPathComponent("sample_portfolio.xlsx")
+        var counter = 1
+        while FileManager.default.fileExists(atPath: targetURL.path) {
+            targetURL = downloadsURL.appendingPathComponent("sample_portfolio (\(counter)).xlsx")
+            counter += 1
         }
-        panel.nameFieldStringValue = "sample_portfolio.xlsx"
-        panel.title = "Download Sample Portfolio Excel File (.xlsx)"
-        if restoreActivationPolicy {
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        panel.begin { response in
-            if restoreActivationPolicy {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    NSApp.setActivationPolicy(.accessory)
-                }
-            }
-            guard response == .OK, let url = panel.url else { return }
-            try? data.write(to: url, options: .atomic)
+
+        do {
+            try data.write(to: targetURL, options: .atomic)
+            NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+            onAlert?("Saved \(targetURL.lastPathComponent) to Downloads folder.")
+        } catch {
+            onAlert?("Could not save sample file.")
         }
     }
 }
