@@ -45,9 +45,13 @@ enum PortfolioIO {
     /// at both call sites). See `exportAll` for `restoreActivationPolicy`.
     static func importInto(_ storageService: StorageService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
+        var types: [UTType] = [.json, .commaSeparatedText]
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            types.append(xlsxType)
+        }
+        panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
-        panel.title = "Import Portfolios"
+        panel.title = "Import Portfolios (XLSX, CSV, or JSON)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -65,44 +69,33 @@ enum PortfolioIO {
                 return
             }
             Task { @MainActor in
-                guard let imported = storageService.importPortfolios(from: data) else {
-                    onAlert("Invalid file format.")
+                let imported: [Portfolio]?
+                if let spreadsheetImport = SpreadsheetIO.parsePortfolios(from: url) {
+                    imported = spreadsheetImport
+                } else {
+                    imported = storageService.importPortfolios(from: data)
+                }
+
+                guard let imported, !imported.isEmpty else {
+                    onAlert("Invalid file format or empty portfolio file.")
                     return
                 }
-                if imported.isEmpty {
-                    onAlert("No portfolios found in file.")
-                    return
-                }
+
                 storageService.mergeImportedPortfolios(imported)
                 onAlert("Imported \(imported.count) portfolio\(imported.count == 1 ? "" : "s").")
             }
         }
     }
 
-    /// Generates a clean sample JSON file for users to edit and import.
+    /// Generates a clean sample Excel (.xlsx) file for users to edit and import.
     static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool) {
-        let samplePortfolios: [Portfolio] = [
-            Portfolio(
-                id: UUID(),
-                name: "Tech Growth Sample",
-                holdings: [
-                    Holding(id: UUID(), symbol: "AAPL", quantity: 10, avgPrice: 185.50, purchaseDate: Date(), leverage: 1.0),
-                    Holding(id: UUID(), symbol: "NVDA", quantity: 5, avgPrice: 120.00, purchaseDate: Date(), leverage: 1.0)
-                ]
-            ),
-            Portfolio(
-                id: UUID(),
-                name: "Crypto Basket Sample",
-                holdings: [
-                    Holding(id: UUID(), symbol: "BTC-USD", quantity: 0.5, avgPrice: 65000.0, purchaseDate: Date(), leverage: 1.0)
-                ]
-            )
-        ]
-        guard let data = storageService.exportPortfolios(samplePortfolios) else { return }
+        guard let data = SpreadsheetIO.generateSampleXLSXData() else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "sample_portfolio.json"
-        panel.title = "Download Sample Portfolio File"
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            panel.allowedContentTypes = [xlsxType]
+        }
+        panel.nameFieldStringValue = "sample_portfolio.xlsx"
+        panel.title = "Download Sample Portfolio Excel File (.xlsx)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
