@@ -17,6 +17,9 @@ struct AddHoldingView: View {
     @State private var selectedSymbol: String?
     @State private var searchTask: Task<Void, Never>?
 
+    @FocusState private var searchFocused: Bool
+    @FocusState private var quantityFocused: Bool
+
     var body: some View {
         VStack(spacing: 12) {
             HStack {
@@ -25,6 +28,7 @@ struct AddHoldingView: View {
                 Spacer()
                 Button("Close") { isPresented = nil }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
             }
             .padding(.horizontal)
             .padding(.top)
@@ -40,11 +44,13 @@ struct AddHoldingView: View {
                         selectedSymbol = nil
                         searchText = ""
                         searchResults = []
+                        searchFocused = true
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                     }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -54,6 +60,7 @@ struct AddHoldingView: View {
             } else {
                 TextField("Symbol, name or ISIN (e.g. AAPL, IE00B4L5Y983)", text: $searchText)
                     .textFieldStyle(.roundedBorder)
+                    .focused($searchFocused)
                     .padding(.horizontal)
                     .onChange(of: searchText) { _, newValue in
                         searchTask?.cancel()
@@ -77,6 +84,7 @@ struct AddHoldingView: View {
                             if let quote = stockService.quotes[result.symbol] {
                                 avgPriceText = String(format: "%.2f", quote.price)
                             }
+                            quantityFocused = true
                         }) {
                             HStack {
                                 Text(result.symbol)
@@ -88,6 +96,7 @@ struct AddHoldingView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .pointingHandCursor()
                     }
                     .listStyle(.plain)
                     .frame(height: min(CGFloat(searchResults.prefix(5).count) * 30, 150))
@@ -118,6 +127,7 @@ struct AddHoldingView: View {
                         .foregroundColor(.secondary)
                     TextField("0", text: $quantityText)
                         .textFieldStyle(.roundedBorder)
+                        .focused($quantityFocused)
                 }
                 VStack(alignment: .leading) {
                     Text("Avg price")
@@ -163,9 +173,17 @@ struct AddHoldingView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(selectedSymbol == nil || quantityText.isEmpty || avgPriceText.isEmpty)
+            .pointingHandCursor()
             .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            if selectedSymbol == nil {
+                searchFocused = true
+            } else {
+                quantityFocused = true
+            }
+        }
     }
 
     private func addHolding() {

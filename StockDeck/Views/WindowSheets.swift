@@ -10,19 +10,31 @@ struct DSTextField: View {
     var placeholder: String
     @Binding var text: String
     var mono: Bool = false
-    @FocusState private var focused: Bool
+    var isFocusedBinding: FocusState<Bool>.Binding? = nil
+    @FocusState private var internalFocused: Bool
+
+    private var activeFocused: Bool {
+        isFocusedBinding?.wrappedValue ?? internalFocused
+    }
 
     var body: some View {
-        TextField(placeholder, text: $text)
-            .textFieldStyle(.plain)
-            .font(mono ? DS.figure : DS.body)
-            .foregroundStyle(DS.ink)
-            .focused($focused)
-            .padding(.horizontal, 11).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DS.cardAlt))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(focused ? DS.brand : DS.hairline, lineWidth: focused ? 1.5 : 1))
-            .animation(.easeOut(duration: 0.15), value: focused)
+        Group {
+            if let binding = isFocusedBinding {
+                TextField(placeholder, text: $text)
+                    .focused(binding)
+            } else {
+                TextField(placeholder, text: $text)
+                    .focused($internalFocused)
+            }
+        }
+        .textFieldStyle(.plain)
+        .font(mono ? DS.figure : DS.body)
+        .foregroundStyle(DS.ink)
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DS.cardAlt))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .strokeBorder(activeFocused ? DS.brand : DS.hairline, lineWidth: activeFocused ? 1.5 : 1))
+        .animation(.easeOut(duration: 0.15), value: activeFocused)
     }
 }
 
@@ -218,6 +230,7 @@ private struct SheetShell<Content: View>: View {
                     .font(.inter(12, weight: .medium, relativeTo: .body))
                     .foregroundStyle(DS.inkSecondary)
                     .keyboardShortcut(.cancelAction)
+                    .pointingHandCursor()
             }
             content
         }
@@ -244,6 +257,7 @@ private struct PrimaryButton: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .keyboardShortcut(.defaultAction)
+        .pointingHandCursor()
     }
 }
 
@@ -271,6 +285,8 @@ struct HoldingFormSheet: View {
     @State private var leverageText = ""
     @State private var isShort = false
     @State private var purchaseDate = Date()
+    @FocusState private var searchFocused: Bool
+    @FocusState private var quantityFocused: Bool
 
     private var portfolioId: UUID {
         switch mode {
@@ -313,7 +329,7 @@ struct HoldingFormSheet: View {
             }
 
             HStack(alignment: .top, spacing: 12) {
-                FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true) }
+                FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
                 FieldBlock("Avg price") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
                 if storageService.advancedPositions {
                     FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
@@ -347,9 +363,11 @@ struct HoldingFormSheet: View {
             }
             Spacer()
             if removable {
-                Button { selectedSymbol = nil; searchText = ""; searchResults = [] } label: {
+                Button { selectedSymbol = nil; searchText = ""; searchResults = []; searchFocused = true } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(DS.inkTertiary)
-                }.buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
         }
         .padding(10)
@@ -359,7 +377,7 @@ struct HoldingFormSheet: View {
     private var searchField: some View {
         VStack(alignment: .leading, spacing: 8) {
             FieldBlock("Symbol") {
-                DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL)", text: $searchText)
+                DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL)", text: $searchText, isFocusedBinding: $searchFocused)
                     .onChange(of: searchText) { _, new in runSearch(new) }
             }
             if !searchResults.isEmpty {
@@ -376,6 +394,7 @@ struct HoldingFormSheet: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .pointingHandCursor()
                         if r.id != searchResults.prefix(6).last?.id {
                             Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                         }
@@ -402,6 +421,7 @@ struct HoldingFormSheet: View {
         selectedSymbol = r.symbol
         searchResults = []
         if let q = stockService.quotes[r.symbol] { avgPriceText = String(format: "%.2f", q.price) }
+        quantityFocused = true
     }
 
     // MARK: Logic
@@ -436,8 +456,12 @@ struct HoldingFormSheet: View {
             leverageText = (h.leverage.map { $0 != 1 ? String(format: "%g", $0) : "" }) ?? ""
             isShort = h.quantity < 0
             purchaseDate = h.purchaseDate ?? Date()
+            quantityFocused = true
         } else if let sym = fixedSymbol, let q = stockService.quotes[sym] {
             avgPriceText = String(format: "%.2f", q.price)
+            quantityFocused = true
+        } else {
+            searchFocused = true
         }
     }
 
