@@ -26,33 +26,76 @@ struct DSTextField: View {
     }
 }
 
-/// A DS-styled date field that opens a fully custom month calendar (no system
-/// graphical picker, which clashes with the aesthetic).
+/// A DS-styled date field that combines a text field (allowing keyboard Tab focus and direct typing)
+/// with a button opening a fully custom month calendar.
 struct DSDatePicker: View {
     @Binding var date: Date
     @State private var showCalendar = false
+    @State private var dateText: String = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        Button { showCalendar.toggle() } label: {
-            HStack(spacing: 8) {
-                Text(date.formatted(date: .abbreviated, time: .omitted))
-                    .font(DS.body).foregroundStyle(DS.ink)
-                Spacer()
-                Image(systemName: "calendar").font(.system(size: 12)).foregroundStyle(DS.inkSecondary)
+        HStack(spacing: 8) {
+            TextField("YYYY-MM-DD", text: $dateText)
+                .textFieldStyle(.plain)
+                .font(DS.body)
+                .foregroundStyle(DS.ink)
+                .focused($focused)
+                .onChange(of: dateText) { _, new in
+                    if let parsed = parseDateString(new) {
+                        date = parsed
+                    }
+                }
+            Spacer()
+            Button { showCalendar.toggle() } label: {
+                Image(systemName: "calendar")
+                    .font(.system(size: 13))
+                    .foregroundStyle(focused || showCalendar ? DS.brand : DS.inkSecondary)
             }
-            .padding(.horizontal, 11).padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DS.cardAlt))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(showCalendar ? DS.brand : DS.hairline, lineWidth: showCalendar ? 1.5 : 1))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DS.cardAlt))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .strokeBorder(focused || showCalendar ? DS.brand : DS.hairline, lineWidth: focused || showCalendar ? 1.5 : 1))
+        .animation(.easeOut(duration: 0.15), value: focused || showCalendar)
+        .onAppear {
+            dateText = dateFormatter.string(from: date)
+        }
+        .onChange(of: date) { _, new in
+            let formatted = dateFormatter.string(from: new)
+            if dateText != formatted {
+                dateText = formatted
+            }
+        }
         .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
             DSCalendar(date: $date) { showCalendar = false }
                 .padding(14)
                 .frame(width: 268)
                 .background(DS.card)
         }
+    }
+
+    private var dateFormatter: DateFormatter {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return df
+    }
+
+    private func parseDateString(_ str: String) -> Date? {
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        let isoFormatter = ISO8601DateFormatter()
+        if let d = isoFormatter.date(from: trimmed) { return d }
+
+        let formats = ["yyyy-MM-dd", "yyyy/MM/dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MMM-yyyy", "dd-MMM"]
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in formats {
+            df.dateFormat = fmt
+            if let d = df.date(from: trimmed) { return d }
+        }
+        return nil
     }
 }
 
@@ -242,8 +285,7 @@ struct HoldingFormSheet: View {
     private var fixedSymbol: String? {
         switch mode {
         case .addSymbol(let s, _): return s
-        case .edit(_, let h): return h.symbol
-        case .add: return nil
+        case .add, .edit: return nil
         }
     }
     private var symbol: String? { fixedSymbol ?? selectedSymbol }
@@ -386,6 +428,9 @@ struct HoldingFormSheet: View {
 
     private func prefill() {
         if let h = editingHolding {
+            if selectedSymbol == nil {
+                selectedSymbol = h.symbol
+            }
             quantityText = String(format: "%.2f", abs(h.quantity))
             avgPriceText = String(format: "%.2f", h.avgPrice)
             leverageText = (h.leverage.map { $0 != 1 ? String(format: "%g", $0) : "" }) ?? ""
@@ -411,7 +456,7 @@ struct HoldingFormSheet: View {
             return l
         }()
         if let h = editingHolding {
-            storageService.updateHolding(in: portfolioId, holdingId: h.id, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
+            storageService.updateHolding(in: portfolioId, holdingId: h.id, symbol: sym, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
         } else {
             storageService.addHolding(to: portfolioId, symbol: sym, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
         }

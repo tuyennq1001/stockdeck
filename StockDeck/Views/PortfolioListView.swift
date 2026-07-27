@@ -597,28 +597,32 @@ struct EditHoldingView: View {
     let holding: Holding
     @Binding var isPresented: (portfolioId: UUID, holding: Holding)?
 
+    @State private var symbolText: String
     @State private var quantityText: String
     @State private var avgPriceText: String
     @State private var leverageText: String
     @State private var isShort: Bool
     @State private var purchaseDate: Date
+    @State private var dateText: String = ""
 
     init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
         self.portfolioId = portfolioId
         self.holding = holding
         self._isPresented = isPresented
+        _symbolText = State(initialValue: holding.symbol)
         // Quantity is edited as a positive magnitude; the Long/Short picker holds the sign.
         _quantityText = State(initialValue: String(format: "%.2f", abs(holding.quantity)))
         _avgPriceText = State(initialValue: String(format: "%.2f", holding.avgPrice))
         _leverageText = State(initialValue: (holding.leverage.map { $0 != 1 ? String(format: "%g", $0) : "" }) ?? "")
         _isShort = State(initialValue: holding.quantity < 0)
         _purchaseDate = State(initialValue: holding.purchaseDate ?? Date())
+        _dateText = State(initialValue: Self.dateInputFormatter.string(from: holding.purchaseDate ?? Date()))
     }
 
     private var costBasisInfo: (costInStock: Double, rate: Double, costInPreferred: Double)? {
         guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
               let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
-              let quote = stockService.quotes[holding.symbol],
+              let quote = stockService.quotes[symbolText.uppercased().trimmingCharacters(in: .whitespaces)] ?? stockService.quotes[holding.symbol],
               qty != 0, price > 0
         else { return nil }
         let costInStock = price * qty
@@ -629,7 +633,7 @@ struct EditHoldingView: View {
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Edit \(holding.symbol)")
+                Text("Edit \(symbolText.isEmpty ? holding.symbol : symbolText.uppercased())")
                     .font(.inter(13, weight: .bold, relativeTo: .headline))
                 Spacer()
                 Button("Close") { isPresented = nil }
@@ -637,6 +641,15 @@ struct EditHoldingView: View {
             }
             .padding(.horizontal)
             .padding(.top)
+
+            VStack(alignment: .leading) {
+                Text("Symbol")
+                    .font(.inter(10, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                TextField("Symbol (e.g. AAPL)", text: $symbolText)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding(.horizontal)
 
             if storageService.advancedPositions {
                 VStack(alignment: .leading) {
@@ -692,13 +705,25 @@ struct EditHoldingView: View {
                 Text("Purchase date")
                     .font(.inter(10, relativeTo: .caption))
                     .foregroundColor(.secondary)
-                DatePicker("", selection: $purchaseDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
+                HStack(spacing: 8) {
+                    TextField("YYYY-MM-DD", text: $dateText)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: dateText) { _, new in
+                            if let parsed = parseDateString(new) {
+                                purchaseDate = parsed
+                            }
+                        }
+                    DatePicker("", selection: $purchaseDate, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .onChange(of: purchaseDate) { _, new in
+                            dateText = Self.dateInputFormatter.string(from: new)
+                        }
+                }
             }
             .padding(.horizontal)
 
-            if let quote = stockService.quotes[holding.symbol], quote.currency != storageService.preferredCurrency, let info = costBasisInfo {
+            if let quote = stockService.quotes[symbolText.uppercased().trimmingCharacters(in: .whitespaces)] ?? stockService.quotes[holding.symbol], quote.currency != storageService.preferredCurrency, let info = costBasisInfo {
                 let stockSym = StorageService.currencySymbol(for: quote.currency)
                 let prefSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
                 let dateStr = Self.dateFormatter.string(from: purchaseDate)
@@ -714,18 +739,18 @@ struct EditHoldingView: View {
                 save()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(quantityText.isEmpty || avgPriceText.isEmpty)
+            .disabled(quantityText.isEmpty || avgPriceText.isEmpty || symbolText.trimmingCharacters(in: .whitespaces).isEmpty)
             .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
-                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: holding.symbol, quantity: holding.quantity, avgPrice: holding.avgPrice, purchaseDate: purchaseDate))
+                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: symbolText, quantity: holding.quantity, avgPrice: holding.avgPrice, purchaseDate: purchaseDate))
             }
         }
         .onChange(of: purchaseDate) { _, _ in
             Task {
-                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: holding.symbol, quantity: Double(quantityText.replacingOccurrences(of: ",", with: ".")) ?? 0, avgPrice: Double(avgPriceText.replacingOccurrences(of: ",", with: ".")) ?? 0, purchaseDate: purchaseDate))
+                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: symbolText, quantity: Double(quantityText.replacingOccurrences(of: ",", with: ".")) ?? 0, avgPrice: Double(avgPriceText.replacingOccurrences(of: ",", with: ".")) ?? 0, purchaseDate: purchaseDate))
             }
         }
     }
@@ -736,14 +761,33 @@ struct EditHoldingView: View {
         return f
     }()
 
+    private static let dateInputFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private func parseDateString(_ str: String) -> Date? {
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        let isoFormatter = ISO8601DateFormatter()
+        if let d = isoFormatter.date(from: trimmed) { return d }
+        let formats = ["yyyy-MM-dd", "yyyy/MM/dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MMM-yyyy", "dd-MMM"]
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in formats {
+            df.dateFormat = fmt
+            if let d = df.date(from: trimmed) { return d }
+        }
+        return nil
+    }
+
     private func save() {
         let advanced = storageService.advancedPositions
         guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
               let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
               price > 0, abs(qty) > 0
         else { return }
-        // When Advanced is off, keep the holding's existing direction and
-        // leverage so a plain edit never silently flips a short or drops leverage.
         let short = advanced ? isShort : (holding.quantity < 0)
         let signedQty = short ? -abs(qty) : abs(qty)
         let leverage: Double? = {
@@ -753,7 +797,7 @@ struct EditHoldingView: View {
             else { return nil }
             return l
         }()
-        storageService.updateHolding(in: portfolioId, holdingId: holding.id, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
+        storageService.updateHolding(in: portfolioId, holdingId: holding.id, symbol: symbolText, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
         Task {
             await stockService.refreshAll(storageService: storageService)
         }

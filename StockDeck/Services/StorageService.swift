@@ -626,10 +626,13 @@ class StorageService: ObservableObject {
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
-    func updateHolding(in portfolioId: UUID, holdingId: UUID, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
+    func updateHolding(in portfolioId: UUID, holdingId: UUID, symbol: String? = nil, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
               let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
         else { return }
+        if let newSymbol = symbol, !newSymbol.trimmingCharacters(in: .whitespaces).isEmpty {
+            portfolios[pIndex].holdings[hIndex].symbol = newSymbol.trimmingCharacters(in: .whitespaces).uppercased()
+        }
         portfolios[pIndex].holdings[hIndex].quantity = quantity
         portfolios[pIndex].holdings[hIndex].avgPrice = avgPrice
         portfolios[pIndex].holdings[hIndex].purchaseDate = purchaseDate
