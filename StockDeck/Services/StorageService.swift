@@ -781,7 +781,23 @@ class StorageService: ObservableObject {
             let data = try Data(contentsOf: fileURL)
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
             if let wls = decoded.watchlists, !wls.isEmpty {
-                watchlists = wls
+                // Deduplicate watchlists by name/ID and strip leftover empty test lists
+                var seenNames = Set<String>()
+                var cleaned: [Watchlist] = []
+                for wl in wls {
+                    let trimmed = wl.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let key = trimmed.lowercased()
+                    if !wl.symbols.isEmpty {
+                        if !seenNames.contains(key) {
+                            cleaned.append(wl)
+                            seenNames.insert(key)
+                        }
+                    } else if !seenNames.contains(key) && !key.starts(with: "list ") {
+                        cleaned.append(wl)
+                        seenNames.insert(key)
+                    }
+                }
+                watchlists = cleaned.isEmpty ? wls : cleaned
                 if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
                     selectedWatchlistId = selId
                 } else {
