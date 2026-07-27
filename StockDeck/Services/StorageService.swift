@@ -471,20 +471,24 @@ class StorageService: ObservableObject {
     private var isLoading = false
     private var saveTask: Task<Void, Never>?
 
-    private init() {
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            let fallback = FileManager.default.temporaryDirectory
-            self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
-            return
+    init(fileURL: URL? = nil) {
+        if let customURL = fileURL {
+            self.fileURL = customURL
+        } else {
+            guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+                let fallback = FileManager.default.temporaryDirectory
+                self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
+                return
+            }
+            let dirName = "StockDeck"
+            let dir = appSupport.appendingPathComponent(dirName, isDirectory: true)
+            let oldDir = appSupport.appendingPathComponent("StockBar", isDirectory: true)
+            if FileManager.default.fileExists(atPath: oldDir.path) && !FileManager.default.fileExists(atPath: dir.path) {
+                try? FileManager.default.moveItem(at: oldDir, to: dir)
+            }
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.fileURL = dir.appendingPathComponent("data.json")
         }
-        let dirName = "StockDeck"
-        let dir = appSupport.appendingPathComponent(dirName, isDirectory: true)
-        let oldDir = appSupport.appendingPathComponent("StockBar", isDirectory: true)
-        if FileManager.default.fileExists(atPath: oldDir.path) && !FileManager.default.fileExists(atPath: dir.path) {
-            try? FileManager.default.moveItem(at: oldDir, to: dir)
-        }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("data.json")
         isLoading = true
         load()
         isLoading = false

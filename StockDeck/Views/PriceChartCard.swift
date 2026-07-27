@@ -11,7 +11,7 @@ struct PriceChartCard: View {
     let quote: StockQuote
 
     enum ChartRange: String, CaseIterable {
-        case day = "24H", week = "7D", month = "1M", year = "1Y", all = "All"
+        case day = "24H", week = "7D", month = "1M", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
         /// Lookback window in days; nil = the whole fetched history.
         var days: Int? {
             switch self {
@@ -19,13 +19,23 @@ struct PriceChartCard: View {
             case .week: return 7
             case .month: return 30
             case .year: return 365
+            case .threeYears: return 365 * 3
+            case .fiveYears: return 365 * 5
+            case .tenYears: return 365 * 10
             case .all: return nil
             }
         }
         /// 24H uses the 5-minute intraday feed; the rest use daily closes.
         var isIntraday: Bool { self == .day }
     }
+
+    enum ChartStyle: String, CaseIterable {
+        case line
+        case candlestick
+    }
+
     @State private var chartRange: ChartRange = .month
+    @State private var chartStyle: ChartStyle = .line
     @State private var hoverPoint: PricePoint?
 
     private var priceSymbol: String { StorageService.currencySymbol(for: quote.currency) }
@@ -41,8 +51,17 @@ struct PriceChartCard: View {
         case .day: return date.formatted(.dateTime.hour().minute())
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
         case .month: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .all: return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        case .year, .threeYears, .fiveYears, .tenYears, .all:
+            return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
+    }
+
+    private func calculateCandleWidth(pointCount: Int) -> CGFloat {
+        if pointCount <= 30 { return 7 }
+        if pointCount <= 60 { return 5 }
+        if pointCount <= 120 { return 3 }
+        if pointCount <= 300 { return 2 }
+        return 1
     }
 
     /// Smooth hover crosshair drawn as an overlay (not chart marks), so moving the
@@ -68,17 +87,25 @@ struct PriceChartCard: View {
                        let px = proxy.position(forX: h.date),
                        let py = proxy.position(forY: h.close) {
                         let cx = plot.minX + px
-                        // Decorations must not steal hover from the catcher above.
+                        let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: h.close)
                         Group {
                             Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
                                 .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
                             Circle().fill(tint).frame(width: 9, height: 9)
                                 .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
                                 .position(x: cx, y: plot.minY + py)
-                            ChartTooltip(title: hoverLabel(h.date),
-                                         value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: h.close)))",
-                                         tint: tint)
-                                .position(x: min(max(cx, plot.minX + 50), plot.maxX - 50), y: plot.minY + 12)
+
+                            if chartStyle == .candlestick, let o = h.open, let hi = h.high, let lo = h.low {
+                                ChartTooltip(title: hoverLabel(h.date),
+                                             value: "O: \(priceSymbol)\(StorageService.formatNumber(o, decimals: dec))  H: \(priceSymbol)\(StorageService.formatNumber(hi, decimals: dec))\nL: \(priceSymbol)\(StorageService.formatNumber(lo, decimals: dec))  C: \(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
+                                             tint: h.close >= o ? DS.up : DS.down)
+                                    .position(x: min(max(cx, plot.minX + 70), plot.maxX - 70), y: plot.minY + 12)
+                            } else {
+                                ChartTooltip(title: hoverLabel(h.date),
+                                             value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
+                                             tint: tint)
+                                    .position(x: min(max(cx, plot.minX + 50), plot.maxX - 50), y: plot.minY + 12)
+                            }
                         }
                         .allowsHitTesting(false)
                     }
@@ -129,8 +156,12 @@ struct PriceChartCard: View {
                     }
                 }
                 Spacer()
-                // The picker appears with the data — no dead control while loading.
-                if (stockService.priceHistory[symbol]?.count ?? 0) >= 2 { rangePicker }
+                if (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
+                    HStack(spacing: 8) {
+                        rangePicker
+                        stylePicker
+                    }
+                }
             }
             .padding(DS.pad)
 
@@ -150,25 +181,78 @@ struct PriceChartCard: View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
     }
 
+    private var stylePicker: some View {
+        HStack(spacing: 2) {
+            Button(action: { chartStyle = .line }) {
+                Image(systemName: "line.uptrend.xyaxis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(chartStyle == .line ? .white : DS.inkSecondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(chartStyle == .line ? DS.brand : Color.clear))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Line chart")
+
+            Button(action: { chartStyle = .candlestick }) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(chartStyle == .candlestick ? .white : DS.inkSecondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(chartStyle == .candlestick ? DS.brand : Color.clear))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Candlestick chart")
+        }
+        .padding(2)
+        .background(Capsule().fill(DS.cardAlt))
+    }
+
     @ViewBuilder private var chart: some View {
         if history.count >= 2 {
-            // Tint follows the period's direction.
             let periodUp = (history.last?.close ?? 0) >= (history.first?.close ?? 0)
             let tint = periodUp ? DS.up : DS.down
             Chart {
-                ForEach(history) { point in
-                    AreaMark(x: .value("Day", point.date), y: .value("Close", point.close))
-                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.25), tint.opacity(0)],
-                                                         startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Day", point.date), y: .value("Close", point.close))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
-                        .interpolationMethod(.monotone)
-                }
-                if let last = history.last {
-                    PointMark(x: .value("Day", last.date), y: .value("Close", last.close))
-                        .symbolSize(50)
-                        .foregroundStyle(tint)
+                if chartStyle == .line {
+                    ForEach(history) { point in
+                        AreaMark(x: .value("Day", point.date), y: .value("Close", point.close))
+                            .foregroundStyle(.linearGradient(colors: [tint.opacity(0.25), tint.opacity(0)],
+                                                             startPoint: .top, endPoint: .bottom))
+                            .interpolationMethod(.monotone)
+                        LineMark(x: .value("Day", point.date), y: .value("Close", point.close))
+                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
+                            .interpolationMethod(.monotone)
+                    }
+                    if let last = history.last {
+                        PointMark(x: .value("Day", last.date), y: .value("Close", last.close))
+                            .symbolSize(50)
+                            .foregroundStyle(tint)
+                    }
+                } else {
+                    let candleWidth = calculateCandleWidth(pointCount: history.count)
+                    ForEach(history) { point in
+                        let isUp = point.close >= point.effectiveOpen
+                        let candleTint = isUp ? DS.up : DS.down
+
+                        RuleMark(
+                            x: .value("Day", point.date),
+                            yStart: .value("Low", point.effectiveLow),
+                            yEnd: .value("High", point.effectiveHigh)
+                        )
+                        .foregroundStyle(candleTint)
+                        .lineStyle(.init(lineWidth: 1))
+
+                        BarMark(
+                            x: .value("Day", point.date),
+                            yStart: .value("Open", min(point.effectiveOpen, point.close)),
+                            yEnd: .value("Close", max(point.effectiveOpen, point.close)),
+                            width: .fixed(candleWidth)
+                        )
+                        .foregroundStyle(candleTint)
+                    }
                 }
             }
             .chartYScale(domain: chartDomain)
@@ -192,7 +276,7 @@ struct PriceChartCard: View {
                 }
             }
             .chartOverlay { proxy in chartCrosshair(proxy, tint: tint) }
-            .id(chartRange)
+            .id("\(chartRange.rawValue)-\(chartStyle.rawValue)")
             .transition(.opacity.animation(.easeInOut(duration: 0.28)))
             .padding(.horizontal, DS.pad).padding(.bottom, 12)
         } else {
@@ -217,9 +301,10 @@ struct PriceChartCard: View {
     }
 
     private var chartDomain: ClosedRange<Double> {
-        let closes = history.map(\.close)
-        guard let min = closes.min(), let max = closes.max(), max > min else { return 0...1 }
-        let pad = (max - min) * 0.12
+        let mins = history.map(\.effectiveLow)
+        let maxs = history.map(\.effectiveHigh)
+        guard let min = mins.min(), let max = maxs.max(), max > min else { return 0...1 }
+        let pad = (max - min) * 0.08
         return (min - pad)...(max + pad)
     }
 }

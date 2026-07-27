@@ -4,14 +4,21 @@ import XCTest
 @MainActor
 final class MultiWatchlistTests: XCTestCase {
 
+    private func createTestStorage() -> StorageService {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL = tempDir.appendingPathComponent("test_stockdeck.json")
+        return StorageService(fileURL: fileURL)
+    }
+
     func testDefaultWatchlistCreated() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         XCTAssertFalse(storage.watchlists.isEmpty)
         XCTAssertNotNil(storage.currentWatchlist)
     }
 
     func testCreateAndSelectWatchlist() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         let countBefore = storage.watchlists.count
         
         let newWl = storage.createWatchlist(name: "Crypto Assets")
@@ -26,7 +33,7 @@ final class MultiWatchlistTests: XCTestCase {
     }
 
     func testRenameWatchlist() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         let wl = storage.createWatchlist(name: "Tech Stocks")
         storage.renameWatchlist(id: wl.id, newName: "FAANG & Tech")
         
@@ -34,7 +41,7 @@ final class MultiWatchlistTests: XCTestCase {
     }
 
     func testDeleteWatchlistFallback() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         let wl1 = storage.createWatchlist(name: "List 1")
         let wl2 = storage.createWatchlist(name: "List 2")
         

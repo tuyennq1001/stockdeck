@@ -254,11 +254,9 @@ struct WatchlistView: View {
                                     }
                                 }
                             }
-                            if storageService.watchlists.count > 1 {
-                                Divider()
-                                Button("Delete Watchlist", role: .destructive) {
-                                    storageService.deleteWatchlist(id: wl.id)
-                                }
+                            Divider()
+                            Button("Delete Watchlist", role: .destructive) {
+                                storageService.deleteWatchlist(id: wl.id)
                             }
                         }
                     }

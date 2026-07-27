@@ -469,15 +469,18 @@ class StockService: ObservableObject {
            Date().timeIntervalSince(at) < 3600,
            priceHistory[symbol]?.isEmpty == false { return }
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        // range=2y keeps FULL daily resolution (Yahoo downsamples 1d+max to coarse
-        // data, which starves the 7D/1M ranges). "All" uses the monthly series below.
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=2y") else { return }
+        // range=10y daily closes & OHLC for 1Y/3Y/5Y/10Y chart ranges
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
+            let q = result.indicators?.quote?.first
             let points = PriceHistory.points(timestamps: result.timestamp ?? [],
-                                             closes: result.indicators?.quote?.first?.close ?? [])
+                                             closes: q?.close ?? [],
+                                             opens: q?.open,
+                                             highs: q?.high,
+                                             lows: q?.low)
             guard !points.isEmpty else { return }
             priceHistory[symbol] = points
             priceHistoryFetchedAt[symbol] = Date()
@@ -497,8 +500,12 @@ class StockService: ObservableObject {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
+            let q = result.indicators?.quote?.first
             let points = PriceHistory.points(timestamps: result.timestamp ?? [],
-                                             closes: result.indicators?.quote?.first?.close ?? [])
+                                             closes: q?.close ?? [],
+                                             opens: q?.open,
+                                             highs: q?.high,
+                                             lows: q?.low)
             guard !points.isEmpty else { return }
             priceHistoryMax[symbol] = points
             priceHistoryMaxAt[symbol] = Date()
@@ -518,8 +525,12 @@ class StockService: ObservableObject {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
+            let q = result.indicators?.quote?.first
             let points = PriceHistory.points(timestamps: result.timestamp ?? [],
-                                             closes: result.indicators?.quote?.first?.close ?? [])
+                                             closes: q?.close ?? [],
+                                             opens: q?.open,
+                                             highs: q?.high,
+                                             lows: q?.low)
             guard !points.isEmpty else { return }
             intradayHistory[symbol] = points
             intradayFetchedAt[symbol] = Date()
@@ -538,8 +549,12 @@ class StockService: ObservableObject {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
+            let q = result.indicators?.quote?.first
             let points = PriceHistory.points(timestamps: result.timestamp ?? [],
-                                             closes: result.indicators?.quote?.first?.close ?? [])
+                                             closes: q?.close ?? [],
+                                             opens: q?.open,
+                                             highs: q?.high,
+                                             lows: q?.low)
             guard !points.isEmpty else { return }
             intradayWeek[symbol] = points
             intradayWeekAt[symbol] = Date()
@@ -742,6 +757,9 @@ private struct YahooChartResponse: Codable {
     }
 
     struct QuoteData: Codable {
+        let open: [Double?]?
+        let high: [Double?]?
+        let low: [Double?]?
         let close: [Double?]?
     }
 

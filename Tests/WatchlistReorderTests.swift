@@ -4,8 +4,16 @@ import XCTest
 final class WatchlistReorderTests: XCTestCase {
 
     @MainActor
+    private func createTestStorage() -> StorageService {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL = tempDir.appendingPathComponent("test_stockdeck.json")
+        return StorageService(fileURL: fileURL)
+    }
+
+    @MainActor
     func testMoveWatchlistSymbolBeforeOrAfter() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         storage.watchlist = ["AAPL", "TSLA", "NVDA", "MSFT"]
 
         // Move NVDA before TSLA
@@ -19,7 +27,7 @@ final class WatchlistReorderTests: XCTestCase {
 
     @MainActor
     func testReorderWatchlistFromOffsets() {
-        let storage = StorageService.shared
+        let storage = createTestStorage()
         storage.watchlist = ["AAPL", "TSLA", "NVDA", "MSFT"]
 
         // Move index 0 ("AAPL") to index 3 (after NVDA)

@@ -29,13 +29,16 @@ struct PortfolioOverview: View {
 
     /// Hero chart range — a pure UI filter over the value series.
     enum ChartRange: String, CaseIterable {
-        case day = "24H", week = "7D", month = "1M", year = "1Y", all = "All"
+        case day = "24H", week = "7D", month = "1M", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
         var days: Int? {
             switch self {
             case .day: return 1
             case .week: return 7
             case .month: return 30
             case .year: return 365
+            case .threeYears: return 365 * 3
+            case .fiveYears: return 365 * 5
+            case .tenYears: return 365 * 10
             case .all: return nil
             }
         }
@@ -46,6 +49,9 @@ struct PortfolioOverview: View {
             case .week: return "past 7d"
             case .month: return "past 1M"
             case .year: return "past 1Y"
+            case .threeYears: return "past 3Y"
+            case .fiveYears: return "past 5Y"
+            case .tenYears: return "past 10Y"
             case .all: return "all-time"
             }
         }
@@ -374,7 +380,8 @@ struct PortfolioOverview: View {
         case .day: return date.formatted(.dateTime.hour().minute())
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
         case .month: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .all: return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        case .year, .threeYears, .fiveYears, .tenYears, .all:
+            return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
     }
 
