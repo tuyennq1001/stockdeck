@@ -593,19 +593,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Brings the desktop window reliably in front of every other app.
     ///
-    /// StockDeck is a menu-bar (accessory) app, and on macOS 14+ `activate` no
-    /// longer lets a background app steal focus — so opening the window from the
-    /// popover would leave it *behind* whatever app was active ("it doesn't
-    /// open"). The fix: raise it at `.floating` level so it draws above other
-    /// apps' windows, then drop back to `.normal` on the next runloop so it
-    /// behaves like a normal window afterwards.
+    /// StockDeck is a menu-bar (accessory) app: we switch to .regular FIRST so
+    /// the app appears in Cmd+Tab at the correct position, then activate + show.
     private func bringWindowFront(_ window: NSWindow) {
         NSApp.setActivationPolicy(.regular)
-        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async {
-            window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
             NSLog("[StockDeck] window shown — visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
         }
     }

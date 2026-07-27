@@ -132,8 +132,8 @@ struct WatchlistWideView: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     table
-                        .frame(width: activeDetailSymbol != nil ? 300 : nil)
-                        .frame(maxWidth: activeDetailSymbol != nil ? 300 : .infinity, maxHeight: .infinity)
+                        .frame(width: activeDetailSymbol != nil ? 190 : nil)
+                        .frame(maxWidth: activeDetailSymbol != nil ? 190 : .infinity, maxHeight: .infinity)
 
                     if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
                         Divider().overlay(DS.hairline)
@@ -512,8 +512,10 @@ struct WatchlistWideView: View {
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
             headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
-            headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading)
-            if !isCompact {
+            if isCompact {
+                headerCell("Symbol", .symbol, width: nil, align: .leading)
+            } else {
+                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading)
                 headerCell("Name", .name, width: nil, align: .leading)
                 headerCell("Price", .changePercent, width: WCol.price, align: .trailing,
                            help: "Sort by today's % change")
@@ -721,7 +723,7 @@ private struct WatchRowView<Menu: View>: View {
                             .foregroundStyle(DS.brand))
                     Text(row.symbol).font(DS.figure).foregroundStyle(DS.ink)
                 }
-                .frame(width: WCol.symbol, alignment: .leading)
+                .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
 
                 if !compact {
                     // Name
