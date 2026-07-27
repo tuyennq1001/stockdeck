@@ -13,51 +13,67 @@ struct SymbolDetailSheet: View {
     private var quote: StockQuote? { stockService.quotes[symbol] }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DS.gap) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
-                    if let name = quote?.name, !name.isEmpty {
-                        Text(name).font(DS.caption).foregroundStyle(DS.inkTertiary)
-                    }
+        ZStack {
+            // Full background container with tap gesture: clicking outside the card content dismisses the popup sheet
+            Color.black.opacity(0.001)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismiss()
                 }
-                Spacer()
-                if !storageService.portfolios.isEmpty {
-                    DSMenu(width: 220, sections: [storageService.portfolios.map { p in
-                        DSMenuAction(title: p.name, icon: "briefcase") { onAddToPortfolio(p.id) }
-                    }]) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
-                            Text("Add to Portfolio").font(.inter(12, weight: .semibold, relativeTo: .body))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(DS.brand))
-                    }
-                    .pointingHandCursor()
-                    .help("Add this stock as a position in a portfolio")
-                }
-                Button("Done", action: onDismiss)
-                    .buttonStyle(.plain)
-                    .font(.inter(12, weight: .semibold, relativeTo: .body))
-                    .foregroundStyle(DS.inkSecondary)
-                    .pointingHandCursor()
-                    .keyboardShortcut(.defaultAction)
-            }
 
-            if let quote {
-                PriceChartCard(symbol: symbol, quote: quote)
-                HStack(alignment: .top, spacing: DS.gap) {
-                    fiftyTwoWeekCard(quote).frame(maxWidth: .infinity)
-                    factsCard(quote).frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: DS.gap) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
+                        if let name = quote?.name, !name.isEmpty {
+                            Text(name).font(DS.caption).foregroundStyle(DS.inkTertiary)
+                        }
+                    }
+                    Spacer()
+                    if !storageService.portfolios.isEmpty {
+                        DSMenu(width: 220, sections: [storageService.portfolios.map { p in
+                            DSMenuAction(title: p.name, icon: "briefcase") { onAddToPortfolio(p.id) }
+                        }]) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                                Text("Add to Portfolio").font(.inter(12, weight: .semibold, relativeTo: .body))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(DS.brand))
+                        }
+                        .pointingHandCursor()
+                        .help("Add this stock as a position in a portfolio")
+                    }
+                    Button("Done", action: onDismiss)
+                        .buttonStyle(.plain)
+                        .font(.inter(12, weight: .semibold, relativeTo: .body))
+                        .foregroundStyle(DS.inkSecondary)
+                        .pointingHandCursor()
+                        .keyboardShortcut(.defaultAction)
                 }
-            } else {
-                ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+
+                if let quote {
+                    PriceChartCard(symbol: symbol, quote: quote)
+                    HStack(alignment: .top, spacing: DS.gap) {
+                        fiftyTwoWeekCard(quote).frame(maxWidth: .infinity)
+                        factsCard(quote).frame(maxWidth: .infinity)
+                    }
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+                }
+            }
+            .padding(24)
+            .frame(width: 680)
+            .background(DS.ground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // Intercept tap gesture on card content so clicking inside does not dismiss
             }
         }
-        .padding(24)
-        .frame(width: 680)
-        .background(DS.ground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {

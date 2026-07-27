@@ -406,7 +406,11 @@ struct SegmentedRangePicker<T: Hashable>: View {
         case "24H": return "Last 24 hours"
         case "7D": return "Last 7 days"
         case "1M": return "Last month"
+        case "YTD": return "Year to date"
         case "1Y": return "Last year"
+        case "3Y": return "Last 3 years"
+        case "5Y": return "Last 5 years"
+        case "10Y": return "Last 10 years"
         case "All": return "All available history"
         default: return label
         }
@@ -420,8 +424,10 @@ struct SegmentedRangePicker<T: Hashable>: View {
                 } label: {
                     Text(label(option))
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(selection == option ? DS.ink : DS.inkTertiary)
-                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .padding(.horizontal, 7).padding(.vertical, 4)
                         .background {
                             if selection == option {
                                 Capsule().fill(DS.card)
@@ -429,14 +435,13 @@ struct SegmentedRangePicker<T: Hashable>: View {
                                     .matchedGeometryEffect(id: "segSelection", in: ns)
                             }
                         }
-                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
                 .help(help(label(option)))
             }
         }
-        .padding(3)
+        .padding(2)
         .background(Capsule().fill(DS.cardAlt))
     }
 }

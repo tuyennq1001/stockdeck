@@ -11,13 +11,17 @@ struct PriceChartCard: View {
     let quote: StockQuote
 
     enum ChartRange: String, CaseIterable {
-        case day = "24H", week = "7D", month = "1M", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
+        case week = "7D", month = "1M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
         /// Lookback window in days; nil = the whole fetched history.
         var days: Int? {
             switch self {
-            case .day: return 1
             case .week: return 7
             case .month: return 30
+            case .ytd:
+                let cal = Calendar.current
+                let now = Date()
+                let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+                return max(1, cal.dateComponents([.day], from: jan1, to: now).day ?? 30)
             case .year: return 365
             case .threeYears: return 365 * 3
             case .fiveYears: return 365 * 5
@@ -25,14 +29,14 @@ struct PriceChartCard: View {
             case .all: return nil
             }
         }
-        /// 24H uses the 5-minute intraday feed; the rest use daily closes.
-        var isIntraday: Bool { self == .day }
+        /// Daily closes for all ranges.
+        var isIntraday: Bool { false }
 
         var changeLabel: String {
             switch self {
-            case .day: return "today"
             case .week: return "past 7d"
             case .month: return "past 1M"
+            case .ytd: return "YTD"
             case .year: return "past 1Y"
             case .threeYears: return "past 3Y"
             case .fiveYears: return "past 5Y"
@@ -62,10 +66,6 @@ struct PriceChartCard: View {
             return (hp.close, diff, diffPct, chartRange.changeLabel)
         }
 
-        if chartRange == .day {
-            return (basePrice, quote.change, quote.changePercent, "today")
-        }
-
         guard history.count >= 2, let firstPrice = history.first?.close, firstPrice > 0 else {
             return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
         }
@@ -84,9 +84,8 @@ struct PriceChartCard: View {
     /// X-axis tick label, formatted for the selected period.
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
-        case .day: return date.formatted(.dateTime.hour().minute())
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month: return date.formatted(.dateTime.day().month(.abbreviated))
+        case .month, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
         case .year, .threeYears, .fiveYears, .tenYears, .all:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
@@ -113,7 +112,7 @@ struct PriceChartCard: View {
                             case .active(let loc):
                                 let localX = min(max(loc.x - plot.minX, 0), plot.width)
                                 if let d: Date = proxy.value(atX: localX) {
-                                    hoverPoint = nearestByDate(history, to: d, date: \.date)
+                                    hoverPoint = history.min(by: { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) })
                                 }
                             case .ended:
                                 hoverPoint = nil
@@ -131,17 +130,10 @@ struct PriceChartCard: View {
                                 .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
                                 .position(x: cx, y: plot.minY + py)
 
-                            if chartStyle == .candlestick, let o = h.open, let hi = h.high, let lo = h.low {
-                                ChartTooltip(title: hoverLabel(h.date),
-                                             value: "O: \(priceSymbol)\(StorageService.formatNumber(o, decimals: dec))  H: \(priceSymbol)\(StorageService.formatNumber(hi, decimals: dec))\nL: \(priceSymbol)\(StorageService.formatNumber(lo, decimals: dec))  C: \(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
-                                             tint: h.close >= o ? DS.up : DS.down)
-                                    .position(x: min(max(cx, plot.minX + 70), plot.maxX - 70), y: plot.minY + 12)
-                            } else {
-                                ChartTooltip(title: hoverLabel(h.date),
-                                             value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
-                                             tint: tint)
-                                    .position(x: min(max(cx, plot.minX + 50), plot.maxX - 50), y: plot.minY + 12)
-                            }
+                            ChartTooltip(title: hoverLabel(h.date),
+                                         value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
+                                         tint: tint)
+                                .position(x: min(max(cx, plot.minX + 50), plot.maxX - 50), y: plot.minY + 12)
                         }
                         .allowsHitTesting(false)
                     }
@@ -166,7 +158,6 @@ struct PriceChartCard: View {
 
     private var isLoadingCurrent: Bool {
         switch chartRange {
-        case .day: return stockService.intradayHistory[symbol] == nil
         case .all: return stockService.priceHistoryMax[symbol] == nil
         default: return stockService.priceHistory[symbol] == nil
         }
