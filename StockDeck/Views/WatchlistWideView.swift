@@ -430,6 +430,7 @@ struct WatchlistWideView: View {
                                      percentDecimals: storageService.percentDecimals,
                                      valueDecimals: storageService.valueDecimals,
                                      isSelected: selectedSymbols.contains(row.symbol),
+                                     compact: isCompact,
                                      onOpen: {
                                          handleRowClick(row.symbol)
                                      },
@@ -506,19 +507,23 @@ struct WatchlistWideView: View {
         }
     }
 
+    private var isCompact: Bool { activeDetailSymbol != nil }
+
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
             headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
             headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading)
-            headerCell("Name", .name, width: nil, align: .leading)
-            headerCell("Price", .changePercent, width: WCol.price, align: .trailing,
-                       help: "Sort by today's % change")
-            if storageService.showExtendedHours {
-                headerCell("After hrs", .extChangePercent, width: WCol.ext, align: .trailing,
-                           help: "Sort by the pre/post-market % move")
+            if !isCompact {
+                headerCell("Name", .name, width: nil, align: .leading)
+                headerCell("Price", .changePercent, width: WCol.price, align: .trailing,
+                           help: "Sort by today's % change")
+                if storageService.showExtendedHours {
+                    headerCell("After hrs", .extChangePercent, width: WCol.ext, align: .trailing,
+                               help: "Sort by the pre/post-market % move")
+                }
+                Text("Trend").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.trend)
+                Text("52-week").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.range, alignment: .leading)
             }
-            Text("Trend").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.trend)
-            Text("52-week").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.range, alignment: .leading)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -668,6 +673,7 @@ private struct WatchRowView<Menu: View>: View {
     let percentDecimals: Int
     let valueDecimals: Int
     let isSelected: Bool
+    var compact: Bool = false
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> Menu
     @State private var hover = false
@@ -706,7 +712,7 @@ private struct WatchRowView<Menu: View>: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                // Symbol + chip
+                // Symbol chip — always visible
                 HStack(spacing: 10) {
                     RoundedRectangle(cornerRadius: 7, style: .continuous).fill(DS.brand.opacity(0.10))
                         .frame(width: 28, height: 28)
@@ -717,61 +723,60 @@ private struct WatchRowView<Menu: View>: View {
                 }
                 .frame(width: WCol.symbol, alignment: .leading)
 
-                // Name
-                Text(row.name.isEmpty ? "—" : row.name)
-                    .font(DS.body).foregroundStyle(DS.inkSecondary).lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !compact {
+                    // Name
+                    Text(row.name.isEmpty ? "—" : row.name)
+                        .font(DS.body).foregroundStyle(DS.inkSecondary).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Regular price + today's % move. Emphasised when the regular
-                // session is the live one; dims to context during extended hours.
-                Group {
-                    if row.loaded {
-                        pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !extendedSession)
-                    } else {
-                        DSSpinner(size: 12)
-                    }
-                }
-                .frame(width: WCol.price, alignment: .trailing)
-
-                // After-hours price + its pre/post % move. Only shown when the
-                // Extended Hours setting is on; emphasised during extended hours
-                // so the live move reads first.
-                if showExtended {
+                    // Regular price + today's % move.
                     Group {
-                        if let ext = row.extPrice {
-                            pairedCell(price: ext, pct: row.extChangePercent,
-                                       label: row.extLabel, emphasised: extendedSession)
+                        if row.loaded {
+                            pairedCell(price: row.price, pct: row.changePercent,
+                                       label: nil, emphasised: !extendedSession)
                         } else {
-                            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+                            DSSpinner(size: 12)
                         }
                     }
-                    .frame(width: WCol.ext, alignment: .trailing)
-                }
+                    .frame(width: WCol.price, alignment: .trailing)
 
-                // Trend sparkline
-                Sparkline(symbol: row.symbol).frame(width: WCol.trend)
-
-                // 52-week range
-                Group {
-                    if let q = row.quote, let pos = q.fiftyTwoWeekPosition {
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(DS.cardAlt).frame(height: 5)
-                                Circle().fill(.white)
-                                    .frame(width: 9, height: 9)
-                                    .overlay(Circle().strokeBorder(DS.brand, lineWidth: 1.5))
-                                    .shadow(color: .black.opacity(0.10), radius: 1.5, y: 0.5)
-                                    .offset(x: CGFloat(pos) * (geo.size.width - 9))
+                    // After-hours price.
+                    if showExtended {
+                        Group {
+                            if let ext = row.extPrice {
+                                pairedCell(price: ext, pct: row.extChangePercent,
+                                           label: row.extLabel, emphasised: extendedSession)
+                            } else {
+                                Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
                             }
-                            .frame(maxHeight: .infinity, alignment: .center)
                         }
-                        .frame(height: 12)
-                    } else {
-                        Text("—").foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: WCol.ext, alignment: .trailing)
                     }
+
+                    // Trend sparkline
+                    Sparkline(symbol: row.symbol).frame(width: WCol.trend)
+
+                    // 52-week range
+                    Group {
+                        if let q = row.quote, let pos = q.fiftyTwoWeekPosition {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(DS.cardAlt).frame(height: 5)
+                                    Circle().fill(.white)
+                                        .frame(width: 9, height: 9)
+                                        .overlay(Circle().strokeBorder(DS.brand, lineWidth: 1.5))
+                                        .shadow(color: .black.opacity(0.10), radius: 1.5, y: 0.5)
+                                        .offset(x: CGFloat(pos) * (geo.size.width - 9))
+                                }
+                                .frame(maxHeight: .infinity, alignment: .center)
+                            }
+                            .frame(height: 12)
+                        } else {
+                            Text("—").foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .frame(width: WCol.range)
                 }
-                .frame(width: WCol.range)
             }
             .padding(.horizontal, 14).padding(.vertical, 9)
             .frame(minHeight: 44)
