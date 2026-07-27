@@ -78,4 +78,44 @@ enum PortfolioIO {
             }
         }
     }
+
+    /// Generates a clean sample JSON file for users to edit and import.
+    static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool) {
+        let samplePortfolios: [Portfolio] = [
+            Portfolio(
+                id: UUID(),
+                name: "Tech Growth Sample",
+                holdings: [
+                    Holding(id: UUID(), symbol: "AAPL", quantity: 10, avgPrice: 185.50, purchaseDate: Date(), leverage: 1.0),
+                    Holding(id: UUID(), symbol: "NVDA", quantity: 5, avgPrice: 120.00, purchaseDate: Date(), leverage: 1.0)
+                ]
+            ),
+            Portfolio(
+                id: UUID(),
+                name: "Crypto Basket Sample",
+                holdings: [
+                    Holding(id: UUID(), symbol: "BTC-USD", quantity: 0.5, avgPrice: 65000.0, purchaseDate: Date(), leverage: 1.0)
+                ]
+            )
+        ]
+        guard let data = storageService.exportPortfolios(samplePortfolios) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "sample_portfolio.json"
+        panel.title = "Download Sample Portfolio File"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
 }

@@ -43,6 +43,15 @@ struct PortfolioListView: View {
                 }
                 .buttonStyle(.borderless)
                 .pointingHandCursor()
+                Button(action: downloadSampleFile) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.badge.plus")
+                        Text("Sample")
+                    }
+                    .font(.inter(10, relativeTo: .caption))
+                }
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
                 Spacer()
             }
         } else {
@@ -195,6 +204,16 @@ struct PortfolioListView: View {
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
 
+                    Button(action: downloadSampleFile) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "doc.badge.plus")
+                            Text("Sample")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
                     Button(action: { exportPortfolios(storageService.portfolios) }) {
                         HStack(spacing: 3) {
                             Image(systemName: "square.and.arrow.up")
@@ -280,6 +299,10 @@ struct PortfolioListView: View {
         PortfolioIO.importInto(storageService, restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
+    }
+
+    private func downloadSampleFile() {
+        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true)
     }
 
     private func createPortfolio() {

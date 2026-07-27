@@ -263,7 +263,10 @@ struct PortfolioWindowView: View {
                 DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingPortfolioId = p.id }
             })
         }
-        var io = [ DSMenuAction(title: "Import Portfolios…", icon: "square.and.arrow.down") { importPortfolios() } ]
+        var io = [
+            DSMenuAction(title: "Import Portfolios…", icon: "square.and.arrow.down") { importPortfolios() },
+            DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
+        ]
         if !storageService.portfolios.isEmpty {
             io.append(DSMenuAction(title: "Export All…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
         }
@@ -346,6 +349,10 @@ struct PortfolioWindowView: View {
         PortfolioIO.importInto(storageService, restoreActivationPolicy: false) { message in
             importAlert = message
         }
+    }
+
+    private func downloadSampleFile() {
+        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: false)
     }
 
     // MARK: - Aggregation helpers (reuse the shared valuation math)
