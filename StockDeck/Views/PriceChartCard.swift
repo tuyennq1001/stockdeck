@@ -27,6 +27,19 @@ struct PriceChartCard: View {
         }
         /// 24H uses the 5-minute intraday feed; the rest use daily closes.
         var isIntraday: Bool { self == .day }
+
+        var changeLabel: String {
+            switch self {
+            case .day: return "today"
+            case .week: return "past 7d"
+            case .month: return "past 1M"
+            case .year: return "past 1Y"
+            case .threeYears: return "past 3Y"
+            case .fiveYears: return "past 5Y"
+            case .tenYears: return "past 10Y"
+            case .all: return "all-time"
+            }
+        }
     }
 
     enum ChartStyle: String, CaseIterable {
@@ -39,6 +52,29 @@ struct PriceChartCard: View {
     @State private var hoverPoint: PricePoint?
 
     private var priceSymbol: String { StorageService.currencySymbol(for: quote.currency) }
+
+    private var displayedPriceInfo: (price: Double, diff: Double, diffPct: Double, label: String) {
+        let basePrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+        if let hp = hoverPoint {
+            let startPrice = history.first?.close ?? basePrice
+            let diff = hp.close - startPrice
+            let diffPct = startPrice > 0 ? (diff / startPrice) * 100 : 0
+            return (hp.close, diff, diffPct, chartRange.changeLabel)
+        }
+
+        if chartRange == .day {
+            return (basePrice, quote.change, quote.changePercent, "today")
+        }
+
+        guard history.count >= 2, let firstPrice = history.first?.close, firstPrice > 0 else {
+            return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
+        }
+
+        let lastPrice = history.last?.close ?? basePrice
+        let diff = lastPrice - firstPrice
+        let diffPct = (diff / firstPrice) * 100
+        return (lastPrice, diff, diffPct, chartRange.changeLabel)
+    }
 
     private func hoverLabel(_ date: Date) -> String {
         chartRange.isIntraday ? date.formatted(.dateTime.hour().minute())
@@ -140,19 +176,20 @@ struct PriceChartCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
+                    let info = displayedPriceInfo
                     SectionLabel("Last price")
-                    Text(StorageService.formatAmount(quote.displayPrice(extendedHours: storageService.showExtendedHours), symbol: priceSymbol))
+                    Text(StorageService.formatAmount(info.price, symbol: priceSymbol))
                         .font(.inter(32, weight: .bold, relativeTo: .largeTitle).monospacedDigit())
                         .tracking(-0.4)
                         .foregroundStyle(DS.ink)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: quote.displayPrice(extendedHours: storageService.showExtendedHours))
+                        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: info.price)
                     HStack(spacing: 8) {
-                        ChangePill(value: quote.change,
-                                   text: String(format: "%+.\(storageService.percentDecimals)f%% today", quote.changePercent))
-                        Text(StorageService.formatAmount(quote.change, symbol: priceSymbol, signed: true))
+                        ChangePill(value: info.diff,
+                                   text: String(format: "%+.\(storageService.percentDecimals)f%% \(info.label)", info.diffPct))
+                        Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, signed: true))
                             .font(DS.caption.monospacedDigit())
-                            .foregroundStyle(DS.pnlColor(quote.change))
+                            .foregroundStyle(DS.pnlColor(info.diff))
                     }
                 }
                 Spacer()

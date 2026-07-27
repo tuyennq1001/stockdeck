@@ -222,9 +222,10 @@ struct HoldingDetailView: View {
     // MARK: - Stats
 
     private var statStrip: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(holding.quantity)) sh", help: "Shares you hold")
             StatTile(label: "Avg price", value: StorageService.formatAmount(holding.avgPrice, symbol: priceSymbol), help: "Your average purchase price")
+            StatTile(label: "Cost", value: StorageService.formatAmount(cost, symbol: currencySymbol), help: "Total cost basis of this position")
             StatTile(label: "Value", value: StorageService.formatAmount(value, symbol: currencySymbol), help: "Current market value of this position")
             StatTile(label: "P&L",
                      value: StorageService.formatAmount(pnl, symbol: currencySymbol, signed: true),
