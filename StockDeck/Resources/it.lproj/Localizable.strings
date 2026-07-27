@@ -1,4 +1,4 @@
-/* StockDock — base (English). Keys are the exact source literals used in SwiftUI. */
+/* StockDeck — base (English). Keys are the exact source literals used in SwiftUI. */
 
 /* Tabs / navigation */
 "Watchlist" = "Watchlist";
@@ -126,7 +126,7 @@
 "Export" = "Esporta";
 
 /* Status menu */
-"Quit StockDock" = "Esci da StockDock";
+"Quit StockDeck" = "Esci da StockDeck";
 
 /* Ticker options (issue #8) */
 "Show name instead of symbol" = "Mostra il nome invece del simbolo";
@@ -159,8 +159,8 @@
 "Refresh" = "Aggiorna";
 
 /* Sponsor */
-"Enjoying StockDock?" = "Ti piace StockDock?";
-"StockDock is free and open source — and always will be. If it's useful to you, you can sponsor its development. Every feature stays free for everyone." = "StockDock è gratuito e open source — e lo sarà sempre. Se ti è utile, puoi sostenerne lo sviluppo. Ogni funzione resta gratis per tutti.";
+"Enjoying StockDeck?" = "Ti piace StockDeck?";
+"StockDeck is free and open source — and always will be. If it's useful to you, you can sponsor its development. Every feature stays free for everyone." = "StockDeck è gratuito e open source — e lo sarà sempre. Se ti è utile, puoi sostenerne lo sviluppo. Ogni funzione resta gratis per tutti.";
 "Become a Sponsor" = "Diventa Sponsor";
 
 /* Desktop window */
@@ -232,7 +232,7 @@
 "Short positions & leverage" = "Posizioni short e leva";
 "Sponsor" = "Sponsor";
 "Stock price currency" = "Valuta del prezzo del titolo";
-"StockDock is free and open source" = "StockDock è gratuito e open source";
+"StockDeck is free and open source" = "StockDeck è gratuito e open source";
 "Stocks" = "Azioni";
 "Text size" = "Dimensione del testo";
 "Ticker + Portfolio" = "Ticker + Portafoglio";

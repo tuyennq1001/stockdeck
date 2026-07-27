@@ -1,10 +1,10 @@
-# StockDock
+# StockDeck
 
 App macOS per la menu bar che mostra in tempo reale le quotazioni di borsa e il P&L del portafoglio. Non richiede account né API key: i dati vengono direttamente da Yahoo Finance.
 
 ## Descrizione
 
-StockDock è un'app leggera che vive nella menu bar di macOS. Con un click sull'icona si apre un popover con watchlist, portafogli e impostazioni. I prezzi si aggiornano in tempo reale via WebSocket (~1 update/sec per simbolo).
+StockDeck è un'app leggera che vive nella menu bar di macOS. Con un click sull'icona si apre un popover con watchlist, portafogli e impostazioni. I prezzi si aggiornano in tempo reale via WebSocket (~1 update/sec per simbolo).
 
 ## Stack tecnologico
 
@@ -22,7 +22,7 @@ StockDock è un'app leggera che vive nella menu bar di macOS. Con un click sull'
 StockDeck/
 ├── Package.swift               # Configurazione SPM, target unico, macOS 14+
 ├── StockDeck/
-│   ├── StockDockApp.swift       # Entry point (@main), collega AppDelegate
+│   ├── StockDeckApp.swift       # Entry point (@main), collega AppDelegate
 │   ├── AppDelegate.swift       # NSStatusItem, popover, timer aggiornamento 5s
 │   ├── Models/
 │   │   ├── StockQuote.swift    # Modelli: StockQuote (con 52w range), Portfolio, Holding, SearchResult
@@ -56,7 +56,7 @@ StockDeck/
 ## Funzionalità chiave
 
 - **Home — news finanziarie** (tab principale): feed di notizie dagli stessi endpoint pubblici Yahoo (`v1/finance/search?newsCount=…`, nessuna API key). Personalizzato sui simboli seguiti (watchlist + holding, fino a 6 query concorrenti via `withTaskGroup`), deduplicato per `uuid`, ordinato dal più recente (cap 40); fallback "stock market" se non segui nulla. Ogni riga: thumbnail (`AsyncImage`), titolo, publisher · tempo relativo (localizzato), ticker correlati; tap → apre l'articolo nel browser (`NSWorkspace`). Refresh throttlato (max 1 ogni 5 min) + force dal pulsante refresh dell'header quando sei su Home. Stato in `StockService` (`news`, `isLoadingNews`, `refreshNews`), modello `NewsArticle` con test di decoding
-- **Sponsor**: sezione Settings → "Enjoying StockDock?" con bottone rosa "Become a Sponsor" → `github.com/sponsors/simonsruggi`. Nel README, badge + link Sponsor in cima (hero + nav) oltre alla sezione dedicata. Ribadisce che l'app resta gratis e open source per sempre
+- **Sponsor**: sezione Settings → "Enjoying StockDeck?" con bottone rosa "Become a Sponsor" → `github.com/sponsors/tuyennq1001`. Nel README, badge + link Sponsor in cima (hero + nav) oltre alla sezione dedicata. Ribadisce che l'app resta gratis e open source per sempre
 - **Menu bar configurabile**: P&L assoluto, P&L %, P&L + %, valore totale portafoglio, miglior/peggior titolo watchlist, riepilogo portafoglio, **Ticker (scorre la watchlist)**, **Ticker + Portfolio (scorre watchlist + 1 slide riepilogo portafoglio)**, solo icona
 - **Colori rialzo/ribasso personalizzabili (globali)** (da 1.9.4): in Settings → sezione "Colors", color picker per gain/loss che si applicano a **tutta l'app**, non solo alla menu bar. Implementazione: `DS.up`/`DS.down` (e `upSoft`/`downSoft`/`pnlColor`) in `DesignSystem.swift` sono **computed `@MainActor`** che leggono i colori custom da `StorageService.shared` (hex → `Color(nsColor:)`) con **fallback ai default** `upDefault`/`downDefault` (smeraldo/terracotta) quando l'hex è vuoto; le viste che mostrano P&L osservano `StorageService`, quindi cambiare il colore le ri-renderizza. I ColorPicker sono **sempre visibili**. Il toggle **"Use system color in the menu bar"** (`menuBarUseSystemColor`) è **solo per la barra** (leggibilità su qualsiasi sfondo; direzione data da `+/−` e `▲▼`) e non tocca i colori in-app; usato in `AppDelegate.updateMenuBarTitle`. Persistiti come hex in `data.json`; helper `ColorHex.swift` (bridge hex↔`NSColor`/`Color`)
 - **Percentuali a 2 decimali**: toggle in Settings (default off per tenere la barra compatta) che porta tutte le % da 1 a 2 decimali (menu bar, watchlist, portafogli)
@@ -76,7 +76,7 @@ StockDeck/
 - **Notifiche per-portfolio**: tasto destro sull'header del portafoglio → "Notifications…"; gestione anche in Settings con **"Clear all"** (svuota le notifiche di tutti i portafogli, con conferma); 4 modalità (variazione giornaliera ≥ %, ≥ importo, riepilogo giornaliero, milestone di valore); default ±1% / ±250 / milestone ogni 10.000 / riepilogo dopo le 22:00; **anti-spam**: la modalità *daily move* (`dailyPercent`/`dailyAbsolute`) scatta **una volta per direzione al giorno** — al primo superamento di +soglia e al primo di −soglia, poi silenzio fino al giorno dopo (`crossingStep` ritorna ±1 e i marker `lastStepUp`/`lastStepDown` per-direzione sono scoped a `lastDay`); reso così per eliminare lo spam degli step (prima notificava a +1%, +2%, +3%… in una giornata in trend). Milestone "primed" silenziosamente al primo giro e poi solo su nuovo massimo/minimo; in più un backstop in `NotificationManager.send` impedisce che lo *stesso* identifier riparta entro 120s (nessun tipo può spammare a tick rate); variazione del giorno = `change` per-azione × quantità × cambio nella valuta preferita; valutate ad ogni aggiornamento prezzo; stato e regole persistiti in `data.json` per id portafoglio. Le notifiche di variazione giornaliera e il riepilogo includono un **breakdown per-titolo** (simbolo · variazione % · valore, aggregato per simbolo, ordinato per impatto del giorno, cap 12 righe + "…and N more") così si capisce cosa ha mosso il portafoglio
 - **Extended hours**: prezzi pre-market e after-hours con rispettivo P&L
 - **Persistenza**: dati salvati in `~/Library/Application Support/StockDeck/data.json` (watchlist, portafogli, isinMap, alert, notifiche portfolio, webhook, preferenze); nessun dato inviato a server esterni
-- **Test**: target `StockDockTests` (`Tests/`) con unit test della logica pura — `AlertEvaluator` (tutte le condizioni + casi limite), `PortfolioAlertEvaluator` (crossingStep/milestone/summary), `fiftyTwoWeekPosition`, formattazione numeri, `TickerOrderingTests` (issue #8: `isIndex` + `tickerOrder`) e `ShortLeverageTests` (issue #9: P&L/marketValue/pnlPercent/costBasis su short + leva). Esegui con `swift test`
+- **Test**: target `StockDeckTests` (`Tests/`) con unit test della logica pura — `AlertEvaluator` (tutte le condizioni + casi limite), `PortfolioAlertEvaluator` (crossingStep/milestone/summary), `fiftyTwoWeekPosition`, formattazione numeri, `TickerOrderingTests` (issue #8: `isIndex` + `tickerOrder`) e `ShortLeverageTests` (issue #9: P&L/marketValue/pnlPercent/costBasis su short + leva). Esegui con `swift test`
 - **Export/Import portafogli**: export singolo o di tutti i portafogli in JSON via NSSavePanel; import via NSOpenPanel con dedup nomi e UUID rigenerati
 - **Menu bar reattiva**: si aggiorna immediatamente ad ogni modifica di portafoglio, impostazioni o chiusura popover (oltre ai tick WebSocket e REST polling)
 - **Save debounced**: le scritture su disco sono debounced a 100ms per non bloccare il main thread; save immediato alla chiusura dell'app; nessun save ridondante al caricamento iniziale
@@ -84,7 +84,7 @@ StockDeck/
 
 ## Finestra desktop (app completa) — nuova in 1.9.0
 
-Oltre al popover della menu bar, StockDock ha una **finestra desktop vera** (1220×820, min 1000×680) aperta dal bottone **"Open"** (capsula smeraldo) nell'header del popover, o da `AppDelegate.showPortfolioWindow()`. È l'app in forma estesa: **stessi tab del popover** (Home / Watchlist / Portfolios / Settings), **stessi dati e stesse preferenze** sullo stesso `data.json` (`StockService`/`StorageService` condivisi) — una modifica in un posto si riflette istantaneamente nell'altro e nella menu bar. Convive col popover: apre passando ad `activationPolicy .regular` (icona nel Dock), torna `.accessory` alla chiusura.
+Oltre al popover della menu bar, StockDeck ha una **finestra desktop vera** (1220×820, min 1000×680) aperta dal bottone **"Open"** (capsula smeraldo) nell'header del popover, o da `AppDelegate.showPortfolioWindow()`. È l'app in forma estesa: **stessi tab del popover** (Home / Watchlist / Portfolios / Settings), **stessi dati e stesse preferenze** sullo stesso `data.json` (`StockService`/`StorageService` condivisi) — una modifica in un posto si riflette istantaneamente nell'altro e nella menu bar. Convive col popover: apre passando ad `activationPolicy .regular` (icona nel Dock), torna `.accessory` alla chiusura.
 
 - **Design system "private banking"** (`Views/DesignSystem.swift`): palette carta calda + smeraldo sobrio, `premiumCard(elevated:)` (elevazione a 3 livelli), scala tipografica Inter (`DS.display/titleXL/figure/…`), componenti condivisi `PageScaffold`/`PageHeader`/`ScrollEdgeFade`/`Card`/`StatTile`/`ChangePill`/`Tag`/`BrandMark`/`NavRow` (pill di selezione scorrevole via `matchedGeometryEffect`)/`SegmentedRangePicker`/`RefreshButton`. Aspetto **chiaro pinnato** su finestra e popover (`NSAppearance(.aqua)`). Tutti i tab usano lo stesso `PageScaffold` → titolo, colonna (max 1120), gutter e sfondo identici (coerenza cross-tab).
 - **Chrome**: titlebar trasparente + `titleVisibility .hidden` + `fullSizeContentView`; nessuna toolbar di sistema (il "+" nuovo portafoglio/holding è nell'header "PORTFOLIOS" della sidebar); `isMovableByWindowBackground`.
@@ -101,16 +101,16 @@ Oltre al popover della menu bar, StockDock ha una **finestra desktop vera** (122
 ### Da sorgente con Swift PM
 
 ```bash
-git clone https://github.com/simonsruggi/StockDock.git
-cd StockDock
+git clone https://github.com/tuyennq1001/stockdeck.git
+cd StockDeck
 swift build -c release
-# Eseguibile: .build/release/StockDock
+# Eseguibile: .build/release/StockDeck
 ```
 
 ### Build come app bundle (Xcode)
 
 ```bash
-xcodebuild -scheme StockDock -configuration Release \
+xcodebuild -scheme StockDeck -configuration Release \
   -destination 'platform=macOS' \
   -derivedDataPath .build/xcode build
 ```

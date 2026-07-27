@@ -14,7 +14,7 @@ enum WebhookNotifier {
 
     /// Display name and avatar used for the webhook message (overrides the channel default).
     private static let botName = "StockDeck"
-    private static let avatarURL = "https://raw.githubusercontent.com/simonsruggi/StockDeck/main/StockDeck/Assets.xcassets/AppIcon.appiconset/icon_256.png"
+    private static let avatarURL = "https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/StockDeck/Assets.xcassets/AppIcon.appiconset/icon_256.png"
 
     /// Returns true if the string is a usable Discord/Slack webhook URL.
     static func isValid(_ urlString: String) -> Bool {

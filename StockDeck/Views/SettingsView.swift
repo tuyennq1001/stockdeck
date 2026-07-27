@@ -319,7 +319,7 @@ struct SettingsView: View {
                     caption("StockDeck is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")
                     HStack(spacing: 8) {
                         Button {
-                            if let url = URL(string: "https://github.com/sponsors/simonsruggi") {
+                            if let url = URL(string: "https://github.com/sponsors/tuyennq1001") {
                                 NSWorkspace.shared.open(url)
                             }
                         } label: {
@@ -330,7 +330,7 @@ struct SettingsView: View {
                         .tint(.pink)
 
                         Button {
-                            if let url = URL(string: "https://github.com/simonsruggi/StockDeck") {
+                            if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") {
                                 NSWorkspace.shared.open(url)
                             }
                         } label: {

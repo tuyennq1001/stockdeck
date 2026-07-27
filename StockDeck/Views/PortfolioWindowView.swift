@@ -141,9 +141,9 @@ struct PortfolioWindowView: View {
             HStack(spacing: 6) {
                 Spacer()
                 SupportButton(icon: "star", title: "Star", hoverTint: DS.gold,
-                              url: "https://github.com/simonsruggi/StockDeck", compact: true)
+                              url: "https://github.com/tuyennq1001/stockdeck", compact: true)
                 SupportButton(icon: "heart", title: "Sponsor", hoverTint: Color(red: 0.86, green: 0.30, blue: 0.46),
-                              url: "https://github.com/sponsors/simonsruggi", compact: true)
+                              url: "https://github.com/sponsors/tuyennq1001", compact: true)
             }
             .padding(.top, 12).padding(.trailing, 12).padding(.bottom, 2)
             brand

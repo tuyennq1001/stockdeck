@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="screenshots/banner.png" alt="StockDock — track stocks from your macOS menu bar" width="100%">
+<img src="screenshots/banner.png" alt="StockDeck — track stocks from your macOS menu bar" width="100%">
 
-# StockDock
+# StockDeck
 
 **A free, open-source macOS menu bar app for tracking stocks, ETFs, indices, crypto, and your portfolio P&L in real time.**
 
@@ -10,37 +10,37 @@ No account. No API keys. No subscription. No tracking. Just your watchlist and p
 
 <br>
 
-[![Latest Release](https://img.shields.io/github/v/release/simonsruggi/StockDock?label=download&logo=apple&color=black)](https://github.com/simonsruggi/StockDeck/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/simonsruggi/StockDeck/total?logo=github&color=2ea44f)](https://github.com/simonsruggi/StockDeck/releases)
-[![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://github.com/simonsruggi/StockDeck/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/tuyennq1001/stockdeck?label=download&logo=apple&color=black)](https://github.com/tuyennq1001/stockdeck/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/tuyennq1001/stockdeck/total?logo=github&color=2ea44f)](https://github.com/tuyennq1001/stockdeck/releases)
+[![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://github.com/tuyennq1001/stockdeck/releases/latest)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://swift.org)
-[![License: MIT](https://img.shields.io/github/license/simonsruggi/StockDock?color=blue)](LICENSE)
-[![Star](https://img.shields.io/github/stars/simonsruggi/StockDock?style=social)](https://github.com/simonsruggi/StockDock)
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/simonsruggi)
+[![License: MIT](https://img.shields.io/github/license/tuyennq1001/stockdeck?color=blue)](LICENSE)
+[![Star](https://img.shields.io/github/stars/tuyennq1001/stockdeck?style=social)](https://github.com/tuyennq1001/stockdeck)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/tuyennq1001)
 
 <br>
 
 ```bash
-brew install simonsruggi/tap/stockdock
+brew install tuyennq1001/tap/stockdeck
 ```
 
-**[⬇️ Download](https://github.com/simonsruggi/StockDeck/releases/latest)** · **[✨ Features](#features)** · **[📸 Screenshots](#screenshots)** · **[❤️ Sponsor](https://github.com/sponsors/simonsruggi)** · **[🐛 Report a bug](https://github.com/simonsruggi/StockDeck/issues)**
+**[⬇️ Download](https://github.com/tuyennq1001/stockdeck/releases/latest)** · **[✨ Features](#features)** · **[📸 Screenshots](#screenshots)** · **[❤️ Sponsor](https://github.com/sponsors/tuyennq1001)** · **[🐛 Report a bug](https://github.com/tuyennq1001/stockdeck/issues)**
 
 </div>
 
 ---
 
-> ⭐️ **Using StockDock?** It's free and there's no tracking, so a GitHub star is the only way I know anyone's out there. If the app is useful to you, please [star the repo](https://github.com/simonsruggi/StockDock) — it takes a second and genuinely helps. And if you'd like to fuel development, you can [**❤️ sponsor me**](https://github.com/sponsors/simonsruggi) — every feature stays free for everyone.
+> ⭐️ **Using StockDeck?** It's free and there's no tracking, so a GitHub star is the only way I know anyone's out there. If the app is useful to you, please [star the repo](https://github.com/tuyennq1001/stockdeck) — it takes a second and genuinely helps. And if you'd like to fuel development, you can [**❤️ sponsor me**](https://github.com/sponsors/tuyennq1001) — every feature stays free for everyone.
 
-## 🆕 New in 1.9.0 — a full desktop app
+## 🆕 New in 1.0 — a full desktop app
 
-StockDock lives in your menu bar, but now it also opens into a complete desktop window. Click **Open** in the popover for your watchlist, portfolios, live charts, and news in one spacious view — everything stays in sync with the menu bar.
+StockDeck lives in your menu bar, but now it also opens into a complete desktop window. Click **Open** in the popover for your watchlist, portfolios, live charts, and news in one spacious view — everything stays in sync with the menu bar.
 
-<img src="screenshots/desktop.png" alt="StockDock desktop window — portfolio overview with value chart, P&L, allocation and movers" width="100%">
+<img src="screenshots/desktop.png" alt="StockDeck desktop window — portfolio overview with value chart, P&L, allocation and movers" width="100%">
 
 Also new: separate **Price** and **After-hours** columns in the watchlist (each sortable), **news search** by headline or ticker, add-to-portfolio straight from a stock's detail, sharper **forex / sub-dollar** price precision, and adjustable decimal places for percentages and values.
 
-## Why StockDock?
+## Why StockDeck?
 
 - 🆓 **Truly free & open source** — no paid tiers, no premium lock, no subscription, ever.
 - 🔒 **Private by design** — no account, no login, no analytics, no telemetry. Your watchlist and portfolio never leave your Mac.
@@ -67,7 +67,7 @@ Stocks, ETFs, indices (S&P 500, NASDAQ…), crypto, and forex — anything with 
 ### The popover — watchlist, portfolios & settings
 
 <div align="center">
-<img src="screenshots/demo.gif" alt="StockDock menu bar popover cycling through the watchlist, portfolio P&L and settings" width="440">
+<img src="screenshots/demo.gif" alt="StockDeck menu bar popover cycling through the watchlist, portfolio P&L and settings" width="440">
 </div>
 
 | Watchlist | Portfolios | Settings |
@@ -99,15 +99,15 @@ Stocks, ETFs, indices (S&P 500, NASDAQ…), crypto, and forex — anything with 
 ### Homebrew (recommended)
 
 ```bash
-brew install simonsruggi/tap/stockdock
+brew install tuyennq1001/tap/stockdeck
 ```
 
 The app updates itself automatically via Sparkle — no need to run `brew upgrade`.
 
 ### Download
 
-1. Download the latest `StockDock.zip` from [Releases](https://github.com/simonsruggi/StockDeck/releases/latest)
-2. Unzip and move `StockDock.app` to `/Applications`
+1. Download the latest `StockDeck.zip` from [Releases](https://github.com/tuyennq1001/stockdeck/releases/latest)
+2. Unzip and move `StockDeck.app` to `/Applications`
 3. Launch — the app appears in the menu bar (no Dock icon)
 
 ### Build from source
@@ -115,9 +115,9 @@ The app updates itself automatically via Sparkle — no need to run `brew upgrad
 Requires **Xcode 15+** and **macOS 14 Sonoma** or later.
 
 ```bash
-git clone https://github.com/simonsruggi/StockDock.git
-cd StockDock
-xcodebuild -scheme StockDock -configuration Release -destination 'platform=macOS' -derivedDataPath .build/xcode build
+git clone https://github.com/tuyennq1001/stockdeck.git
+cd StockDeck
+xcodebuild -scheme StockDeck -configuration Release -destination 'platform=macOS' -derivedDataPath .build/xcode build
 ```
 
 The app bundle will be at `.build/xcode/Build/Products/Release/`.
@@ -218,7 +218,7 @@ Best/Worst are based on daily change % from your watchlist.
 
 ## Updates
 
-StockDock checks for updates automatically on launch via [Sparkle](https://sparkle-project.org/). You can also check manually from **Settings → Check for Updates**. No action needed — updates install seamlessly in the background.
+StockDeck checks for updates automatically on launch via [Sparkle](https://sparkle-project.org/). You can also check manually from **Settings → Check for Updates**. No action needed — updates install seamlessly in the background.
 
 ## Data & Privacy
 
@@ -230,11 +230,11 @@ StockDock checks for updates automatically on launch via [Sparkle](https://spark
 
 ## FAQ
 
-**Is StockDock really free?**
-Yes — free and open source under the MIT license, with no paid tier or subscription. If you want to support development, you can optionally [sponsor me](https://github.com/sponsors/simonsruggi).
+**Is StockDeck really free?**
+Yes — free and open source under the MIT license, with no paid tier or subscription. If you want to support development, you can optionally [sponsor me](https://github.com/sponsors/tuyennq1001).
 
 **Does it work on Intel Macs?**
-Yes. StockDock ships as a universal binary for both Apple Silicon and Intel, on macOS 14 (Sonoma) and later.
+Yes. StockDeck ships as a universal binary for both Apple Silicon and Intel, on macOS 14 (Sonoma) and later.
 
 **Where does the data come from?**
 Public Yahoo Finance endpoints (WebSocket for live prices, REST for exchange rates). No API key needed.
@@ -246,7 +246,7 @@ Yes — anything with a Yahoo Finance symbol, including crypto, ETFs, and market
 No. There's no analytics, no telemetry, no account. Everything stays local on your Mac.
 
 **How do I uninstall it?**
-`brew uninstall stockdock` (or drag the app to the Trash), then optionally delete `~/Library/Application Support/StockDock`.
+`brew uninstall stockdeck` (or drag the app to the Trash), then optionally delete `~/Library/Application Support/StockDeck`.
 
 ## Tech Stack
 
@@ -258,11 +258,11 @@ No. There's no analytics, no telemetry, no account. Everything stays local on yo
 
 ## Support the project
 
-StockDock is **free and open source, and it will always stay that way** — no paid tiers, no premium lock, no subscription, ever. It's also completely private: there's no analytics, no telemetry, no way for me to know how many people use it.
+StockDeck is **free and open source, and it will always stay that way** — no paid tiers, no premium lock, no subscription, ever. It's also completely private: there's no analytics, no telemetry, no way for me to know how many people use it.
 
-If you find it useful, the best (and free) thing you can do is **[⭐️ star the repo](https://github.com/simonsruggi/StockDock)** — it's quick and it's the only signal I get that the app is worth maintaining.
+If you find it useful, the best (and free) thing you can do is **[⭐️ star the repo](https://github.com/tuyennq1001/stockdeck)** — it's quick and it's the only signal I get that the app is worth maintaining.
 
-And if you'd like to go a step further, you can **[💛 sponsor me on GitHub](https://github.com/sponsors/simonsruggi)**. It's completely optional and changes nothing about the app — every feature stays free for everyone — but it helps me keep building and maintaining StockDock and my other open-source projects. Thank you! 🙏
+And if you'd like to go a step further, you can **[💛 sponsor me on GitHub](https://github.com/sponsors/tuyennq1001)**. It's completely optional and changes nothing about the app — every feature stays free for everyone — but it helps me keep building and maintaining StockDeck and my other open-source projects. Thank you! 🙏
 
 ## License
 

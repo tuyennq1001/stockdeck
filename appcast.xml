@@ -1,9 +1,9 @@
 <?xml version="1.0" standalone="yes"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
     <channel>
-        <title>StockDock</title>
-        <link>https://github.com/simonsruggi/StockDock</link>
-        <description>StockDock update feed</description>
+        <title>StockDeck</title>
+        <link>https://github.com/tuyennq1001/stockdeck</link>
+        <description>StockDeck update feed</description>
         <language>en</language>
         <item>
             <title>Version 1.9.7</title>
@@ -18,7 +18,7 @@
     <li><strong>See your true entry.</strong> If you hold the same ticker in more than one portfolio, you no longer have to average it by hand: the number you see is the real blended cost.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/simonsruggi/StockDock/releases/download/v1.9.7/StockDock.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.9.7/StockDeck.zip"
                        type="application/octet-stream"
                        sparkle:edSignature="jVngorK2zyVhNQSsTicrJhSDKkELU40MIDDOuxxmU2RGxV/hCajedJwzJaWC95Bb13BkmmAPQxFantr/LVbjAQ=="
                        length="9498283"/>

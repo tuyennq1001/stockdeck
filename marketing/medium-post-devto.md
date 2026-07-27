@@ -1,15 +1,15 @@
 ---
-title: "StockDock 1.9.0: My Free, Open-Source Stock Tracker for Mac Just Became a Full Desktop App"
+title: "StockDeck 1.9.0: My Free, Open-Source Stock Tracker for Mac Just Became a Full Desktop App"
 published: false
-description: "StockDock 1.9.0 turns my free, open-source macOS menu bar stock tracker into a full desktop app — no account, no subscription, no tracking."
+description: "StockDeck 1.9.0 turns my free, open-source macOS menu bar stock tracker into a full desktop app — no account, no subscription, no tracking."
 tags: macos, swift, opensource, showdev
-cover_image: https://raw.githubusercontent.com/simonsruggi/StockDock/main/screenshots/desktop.png
+cover_image: https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/screenshots/desktop.png
 canonical_url:
 ---
 
-A year ago I got tired of opening a browser tab every time I wanted to check my portfolio. So I built **StockDock** — a tiny macOS menu bar app that shows your stocks, crypto, and P&L in real time, one click away, with no account and no subscription.
+A year ago I got tired of opening a browser tab every time I wanted to check my portfolio. So I built **StockDeck** — a tiny macOS menu bar app that shows your stocks, crypto, and P&L in real time, one click away, with no account and no subscription.
 
-It's stayed **100% free and open source** the whole way. And with the release I just shipped — **1.9.0** — it grew up: StockDock is now a full desktop app *and* a menu bar app at the same time.
+It's stayed **100% free and open source** the whole way. And with the release I just shipped — **1.9.0** — it grew up: StockDeck is now a full desktop app *and* a menu bar app at the same time.
 
 Let me show you what's new, and why "free and open source, forever" is a promise I actually mean.
 
@@ -17,21 +17,21 @@ Let me show you what's new, and why "free and open source, forever" is a promise
 
 ## The one-line pitch
 
-**StockDock is a free, open-source macOS app for tracking stocks, ETFs, indices, crypto, and your portfolio P&L in real time — from your menu bar or a full desktop window.**
+**StockDeck is a free, open-source macOS app for tracking stocks, ETFs, indices, crypto, and your portfolio P&L in real time — from your menu bar or a full desktop window.**
 
 No account. No API keys. No subscription. No tracking. Your watchlist and portfolio never leave your Mac.
 
 ```bash
-brew install simonsruggi/tap/stockdock
+brew install tuyennq1001/tap/stockdeck
 ```
 
 ---
 
 ## What's new in 1.9.0 — a full desktop window
 
-Until now, StockDock lived entirely in your menu bar: click the icon, a popover drops down, done. That's still there — but sometimes you want room to breathe. So now the popover has an **Open** button that expands StockDock into a complete desktop window.
+Until now, StockDeck lived entirely in your menu bar: click the icon, a popover drops down, done. That's still there — but sometimes you want room to breathe. So now the popover has an **Open** button that expands StockDeck into a complete desktop window.
 
-![StockDock desktop window — portfolio overview with value chart, P&L, allocation, and movers](https://raw.githubusercontent.com/simonsruggi/StockDock/main/screenshots/desktop.png)
+![StockDeck desktop window — portfolio overview with value chart, P&L, allocation, and movers](https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/screenshots/desktop.png)
 
 News, Watchlist, Portfolios, and Settings in one spacious, redesigned view — with live charts, allocation breakdowns, and your day's movers. Everything stays perfectly in sync with the menu bar: change something in the window and the popover updates instantly, and vice versa.
 
@@ -54,7 +54,7 @@ Most ways to watch the market fall into two camps:
 1. **Full trading platforms** (Robinhood, IBKR, Trading 212) — great for trading, overkill for glancing. They take over the screen and drain the battery.
 2. **Web dashboards** (Yahoo Finance, Google Finance) — a browser tab you have to keep open, buried in ads and distractions.
 
-I wanted the in-between: a quiet widget that just shows the numbers. Like the battery percentage or Wi-Fi status in your menu bar — but for your portfolio. StockDock is that. And now, when you *do* want the full picture, it's one click away.
+I wanted the in-between: a quiet widget that just shows the numbers. Like the battery percentage or Wi-Fi status in your menu bar — but for your portfolio. StockDeck is that. And now, when you *do* want the full picture, it's one click away.
 
 ---
 
@@ -62,7 +62,7 @@ I wanted the in-between: a quiet widget that just shows the numbers. Like the ba
 
 Stocks, ETFs, indices (S&P 500, NASDAQ…), crypto, and forex — anything with a Yahoo Finance symbol. Search by **symbol**, **company name**, or **ISIN** (`AAPL`, `Tesla`, `IE00B4L5Y983`).
 
-![StockDock watchlist tab with live prices and 52-week range bars](https://raw.githubusercontent.com/simonsruggi/StockDock/main/screenshots/watchlist.png)
+![StockDeck watchlist tab with live prices and 52-week range bars](https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/screenshots/watchlist.png)
 
 A few things people tend to like:
 
@@ -78,22 +78,22 @@ A few things people tend to like:
 
 This part matters to me more than any feature:
 
-- Everything is stored locally in `~/Library/Application Support/StockDock/data.json`.
+- Everything is stored locally in `~/Library/Application Support/StockDeck/data.json`.
 - The app only ever talks to Yahoo Finance's public endpoints (and your own webhook, if you set one up).
-- **No account. No login. No analytics. No telemetry.** I have literally no way of knowing how many people use StockDock.
+- **No account. No login. No analytics. No telemetry.** I have literally no way of knowing how many people use StockDeck.
 - It's fully open source — you can read every line before you trust it with your watchlist.
 
-In a world where every app wants your email, StockDock wants nothing.
+In a world where every app wants your email, StockDeck wants nothing.
 
 ---
 
 ## Why open source, and how you can help
 
-StockDock is MIT-licensed and it will **always** be free — no paid tier, no premium lock, no "unlock pro" wall. That's a deliberate choice, not a soft launch for a subscription later.
+StockDeck is MIT-licensed and it will **always** be free — no paid tier, no premium lock, no "unlock pro" wall. That's a deliberate choice, not a soft launch for a subscription later.
 
-But that same privacy stance means I'm flying blind: no analytics means the only signal I ever get that the app is worth maintaining is a **GitHub star**. So if StockDock is useful to you, the single most helpful thing you can do — and it's free — is [⭐️ star the repo](https://github.com/simonsruggi/StockDock).
+But that same privacy stance means I'm flying blind: no analytics means the only signal I ever get that the app is worth maintaining is a **GitHub star**. So if StockDeck is useful to you, the single most helpful thing you can do — and it's free — is [⭐️ star the repo](https://github.com/tuyennq1001/stockdeck).
 
-And if you want to go further, you can [❤️ sponsor me on GitHub](https://github.com/sponsors/simonsruggi). It changes nothing about the app — every feature stays free for everyone — it just helps me keep building. Either way, thank you.
+And if you want to go further, you can [❤️ sponsor me on GitHub](https://github.com/sponsors/tuyennq1001). It changes nothing about the app — every feature stays free for everyone — it just helps me keep building. Either way, thank you.
 
 ---
 
@@ -102,10 +102,10 @@ And if you want to go further, you can [❤️ sponsor me on GitHub](https://git
 **Homebrew** (recommended):
 
 ```bash
-brew install simonsruggi/tap/stockdock
+brew install tuyennq1001/tap/stockdeck
 ```
 
-Or grab the latest `StockDock.zip` from [GitHub Releases](https://github.com/simonsruggi/StockDock/releases/latest), unzip, and drop it in `/Applications`.
+Or grab the latest `StockDeck.zip` from [GitHub Releases](https://github.com/tuyennq1001/stockdeck/releases/latest), unzip, and drop it in `/Applications`.
 
 The app is code-signed, notarized by Apple, and auto-updates via Sparkle — install once and forget about it. Requires **macOS 14 Sonoma or later**, and runs natively on both Apple Silicon and Intel.
 
@@ -124,10 +124,10 @@ Six languages, too: English, German, French, Spanish, Italian, and Portuguese.
 
 ## Try it
 
-If you invest or trade and you're on a Mac, StockDock takes about ten seconds to install and you might never close it again.
+If you invest or trade and you're on a Mac, StockDeck takes about ten seconds to install and you might never close it again.
 
-- **GitHub:** [github.com/simonsruggi/StockDock](https://github.com/simonsruggi/StockDock)
-- **Install:** `brew install simonsruggi/tap/stockdock`
+- **GitHub:** [github.com/tuyennq1001/stockdeck](https://github.com/tuyennq1001/stockdeck)
+- **Install:** `brew install tuyennq1001/tap/stockdeck`
 - **Star it** if it's useful — it genuinely helps me keep going.
 
 ---

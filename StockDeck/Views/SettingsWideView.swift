@@ -314,7 +314,7 @@ struct SettingsWideView: View {
                        caption: "If you'd like to support me, become a sponsor — or simply star the repo. Both help, and every feature stays free.") {
                 HStack(spacing: 8) {
                     Button {
-                        if let url = URL(string: "https://github.com/sponsors/simonsruggi") { NSWorkspace.shared.open(url) }
+                        if let url = URL(string: "https://github.com/sponsors/tuyennq1001") { NSWorkspace.shared.open(url) }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "heart.fill").font(.system(size: 9))
@@ -327,7 +327,7 @@ struct SettingsWideView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        if let url = URL(string: "https://github.com/simonsruggi/StockDeck") { NSWorkspace.shared.open(url) }
+                        if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") { NSWorkspace.shared.open(url) }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "star.fill").font(.system(size: 9))

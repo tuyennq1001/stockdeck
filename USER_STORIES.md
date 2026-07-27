@@ -1,4 +1,4 @@
-# User Stories — StockDock
+# User Stories — StockDeck
 
 ## US-01: Menu Bar Display
 **As a** user, **I want** to see a summary of my portfolio in the macOS menu bar **so that** I can monitor my investments at a glance.
@@ -72,7 +72,7 @@
 ## US-08: Data Persistence
 **As a** user, **I want** my data to be saved locally **so that** I can find it after restarting the app.
 
-- [x] Data saved as JSON in `~/Library/Application Support/StockDock/data.json`
+- [x] Data saved as JSON in `~/Library/Application Support/StockDeck/data.json`
 - [x] Debounced save (100ms) to avoid blocking the main thread
 - [x] Immediate save on app termination
 - [x] No redundant saves during initial load
@@ -185,7 +185,7 @@
 - [x] Colors persisted as hex in `data.json` (`gainColorHex`, `lossColorHex`, `menuBarUseSystemColor`); `ColorHex.swift` bridges hex ↔ `NSColor`/`Color`
 
 ## US-19: Language / Localization
-**As a** user, **I want** to pick the app's language **so that** I can use StockDock in my own language (issue #7).
+**As a** user, **I want** to pick the app's language **so that** I can use StockDeck in my own language (issue #7).
 
 - [x] Settings → "Language": picker with English (default), Deutsch, Français, Español, Italiano, Português
 - [x] In-app override of the locale via `\.environment(\.locale, …)` on `ContentView` — reactive, does not follow the system language
@@ -213,10 +213,10 @@
 - [x] `NewsArticle` decoding covered by `Tests/NewsArticleTests.swift` (all fields, smallest-thumbnail pick, missing-field fallbacks, required uuid)
 
 ## US-22: Sponsor the project
-**As a** user, **I want** an easy way to support StockDock **so that** I can fund development while everything stays free.
+**As a** user, **I want** an easy way to support StockDeck **so that** I can fund development while everything stays free.
 
-- [x] Settings → "Enjoying StockDock?" section: copy clarifying the app is free & open source forever, with a pink "Become a Sponsor" button
-- [x] Opens `https://github.com/sponsors/simonsruggi` in the browser
+- [x] Settings → "Enjoying StockDeck?" section: copy clarifying the app is free & open source forever, with a pink "Become a Sponsor" button
+- [x] Opens `https://github.com/sponsors/tuyennq1001` in the browser
 - [x] All strings localized across the 6 supported languages
 
 ## US-23: Global average buy price per stock

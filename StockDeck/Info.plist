@@ -33,7 +33,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/simonsruggi/StockDock/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>YhqibkoYNFRlULx9zJDQXE7SuBTAO3csjAKD2Hjm9NE=</string>
 	<key>SUScheduledCheckInterval</key>

@@ -1,16 +1,16 @@
-# StockDock — Launch copy (ready to paste)
+# StockDeck — Launch copy (ready to paste)
 
 ## 1. Reddit — r/macapps (also works for r/apple, r/MacOS, r/macOSbeta)
 
 **Flair:** `[Free]` (or `[Showcase]` if required)
 
 **Title:**
-StockDock — a free, open-source menu bar app for stocks & portfolio P&L (no account, no subscription)
+StockDeck — a free, open-source menu bar app for stocks & portfolio P&L (no account, no subscription)
 
 **Body:**
 Hi everyone 👋
 
-I built **StockDock**, a lightweight macOS menu bar app to keep an eye on stocks, ETFs, indices and crypto — and your portfolio P&L — without opening a browser tab or a heavy app.
+I built **StockDeck**, a lightweight macOS menu bar app to keep an eye on stocks, ETFs, indices and crypto — and your portfolio P&L — without opening a browser tab or a heavy app.
 
 It's **free, open source (MIT), and privacy-first**: no account, no API keys, no analytics, no telemetry. Your watchlist and portfolios never leave your Mac. Prices come straight from Yahoo Finance.
 
@@ -23,10 +23,10 @@ It's **free, open source (MIT), and privacy-first**: no account, no API keys, no
 - 6 languages, universal binary (Apple Silicon + Intel), auto-updates via Sparkle
 
 **Install:**
-`brew install simonsruggi/tap/stockdock`
+`brew install tuyennq1001/tap/stockdeck`
 or grab the .zip from GitHub releases.
 
-GitHub (screenshots + download): https://github.com/simonsruggi/StockDock
+GitHub (screenshots + download): https://github.com/tuyennq1001/stockdeck
 
 I'm the developer and happy to answer anything / take feature requests. If you find it useful a ⭐️ on GitHub genuinely helps — it's the only signal I get since there's no tracking. Thanks!
 
@@ -36,7 +36,7 @@ I'm the developer and happy to answer anything / take feature requests. If you f
 
 ## 2. Product Hunt
 
-**Name:** StockDock
+**Name:** StockDeck
 
 **Tagline (60 char max):**
 Track stocks & portfolio P&L from your Mac menu bar — free
@@ -50,9 +50,9 @@ Track stocks & portfolio P&L from your Mac menu bar — free
 **First comment (maker's comment):**
 Hey Product Hunt! 👋
 
-I made StockDock because every menu bar stock app I tried either wanted a subscription, an account, or shipped an Electron browser inside a "native" app.
+I made StockDeck because every menu bar stock app I tried either wanted a subscription, an account, or shipped an Electron browser inside a "native" app.
 
-StockDock is the opposite: **native SwiftUI, free, open source (MIT), and completely private** — no account, no API keys, no analytics. Your watchlist and portfolios stay on your Mac. Prices come from Yahoo Finance.
+StockDeck is the opposite: **native SwiftUI, free, open source (MIT), and completely private** — no account, no API keys, no analytics. Your watchlist and portfolios stay on your Mac. Prices come from Yahoo Finance.
 
 Highlights:
 - 📊 Live P&L and prices in the menu bar, fully customizable
@@ -61,7 +61,7 @@ Highlights:
 - 🔔 Price alerts + portfolio notifications → optional Discord/Slack webhooks
 - 🌍 6 languages, universal binary, auto-updates via Sparkle
 
-Install: `brew install simonsruggi/tap/stockdock` (or download the .zip).
+Install: `brew install tuyennq1001/tap/stockdeck` (or download the .zip).
 
 It's a solo, self-funded project — feedback and feature requests very welcome, I ship fast. Thanks for checking it out! 🙏
 
@@ -77,15 +77,15 @@ A free, open-source macOS menu bar app to track stocks, ETFs, crypto and portfol
 
 ### a) jaywcjlove/awesome-mac — under `## Finance`
 ```
-- [StockDock](https://github.com/simonsruggi/StockDock) - Free menu bar app for real-time stocks, ETFs, crypto and portfolio P&L. Privacy-first, no account. [![Open-Source Software][OSS Icon]](https://github.com/simonsruggi/StockDock) ![Freeware][Freeware Icon]
+- [StockDeck](https://github.com/tuyennq1001/stockdeck) - Free menu bar app for real-time stocks, ETFs, crypto and portfolio P&L. Privacy-first, no account. [![Open-Source Software][OSS Icon]](https://github.com/tuyennq1001/stockdeck) ![Freeware][Freeware Icon]
 ```
 
 ### b) iCHAIT/awesome-macOS — under `### Menu Bar` (and/or Finance)
 ```
-- [StockDock](https://github.com/simonsruggi/StockDock) - Track stocks, ETFs, crypto and portfolio P&L in real-time from the menu bar. Free & private. [![Open-Source Software][OSS Icon]](https://github.com/simonsruggi/StockDock) ![Freeware][Freeware Icon]
+- [StockDeck](https://github.com/tuyennq1001/stockdeck) - Track stocks, ETFs, crypto and portfolio P&L in real-time from the menu bar. Free & private. [![Open-Source Software][OSS Icon]](https://github.com/tuyennq1001/stockdeck) ![Freeware][Freeware Icon]
 ```
 
-**PR title:** `Add StockDock (free open-source menu bar stock & portfolio tracker)`
+**PR title:** `Add StockDeck (free open-source menu bar stock & portfolio tracker)`
 **PR body:** One line describing the app + confirm it's open source / free, alphabetical placement respected, and that you read the contributing guidelines.
 
 Other lists worth a PR later: `agarrharr/awesome-macos-screensavers` (no), `serhii-londar/open-source-mac-os-apps` (yes → Finance section), `sindresorhus/awesome` links out only.
