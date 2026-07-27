@@ -8,6 +8,10 @@ struct WatchlistView: View {
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
+    @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
+    @State private var alertSymbol: String? = nil
+    @State private var sortColumn: SortColumn = .manual
+    @State private var sortAscending: Bool = true
 
     enum SortColumn {
         case manual, symbol, price, change
@@ -133,7 +137,8 @@ struct WatchlistView: View {
             .pointingHandCursor()
             .padding(8)
             }
-            .sheet(item: Binding<AddToPortfolioItem?>(
+        }
+        .sheet(item: Binding<AddToPortfolioItem?>(
                 get: {
                     if let atp = addToPortfolio {
                         return AddToPortfolioItem(symbol: atp.symbol, portfolioId: atp.portfolioId)
@@ -173,7 +178,6 @@ struct WatchlistView: View {
             } message: {
                 Text("Enter a new name for this watchlist:")
             }
-        }
     }
 
     private var watchlistPickerBar: some View {

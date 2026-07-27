@@ -145,7 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         symbolsObserver = storageService.$portfolios
-            .combineLatest(storageService.$watchlist)
+            .combineLatest(storageService.$watchlists)
             .dropFirst()
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
