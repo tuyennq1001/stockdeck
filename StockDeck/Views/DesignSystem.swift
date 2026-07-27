@@ -184,6 +184,18 @@ struct SectionLabel: View {
     }
 }
 
+/// An AppKit NSView wrapper that allows dragging the window by mouse down in this view area.
+struct WindowDragArea: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DragNSView()
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class DragNSView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+    }
+}
+
 /// Shared page header: big Inter title + optional caption + trailing actions.
 struct PageHeader<Trailing: View>: View {
     let title: String
@@ -211,6 +223,7 @@ struct PageHeader<Trailing: View>: View {
             Spacer()
             trailing
         }
+        .background(WindowDragArea())
     }
 }
 

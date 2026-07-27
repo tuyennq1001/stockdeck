@@ -380,6 +380,7 @@ struct PortfolioWindowView: View {
         .onTapGesture(count: 2) {
             NSApp.keyWindow?.performZoom(nil)
         }
+        .background(WindowDragArea())
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
     }
 

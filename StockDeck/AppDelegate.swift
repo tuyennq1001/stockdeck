@@ -577,7 +577,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // (the sidebar brand is the title), only floating traffic lights.
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 1000, height: 680)
         // Appearance follows the user's preference (issue #11), applied reactively
         // via `.preferredColorScheme` on the SwiftUI root — not pinned here.
