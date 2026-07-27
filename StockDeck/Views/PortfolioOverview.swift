@@ -50,9 +50,41 @@ struct PortfolioOverview: View {
             }
         }
     }
+    enum PositionSortColumn: String, CaseIterable {
+        case symbol
+        case last
+        case cost
+        case value
+        case pnl
+        case weight
+    }
+    @State private var sortColumn: PositionSortColumn = .value
+    @State private var sortAscending: Bool = false
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
+
+    private func sortHeader(_ title: String, column: PositionSortColumn) -> some View {
+        Button(action: {
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = (column == .symbol)
+            }
+        }) {
+            HStack(spacing: 3) {
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(DS.brand)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
 
     /// Tooltip date label — time for intraday ranges, date for the rest.
     private func tooltipDate(_ date: Date) -> String {
@@ -677,11 +709,12 @@ struct PortfolioOverview: View {
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
-                        Text("Symbol").frame(width: 168, alignment: .leading)
-                        Text("Last").frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("Value").frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("P&L").frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("Weight").frame(width: 110, alignment: .trailing)
+                        sortHeader("Symbol", column: .symbol).frame(width: 168, alignment: .leading)
+                        sortHeader("Last", column: .last).frame(maxWidth: .infinity, alignment: .trailing)
+                        sortHeader("Cost", column: .cost).frame(maxWidth: .infinity, alignment: .trailing)
+                        sortHeader("Value", column: .value).frame(maxWidth: .infinity, alignment: .trailing)
+                        sortHeader("P&L", column: .pnl).frame(maxWidth: .infinity, alignment: .trailing)
+                        sortHeader("Weight", column: .weight).frame(width: 110, alignment: .trailing)
                         Color.clear.frame(width: 16)
                     }
                     .font(DS.label)
@@ -689,9 +722,32 @@ struct PortfolioOverview: View {
                     .tracking(0.8).textCase(.uppercase)
                     .padding(.bottom, 12)
                     Divider().overlay(DS.hairline)
+
                     let groupedValued = Dictionary(grouping: holdings) { $0.symbol.uppercased() }
-                    let sortedSymbols = holdings.map { $0.symbol.uppercased() }.reduce(into: [String]()) { res, sym in
-                        if !res.contains(sym) { res.append(sym) }
+                    let sortedSymbols = groupedValued.keys.sorted { sym1, sym2 in
+                        guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
+                        let isAsc = sortAscending
+
+                        switch sortColumn {
+                        case .symbol:
+                            return isAsc ? sym1 < sym2 : sym1 > sym2
+                        case .last:
+                            let p1 = g1.first?.quote.displayPrice(extendedHours: false) ?? 0
+                            let p2 = g2.first?.quote.displayPrice(extendedHours: false) ?? 0
+                            return isAsc ? p1 < p2 : p1 > p2
+                        case .cost:
+                            let c1 = g1.reduce(0) { $0 + $1.cost }
+                            let c2 = g2.reduce(0) { $0 + $1.cost }
+                            return isAsc ? c1 < c2 : c1 > c2
+                        case .value, .weight:
+                            let v1 = g1.reduce(0) { $0 + $1.value }
+                            let v2 = g2.reduce(0) { $0 + $1.value }
+                            return isAsc ? v1 < v2 : v1 > v2
+                        case .pnl:
+                            let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
+                            let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
+                            return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+                        }
                     }
 
                     ForEach(sortedSymbols, id: \.self) { sym in
