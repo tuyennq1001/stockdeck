@@ -507,6 +507,21 @@ class StorageService: ObservableObject {
         watchlists[idx].symbols.removeAll { $0 == symbol }
     }
 
+    func removeMultipleFromWatchlist(_ symbols: Set<String>) {
+        let activeId = currentWatchlist.id
+        guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
+        watchlists[idx].symbols.removeAll { symbols.contains($0) }
+    }
+
+    func addMultipleToWatchlist(_ symbols: Set<String>, targetWatchlistId: UUID) {
+        guard let idx = watchlists.firstIndex(where: { $0.id == targetWatchlistId }) else { return }
+        for s in symbols {
+            if !watchlists[idx].symbols.contains(s) {
+                watchlists[idx].symbols.append(s)
+            }
+        }
+    }
+
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
         watchlist.move(fromOffsets: source, toOffset: destination)
     }

@@ -44,6 +44,10 @@ struct WatchlistWideView: View {
     struct DetailTarget: Identifiable { let symbol: String; var id: String { symbol } }
     @State private var detailSymbol: DetailTarget?
 
+    @State private var selectedSymbols: Set<String> = []
+    @State private var activeDetailSymbol: String? = nil
+    @State private var lastClickedSymbol: String? = nil
+
     private var rows: [WatchRow] {
         storageService.watchlist.enumerated().map { index, symbol in
             let q = stockService.quotes[symbol]
@@ -126,12 +130,22 @@ struct WatchlistWideView: View {
             if storageService.watchlist.isEmpty {
                 emptyState
             } else {
-                table
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .premiumCard()
-                    .padding(.horizontal, DS.gutter)
-                    .padding(.bottom, DS.gutter)
-                    .frame(maxWidth: DS.contentMaxWidth + DS.gutter * 2)
+                HStack(alignment: .top, spacing: 0) {
+                    table
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
+                        Divider().overlay(DS.hairline)
+                        sideChartPane(symbol: sym, quote: q)
+                            .frame(width: 420)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .premiumCard()
+                .padding(.horizontal, DS.gutter)
+                .padding(.bottom, DS.gutter)
+                .frame(maxWidth: DS.contentMaxWidth + DS.gutter * 2)
             }
         }
         .navigationTitle(storageService.currentWatchlist.name)
@@ -145,16 +159,6 @@ struct WatchlistWideView: View {
         }
         .sheet(item: $alertSymbol) { t in
             PriceAlertSheet(symbol: t.symbol) { alertSymbol = nil }
-                .environmentObject(stockService).environmentObject(storageService)
-        }
-        .sheet(item: $detailSymbol) { t in
-            SymbolDetailSheet(symbol: t.symbol, onAddToPortfolio: { pid in
-                detailSymbol = nil
-                // Let the detail sheet finish dismissing before presenting the add sheet.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    addToPortfolio = AddTarget(symbol: t.symbol, portfolioId: pid)
-                }
-            }) { detailSymbol = nil }
                 .environmentObject(stockService).environmentObject(storageService)
         }
         .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
@@ -181,6 +185,129 @@ struct WatchlistWideView: View {
         } message: {
             Text("Enter a new name for this watchlist:")
         }
+    }
+
+    // MARK: - Side Chart Pane
+
+    @ViewBuilder
+    private func sideChartPane(symbol: String, quote: StockQuote) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
+                    if !quote.name.isEmpty {
+                        Text(quote.name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                if !storageService.portfolios.isEmpty {
+                    DSMenu(width: 200, sections: [storageService.portfolios.map { p in
+                        DSMenuAction(title: p.name, icon: "briefcase") {
+                            addToPortfolio = AddTarget(symbol: symbol, portfolioId: p.id)
+                        }
+                    }]) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                            Text("Portfolio").font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(DS.brand))
+                    }
+                    .pointingHandCursor()
+                    .help("Add this stock as a position in a portfolio")
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        activeDetailSymbol = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(DS.inkSecondary)
+                        .padding(6)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Close chart")
+            }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+
+            Divider().overlay(DS.hairline)
+
+            ScrollView {
+                VStack(spacing: DS.gap) {
+                    PriceChartCard(symbol: symbol, quote: quote)
+                    fiftyTwoWeekCard(quote)
+                    factsCard(quote)
+                }
+                .padding(16)
+            }
+        }
+        .background(DS.ground)
+    }
+
+    @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
+        if let pos = quote.fiftyTwoWeekPosition,
+           let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
+            let priceSymbol = StorageService.currencySymbol(for: quote.currency)
+            Card(title: "52-week range") {
+                VStack(spacing: 10) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(DS.cardAlt).frame(height: 6)
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 10, height: 10)
+                                .overlay(Circle().strokeBorder(DS.brand, lineWidth: 2))
+                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
+                                .offset(x: CGFloat(pos) * (geo.size.width - 10))
+                        }
+                        .frame(maxHeight: .infinity, alignment: .center)
+                    }
+                    .frame(height: 16)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            SectionLabel("Low")
+                            Text(StorageService.formatAmount(low, symbol: priceSymbol))
+                                .font(DS.figure).foregroundStyle(DS.ink)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            SectionLabel("High")
+                            Text(StorageService.formatAmount(high, symbol: priceSymbol))
+                                .font(DS.figure).foregroundStyle(DS.ink)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func factsCard(_ quote: StockQuote) -> some View {
+        Card(title: "Today") {
+            VStack(spacing: 0) {
+                if let low = quote.dayLow, let high = quote.dayHigh {
+                    factRow("Day range", "\(StorageService.formatNumber(low, decimals: 2)) – \(StorageService.formatNumber(high, decimals: 2))")
+                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                }
+                factRow("Currency", quote.currency)
+                if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                    factRow("Session", quote.marketStateLabel)
+                }
+            }
+        }
+    }
+
+    private func factRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(LocalizedStringKey(label)).font(DS.caption).foregroundStyle(DS.inkSecondary)
+            Spacer()
+            Text(value).font(DS.figure).foregroundStyle(DS.ink)
+        }
+        .padding(.vertical, 8)
     }
 
     // MARK: - Header controls
@@ -301,7 +428,10 @@ struct WatchlistWideView: View {
                                      extendedSession: extendedSession,
                                      percentDecimals: storageService.percentDecimals,
                                      valueDecimals: storageService.valueDecimals,
-                                     onOpen: { detailSymbol = DetailTarget(symbol: row.symbol) },
+                                     isSelected: selectedSymbols.contains(row.symbol),
+                                     onOpen: {
+                                         handleRowClick(row.symbol)
+                                     },
                                      menu: { rowMenu(row) })
                         .onDrag {
                             self.draggingSymbol = row.symbol
@@ -347,6 +477,34 @@ struct WatchlistWideView: View {
         .padding(.vertical, 6)
     }
 
+    private func handleRowClick(_ symbol: String) {
+        let isShift = NSEvent.modifierFlags.contains(.shift)
+        let isCmd = NSEvent.modifierFlags.contains(.command)
+
+        if isShift, let last = lastClickedSymbol,
+           let lastIdx = visibleRows.firstIndex(where: { $0.symbol == last }),
+           let currentIdx = visibleRows.firstIndex(where: { $0.symbol == symbol }) {
+            let minIdx = min(lastIdx, currentIdx)
+            let maxIdx = max(lastIdx, currentIdx)
+            let rangeSymbols = visibleRows[minIdx...maxIdx].map(\.symbol)
+            selectedSymbols.formUnion(rangeSymbols)
+        } else if isCmd {
+            if selectedSymbols.contains(symbol) {
+                selectedSymbols.remove(symbol)
+            } else {
+                selectedSymbols.insert(symbol)
+            }
+            lastClickedSymbol = symbol
+        } else {
+            selectedSymbols = [symbol]
+            lastClickedSymbol = symbol
+        }
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeDetailSymbol = symbol
+        }
+    }
+
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
             headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
@@ -388,39 +546,80 @@ struct WatchlistWideView: View {
 
     @ViewBuilder
     private func rowMenu(_ row: WatchRow) -> some View {
-        Button { detailSymbol = DetailTarget(symbol: row.symbol) } label: { Label("View Chart", systemImage: "chart.xyaxis.line") }
+        let targets = selectedSymbols.contains(row.symbol) && selectedSymbols.count > 1 ? selectedSymbols : [row.symbol]
+        let count = targets.count
+
+        if count == 1 {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    activeDetailSymbol = row.symbol
+                }
+            } label: { Label("View Chart", systemImage: "chart.xyaxis.line") }
+        }
+
         Menu {
             ForEach(storageService.watchlists) { wl in
                 Button {
-                    storageService.addToWatchlist(row.symbol, targetWatchlistId: wl.id)
+                    if count == 1 {
+                        storageService.addToWatchlist(row.symbol, targetWatchlistId: wl.id)
+                    } else {
+                        storageService.addMultipleToWatchlist(targets, targetWatchlistId: wl.id)
+                    }
                 } label: {
-                    if wl.symbols.contains(row.symbol) {
+                    if count == 1 && wl.symbols.contains(row.symbol) {
                         Label(wl.name, systemImage: "checkmark")
                     } else {
                         Text(wl.name)
                     }
                 }
             }
-        } label: { Label("Add to Watchlist", systemImage: "star.bubble") }
+        } label: {
+            Label(count > 1 ? "Add \(count) symbols to Watchlist" : "Add to Watchlist", systemImage: "star.bubble")
+        }
 
-        if !storageService.portfolios.isEmpty {
+        let availPortfolios = storageService.portfolios
+        if !availPortfolios.isEmpty {
             Menu {
-                ForEach(storageService.portfolios) { p in
-                    Button(p.name) { addToPortfolio = AddTarget(symbol: row.symbol, portfolioId: p.id) }
+                ForEach(availPortfolios, id: \.id) { (p: Portfolio) in
+                    Button(p.name) {
+                        if count == 1 {
+                            addToPortfolio = AddTarget(symbol: row.symbol, portfolioId: p.id)
+                        } else {
+                            for s in targets {
+                                storageService.addHolding(to: p.id, symbol: s, quantity: 1, avgPrice: stockService.quotes[s]?.price ?? 0)
+                            }
+                        }
+                    }
                 }
-            } label: { Label("Add to Portfolio", systemImage: "plus.rectangle.on.folder") }
+            } label: {
+                Label(count > 1 ? "Add \(count) symbols to Portfolio" : "Add to Portfolio", systemImage: "plus.rectangle.on.folder")
+            }
         }
-        Button { alertSymbol = AlertTarget(symbol: row.symbol) } label: { Label("Set Price Alert…", systemImage: "bell") }
-        if let idx = storageService.watchlist.firstIndex(of: row.symbol) {
-            Divider()
-            Button { move(row.symbol, by: -1) } label: { Label("Move Up", systemImage: "arrow.up") }
-                .disabled(idx == 0)
-            Button { move(row.symbol, by: 1) } label: { Label("Move Down", systemImage: "arrow.down") }
-                .disabled(idx == storageService.watchlist.count - 1)
+
+        if count == 1 {
+            Button { alertSymbol = AlertTarget(symbol: row.symbol) } label: { Label("Set Price Alert…", systemImage: "bell") }
+            if let idx = storageService.watchlist.firstIndex(of: row.symbol) {
+                Divider()
+                Button { move(row.symbol, by: -1) } label: { Label("Move Up", systemImage: "arrow.up") }
+                    .disabled(idx == 0)
+                Button { move(row.symbol, by: 1) } label: { Label("Move Down", systemImage: "arrow.down") }
+                    .disabled(idx == storageService.watchlist.count - 1)
+            }
         }
+
         Divider()
-        Button(role: .destructive) { storageService.removeFromWatchlist(row.symbol) } label: {
-            Label("Remove from Watchlist", systemImage: "trash")
+        Button(role: .destructive) {
+            if count == 1 {
+                storageService.removeFromWatchlist(row.symbol)
+            } else {
+                storageService.removeMultipleFromWatchlist(targets)
+                selectedSymbols.removeAll()
+            }
+            if let active = activeDetailSymbol, targets.contains(active) {
+                activeDetailSymbol = nil
+            }
+        } label: {
+            Label(count > 1 ? "Remove \(count) symbols from Watchlist" : "Remove from Watchlist", systemImage: "trash")
         }
     }
 
@@ -467,6 +666,7 @@ private struct WatchRowView<Menu: View>: View {
     let extendedSession: Bool
     let percentDecimals: Int
     let valueDecimals: Int
+    let isSelected: Bool
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> Menu
     @State private var hover = false
@@ -574,7 +774,7 @@ private struct WatchRowView<Menu: View>: View {
             }
             .padding(.horizontal, 14).padding(.vertical, 9)
             .frame(minHeight: 44)
-            .background(hover ? DS.cardAlt.opacity(0.6) : .clear)
+            .background(isSelected ? DS.brand.opacity(0.12) : (hover ? DS.cardAlt.opacity(0.6) : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
