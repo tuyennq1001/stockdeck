@@ -1,3 +1,5 @@
+import Foundation
+
 struct Watchlist: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
