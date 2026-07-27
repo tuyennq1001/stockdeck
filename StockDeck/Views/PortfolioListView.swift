@@ -400,9 +400,20 @@ struct PortfolioSection: View {
                 .padding(.vertical, 1)
             }
 
-            // Holdings
-            ForEach(portfolio.holdings) { holding in
-                HoldingRow(holding: holding, portfolioId: portfolio.id)
+            // Holdings (Grouped by symbol)
+            let groupedHoldings = Dictionary(grouping: portfolio.holdings) { $0.symbol.uppercased() }
+            let sortedSymbols = portfolio.holdings.map { $0.symbol.uppercased() }.reduce(into: [String]()) { res, sym in
+                if !res.contains(sym) { res.append(sym) }
+            }
+
+            ForEach(sortedSymbols, id: \.self) { sym in
+                if let group = groupedHoldings[sym] {
+                    if group.count == 1, let singleHolding = group.first {
+                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id)
+                    } else {
+                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id)
+                    }
+                }
             }
 
             // Add holding button
@@ -803,5 +814,200 @@ struct EditHoldingView: View {
             await stockService.refreshAll(storageService: storageService)
         }
         isPresented = nil
+    }
+}
+
+struct GroupedHoldingRow: View {
+    @EnvironmentObject var stockService: StockService
+    @EnvironmentObject var storageService: StorageService
+    @Environment(\.editHoldingAction) var editHoldingAction
+    @Environment(\.addHoldingAction) var addHoldingAction
+
+    let symbol: String
+    let holdings: [Holding]
+    let portfolioId: UUID
+
+    @State private var isExpanded: Bool = false
+
+    var quote: StockQuote? {
+        stockService.quotes[symbol]
+    }
+
+    private var totalQty: Double {
+        holdings.reduce(0) { $0 + $1.quantity }
+    }
+
+    private var weightedAvgPrice: Double {
+        let totalAbsQty = holdings.reduce(0) { $0 + abs($1.quantity) }
+        guard totalAbsQty > 0 else { return 0 }
+        let totalCostInLocal = holdings.reduce(0) { $0 + (abs($1.quantity) * $1.avgPrice) }
+        return totalCostInLocal / totalAbsQty
+    }
+
+    private func formatQty(_ qty: Double) -> String {
+        qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Parent Summary Row
+            HStack(spacing: 0) {
+                // Col 1: Ticker + Lot Count + Chevron
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(DS.brand)
+                        Text(symbol)
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                        Text("\(holdings.count) lots")
+                            .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(DS.brand)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                    }
+                    Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: 2)) avg")
+                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(width: 105, alignment: .leading)
+
+                if let quote {
+                    let rate = stockService.rate(from: quote.currency)
+                    let pRate = stockService.priceRate(from: quote.currency)
+                    let priceCurr = storageService.stockPriceCurrency
+                    let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
+                    let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
+
+                    // Col 2: Price
+                    HStack(spacing: 3) {
+                        Text("\(priceSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate)))")
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // Col 3: Total Market Value & Total P&L
+                    let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                    let totalMarketVal = holdings.reduce(0) { $0 + ($1.marketValue(currentPrice: displayPrice) * rate) }
+                    let totalCostBasis = holdings.reduce(0) { sum, h in
+                        let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                        return sum + (h.costBasisLocal * costRate)
+                    }
+                    let totalPnl = totalMarketVal - totalCostBasis
+                    let totalPnlPct = abs(totalCostBasis) >= 0.01 ? (totalPnl / abs(totalCostBasis)) * 100 : 0
+
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(StorageService.formatAmount(totalMarketVal, symbol: prefSymbol, decimals: storageService.amountDecimals))
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.medium)
+                        Text("\(StorageService.formatAmount(totalPnl, symbol: prefSymbol, decimals: storageService.amountDecimals, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
+                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
+                    }
+                    .frame(width: 120, alignment: .trailing)
+                } else {
+                    Spacer()
+                    ProgressView().scaleEffect(0.5)
+                }
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .pointingHandCursor()
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            }
+
+            // Expanded Child Lots
+            if isExpanded {
+                VStack(spacing: 3) {
+                    ForEach(holdings) { h in
+                        HStack(spacing: 0) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.turn.down.right")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("\(formatQty(h.quantity)) @ \(StorageService.formatNumber(h.avgPrice, decimals: 2))")
+                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                        .fontWeight(.semibold)
+                                    if let date = h.purchaseDate {
+                                        Text(date.formatted(date: .abbreviated, time: .omitted))
+                                            .font(.inter(9, relativeTo: .caption2))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .frame(width: 120, alignment: .leading)
+
+                            Spacer()
+
+                            if let quote {
+                                let rate = stockService.rate(from: quote.currency)
+                                let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                                let val = h.marketValue(currentPrice: displayPrice) * rate
+                                let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                                let cost = h.costBasisLocal * costRate
+                                let pnl = val - cost
+                                let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
+
+                                Text(StorageService.formatAmount(val, symbol: prefSymbol, decimals: storageService.amountDecimals))
+                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 70, alignment: .trailing)
+
+                                Text(StorageService.formatAmount(pnl, symbol: prefSymbol, decimals: storageService.amountDecimals, signed: true))
+                                    .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                                    .foregroundColor(pnl >= 0 ? DS.up : DS.down)
+                                    .frame(width: 70, alignment: .trailing)
+                            }
+
+                            HStack(spacing: 6) {
+                                Button { editHoldingAction.perform(portfolioId, h) } label: {
+                                    Image(systemName: "pencil").font(.system(size: 10))
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help("Edit lot")
+
+                                Button { storageService.removeHolding(from: portfolioId, holdingId: h.id) } label: {
+                                    Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help("Delete lot")
+                            }
+                            .padding(.leading, 8)
+                        }
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt.opacity(0.5)))
+                    }
+
+                    // Add another lot for this symbol
+                    Button(action: {
+                        addHoldingAction.perform(portfolioId)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle")
+                            Text("Add another lot for \(symbol)")
+                        }
+                        .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                        .foregroundColor(DS.brand)
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+                .padding(.leading, 8)
+                .padding(.bottom, 4)
+            }
+        }
     }
 }
