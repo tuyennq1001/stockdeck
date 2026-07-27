@@ -15,6 +15,7 @@ struct WatchlistWideView: View {
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
+    @State private var draggingWatchlistId: UUID? = nil
     // Default to the manual "as added" order so Move Up/Down is meaningful;
     // clicking a column header re-sorts by that column (toggles direction).
     @State private var sortKey: SortKey = .order
@@ -194,12 +195,38 @@ struct WatchlistWideView: View {
                         .buttonStyle(.plain)
                         .pointingHandCursor()
                         .id(wl.id)
+                        .onDrag {
+                            self.draggingWatchlistId = wl.id
+                            return NSItemProvider(object: wl.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: WatchlistTabDropDelegate(
+                            targetId: wl.id,
+                            draggingId: $draggingWatchlistId,
+                            onMove: { srcId, tgtId in
+                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            }
+                        ))
                         .contextMenu {
                             Button("Rename…") {
                                 renamingWatchlist = wl
                                 renameWatchlistName = wl.name
                             }
+                            if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
+                                if idx > 0 {
+                                    Button("Move Left") {
+                                        let prevId = storageService.watchlists[idx - 1].id
+                                        storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                    }
+                                }
+                                if idx < storageService.watchlists.count - 1 {
+                                    Button("Move Right") {
+                                        let nextId = storageService.watchlists[idx + 1].id
+                                        storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
+                                    }
+                                }
+                            }
                             if storageService.watchlists.count > 1 {
+                                Divider()
                                 Button("Delete Watchlist", role: .destructive) {
                                     storageService.deleteWatchlist(id: wl.id)
                                 }
@@ -331,6 +358,20 @@ struct WatchlistWideView: View {
     @ViewBuilder
     private func rowMenu(_ row: WatchRow) -> some View {
         Button { detailSymbol = DetailTarget(symbol: row.symbol) } label: { Label("View Chart", systemImage: "chart.xyaxis.line") }
+        Menu {
+            ForEach(storageService.watchlists) { wl in
+                Button {
+                    storageService.addToWatchlist(row.symbol, targetWatchlistId: wl.id)
+                } label: {
+                    if wl.symbols.contains(row.symbol) {
+                        Label(wl.name, systemImage: "checkmark")
+                    } else {
+                        Text(wl.name)
+                    }
+                }
+            }
+        } label: { Label("Add to Watchlist", systemImage: "star.bubble") }
+
         if !storageService.portfolios.isEmpty {
             Menu {
                 ForEach(storageService.portfolios) { p in

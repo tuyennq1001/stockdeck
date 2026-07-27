@@ -490,13 +490,17 @@ class StorageService: ObservableObject {
         isLoading = false
     }
 
-    func addToWatchlist(_ symbol: String) {
-        guard !watchlist.contains(symbol) else { return }
-        watchlist.append(symbol)
+    func addToWatchlist(_ symbol: String, targetWatchlistId: UUID? = nil) {
+        let activeId = targetWatchlistId ?? currentWatchlist.id
+        guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
+        guard !watchlists[idx].symbols.contains(symbol) else { return }
+        watchlists[idx].symbols.append(symbol)
     }
 
     func removeFromWatchlist(_ symbol: String) {
-        watchlist.removeAll { $0 == symbol }
+        let activeId = currentWatchlist.id
+        guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
+        watchlists[idx].symbols.removeAll { $0 == symbol }
     }
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
@@ -576,6 +580,15 @@ class StorageService: ObservableObject {
     func selectWatchlist(id: UUID) {
         guard watchlists.contains(where: { $0.id == id }) else { return }
         selectedWatchlistId = id
+    }
+
+    func moveWatchlist(from sourceId: UUID, beforeOrAfter targetId: UUID) {
+        guard sourceId != targetId,
+              let srcIndex = watchlists.firstIndex(where: { $0.id == sourceId }),
+              let tgtIndex = watchlists.firstIndex(where: { $0.id == targetId }) else { return }
+        let item = watchlists.remove(at: srcIndex)
+        let newTargetIndex = watchlists.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
+        watchlists.insert(item, at: newTargetIndex)
     }
 
     func addPortfolio(name: String) {

@@ -44,7 +44,10 @@ class StockService: ObservableObject {
     }
 
     static func collectSymbols(storageService: StorageService) -> Set<String> {
-        var syms = Set(storageService.watchlist)
+        var syms = Set<String>()
+        for wl in storageService.watchlists {
+            syms.formUnion(wl.symbols)
+        }
         for portfolio in storageService.portfolios {
             for holding in portfolio.holdings {
                 syms.insert(holding.symbol)

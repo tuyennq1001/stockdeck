@@ -8,6 +8,7 @@ struct WatchlistView: View {
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
+    @State private var draggingWatchlistId: UUID? = nil
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     @State private var alertSymbol: String? = nil
     @State private var sortColumn: SortColumn = .manual
@@ -89,6 +90,8 @@ struct WatchlistView: View {
                 ForEach(filteredSymbols, id: \.self) { symbol in
                     if let quote = stockService.quotes[symbol] {
                         QuoteRow(quote: quote)
+                            .contentShape(Rectangle())
+                            .pointingHandCursor()
                             .contextMenu {
                                 watchlistContextMenu(symbol: symbol)
                             }
@@ -100,6 +103,8 @@ struct WatchlistView: View {
                             ProgressView()
                                 .scaleEffect(0.6)
                         }
+                        .contentShape(Rectangle())
+                        .pointingHandCursor()
                         .contextMenu {
                             watchlistContextMenu(symbol: symbol)
                         }
@@ -204,12 +209,38 @@ struct WatchlistView: View {
                         .buttonStyle(.plain)
                         .pointingHandCursor()
                         .id(wl.id)
+                        .onDrag {
+                            self.draggingWatchlistId = wl.id
+                            return NSItemProvider(object: wl.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: WatchlistTabDropDelegate(
+                            targetId: wl.id,
+                            draggingId: $draggingWatchlistId,
+                            onMove: { srcId, tgtId in
+                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            }
+                        ))
                         .contextMenu {
                             Button("Rename…") {
                                 renamingWatchlist = wl
                                 renameWatchlistName = wl.name
                             }
+                            if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
+                                if idx > 0 {
+                                    Button("Move Left") {
+                                        let prevId = storageService.watchlists[idx - 1].id
+                                        storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                    }
+                                }
+                                if idx < storageService.watchlists.count - 1 {
+                                    Button("Move Right") {
+                                        let nextId = storageService.watchlists[idx + 1].id
+                                        storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
+                                    }
+                                }
+                            }
                             if storageService.watchlists.count > 1 {
+                                Divider()
                                 Button("Delete Watchlist", role: .destructive) {
                                     storageService.deleteWatchlist(id: wl.id)
                                 }
@@ -267,6 +298,22 @@ struct WatchlistView: View {
 
     @ViewBuilder
     private func watchlistContextMenu(symbol: String) -> some View {
+        Menu {
+            ForEach(storageService.watchlists) { wl in
+                Button {
+                    storageService.addToWatchlist(symbol, targetWatchlistId: wl.id)
+                } label: {
+                    if wl.symbols.contains(symbol) {
+                        Label(wl.name, systemImage: "checkmark")
+                    } else {
+                        Text(wl.name)
+                    }
+                }
+            }
+        } label: {
+            Label("Add to Watchlist", systemImage: "star.bubble")
+        }
+
         if !storageService.portfolios.isEmpty {
             Menu {
                 ForEach(storageService.portfolios) { portfolio in
@@ -277,8 +324,9 @@ struct WatchlistView: View {
             } label: {
                 Label("Add to Portfolio", systemImage: "plus.rectangle.on.folder")
             }
-            Divider()
         }
+        Divider()
+
         Button {
             alertSymbol = symbol
         } label: {
@@ -334,6 +382,28 @@ private struct AddToPortfolioItem: Identifiable {
 private struct AlertSheetItem: Identifiable {
     let symbol: String
     var id: String { symbol }
+}
+
+struct WatchlistTabDropDelegate: DropDelegate {
+    let targetId: UUID
+    @Binding var draggingId: UUID?
+    let onMove: (UUID, UUID) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingId = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingId = draggingId, draggingId != targetId else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            onMove(draggingId, targetId)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
 }
 
 struct QuickAddHoldingView: View {
