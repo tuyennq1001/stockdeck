@@ -102,10 +102,24 @@ struct WatchlistWideView: View {
     var body: some View {
         PageScaffold(storageService.currentWatchlist.name, caption: "\(storageService.watchlist.count) symbols") {
             HStack(spacing: 12) {
+                Button {
+                    PortfolioIO.exportWatchlists([storageService.currentWatchlist], stockService: stockService, restoreActivationPolicy: false)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
+                        Text("Export").font(DS.caption)
+                    }
+                    .foregroundStyle(DS.inkSecondary)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Export this watchlist to Excel (.xlsx)")
+
                 RefreshButton(isLoading: stockService.isLoading) {
                     Task { await stockService.refreshAll(storageService: storageService) }
                 }
-                watchlistPickerBar
                 addButton
             }
         } content: {

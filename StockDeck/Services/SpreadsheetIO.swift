@@ -3,6 +3,160 @@ import UniformTypeIdentifiers
 
 enum SpreadsheetIO {
 
+    /// Generates generic .xlsx file data given headers and string rows.
+    static func generateXLSXData(headers: [String], rows: [[String]]) -> Data? {
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let rels = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+        </Relationships>
+        """
+
+        let types = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+        </Types>
+        """
+
+        let wb = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <sheets>
+            <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+          </sheets>
+        </workbook>
+        """
+
+        let wbRels = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+        </Relationships>
+        """
+
+        var sheetDataXML = "  <sheetData>\n"
+        sheetDataXML += "    <row r=\"1\">\n"
+        for (cIdx, header) in headers.enumerated() {
+            let colLetter = columnLetter(cIdx + 1)
+            let escaped = escapeXML(header)
+            sheetDataXML += "      <c r=\"\(colLetter)1\" t=\"inlineStr\"><is><t>\(escaped)</t></is></c>\n"
+        }
+        sheetDataXML += "    </row>\n"
+
+        for (rIdx, row) in rows.enumerated() {
+            let rowNum = rIdx + 2
+            sheetDataXML += "    <row r=\"\(rowNum)\">\n"
+            for (cIdx, val) in row.enumerated() {
+                let colLetter = columnLetter(cIdx + 1)
+                let escaped = escapeXML(val)
+                if let num = Double(val), !val.contains("-") && val != num.description {
+                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
+                } else if let num = Double(val) {
+                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
+                } else {
+                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\" t=\"inlineStr\"><is><t>\(escaped)</t></is></c>\n"
+                }
+            }
+            sheetDataXML += "    </row>\n"
+        }
+        sheetDataXML += "  </sheetData>"
+
+        let sheet1 = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+        \(sheetDataXML)
+        </worksheet>
+        """
+
+        let relsDir = tmpDir.appendingPathComponent("_rels")
+        let xlDir = tmpDir.appendingPathComponent("xl")
+        let xlRelsDir = xlDir.appendingPathComponent("_rels")
+        let xlWSDir = xlDir.appendingPathComponent("worksheets")
+
+        try? FileManager.default.createDirectory(at: relsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: xlRelsDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: xlWSDir, withIntermediateDirectories: true)
+
+        try? types.write(to: tmpDir.appendingPathComponent("[Content_Types].xml"), atomically: true, encoding: .utf8)
+        try? rels.write(to: relsDir.appendingPathComponent(".rels"), atomically: true, encoding: .utf8)
+        try? wb.write(to: xlDir.appendingPathComponent("workbook.xml"), atomically: true, encoding: .utf8)
+        try? wbRels.write(to: xlRelsDir.appendingPathComponent("workbook.xml.rels"), atomically: true, encoding: .utf8)
+        try? sheet1.write(to: xlWSDir.appendingPathComponent("sheet1.xml"), atomically: true, encoding: .utf8)
+
+        let outFile = tmpDir.appendingPathComponent("export.xlsx")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.arguments = ["-q", "-r", outFile.path, "."]
+        process.currentDirectoryURL = tmpDir
+        try? process.run()
+        process.waitUntilExit()
+
+        return try? Data(contentsOf: outFile)
+    }
+
+    private static func columnLetter(_ index: Int) -> String {
+        var n = index
+        var result = ""
+        while n > 0 {
+            let rem = (n - 1) % 26
+            result = String(UnicodeScalar(65 + rem)!) + result
+            n = (n - 1) / 26
+        }
+        return result
+    }
+
+    private static func escapeXML(_ str: String) -> String {
+        str.replacingOccurrences(of: "&", with: "&amp;")
+           .replacingOccurrences(of: "<", with: "&lt;")
+           .replacingOccurrences(of: ">", with: "&gt;")
+           .replacingOccurrences(of: "\"", with: "&quot;")
+           .replacingOccurrences(of: "'", with: "&apos;")
+    }
+
+    /// Generates .xlsx file data for portfolios.
+    static func generatePortfoliosXLSXData(_ portfolios: [Portfolio]) -> Data? {
+        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Price", "Purchase Date", "Leverage"]
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        var rows: [[String]] = []
+        for p in portfolios {
+            for h in p.holdings {
+                let dateStr = h.purchaseDate.map { df.string(from: $0) } ?? ""
+                rows.append([p.name, h.symbol, String(h.quantity), String(h.avgPrice), dateStr, String(h.effectiveLeverage)])
+            }
+        }
+        return generateXLSXData(headers: headers, rows: rows)
+    }
+
+    /// Generates .xlsx file data for watchlists.
+    @MainActor
+    static func generateWatchlistsXLSXData(watchlists: [Watchlist], stockService: StockService) -> Data? {
+        let headers = ["Watchlist Name", "Symbol", "Name", "Price", "Change", "Change %"]
+        var rows: [[String]] = []
+        for wl in watchlists {
+            for sym in wl.symbols {
+                let q = stockService.quotes[sym]
+                rows.append([
+                    wl.name,
+                    sym,
+                    q?.name ?? "",
+                    q.map { String($0.price) } ?? "",
+                    q.map { String($0.change) } ?? "",
+                    q.map { String(format: "%.2f", $0.changePercent) } ?? ""
+                ])
+            }
+        }
+        return generateXLSXData(headers: headers, rows: rows)
+    }
+
     /// Generates a valid .xlsx file data with sample portfolios and holdings.
     static func generateSampleXLSXData() -> Data? {
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

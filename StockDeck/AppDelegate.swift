@@ -601,14 +601,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// behaves like a normal window afterwards.
     private func bringWindowFront(_ window: NSWindow) {
         NSApp.setActivationPolicy(.regular)
-        window.level = .floating
         window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.async {
-            window.level = .normal
             window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
             NSLog("[StockDeck] window shown — visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
         }

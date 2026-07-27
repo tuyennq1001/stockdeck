@@ -42,6 +42,11 @@ struct PortfolioWindowView: View {
     @State private var editHolding: EditTarget?
     @State private var showNewPortfolio = false
     @State private var newPortfolioName = ""
+    @State private var showNewWatchlistAlert = false
+    @State private var newWatchlistName = ""
+    @State private var renamingWatchlist: Watchlist? = nil
+    @State private var renameWatchlistName = ""
+    @State private var deleteWatchlistTarget: Watchlist? = nil
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
@@ -110,6 +115,41 @@ struct PortfolioWindowView: View {
         }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil)
+        .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
+            TextField("Watchlist name", text: $newWatchlistName)
+            Button("Cancel", role: .cancel) { newWatchlistName = "" }
+            Button("Create") {
+                let trimmed = newWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    storageService.createWatchlist(name: trimmed)
+                }
+                newWatchlistName = ""
+            }
+        }
+        .alert("Rename Watchlist", isPresented: Binding(get: { renamingWatchlist != nil }, set: { if !$0 { renamingWatchlist = nil } })) {
+            TextField("Watchlist name", text: $renameWatchlistName)
+            Button("Cancel", role: .cancel) { renamingWatchlist = nil }
+            Button("Rename") {
+                if let wl = renamingWatchlist {
+                    let trimmed = renameWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        storageService.renameWatchlist(id: wl.id, newName: trimmed)
+                    }
+                    renamingWatchlist = nil
+                }
+            }
+        }
+        .alert("Delete Watchlist", isPresented: Binding(get: { deleteWatchlistTarget != nil }, set: { if !$0 { deleteWatchlistTarget = nil } })) {
+            Button("Cancel", role: .cancel) { deleteWatchlistTarget = nil }
+            Button("Delete", role: .destructive) {
+                if let wl = deleteWatchlistTarget {
+                    storageService.deleteWatchlist(id: wl.id)
+                    deleteWatchlistTarget = nil
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete “\(deleteWatchlistTarget?.name ?? "")”? This action cannot be undone.")
+        }
         .background(keyboardShortcuts)
     }
 
@@ -153,8 +193,35 @@ struct PortfolioWindowView: View {
                         NavRow(icon: "newspaper", title: "Home", helpText: "Financial news for your symbols  ⌘1",
                                selected: selection == .home, namespace: navNamespace) { selection = .home }
                     }
-                    NavRow(icon: "list.bullet", title: "Watchlist", helpText: "Your tracked symbols  ⌘2",
-                           selected: selection == .watchlist, namespace: navNamespace) { selection = .watchlist }
+
+                    watchlistsHeader
+                    ForEach(storageService.watchlists) { wl in
+                        NavRow(icon: "star", title: wl.name,
+                               trailing: "\(wl.symbols.count)",
+                               trailingTint: DS.inkTertiary,
+                               helpText: "Open “\(wl.name)” watchlist",
+                               selected: selection == .watchlist && storageService.selectedWatchlistId == wl.id,
+                               namespace: navNamespace) {
+                            storageService.selectedWatchlistId = wl.id
+                            selection = .watchlist
+                        }
+                        .contextMenu {
+                            Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
+                                Label("Rename Watchlist…", systemImage: "pencil")
+                            }
+                            Button { exportWatchlists([wl]) } label: {
+                                Label("Export Watchlist to Excel…", systemImage: "square.and.arrow.up")
+                            }
+                            Divider()
+                            if storageService.watchlists.count > 1 {
+                                Button(role: .destructive) {
+                                    deleteWatchlistTarget = wl
+                                } label: {
+                                    Label("Delete Watchlist", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
 
                     portfoliosHeader
                     NavRow(icon: "square.grid.2x2", title: "All Portfolios",
@@ -236,6 +303,29 @@ struct PortfolioWindowView: View {
         }
     }
 
+    /// "WATCHLISTS" label with the plus button.
+    private var watchlistsHeader: some View {
+        HStack {
+            Text("Watchlists")
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .tracking(0.8).textCase(.uppercase)
+            Spacer()
+            Button {
+                showNewWatchlistAlert = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.inkSecondary)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Create new watchlist…")
+        }
+        .padding(.horizontal, 10).padding(.top, 14).padding(.bottom, 4)
+    }
+
     /// "PORTFOLIOS" label with the quiet + button (replaces the old toolbar menu).
     private var portfoliosHeader: some View {
         HStack {
@@ -268,7 +358,10 @@ struct PortfolioWindowView: View {
             DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
         ]
         if !storageService.portfolios.isEmpty {
-            io.append(DSMenuAction(title: "Export All…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
+            io.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
+        }
+        if !storageService.watchlists.isEmpty {
+            io.append(DSMenuAction(title: "Export Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) })
         }
         s.append(io)
         return s
@@ -282,6 +375,10 @@ struct PortfolioWindowView: View {
                 Text(appVersion).font(DS.micro).foregroundStyle(DS.inkTertiary)
             }
             Spacer()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            NSApp.keyWindow?.performZoom(nil)
         }
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
     }
@@ -343,6 +440,10 @@ struct PortfolioWindowView: View {
         // `AppDelegate.bringWindowFront`/`windowWillClose`), so the panel
         // never needs the accessory<->regular activation-policy dance.
         PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: false)
+    }
+
+    private func exportWatchlists(_ watchlists: [Watchlist]) {
+        PortfolioIO.exportWatchlists(watchlists, stockService: stockService, restoreActivationPolicy: false)
     }
 
     private func importPortfolios() {

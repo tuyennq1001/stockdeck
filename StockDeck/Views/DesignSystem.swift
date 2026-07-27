@@ -204,6 +204,10 @@ struct PageHeader<Trailing: View>: View {
                     Text(LocalizedStringKey(caption)).font(DS.caption).foregroundStyle(DS.inkTertiary)
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                NSApp.keyWindow?.performZoom(nil)
+            }
             Spacer()
             trailing
         }

@@ -17,13 +17,42 @@ enum PortfolioIO {
     ///   `.regular` for its own lifetime (e.g. the desktop portfolio window),
     ///   so this helper doesn't prematurely drop the app back to accessory
     ///   while that window is still open.
+    /// Presents an NSSavePanel and writes the exported XLSX on confirm.
     static func exportAll(_ portfolios: [Portfolio], storageService: StorageService, restoreActivationPolicy: Bool) {
-        guard let data = storageService.exportPortfolios(portfolios) else { return }
+        guard let data = SpreadsheetIO.generatePortfoliosXLSXData(portfolios) else { return }
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            panel.allowedContentTypes = [xlsxType]
+        }
         let name = portfolios.count == 1 ? portfolios[0].name : "StockDeck Portfolios"
-        panel.nameFieldStringValue = "\(name).json"
-        panel.title = "Export Portfolios"
+        panel.nameFieldStringValue = "\(name).xlsx"
+        panel.title = "Export Portfolios (XLSX)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Presents an NSSavePanel and writes the exported watchlists XLSX on confirm.
+    static func exportWatchlists(_ watchlists: [Watchlist], stockService: StockService, restoreActivationPolicy: Bool) {
+        guard let data = SpreadsheetIO.generateWatchlistsXLSXData(watchlists: watchlists, stockService: stockService) else { return }
+        let panel = NSSavePanel()
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            panel.allowedContentTypes = [xlsxType]
+        }
+        let name = watchlists.count == 1 ? watchlists[0].name : "StockDeck Watchlists"
+        panel.nameFieldStringValue = "\(name).xlsx"
+        panel.title = "Export Watchlists (XLSX)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
