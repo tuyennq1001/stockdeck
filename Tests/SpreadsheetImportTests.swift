@@ -30,6 +30,30 @@ final class SpreadsheetImportTests: XCTestCase {
         XCTAssertEqual(p2?.holdings[0].avgPrice, 65000.0)
     }
 
+    func testExcelUserSharedStringsImportParsing() throws {
+        let csvContent = """
+        Portfolio Name,Symbol,Quantity,Avg Price,Purchase Date,Leverage
+        Terry,META,2,652.4,2026/02/03,1
+        Terry,SPGI,16,398.095,13-Feb,1
+        Terry,RACE,7,332.0214,16-Jun,1
+        """
+
+        let imported = SpreadsheetIO.parseCSV(content: csvContent)
+        XCTAssertNotNil(imported)
+        XCTAssertEqual(imported?.count, 1)
+        XCTAssertEqual(imported?[0].name, "Terry")
+        XCTAssertEqual(imported?[0].holdings.count, 3)
+        XCTAssertEqual(imported?[0].holdings[0].symbol, "META")
+        XCTAssertEqual(imported?[0].holdings[0].quantity, 2)
+        XCTAssertEqual(imported?[0].holdings[0].avgPrice, 652.4)
+        XCTAssertEqual(imported?[0].holdings[1].symbol, "SPGI")
+        XCTAssertEqual(imported?[0].holdings[1].quantity, 16)
+        XCTAssertEqual(imported?[0].holdings[1].avgPrice, 398.095)
+        XCTAssertEqual(imported?[0].holdings[2].symbol, "RACE")
+        XCTAssertEqual(imported?[0].holdings[2].quantity, 7)
+        XCTAssertEqual(imported?[0].holdings[2].avgPrice, 332.0214)
+    }
+
     func testSampleXLSXDataGenerationAndParsing() throws {
         guard let xlsxData = SpreadsheetIO.generateSampleXLSXData() else {
             XCTFail("Failed to generate sample XLSX data")

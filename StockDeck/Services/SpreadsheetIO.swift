@@ -121,8 +121,89 @@ enum SpreadsheetIO {
         return nil
     }
 
-    /// Extracts rows from an .xlsx file sheet XML and sharedStrings.
+    /// Extracts rows from an .xlsx file sheet XML using Python with fallback to Swift.
     static func parseXLSX(fileURL: URL) -> [Portfolio]? {
+        if let rows = parseXLSXWithPython(fileURL: fileURL), !rows.isEmpty {
+            return convertRowsToPortfolios(rows: rows)
+        }
+        return parseXLSXWithSwift(fileURL: fileURL)
+    }
+
+    private static func parseXLSXWithPython(fileURL: URL) -> [[String]]? {
+        let script = """
+        import zipfile, xml.etree.ElementTree as ET, json, sys
+
+        def clean_tag(elem):
+            return elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+
+        def parse(file_path):
+            with zipfile.ZipFile(file_path, "r") as z:
+                shared_strings = []
+                if "xl/sharedStrings.xml" in z.namelist():
+                    ss_tree = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                    for elem in ss_tree.iter():
+                        if clean_tag(elem) == "si":
+                            t_texts = [e.text or "" for e in elem.iter() if clean_tag(e) == "t"]
+                            shared_strings.append("".join(t_texts))
+
+                sheets = [n for n in z.namelist() if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")]
+                if not sheets: return []
+                sheet_tree = ET.fromstring(z.read(sheets[0]))
+                rows = []
+                for row in sheet_tree.iter():
+                    if clean_tag(row) != "row":
+                        continue
+                    row_dict = {}
+                    for c in row:
+                        if clean_tag(c) != "c":
+                            continue
+                        r_ref = c.attrib.get("r", "")
+                        col_letter = "".join([ch for ch in r_ref if ch.isalpha()])
+                        t_type = c.attrib.get("t", "")
+                        
+                        val = ""
+                        if t_type == "s":
+                            for child in c:
+                                if clean_tag(child) == "v" and child.text:
+                                    try:
+                                        idx = int(child.text)
+                                        if idx < len(shared_strings):
+                                            val = shared_strings[idx]
+                                    except: pass
+                        elif t_type == "inlineStr":
+                            for child in c.iter():
+                                if clean_tag(child) == "t" and child.text:
+                                    val = child.text
+                        else:
+                            for child in c:
+                                if clean_tag(child) == "v" and child.text:
+                                    val = child.text
+                        if col_letter:
+                            row_dict[col_letter] = val
+                    
+                    cols = ["A", "B", "C", "D", "E", "F"]
+                    r_vals = [row_dict.get(col, "") for col in cols]
+                    if any(r_vals):
+                        rows.append(r_vals)
+                return rows
+
+        print(json.dumps(parse(sys.argv[1])))
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        process.arguments = ["-c", script, fileURL.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try? process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let jsonRows = try? JSONDecoder().decode([[String]].self, from: data) else { return nil }
+        return jsonRows
+    }
+
+    private static func parseXLSXWithSwift(fileURL: URL) -> [Portfolio]? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         task.arguments = ["-p", fileURL.path, "xl/worksheets/sheet1.xml"]
@@ -134,7 +215,6 @@ enum SpreadsheetIO {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let xmlString = String(data: data, encoding: .utf8), !xmlString.isEmpty else { return nil }
 
-        // Also fetch sharedStrings if present
         let taskSS = Process()
         taskSS.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         taskSS.arguments = ["-p", fileURL.path, "xl/sharedStrings.xml"]
@@ -143,27 +223,36 @@ enum SpreadsheetIO {
         try? taskSS.run()
         taskSS.waitUntilExit()
         let dataSS = pipeSS.fileHandleForReading.readDataToEndOfFile()
-        let sharedStrings = parseSharedStrings(xml: String(data: dataSS, encoding: .utf8) ?? "")
+        let sharedStrings = parseSharedStringsSwift(xml: String(data: dataSS, encoding: .utf8) ?? "")
 
-        return parseSheetXML(xml: xmlString, sharedStrings: sharedStrings)
+        return parseSheetXMLSwift(xml: xmlString, sharedStrings: sharedStrings)
     }
 
-    private static func parseSharedStrings(xml: String) -> [String] {
+    private static func parseSharedStringsSwift(xml: String) -> [String] {
         var result: [String] = []
-        let pattern = "<t[^>]*>(.*?)</t>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return [] }
+        let siPattern = "<si>(.*?)</si>"
+        guard let siRegex = try? NSRegularExpression(pattern: siPattern, options: [.dotMatchesLineSeparators]) else { return [] }
         let nsString = xml as NSString
-        let matches = regex.matches(in: xml, options: [], range: NSRange(location: 0, length: nsString.length))
+        let matches = siRegex.matches(in: xml, options: [], range: NSRange(location: 0, length: nsString.length))
+
+        let tRegex = try? NSRegularExpression(pattern: "<t[^>]*>(.*?)</t>", options: [.dotMatchesLineSeparators])
+
         for match in matches {
-            if match.numberOfRanges > 1 {
-                let text = nsString.substring(with: match.range(at: 1))
-                result.append(text)
+            let siContent = nsString.substring(with: match.range(at: 1))
+            let nsSi = siContent as NSString
+            let tMatches = tRegex?.matches(in: siContent, options: [], range: NSRange(location: 0, length: nsSi.length)) ?? []
+            var fullText = ""
+            for tMatch in tMatches {
+                if tMatch.numberOfRanges > 1 {
+                    fullText += nsSi.substring(with: tMatch.range(at: 1))
+                }
             }
+            result.append(fullText)
         }
         return result
     }
 
-    private static func parseSheetXML(xml: String, sharedStrings: [String]) -> [Portfolio]? {
+    private static func parseSheetXMLSwift(xml: String, sharedStrings: [String]) -> [Portfolio]? {
         let rowPattern = "<row[^>]*>(.*?)</row>"
         guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.dotMatchesLineSeparators]) else { return nil }
         let nsXml = xml as NSString
@@ -173,19 +262,30 @@ enum SpreadsheetIO {
 
         for rowMatch in rowMatches {
             let rowContent = nsXml.substring(with: rowMatch.range(at: 1))
-            let cellPattern = "<c r=\"([A-Z]+)[0-9]+\"[^>]*(?:t=\"([^\"]+)\")?[^>]*>(.*?)</c>"
+            let cellPattern = "<c[^>]*>(.*?)</c>"
             guard let cellRegex = try? NSRegularExpression(pattern: cellPattern, options: [.dotMatchesLineSeparators]) else { continue }
             let nsRow = rowContent as NSString
             let cellMatches = cellRegex.matches(in: rowContent, options: [], range: NSRange(location: 0, length: nsRow.length))
 
             var rowValues: [String: String] = [:]
             for cellMatch in cellMatches {
-                let colRef = nsRow.substring(with: cellMatch.range(at: 1))
-                var type = ""
-                if cellMatch.range(at: 2).location != NSNotFound {
-                    type = nsRow.substring(with: cellMatch.range(at: 2))
+                let cellFull = nsRow.substring(with: cellMatch.range(at: 0))
+                
+                // Get column letter from r="..."
+                var colRef = ""
+                if let rMatch = try? NSRegularExpression(pattern: "r=\"([A-Z]+)[0-9]+\"").firstMatch(in: cellFull, options: [], range: NSRange(location: 0, length: cellFull.utf16.count)),
+                   rMatch.numberOfRanges > 1 {
+                    colRef = (cellFull as NSString).substring(with: rMatch.range(at: 1))
                 }
-                let body = nsRow.substring(with: cellMatch.range(at: 3))
+                guard !colRef.isEmpty else { continue }
+
+                var type = ""
+                if let tMatch = try? NSRegularExpression(pattern: "t=\"([^\"]+)\"").firstMatch(in: cellFull, options: [], range: NSRange(location: 0, length: cellFull.utf16.count)),
+                   tMatch.numberOfRanges > 1 {
+                    type = (cellFull as NSString).substring(with: tMatch.range(at: 1))
+                }
+
+                let body = nsRow.substring(with: cellMatch.range(at: 1))
 
                 var val = ""
                 if type == "inlineStr" {
@@ -249,30 +349,26 @@ enum SpreadsheetIO {
         var portfolioHoldingsMap: [String: [Holding]] = [:]
         var portfolioOrder: [String] = []
 
-        let dateFormatter = ISO8601DateFormatter()
-        let fallbackDateFormatter = DateFormatter()
-        fallbackDateFormatter.dateFormat = "yyyy-MM-dd"
-
         for i in startIdx..<rows.count {
             let r = rows[i]
             guard r.count >= 4 else { continue }
-            let pName = r[0].isEmpty ? "Imported Portfolio" : r[0]
+            let pName = r[0].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Imported Portfolio" : r[0].trimmingCharacters(in: .whitespacesAndNewlines)
             let symbol = r[1].trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             guard !symbol.isEmpty else { continue }
 
-            let qtyStr = r[2].replacingOccurrences(of: ",", with: ".")
-            let priceStr = r[3].replacingOccurrences(of: ",", with: ".")
+            let qtyStr = r[2].replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+            let priceStr = r[3].replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard let qty = Double(qtyStr), let price = Double(priceStr), price >= 0 else { continue }
 
             var pDate: Date? = nil
             if r.count > 4, !r[4].isEmpty {
-                pDate = dateFormatter.date(from: r[4]) ?? fallbackDateFormatter.date(from: r[4])
+                pDate = parseDate(r[4])
             }
 
             var lev: Double? = nil
             if r.count > 5, !r[5].isEmpty {
-                lev = Double(r[5].replacingOccurrences(of: ",", with: "."))
+                lev = Double(r[5].replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
             }
 
             let holding = Holding(symbol: symbol, quantity: qty, avgPrice: price, purchaseDate: pDate, leverage: lev)
@@ -289,5 +385,41 @@ enum SpreadsheetIO {
         return portfolioOrder.map { name in
             Portfolio(id: UUID(), name: name, holdings: portfolioHoldingsMap[name] ?? [])
         }
+    }
+
+    private static func parseDate(_ str: String) -> Date? {
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+
+        let isoFormatter = ISO8601DateFormatter()
+        if let d = isoFormatter.date(from: trimmed) { return d }
+
+        let formats = [
+            "yyyy/MM/dd",
+            "yyyy-MM-dd",
+            "dd/MM/yyyy",
+            "MM/dd/yyyy",
+            "dd-MMM-yyyy",
+            "d-MMM-yyyy",
+            "dd-MMM",
+            "d-MMM"
+        ]
+
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+
+        for fmt in formats {
+            df.dateFormat = fmt
+            if let d = df.date(from: trimmed) {
+                if !fmt.contains("yyyy") {
+                    var components = Calendar.current.dateComponents([.month, .day], from: d)
+                    components.year = Calendar.current.component(.year, from: Date())
+                    return Calendar.current.date(from: components)
+                }
+                return d
+            }
+        }
+
+        return nil
     }
 }
