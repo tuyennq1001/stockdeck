@@ -181,6 +181,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(stockService.isLoading)
+                .pointingHandCursor()
 
                 // The clear way into the full desktop app.
                 Button(action: {
@@ -197,6 +198,7 @@ struct ContentView: View {
                     .background(Capsule().fill(DS.brand))
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
                 .help("Open the full StockDeck window")
 
                 Button(action: { NSApp.terminate(nil) }) {
@@ -204,6 +206,7 @@ struct ContentView: View {
                         .font(.inter(11, relativeTo: .subheadline))
                 }
                 .buttonStyle(.borderless)
+                .pointingHandCursor()
                 .help("Quit StockDeck")
             }
             .padding(.horizontal, 16)

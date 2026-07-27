@@ -415,6 +415,7 @@ struct SegmentedRangePicker<T: Hashable>: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .pointingHandCursor()
                 .help(help(label(option)))
             }
         }
@@ -484,6 +485,7 @@ struct RefreshButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
+        .pointingHandCursor()
         .onChange(of: isLoading) { _, loading in spinning = loading }
         .help("Refresh quotes")
     }
@@ -512,6 +514,7 @@ struct DSMenu<Label: View>: View {
     var body: some View {
         Button { show.toggle() } label: { label() }
             .buttonStyle(.plain)
+            .pointingHandCursor()
             .popover(isPresented: $show, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(sections.enumerated()), id: \.offset) { si, section in
@@ -546,6 +549,7 @@ private struct DSMenuRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .onHover { hover = $0 }
     }
 }
@@ -904,6 +908,7 @@ struct NavRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .onHover { hover = $0 }
         .help(helpText ?? title)
     }
@@ -917,3 +922,19 @@ struct NavRow: View {
         }
     }
 }
+
+// MARK: - Hand cursor extension
+
+extension View {
+    /// Shows the pointing hand cursor when hovering over interactive elements.
+    func pointingHandCursor() -> some View {
+        self.onHover { inside in
+            if inside {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+}
+

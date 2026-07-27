@@ -182,6 +182,7 @@ struct WatchlistWideView: View {
             .background(Capsule().fill(DS.brand))
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .help("Add a symbol to your watchlist")
     }
 
@@ -260,6 +261,7 @@ struct WatchlistWideView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .frame(maxWidth: width == nil ? .infinity : nil, alignment: align)
         .help(help)
     }
@@ -442,6 +444,7 @@ private struct WatchRowView<Menu: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .onHover { hover = $0 }
         .contextMenu { menu() }
     }

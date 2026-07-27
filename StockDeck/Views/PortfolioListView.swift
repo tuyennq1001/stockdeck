@@ -177,6 +177,7 @@ struct PortfolioListView: View {
                         .font(.inter(10, relativeTo: .caption))
                     }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
 
                     Spacer()
 
@@ -188,6 +189,7 @@ struct PortfolioListView: View {
                         .font(.inter(10, relativeTo: .caption))
                     }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
 
                     Button(action: { exportPortfolios(storageService.portfolios) }) {
                         HStack(spacing: 3) {
@@ -198,6 +200,7 @@ struct PortfolioListView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(storageService.portfolios.isEmpty)
+                    .pointingHandCursor()
                 }
                 .padding(8)
             }

@@ -64,6 +64,7 @@ struct WatchlistView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .pointingHandCursor()
                 Spacer()
             }
         } else {
@@ -83,6 +84,7 @@ struct WatchlistView: View {
                             .font(.inter(10, relativeTo: .caption))
                     }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
                 }
             }
             .padding(.horizontal, 10)
@@ -156,6 +158,7 @@ struct WatchlistView: View {
                 .font(.inter(10, relativeTo: .caption))
             }
             .buttonStyle(.borderless)
+            .pointingHandCursor()
             .padding(8)
             }
             .sheet(item: Binding<AddToPortfolioItem?>(
@@ -205,6 +208,7 @@ struct WatchlistView: View {
             }
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
     }
 
     @ViewBuilder
