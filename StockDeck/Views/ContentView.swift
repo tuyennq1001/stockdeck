@@ -201,6 +201,16 @@ struct ContentView: View {
                 .pointingHandCursor()
                 .help("Open the full StockDeck window")
 
+                // Settings gear button placed immediately to the right of Open button
+                Button(action: { selectedTab = .settings }) {
+                    Image(systemName: selectedTab == .settings ? "gearshape.fill" : "gearshape")
+                        .font(.inter(12, relativeTo: .callout))
+                        .foregroundStyle(selectedTab == .settings ? DS.brand : DS.inkSecondary)
+                }
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
+                .help("Settings")
+
                 Button(action: { NSApp.terminate(nil) }) {
                     Image(systemName: "power")
                         .font(.inter(11, relativeTo: .subheadline))
@@ -213,16 +223,12 @@ struct ContentView: View {
             .padding(.vertical, 10)
 
             // Tab picker — Home is present only when News is enabled (issue #11).
-            // All-text segments: a segmented Picker that mixes an Image (the old
-            // gear) with Text bleeds the neighbouring label onto the icon segment,
-            // so Settings uses a plain "Settings" label like the others.
             Picker("", selection: $selectedTab) {
                 if storageService.showNewsTab {
                     Text("Home").tag(Tab.home)
                 }
                 Text("Watchlist").tag(Tab.watchlist)
                 Text("Portfolios").tag(Tab.portfolios)
-                Text("Settings").tag(Tab.settings)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)

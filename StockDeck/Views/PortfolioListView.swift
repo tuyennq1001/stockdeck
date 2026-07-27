@@ -415,6 +415,7 @@ struct PortfolioSection: View {
                 .foregroundColor(.accentColor)
             }
             .buttonStyle(.borderless)
+            .pointingHandCursor()
         } header: {
             if isRenaming {
                 HStack {
