@@ -11,12 +11,14 @@ struct PriceChartCard: View {
     let quote: StockQuote
 
     enum ChartRange: String, CaseIterable {
-        case week = "7D", month = "1M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
+        case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
         /// Lookback window in days; nil = the whole fetched history.
         var days: Int? {
             switch self {
             case .week: return 7
             case .month: return 30
+            case .threeMonths: return 90
+            case .sixMonths: return 180
             case .ytd:
                 let cal = Calendar.current
                 let now = Date()
@@ -25,7 +27,6 @@ struct PriceChartCard: View {
             case .year: return 365
             case .threeYears: return 365 * 3
             case .fiveYears: return 365 * 5
-            case .tenYears: return 365 * 10
             case .all: return nil
             }
         }
@@ -36,11 +37,12 @@ struct PriceChartCard: View {
             switch self {
             case .week: return "past 7d"
             case .month: return "past 1M"
+            case .threeMonths: return "past 3M"
+            case .sixMonths: return "past 6M"
             case .ytd: return "YTD"
             case .year: return "past 1Y"
             case .threeYears: return "past 3Y"
             case .fiveYears: return "past 5Y"
-            case .tenYears: return "past 10Y"
             case .all: return "all-time"
             }
         }
@@ -85,8 +87,8 @@ struct PriceChartCard: View {
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .threeYears, .fiveYears, .tenYears, .all:
+        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
+        case .year, .threeYears, .fiveYears, .all:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
     }
@@ -164,43 +166,49 @@ struct PriceChartCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    let info = displayedPriceInfo
-                    SectionLabel("Last price")
+        VStack(alignment: .leading, spacing: 12) {
+            // Row 1: Last Price & Change Pill
+            VStack(alignment: .leading, spacing: 4) {
+                let info = displayedPriceInfo
+                SectionLabel("Last price")
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(StorageService.formatAmount(info.price, symbol: priceSymbol))
-                        .font(.inter(32, weight: .bold, relativeTo: .largeTitle).monospacedDigit())
+                        .font(.inter(26, weight: .bold, relativeTo: .title).monospacedDigit())
                         .tracking(-0.4)
                         .foregroundStyle(DS.ink)
+                        .lineLimit(1)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.5, dampingFraction: 0.9), value: info.price)
-                    HStack(spacing: 8) {
+
+                    HStack(spacing: 6) {
                         ChangePill(value: info.diff,
                                    text: String(format: "%+.\(storageService.percentDecimals)f%% \(info.label)", info.diffPct))
                         Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, signed: true))
                             .font(DS.caption.monospacedDigit())
                             .foregroundStyle(DS.pnlColor(info.diff))
-                    }
-                }
-                Spacer()
-                if (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
-                    HStack(spacing: 8) {
-                        rangePicker
-                        stylePicker
+                            .lineLimit(1)
                     }
                 }
             }
-            .padding(DS.pad)
 
+            // Row 2: Range Picker + Style Picker
+            if (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
+                HStack(spacing: 6) {
+                    rangePicker
+                    Spacer(minLength: 0)
+                    stylePicker
+                }
+            }
+
+            // Row 3: Chart
             chart
                 .frame(height: 190)
         }
+        .padding(DS.pad)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .premiumCard()
         .task(id: symbol) { await stockService.ensurePriceHistory(for: symbol) }
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
-            if chartRange.isIntraday { await stockService.ensureIntraday(for: symbol) }
             if chartRange == .all { await stockService.ensurePriceHistoryMax(for: symbol) }
         }
     }

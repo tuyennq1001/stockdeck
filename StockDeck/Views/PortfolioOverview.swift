@@ -29,29 +29,35 @@ struct PortfolioOverview: View {
 
     /// Hero chart range — a pure UI filter over the value series.
     enum ChartRange: String, CaseIterable {
-        case day = "24H", week = "7D", month = "1M", year = "1Y", threeYears = "3Y", fiveYears = "5Y", tenYears = "10Y", all = "All"
+        case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
         var days: Int? {
             switch self {
-            case .day: return 1
             case .week: return 7
             case .month: return 30
+            case .threeMonths: return 90
+            case .sixMonths: return 180
+            case .ytd:
+                let cal = Calendar.current
+                let now = Date()
+                let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+                return max(1, cal.dateComponents([.day], from: jan1, to: now).day ?? 30)
             case .year: return 365
             case .threeYears: return 365 * 3
             case .fiveYears: return 365 * 5
-            case .tenYears: return 365 * 10
             case .all: return nil
             }
         }
         /// Suffix for the hero pill, describing the span it measures.
         var changeLabel: String {
             switch self {
-            case .day: return "today"
             case .week: return "past 7d"
             case .month: return "past 1M"
+            case .threeMonths: return "past 3M"
+            case .sixMonths: return "past 6M"
+            case .ytd: return "YTD"
             case .year: return "past 1Y"
             case .threeYears: return "past 3Y"
             case .fiveYears: return "past 5Y"
-            case .tenYears: return "past 10Y"
             case .all: return "all-time"
             }
         }
@@ -95,7 +101,6 @@ struct PortfolioOverview: View {
     /// Tooltip date label — time for intraday ranges, date for the rest.
     private func tooltipDate(_ date: Date) -> String {
         switch chartRange {
-        case .day: return date.formatted(.dateTime.hour().minute())
         case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
         default: return date.formatted(date: .abbreviated, time: .omitted)
         }
@@ -196,24 +201,12 @@ struct PortfolioOverview: View {
         return estimatedSeries.filter { $0.date >= cutoff }
     }
 
-    /// The curve actually drawn. 24H/7D use intraday-estimated value (the daily
-    /// snapshots have no intraday resolution); 1M+ prefer real snapshots once
+    /// The curve actually drawn. 1M+ prefer real snapshots once
     /// they're as dense as the daily estimate. `isEstimated` drives the badge.
     private var displaySeries: (points: [ValuePoint], isEstimated: Bool) {
-        switch chartRange {
-        case .day:
-            // Intraday value path. The reconstructed bars can lag the live quote
-            // (and omit the pre/post-market move), so pin the final point to the
-            // real current value — otherwise the curve ends below the headline
-            // total (e.g. €52.5k vs €55.2k) and understates the day.
-            var pts = valueSeries(from: stockService.intradayHistory)
-            if let last = pts.last, abs(last.value - totalValue) > 0.01 {
-                pts.append(ValuePoint(date: last.date.addingTimeInterval(1), value: totalValue))
-            }
-            return (pts, true)
-        case .week:
+        if chartRange == .week {
             return (valueSeries(from: stockService.intradayWeek), true)
-        default:
+        } else {
             let real = filteredSeries.map { ValuePoint(date: $0.date, value: $0.totalValue) }
             let est = estimatedFiltered
             if real.count >= 2 && real.count >= est.count { return (real, false) }
@@ -255,7 +248,6 @@ struct PortfolioOverview: View {
         }
         .task(id: "\(symbols.joined())-\(chartRange.rawValue)") {
             switch chartRange {
-            case .day: for s in symbols { await stockService.ensureIntraday(for: s) }
             case .week: for s in symbols { await stockService.ensureIntradayWeek(for: s) }
             case .all: for s in symbols { await stockService.ensurePriceHistoryMax(for: s) }
             default: break
@@ -273,41 +265,22 @@ struct PortfolioOverview: View {
         // Pill reflects the SELECTED range: change across the drawn curve. When
         // the curve is too sparse to span a period (e.g. day one), fall back to
         // the day-over-day figure so the pill is never empty.
-        //
-        // 24H → the real "today" (extended-hours-aware day change), so the pill
-        // matches the TODAY stat exactly and reflects the same price basis as the
-        // value (incl. any pre/post-market move). All → the real all-time P&L, not
-        // the reconstructed-curve span (which starts near €0 and reads a bogus
-        // "+2202%"). 7D/1M/1Y → the curve span over that bounded window.
-        let useRealDay = chartRange == .day
         let useRealAllTime = chartRange == .all
-        let periodValue = useRealDay ? dayChangeValue
-            : useRealAllTime ? totalPnl
+        let periodValue = useRealAllTime ? totalPnl
             : (PortfolioPeriodChange.value(ds.points) ?? dayChangeValue)
-        let periodPercent = useRealDay ? dayChangePercent
-            : useRealAllTime ? totalPnlPercent
+        let periodPercent = useRealAllTime ? totalPnlPercent
             : (PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent)
-        let periodLabel = useRealDay ? "today"
-            : useRealAllTime ? "all-time"
+        let periodLabel = useRealAllTime ? "all-time"
             : (PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today")
         // Header sits ABOVE the chart (not over it) so the curve can never rise
-        // behind the value/pill text — on 24H the peak often lands top-left, right
-        // where the text is, and no Y-domain trick can avoid that overlap.
+        // behind the value/pill text.
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
                     SectionLabel("\(title) value")
                     Spacer()
-                    HStack(spacing: 10) {
-                        if ds.isEstimated, !ds.points.isEmpty {
-                            Text("ESTIMATED")
-                                .font(.inter(8.5, weight: .bold, relativeTo: .caption2)).tracking(0.8)
-                                .foregroundStyle(DS.gold)
-                                .help("Reconstructed from price history × current positions. Real daily tracking replaces it over time.")
-                        }
-                        // No picker over an empty chart — it appears with the data.
-                        if !ds.points.isEmpty { rangePicker }
-                    }
+                    // No picker over an empty chart — it appears with the data.
+                    if !ds.points.isEmpty { rangePicker }
                 }
                 Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
                     .font(DS.display).tracking(-0.5)
@@ -377,10 +350,9 @@ struct PortfolioOverview: View {
     /// X-axis tick label formatted for the selected period.
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
-        case .day: return date.formatted(.dateTime.hour().minute())
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .threeYears, .fiveYears, .tenYears, .all:
+        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
+        case .year, .threeYears, .fiveYears, .all:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
     }

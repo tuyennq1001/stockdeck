@@ -132,12 +132,13 @@ struct WatchlistWideView: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     table
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(width: activeDetailSymbol != nil ? 300 : nil)
+                        .frame(maxWidth: activeDetailSymbol != nil ? 300 : .infinity, maxHeight: .infinity)
 
                     if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
                         Divider().overlay(DS.hairline)
                         sideChartPane(symbol: sym, quote: q)
-                            .frame(width: 420)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
