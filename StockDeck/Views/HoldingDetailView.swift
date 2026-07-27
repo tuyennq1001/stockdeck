@@ -8,6 +8,7 @@ import Charts
 struct HoldingDetailView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.addHoldingAction) private var addHoldingAction
     @Environment(\.editHoldingAction) private var editHoldingAction
     let portfolioId: UUID
     let holding: Holding
@@ -60,6 +61,7 @@ struct HoldingDetailView: View {
                 VStack(alignment: .leading, spacing: DS.gap) {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                     statStrip
+                    purchaseLotsCard
                     HStack(alignment: .top, spacing: DS.gap) {
                         fiftyTwoWeekCard.frame(maxWidth: .infinity)
                         factsCard.frame(maxWidth: .infinity)
@@ -103,6 +105,116 @@ struct HoldingDetailView: View {
                         Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - Purchase Lots
+
+    private var allHoldingsForSymbol: [ValuedHolding] {
+        let matched = storageService.portfolios.flatMap { p in
+            p.holdings.filter { $0.symbol.uppercased() == holding.symbol.uppercased() }.map { h in
+                let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                let val = h.marketValue(currentPrice: price) * stockService.rate(from: quote.currency)
+                let cst = h.costBasisLocal * stockService.rate(from: quote.currency, for: h.purchaseDate)
+                return ValuedHolding(id: h.id, portfolioId: p.id, holding: h, quote: quote,
+                                     value: val, cost: cst, dayChangePercent: quote.changePercent,
+                                     type: storageService.type(for: h.symbol))
+            }
+        }
+        return matched.isEmpty ? [ValuedHolding(id: holding.id, portfolioId: portfolioId, holding: holding, quote: quote, value: value, cost: cost, dayChangePercent: quote.changePercent, type: storageService.type(for: holding.symbol))] : matched
+    }
+
+    private var purchaseLotsCard: some View {
+        Card(title: "Purchase Lots (\(allHoldingsForSymbol.count))") {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    Text("Date").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 90, alignment: .leading)
+                    Text("Qty").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 60, alignment: .trailing)
+                    Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("P&L").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
+                }
+                .padding(.bottom, 8)
+                Divider().overlay(DS.hairline)
+
+                ForEach(allHoldingsForSymbol) { vh in
+                    HStack(spacing: 0) {
+                        Text(vh.holding.purchaseDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                            .font(DS.caption)
+                            .foregroundStyle(DS.ink)
+                            .frame(width: 90, alignment: .leading)
+
+                        Text("\(formatQty(vh.holding.quantity))")
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .frame(width: 60, alignment: .trailing)
+
+                        Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol))
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        Text(StorageService.formatAmount(vh.value, symbol: currencySymbol))
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(StorageService.formatAmount(vh.pnl, symbol: currencySymbol, signed: true))
+                                .font(DS.figure)
+                            Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
+                                .font(DS.micro)
+                        }
+                        .foregroundStyle(DS.pnlColor(vh.pnl))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        HStack(spacing: 6) {
+                            Button {
+                                editHoldingAction.perform(vh.portfolioId, vh.holding)
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(DS.inkSecondary)
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .help("Edit lot")
+
+                            Button {
+                                storageService.removeHolding(from: vh.portfolioId, holdingId: vh.holding.id)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(DS.down)
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .help("Delete lot")
+                        }
+                        .frame(width: 50, alignment: .trailing)
+                    }
+                    .padding(.vertical, 8)
+                    if vh.id != allHoldingsForSymbol.last?.id {
+                        Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 4)
+                    }
+                }
+
+                Divider().overlay(DS.hairline).padding(.top, 4)
+                Button(action: {
+                    addHoldingAction.perform(portfolioId)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle")
+                        Text("Add another lot for \(holding.symbol)")
+                    }
+                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    .foregroundStyle(DS.brand)
+                    .padding(.top, 8)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
         }
     }

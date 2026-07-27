@@ -758,30 +758,28 @@ struct PortfolioOverview: View {
                     }
 
                     ForEach(sortedSymbols, id: \.self) { sym in
-                        if let group = groupedValued[sym] {
-                            if group.count == 1, let h = group.first {
-                                NavigationLink(value: h.id) {
-                                    PositionRow(h: h, currencySymbol: currencySymbol,
-                                                weight: abs(totalValue) >= 0.01 ? abs(h.value) / abs(totalValue) * 100 : 0,
-                                                topWeight: topWeight,
-                                                decimals: decimals,
-                                                valueDecimals: storageService.valueDecimals)
-                                }
-                                .buttonStyle(.plain)
-                                .help("View \(h.symbol) details · right-click to edit or delete")
-                                .contextMenu {
-                                    Button { editHoldingAction.perform(h.portfolioId, h.holding) } label: { Label("Edit", systemImage: "pencil") }
-                                    Button(role: .destructive) {
-                                        storageService.removeHolding(from: h.portfolioId, holdingId: h.holding.id)
-                                    } label: { Label("Delete", systemImage: "trash") }
-                                }
-                            } else {
-                                GroupedPositionRow(symbol: sym, holdings: group,
+                        if let group = groupedValued[sym], let first = group.first {
+                            let groupVal = group.reduce(0) { $0 + $1.value }
+                            let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+
+                            NavigationLink(value: first.id) {
+                                PositionSummaryRow(symbol: sym,
+                                                   holdings: group,
                                                    currencySymbol: currencySymbol,
-                                                   totalPortfolioValue: totalValue,
+                                                   weight: weight,
                                                    topWeight: topWeight,
                                                    decimals: decimals,
                                                    valueDecimals: storageService.valueDecimals)
+                            }
+                            .buttonStyle(.plain)
+                            .help("View \(sym) details")
+                            .contextMenu {
+                                if group.count == 1 {
+                                    Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                    Button(role: .destructive) {
+                                        storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
+                                    } label: { Label("Delete", systemImage: "trash") }
+                                }
                             }
                             if sym != sortedSymbols.last {
                                 Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
@@ -843,60 +841,106 @@ struct PortfolioOverview: View {
     }
 }
 
-// MARK: - Position row
+// MARK: - Position summary row
 
-private struct PositionRow: View {
-    let h: ValuedHolding
+private struct PositionSummaryRow: View {
+    @EnvironmentObject var storageService: StorageService
+    let symbol: String
+    let holdings: [ValuedHolding]
     let currencySymbol: String
     let weight: Double
     let topWeight: Double
     let decimals: Int
     let valueDecimals: Int
+
     @State private var hovered = false
 
+    private var first: ValuedHolding? { holdings.first }
+
+    private var totalCost: Double {
+        holdings.reduce(0) { $0 + $1.cost }
+    }
+
+    private var totalValue: Double {
+        holdings.reduce(0) { $0 + $1.value }
+    }
+
+    private var totalPnl: Double {
+        totalValue - totalCost
+    }
+
+    private var totalPnlPercent: Double {
+        abs(totalCost) >= 0.01 ? (totalPnl / abs(totalCost)) * 100 : 0
+    }
+
     private var amountDec: Int { valueDecimals >= 0 ? valueDecimals : 2 }
+
     private func priceDec(_ price: Double) -> Int {
-        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: h.symbol, price: price)
+        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: symbol, price: price)
     }
 
     var body: some View {
         HStack(spacing: 0) {
+            // Symbol column
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(DS.brand.opacity(0.10))
                     .frame(width: 30, height: 30)
-                    .overlay(Text(h.symbol.prefix(2))
+                    .overlay(Text(symbol.prefix(2))
                         .font(.inter(10, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(DS.brand))
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
-                        Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
-                        if h.holding.isShort { Tag(text: "S", color: DS.down) }
+                        Text(symbol).font(DS.figure).foregroundStyle(DS.ink)
+                        if holdings.count > 1 {
+                            Text("\(holdings.count) lots")
+                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                                .foregroundStyle(DS.brand)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                        } else if first?.holding.isShort == true {
+                            Tag(text: "S", color: DS.down)
+                        }
                     }
-                    Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    if let name = first?.name {
+                        Text(name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    }
                 }
             }
             .frame(width: 168, alignment: .leading)
 
-            Text(StorageService.formatAmount(h.quote.displayPrice(extendedHours: false), symbol: currencySymbol, decimals: priceDec(h.quote.displayPrice(extendedHours: false))))
+            // Last price column
+            let lastPrice = first?.quote.displayPrice(extendedHours: false) ?? 0
+            Text(StorageService.formatAmount(lastPrice, symbol: currencySymbol, decimals: priceDec(lastPrice)))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
-            Text(StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: amountDec))
+
+            // Cost basis column
+            Text(StorageService.formatAmount(totalCost, symbol: currencySymbol, decimals: amountDec))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
+
+            // Market Value column
+            Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: amountDec))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .font(DS.figure).foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+
+            // P&L column
             VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatAmount(h.pnl, symbol: currencySymbol, decimals: amountDec, signed: true))
+                Text(StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: amountDec, signed: true))
                     .font(DS.figure)
                     .contentTransition(.numericText())
-                Text(String(format: "%+.\(decimals)f%%", h.pnlPercent))
+                Text(String(format: "%+.\(decimals)f%%", totalPnlPercent))
                     .font(DS.micro)
             }
-            .foregroundStyle(DS.pnlColor(h.pnl))
+            .foregroundStyle(DS.pnlColor(totalPnl))
             .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Weight: the signature bar + figure.
+            // Weight column
             HStack(spacing: 7) {
                 ZStack(alignment: .leading) {
                     Capsule().fill(DS.cardAlt).frame(width: 56, height: 3)
@@ -909,6 +953,7 @@ private struct PositionRow: View {
             }
             .frame(width: 110, alignment: .trailing)
 
+            // Chevron
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(hovered ? DS.brand : DS.inkTertiary)
                 .frame(width: 16)
@@ -920,210 +965,6 @@ private struct PositionRow: View {
         .onHover { inside in
             hovered = inside
             if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
-    }
-}
-
-private struct GroupedPositionRow: View {
-    @EnvironmentObject var storageService: StorageService
-    @Environment(\.editHoldingAction) var editHoldingAction
-    @Environment(\.addHoldingAction) var addHoldingAction
-
-    let symbol: String
-    let holdings: [ValuedHolding]
-    let currencySymbol: String
-    let totalPortfolioValue: Double
-    let topWeight: Double
-    let decimals: Int
-    let valueDecimals: Int
-
-    @State private var isExpanded: Bool = false
-    @State private var hovered: Bool = false
-
-    private var totalVal: Double {
-        holdings.reduce(0) { $0 + $1.value }
-    }
-
-    private var totalCost: Double {
-        holdings.reduce(0) { $0 + $1.cost }
-    }
-
-    private var totalPnl: Double {
-        totalVal - totalCost
-    }
-
-    private var totalPnlPercent: Double {
-        abs(totalCost) >= 0.01 ? (totalPnl / abs(totalCost)) * 100 : 0
-    }
-
-    private var totalWeight: Double {
-        abs(totalPortfolioValue) >= 0.01 ? abs(totalVal) / abs(totalPortfolioValue) * 100 : 0
-    }
-
-    private var firstQuote: StockQuote? {
-        holdings.first?.quote
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Parent Row
-            HStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(DS.brand)
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(DS.brand.opacity(0.10))
-                        .frame(width: 30, height: 30)
-                        .overlay(Text(symbol.prefix(2))
-                            .font(.inter(10, weight: .bold, relativeTo: .caption2))
-                            .foregroundStyle(DS.brand))
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Text(symbol).font(DS.figure).foregroundStyle(DS.ink)
-                            Text("\(holdings.count) lots")
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundStyle(DS.brand)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                        }
-                        if let name = holdings.first?.quote.name {
-                            Text(name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                        }
-                    }
-                }
-                .frame(width: 168, alignment: .leading)
-
-                if let quote = firstQuote {
-                    Text(StorageService.formatAmount(quote.displayPrice(extendedHours: false), symbol: currencySymbol, decimals: StorageService.priceDecimals(symbol: symbol, price: quote.displayPrice(extendedHours: false))))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .font(DS.figure).foregroundStyle(DS.ink)
-                } else {
-                    Text("-").frame(maxWidth: .infinity, alignment: .trailing).font(DS.figure)
-                }
-
-                Text(StorageService.formatAmount(totalVal, symbol: currencySymbol, decimals: storageService.amountDecimals))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .font(DS.figure).foregroundStyle(DS.ink)
-
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true))
-                        .font(DS.figure)
-                    Text(String(format: "%+.\(decimals)f%%", totalPnlPercent))
-                        .font(DS.micro)
-                }
-                .foregroundStyle(DS.pnlColor(totalPnl))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-                HStack(spacing: 7) {
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(DS.cardAlt).frame(width: 56, height: 3)
-                        Capsule().fill(DS.brand.opacity(0.5))
-                            .frame(width: max(2, 56 * totalWeight / max(topWeight, 0.01)), height: 3)
-                    }
-                    Text(String(format: "%.1f%%", totalWeight))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                        .foregroundStyle(DS.inkSecondary)
-                }
-                .frame(width: 110, alignment: .trailing)
-
-                Color.clear.frame(width: 16)
-            }
-            .padding(.vertical, 9).padding(.horizontal, 8)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
-            .animation(.easeOut(duration: 0.15), value: hovered)
-            .contentShape(Rectangle())
-            .pointingHandCursor()
-            .onHover { hovered = $0 }
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
-            }
-
-            // Expanded Child Rows
-            if isExpanded {
-                VStack(spacing: 4) {
-                    ForEach(holdings) { h in
-                        HStack(spacing: 0) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.turn.down.right")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(DS.inkTertiary)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(h.holding.quantity == h.holding.quantity.rounded(.down) ? String(format: "%.0f", h.holding.quantity) : String(format: "%.2f", h.holding.quantity)) @ \(StorageService.formatNumber(h.holding.avgPrice, decimals: 2))")
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(DS.ink)
-                                    if let date = h.holding.purchaseDate {
-                                        Text(date.formatted(date: .abbreviated, time: .omitted))
-                                            .font(DS.micro)
-                                            .foregroundStyle(DS.inkTertiary)
-                                    }
-                                }
-                            }
-                            .frame(width: 168, alignment: .leading)
-
-                            Spacer()
-
-                            Text(StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: storageService.amountDecimals))
-                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                .foregroundStyle(DS.inkSecondary)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(StorageService.formatAmount(h.pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true))
-                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                Text(String(format: "%+.\(decimals)f%%", h.pnlPercent))
-                                    .font(DS.micro)
-                            }
-                            .foregroundStyle(DS.pnlColor(h.pnl))
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-
-                            HStack(spacing: 8) {
-                                Button { editHoldingAction.perform(h.portfolioId, h.holding) } label: {
-                                    Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(DS.inkSecondary)
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Edit lot")
-
-                                Button { storageService.removeHolding(from: h.portfolioId, holdingId: h.holding.id) } label: {
-                                    Image(systemName: "trash").font(.system(size: 11)).foregroundStyle(DS.down.opacity(0.8))
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Delete lot")
-                            }
-                            .frame(width: 110, alignment: .trailing)
-
-                            Color.clear.frame(width: 16)
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 12)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt.opacity(0.6)))
-                    }
-
-                    if let firstPortfolioId = holdings.first?.portfolioId {
-                        Button(action: {
-                            addHoldingAction.perform(firstPortfolioId)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus.circle")
-                                Text("Add another lot for \(symbol)")
-                            }
-                            .font(.inter(10, weight: .semibold, relativeTo: .caption))
-                            .foregroundStyle(DS.brand)
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.bottom, 6)
-            }
         }
     }
 }
