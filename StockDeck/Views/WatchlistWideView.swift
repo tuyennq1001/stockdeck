@@ -310,6 +310,25 @@ struct WatchlistWideView: View {
                             Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                         }
                     }
+                    if !visibleRows.isEmpty {
+                        Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
+                    }
+                    Button(action: { showSearch = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(DS.brand)
+                            Text("Add stock")
+                                .font(.inter(12, weight: .semibold, relativeTo: .body))
+                                .foregroundStyle(DS.brand)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
                 }
             }
         }

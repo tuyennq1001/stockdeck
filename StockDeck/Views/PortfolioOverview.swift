@@ -738,10 +738,12 @@ struct PortfolioOverview: View {
         switch scope {
         case .portfolio(let id):
             Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
+                .pointingHandCursor()
                 .help("Add a holding to this portfolio")
         case .all:
             if storageService.portfolios.count == 1, let id = storageService.portfolios.first?.id {
                 Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
+                    .pointingHandCursor()
                     .help("Add a holding")
             } else if !storageService.portfolios.isEmpty {
                 Menu {
@@ -750,6 +752,7 @@ struct PortfolioOverview: View {
                     }
                 } label: { label }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .pointingHandCursor()
                 .help("Add a holding — choose which portfolio")
             }
         }

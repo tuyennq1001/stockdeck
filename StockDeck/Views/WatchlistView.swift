@@ -126,6 +126,21 @@ struct WatchlistView: View {
                     storageService.reorderWatchlist(fromOffsets: indices, toOffset: newOffset, currentProjections: currentList)
                 }
 
+                Button(action: { showSearch = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.inter(12, weight: .bold, relativeTo: .body))
+                            .foregroundColor(DS.brand)
+                        Text("Add stock")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundColor(DS.brand)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
             .listStyle(.plain)
 

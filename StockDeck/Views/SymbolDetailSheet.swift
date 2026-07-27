@@ -34,12 +34,14 @@ struct SymbolDetailSheet: View {
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(Capsule().fill(DS.brand))
                     }
+                    .pointingHandCursor()
                     .help("Add this stock as a position in a portfolio")
                 }
                 Button("Done", action: onDismiss)
                     .buttonStyle(.plain)
                     .font(.inter(12, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(DS.inkSecondary)
+                    .pointingHandCursor()
                     .keyboardShortcut(.defaultAction)
             }
 

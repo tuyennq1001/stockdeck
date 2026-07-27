@@ -254,13 +254,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func collectSymbols() -> Set<String> {
-        var symbols = Set(storageService.watchlist)
-        for portfolio in storageService.portfolios {
-            for holding in portfolio.holdings {
-                symbols.insert(holding.symbol)
-            }
-        }
-        return symbols
+        StockService.collectSymbols(storageService: storageService)
     }
 
 

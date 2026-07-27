@@ -16,6 +16,7 @@ struct SearchView: View {
     @State private var results: [SearchResult] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,12 +26,20 @@ struct SearchView: View {
                 Spacer()
                 Button("Close") { isPresented = false }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
             }
             .padding()
 
             TextField("Symbol, name or ISIN (e.g. AAPL, Tesla, IE00B4L5Y983)", text: $query)
                 .textFieldStyle(.roundedBorder)
+                .focused($isFieldFocused)
                 .padding(.horizontal)
+                .onAppear {
+                    isFieldFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isFieldFocused = true
+                    }
+                }
                 .onChange(of: query) { _, newValue in
                     searchTask?.cancel()
                     guard newValue.count >= 2 else {

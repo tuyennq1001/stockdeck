@@ -32,6 +32,7 @@ struct AlertEditView: View {
                 Spacer()
                 Button("Cancel") { onDismiss() }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -72,6 +73,7 @@ struct AlertEditView: View {
                 onDismiss()
             }
             .buttonStyle(.borderedProminent)
+            .pointingHandCursor()
             .disabled(Double(thresholdText.replacingOccurrences(of: ",", with: ".")) == nil)
         }
         .padding()

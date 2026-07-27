@@ -33,6 +33,7 @@ struct PortfolioListView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .pointingHandCursor()
                 Button(action: importPortfolios) {
                     HStack(spacing: 3) {
                         Image(systemName: "square.and.arrow.down")
@@ -41,6 +42,7 @@ struct PortfolioListView: View {
                     .font(.inter(10, relativeTo: .caption))
                 }
                 .buttonStyle(.borderless)
+                .pointingHandCursor()
                 Spacer()
             }
         } else {
@@ -60,6 +62,7 @@ struct PortfolioListView: View {
                                 .font(.inter(10, relativeTo: .caption))
                         }
                         .buttonStyle(.borderless)
+                        .pointingHandCursor()
                     }
                 }
                 .padding(.horizontal, 10)
@@ -148,6 +151,7 @@ struct PortfolioListView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
+                            .pointingHandCursor()
                             .disabled(newPortfolioName.isEmpty)
                         }
                         .padding(.vertical, 4)
