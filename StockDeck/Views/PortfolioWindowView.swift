@@ -209,11 +209,8 @@ struct PortfolioWindowView: View {
                             Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
                                 Label("Rename Watchlist…", systemImage: "pencil")
                             }
-                            Button { exportWatchlists([wl]) } label: {
-                                Label("Export Watchlist to Excel…", systemImage: "square.and.arrow.up")
-                            }
-                            Divider()
                             if storageService.watchlists.count > 1 {
+                                Divider()
                                 Button(role: .destructive) {
                                     deleteWatchlistTarget = wl
                                 } label: {
@@ -233,7 +230,7 @@ struct PortfolioWindowView: View {
                         NavRow(icon: "briefcase", title: portfolio.name,
                                trailing: trailingPercent(for: [portfolio]),
                                trailingTint: DS.pnlColor(aggregatePnlPercent(for: [portfolio])),
-                               helpText: "Open “\(portfolio.name)” · right-click for rename, notifications, export",
+                               helpText: "Open “\(portfolio.name)” · right-click for rename, notifications",
                                selected: selection == .portfolio(portfolio.id), namespace: navNamespace) {
                             selection = .portfolio(portfolio.id)
                         }
@@ -246,9 +243,6 @@ struct PortfolioWindowView: View {
                             }
                             Button { notifTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
                                 Label("Notifications…", systemImage: "bell")
-                            }
-                            Button { exportPortfolios([portfolio]) } label: {
-                                Label("Export…", systemImage: "square.and.arrow.up")
                             }
                             Divider()
                             Button(role: .destructive) {
@@ -303,7 +297,7 @@ struct PortfolioWindowView: View {
         }
     }
 
-    /// "WATCHLISTS" label with the plus button.
+    /// "WATCHLISTS" label with the plus button. Right click exports all watchlists.
     private var watchlistsHeader: some View {
         HStack {
             Text("Watchlists")
@@ -324,9 +318,17 @@ struct PortfolioWindowView: View {
             .help("Create new watchlist…")
         }
         .padding(.horizontal, 10).padding(.top, 14).padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                exportWatchlists(storageService.watchlists)
+            } label: {
+                Label("Export All Watchlists (XLSX)…", systemImage: "square.and.arrow.up")
+            }
+        }
     }
 
-    /// "PORTFOLIOS" label with the quiet + button (replaces the old toolbar menu).
+    /// "PORTFOLIOS" label with the quiet + button (replaces the old toolbar menu). Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -343,6 +345,14 @@ struct PortfolioWindowView: View {
             .help("New portfolio, add holding, import or export…")
         }
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                exportPortfolios(storageService.portfolios)
+            } label: {
+                Label("Export All Portfolios (XLSX)…", systemImage: "square.and.arrow.up")
+            }
+        }
     }
 
     /// Sections for the sidebar "+" DSMenu (submenu flattened to inline rows).

@@ -103,11 +103,11 @@ struct WatchlistWideView: View {
         PageScaffold(storageService.currentWatchlist.name, caption: "\(storageService.watchlist.count) symbols") {
             HStack(spacing: 12) {
                 Button {
-                    PortfolioIO.exportWatchlists([storageService.currentWatchlist], stockService: stockService, restoreActivationPolicy: false)
+                    PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
-                        Text("Export").font(DS.caption)
+                        Text("Export All").font(DS.caption)
                     }
                     .foregroundStyle(DS.inkSecondary)
                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -115,7 +115,7 @@ struct WatchlistWideView: View {
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
-                .help("Export this watchlist to Excel (.xlsx)")
+                .help("Export all watchlists to Excel (.xlsx)")
 
                 RefreshButton(isLoading: stockService.isLoading) {
                     Task { await stockService.refreshAll(storageService: storageService) }
