@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Locks in the market-state / extended-hours logic on StockQuote — the fields
 /// the desktop watchlist's "After hrs" column and several other views rely on

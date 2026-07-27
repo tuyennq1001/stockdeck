@@ -85,7 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDock")
+            button.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -378,7 +378,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if displayMode == "icon" {
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.title = ""
-            statusItem?.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDock")
+            statusItem?.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
             return
         }
 
@@ -558,7 +558,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// like a normal app; closing it returns to accessory (menu-bar-only) mode.
     @objc func showPortfolioWindow() {
         let reusable = portfolioWindow?.isVisible ?? false
-        NSLog("[StockDock] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
+        NSLog("[StockDeck] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
         closePopover()
         // Reuse the window only while it's actually on screen. Once closed with
         // the red button it's ordered out (and not reliably re-showable), so we
@@ -578,7 +578,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 1220, height: 820),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
-        window.title = "StockDock"
+        window.title = "StockDeck"
         // One uninterrupted surface: transparent titlebar, no system title text
         // (the sidebar brand is the title), only floating traffic lights.
         window.titlebarAppearsTransparent = true
@@ -590,7 +590,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentViewController = NSHostingController(rootView: root)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.setFrameAutosaveName("StockDockPortfolioWindow")
+        window.setFrameAutosaveName("StockDeckPortfolioWindow")
         window.center()
         portfolioWindow = window
 
@@ -599,7 +599,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Brings the desktop window reliably in front of every other app.
     ///
-    /// StockDock is a menu-bar (accessory) app, and on macOS 14+ `activate` no
+    /// StockDeck is a menu-bar (accessory) app, and on macOS 14+ `activate` no
     /// longer lets a background app steal focus — so opening the window from the
     /// popover would leave it *behind* whatever app was active ("it doesn't
     /// open"). The fix: raise it at `.floating` level so it draws above other
@@ -616,7 +616,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
-            NSLog("[StockDock] window shown — visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
+            NSLog("[StockDeck] window shown — visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
         }
     }
 }

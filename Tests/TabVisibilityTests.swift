@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Issue #11: the reporter wants the Home/News tab gone entirely. `Tab.visible`
 /// is the single source of truth for which tabs render, so hiding News is just a

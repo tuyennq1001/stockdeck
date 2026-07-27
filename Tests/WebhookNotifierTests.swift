@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Locks the SSRF guard on webhook URLs: only https URLs pointing at known
 /// Discord/Slack hosts may ever be accepted (a user pastes this URL in Settings).

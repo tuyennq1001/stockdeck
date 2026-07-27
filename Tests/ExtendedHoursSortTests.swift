@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Regression: in pre/post-market the "After hrs" column header must sort by the
 /// extended-hours % move, not by the raw extended-hours price (a $500 stock up

@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers short positions (negative quantity) and leverage (P&L/exposure
 /// multiplier). Both are gated behind the "Advanced" setting in the UI, but the

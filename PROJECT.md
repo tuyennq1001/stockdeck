@@ -19,9 +19,9 @@ StockDock è un'app leggera che vive nella menu bar di macOS. Con un click sull'
 ## Struttura cartelle principali
 
 ```
-StockDock/
+StockDeck/
 ├── Package.swift               # Configurazione SPM, target unico, macOS 14+
-├── StockDock/
+├── StockDeck/
 │   ├── StockDockApp.swift       # Entry point (@main), collega AppDelegate
 │   ├── AppDelegate.swift       # NSStatusItem, popover, timer aggiornamento 5s
 │   ├── Models/
@@ -75,7 +75,7 @@ StockDock/
 - **Notifiche Discord/Slack**: in Settings, toggle + URL webhook + "Send test"; tutte le notifiche (price alert e portfolio) vengono inoltrate al webhook oltre alla notifica macOS; auto-detect Discord (embed colorato verde/rosso) vs Slack (testo); solo https su host noti (SSRF-safe); funziona anche in dev
 - **Notifiche per-portfolio**: tasto destro sull'header del portafoglio → "Notifications…"; gestione anche in Settings con **"Clear all"** (svuota le notifiche di tutti i portafogli, con conferma); 4 modalità (variazione giornaliera ≥ %, ≥ importo, riepilogo giornaliero, milestone di valore); default ±1% / ±250 / milestone ogni 10.000 / riepilogo dopo le 22:00; **anti-spam**: la modalità *daily move* (`dailyPercent`/`dailyAbsolute`) scatta **una volta per direzione al giorno** — al primo superamento di +soglia e al primo di −soglia, poi silenzio fino al giorno dopo (`crossingStep` ritorna ±1 e i marker `lastStepUp`/`lastStepDown` per-direzione sono scoped a `lastDay`); reso così per eliminare lo spam degli step (prima notificava a +1%, +2%, +3%… in una giornata in trend). Milestone "primed" silenziosamente al primo giro e poi solo su nuovo massimo/minimo; in più un backstop in `NotificationManager.send` impedisce che lo *stesso* identifier riparta entro 120s (nessun tipo può spammare a tick rate); variazione del giorno = `change` per-azione × quantità × cambio nella valuta preferita; valutate ad ogni aggiornamento prezzo; stato e regole persistiti in `data.json` per id portafoglio. Le notifiche di variazione giornaliera e il riepilogo includono un **breakdown per-titolo** (simbolo · variazione % · valore, aggregato per simbolo, ordinato per impatto del giorno, cap 12 righe + "…and N more") così si capisce cosa ha mosso il portafoglio
 - **Extended hours**: prezzi pre-market e after-hours con rispettivo P&L
-- **Persistenza**: dati salvati in `~/Library/Application Support/StockDock/data.json` (watchlist, portafogli, isinMap, alert, notifiche portfolio, webhook, preferenze); nessun dato inviato a server esterni
+- **Persistenza**: dati salvati in `~/Library/Application Support/StockDeck/data.json` (watchlist, portafogli, isinMap, alert, notifiche portfolio, webhook, preferenze); nessun dato inviato a server esterni
 - **Test**: target `StockDockTests` (`Tests/`) con unit test della logica pura — `AlertEvaluator` (tutte le condizioni + casi limite), `PortfolioAlertEvaluator` (crossingStep/milestone/summary), `fiftyTwoWeekPosition`, formattazione numeri, `TickerOrderingTests` (issue #8: `isIndex` + `tickerOrder`) e `ShortLeverageTests` (issue #9: P&L/marketValue/pnlPercent/costBasis su short + leva). Esegui con `swift test`
 - **Export/Import portafogli**: export singolo o di tutti i portafogli in JSON via NSSavePanel; import via NSOpenPanel con dedup nomi e UUID rigenerati
 - **Menu bar reattiva**: si aggiorna immediatamente ad ogni modifica di portafoglio, impostazioni o chiusura popover (oltre ai tick WebSocket e REST polling)
@@ -137,9 +137,9 @@ L'app non compare nel Dock (`.accessory` policy): l'icona appare nella menu bar 
 
 - **Nessuna API key richiesta**: Yahoo Finance non richiede autenticazione, ma usa un meccanismo cookie+crumb gestito automaticamente dal `StockService`
 - **Fallback API**: se la v7 batch quote fallisce, viene usata la v8 chart API per ogni simbolo singolarmente
-- **Protobuf**: lo schema `yaticker.proto` nella root genera `yaticker.pb.swift` via `protoc --swift_out`. Rigenerare se cambia lo schema: `protoc --swift_out=StockDock/Services/ yaticker.proto`
+- **Protobuf**: lo schema `yaticker.proto` nella root genera `yaticker.pb.swift` via `protoc --swift_out`. Rigenerare se cambia lo schema: `protoc --swift_out=StockDeck/Services/ yaticker.proto`
 - **Requisiti**: Xcode 15+ e macOS 14 Sonoma o successivo
-- **Firma/Entitlements**: `StockDock.entitlements` presente nella root per eventuali accessi di rete
+- **Firma/Entitlements**: `StockDeck.entitlements` presente nella root per eventuali accessi di rete
 - **Release / What's New**: `./release.sh <versione> <build>` builda, firma, notarizza, aggiorna `appcast.xml`, crea la GitHub release e aggiorna il cask Homebrew. Le note "What's New" mostrate da Sparkle vanno scritte in `release-notes/<versione>.html` (HTML), che lo script inietta nel `<description>` dell'appcast
 
 ## TODO / Idee

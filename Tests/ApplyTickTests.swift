@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Reproduces the field-reuse bug in `StockService.applyTick`: a PRE/POST-market
 /// WebSocket tick was overwriting the *regular*-session price, so a user with

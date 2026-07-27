@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Regression tests for the "quintali di notifiche" bug: portfolio notifications
 /// firing too often. Daily-move notifications must fire at most once per direction

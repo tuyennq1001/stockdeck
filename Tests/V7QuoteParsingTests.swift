@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Regression tests for Yahoo v7 batch-quote parsing.
 ///

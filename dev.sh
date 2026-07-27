@@ -3,15 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP=".build/StockDock-Dev.app"
-PLIST="StockDock/Info.plist"
+APP=".build/StockDeck-Dev.app"
+PLIST="StockDeck/Info.plist"
 
-# Reuse the real marketing/build version so the dev header reads e.g. "StockDock v1.5.2 DEV".
+# Reuse the real marketing/build version so the dev header reads e.g. "StockDeck v1.5.2 DEV".
 DEV_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
 DEV_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
 echo "Building..."
-xcodebuild -scheme StockDock -configuration Release \
+xcodebuild -scheme StockDeck -configuration Release \
     -destination 'platform=macOS' \
     -derivedDataPath .build/xcode \
     ARCHS="$(uname -m)" \
@@ -24,15 +24,15 @@ echo "Assembling DEV app bundle..."
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
-cp "$PRODUCTS/StockDock" "$APP/Contents/MacOS/StockDock"
-cp "StockDock/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+cp "$PRODUCTS/StockDeck" "$APP/Contents/MacOS/StockDeck"
+cp "StockDeck/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp -R "$PRODUCTS/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
 for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/Contents/Resources/"
 done
 
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/StockDock" 2>/dev/null || true
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/StockDeck" 2>/dev/null || true
 
 # Dev Info.plist: different bundle ID, no SUFeedURL
 cat > "$APP/Contents/Info.plist" << EOF
@@ -41,13 +41,13 @@ cat > "$APP/Contents/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>StockDock</string>
+    <string>StockDeck</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.simone.stockdock.dev</string>
+    <string>com.simone.stockdeck.dev</string>
     <key>CFBundleName</key>
-    <string>StockDock Dev</string>
+    <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>
     <string>${DEV_VERSION}</string>
     <key>CFBundleVersion</key>
@@ -65,9 +65,9 @@ EOF
 
 codesign --deep --sign - --force "$APP" 2>/dev/null
 
-echo "Launching StockDock DEV..."
+echo "Launching StockDeck DEV..."
 # Launch the binary directly with SD_OPEN_WINDOW so the Portfolio window opens
 # automatically on every rebuild (the menu-bar app otherwise starts window-less).
-pkill -f "StockDock-Dev.app/Contents/MacOS/StockDock" 2>/dev/null || true
+pkill -f "StockDeck-Dev.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 sleep 0.5
-SD_OPEN_WINDOW=1 "$APP/Contents/MacOS/StockDock" >/dev/null 2>&1 &
+SD_OPEN_WINDOW=1 "$APP/Contents/MacOS/StockDeck" >/dev/null 2>&1 &

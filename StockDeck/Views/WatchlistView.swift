@@ -7,19 +7,24 @@ struct WatchlistView: View {
     @State private var searchText = ""
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     @State private var alertSymbol: String? = nil
-    @State private var sortColumn: SortColumn = .change
-    @State private var sortAscending: Bool = false
+    @State private var sortColumn: SortColumn = .manual
+    @State private var sortAscending: Bool = true
 
     enum SortColumn {
-        case symbol, price, change
+        case manual, symbol, price, change
     }
 
     var sortedSymbols: [String] {
-        storageService.watchlist.sorted { a, b in
+        if sortColumn == .manual {
+            return sortAscending ? storageService.watchlist : Array(storageService.watchlist.reversed())
+        }
+        return storageService.watchlist.sorted { a, b in
             let qa = stockService.quotes[a]
             let qb = stockService.quotes[b]
             let result: Bool
             switch sortColumn {
+            case .manual:
+                result = true
             case .symbol:
                 result = a.localizedCompare(b) == .orderedAscending
             case .price:
@@ -86,12 +91,14 @@ struct WatchlistView: View {
             Divider()
 
             HStack(spacing: 0) {
+                sortHeader("#", column: .manual)
+                    .frame(width: 20, alignment: .leading)
                 sortHeader("Symbol", column: .symbol)
-                    .frame(width: 80, alignment: .leading)
+                    .frame(width: 70, alignment: .leading)
                 sortHeader("Price", column: .price)
                     .frame(maxWidth: .infinity)
                 sortHeader("Change", column: .change)
-                    .frame(width: 120, alignment: .trailing)
+                    .frame(width: 110, alignment: .trailing)
             }
             .font(.inter(10, weight: .medium, relativeTo: .caption))
             .foregroundColor(.secondary)
@@ -126,6 +133,14 @@ struct WatchlistView: View {
                         idx < currentList.count ? currentList[idx] : nil
                     }
                     symbols.forEach { storageService.removeFromWatchlist($0) }
+                }
+                .onMove { indices, newOffset in
+                    let currentList = filteredSymbols
+                    if sortColumn != .manual || !sortAscending {
+                        sortColumn = .manual
+                        sortAscending = true
+                    }
+                    storageService.reorderWatchlist(fromOffsets: indices, toOffset: newOffset, currentProjections: currentList)
                 }
 
             }
@@ -178,7 +193,7 @@ struct WatchlistView: View {
                 sortAscending.toggle()
             } else {
                 sortColumn = column
-                sortAscending = column == .symbol
+                sortAscending = (column == .manual || column == .symbol)
             }
         }) {
             HStack(spacing: 2) {
@@ -211,6 +226,30 @@ struct WatchlistView: View {
         } label: {
             Label("Set Price Alert…", systemImage: "bell")
         }
+        if let idx = storageService.watchlist.firstIndex(of: symbol) {
+            Divider()
+            Button {
+                if sortColumn != .manual || !sortAscending {
+                    sortColumn = .manual
+                    sortAscending = true
+                }
+                moveSymbolInWatchlist(symbol, by: -1)
+            } label: {
+                Label("Move Up", systemImage: "arrow.up")
+            }
+            .disabled(idx == 0)
+
+            Button {
+                if sortColumn != .manual || !sortAscending {
+                    sortColumn = .manual
+                    sortAscending = true
+                }
+                moveSymbolInWatchlist(symbol, by: 1)
+            } label: {
+                Label("Move Down", systemImage: "arrow.down")
+            }
+            .disabled(idx == storageService.watchlist.count - 1)
+        }
         Divider()
         Button(role: .destructive) {
             storageService.removeFromWatchlist(symbol)
@@ -218,6 +257,14 @@ struct WatchlistView: View {
             Label("Remove from Watchlist", systemImage: "trash")
         }
     }
+
+    private func moveSymbolInWatchlist(_ symbol: String, by delta: Int) {
+        guard let i = storageService.watchlist.firstIndex(of: symbol) else { return }
+        let j = i + delta
+        guard j >= 0, j < storageService.watchlist.count else { return }
+        storageService.watchlist.swapAt(i, j)
+    }
+
 }
 
 private struct AddToPortfolioItem: Identifiable {

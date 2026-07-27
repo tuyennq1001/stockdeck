@@ -248,7 +248,7 @@ struct SettingsView: View {
                     }
                     Button("Send test") {
                         NotificationManager.shared.send(
-                            title: "StockDock test",
+                            title: "StockDeck test",
                             body: "Webhook is working ✅",
                             sentiment: .positive)
                     }
@@ -315,8 +315,8 @@ struct SettingsView: View {
                     }
                     .disabled(!updaterViewModel.canCheckForUpdates)
 
-                    subHeader("Enjoying StockDock?")
-                    caption("StockDock is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")
+                    subHeader("Enjoying StockDeck?")
+                    caption("StockDeck is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")
                     HStack(spacing: 8) {
                         Button {
                             if let url = URL(string: "https://github.com/sponsors/simonsruggi") {
@@ -330,7 +330,7 @@ struct SettingsView: View {
                         .tint(.pink)
 
                         Button {
-                            if let url = URL(string: "https://github.com/simonsruggi/StockDock") {
+                            if let url = URL(string: "https://github.com/simonsruggi/StockDeck") {
                                 NSWorkspace.shared.open(url)
                             }
                         } label: {

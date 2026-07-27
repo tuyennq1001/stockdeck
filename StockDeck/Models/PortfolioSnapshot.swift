@@ -4,7 +4,7 @@ import Foundation
 /// the Portfolio window can chart value and P&L over time.
 ///
 /// Snapshots accumulate *forward* from the day the feature ships. There is no
-/// historical backfill: StockDock stores current positions, not a log of past
+/// historical backfill: StockDeck stores current positions, not a log of past
 /// buys/sells, so a reconstructed past value ("as if today's holdings were held
 /// all along") would be fiction. The per-symbol price chart in the detail view
 /// uses Yahoo's real history instead.

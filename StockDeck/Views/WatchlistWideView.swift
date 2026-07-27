@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Fully custom, desktop-grade watchlist: a hand-built sortable list (clickable
 /// column headers, hover rows, right-click actions, Move Up/Down reorder) dressed
@@ -17,6 +18,7 @@ struct WatchlistWideView: View {
     // clicking a column header re-sorts by that column (toggles direction).
     @State private var sortKey: SortKey = .order
     @State private var sortAsc = true
+    @State private var draggingSymbol: String? = nil
     @State private var addToPortfolio: AddTarget?
     @State private var alertSymbol: AlertTarget?
 
@@ -199,6 +201,21 @@ struct WatchlistWideView: View {
                                      valueDecimals: storageService.valueDecimals,
                                      onOpen: { detailSymbol = DetailTarget(symbol: row.symbol) },
                                      menu: { rowMenu(row) })
+                        .onDrag {
+                            self.draggingSymbol = row.symbol
+                            return NSItemProvider(object: row.symbol as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: WatchlistDropDelegate(
+                            targetSymbol: row.symbol,
+                            draggingSymbol: $draggingSymbol,
+                            onMove: { src, tgt in
+                                if sortKey != .order || !sortAsc {
+                                    sortKey = .order
+                                    sortAsc = true
+                                }
+                                storageService.moveWatchlistSymbol(src, beforeOrAfter: tgt)
+                            }
+                        ))
                         if idx < visibleRows.count - 1 {
                             Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                         }
@@ -211,6 +228,7 @@ struct WatchlistWideView: View {
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
+            headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
             headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading)
             headerCell("Name", .name, width: nil, align: .leading)
             headerCell("Price", .changePercent, width: WCol.price, align: .trailing,
@@ -272,11 +290,16 @@ struct WatchlistWideView: View {
 
     /// Moves a symbol up/down in the manual watchlist order (persisted).
     private func move(_ symbol: String, by delta: Int) {
+        if sortKey != .order || !sortAsc {
+            sortKey = .order
+            sortAsc = true
+        }
         guard let i = storageService.watchlist.firstIndex(of: symbol) else { return }
         let j = i + delta
         guard j >= 0, j < storageService.watchlist.count else { return }
         storageService.watchlist.swapAt(i, j)
     }
+
 
     private var emptyState: some View {
         VStack(spacing: 12) {
@@ -423,3 +446,26 @@ private struct WatchRowView<Menu: View>: View {
         .contextMenu { menu() }
     }
 }
+
+private struct WatchlistDropDelegate: DropDelegate {
+    let targetSymbol: String
+    @Binding var draggingSymbol: String?
+    let onMove: (String, String) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingSymbol = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingSymbol = draggingSymbol, draggingSymbol != targetSymbol else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            onMove(draggingSymbol, targetSymbol)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+

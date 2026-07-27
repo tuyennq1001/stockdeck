@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pure, unit-testable decision logic that keeps StockDock's data feed alive.
+/// Pure, unit-testable decision logic that keeps StockDeck's data feed alive.
 ///
 /// Extracted from `AppDelegate`/`WebSocketService` so the recovery rules can be
 /// tested without URLSession, Timers, or NSWorkspace notifications. It exists

@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 final class StockQuoteTests: XCTestCase {
 

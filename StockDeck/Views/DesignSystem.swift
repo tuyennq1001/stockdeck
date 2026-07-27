@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Design tokens for the StockDock desktop window — the "private banking" light
+/// Design tokens for the StockDeck desktop window — the "private banking" light
 /// editorial system: warm paper ground, white card stock, one sober emerald,
 /// generous whitespace, immaculate numeric typography. The window is pinned to
 /// the light appearance; dark branches are kept only as a safety net for sheets
@@ -337,7 +337,7 @@ struct Tag: View {
     }
 }
 
-/// The StockDock brand mark: the official app icon (the one shipped in the last
+/// The StockDeck brand mark: the official app icon (the one shipped in the last
 /// release), used everywhere. Falls back to a designed emerald mark only if the
 /// icon can't be loaded (should never happen in the bundled app).
 struct BrandMark: View {

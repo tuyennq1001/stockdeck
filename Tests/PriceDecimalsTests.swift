@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Issue #10: forex and sub-dollar instruments need more than 2 decimals of
 /// price precision (CADUSD=X was showing $0.71 instead of 0.7119).

@@ -209,7 +209,7 @@ struct SettingsWideView: View {
                         }
                         Spacer()
                         Button("Send test") {
-                            NotificationManager.shared.send(title: "StockDock test", body: "Webhook is working ✅", sentiment: .positive)
+                            NotificationManager.shared.send(title: "StockDeck test", body: "Webhook is working ✅", sentiment: .positive)
                         }
                         .buttonStyle(.plain)
                         .font(.inter(11, weight: .medium, relativeTo: .caption))
@@ -310,7 +310,7 @@ struct SettingsWideView: View {
                 .disabled(!updaterViewModel.canCheckForUpdates)
             }
             SettingDivider()
-            SettingRow("StockDock is free and open source",
+            SettingRow("StockDeck is free and open source",
                        caption: "If you'd like to support me, become a sponsor — or simply star the repo. Both help, and every feature stays free.") {
                 HStack(spacing: 8) {
                     Button {
@@ -327,7 +327,7 @@ struct SettingsWideView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        if let url = URL(string: "https://github.com/simonsruggi/StockDock") { NSWorkspace.shared.open(url) }
+                        if let url = URL(string: "https://github.com/simonsruggi/StockDeck") { NSWorkspace.shared.open(url) }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "star.fill").font(.system(size: 9))

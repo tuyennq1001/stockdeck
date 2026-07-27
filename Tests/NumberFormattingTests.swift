@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers issue #7 (2): thousands separator for numbers > 1,000 in the menu bar
 /// and portfolios, with locale-aware grouping/decimal separators.

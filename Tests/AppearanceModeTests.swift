@@ -1,6 +1,6 @@
 import XCTest
 import SwiftUI
-@testable import StockDock
+@testable import StockDeck
 
 /// Issue #11: the 1.9.0 redesign hard-forced the light appearance and dropped the
 /// dark-mode toggle. These pin down the mapping that restores user control:

@@ -57,7 +57,7 @@ private struct EditHoldingActionKey: EnvironmentKey {
 /// can silently fail in a SwiftUI app.
 private struct OpenWindowActionKey: EnvironmentKey {
     static let defaultValue: () -> Void = {
-        NSLog("[StockDock] Open tapped but no openWindowAction was injected")
+        NSLog("[StockDeck] Open tapped but no openWindowAction was injected")
     }
 }
 
@@ -142,7 +142,7 @@ struct ContentView: View {
             HStack {
                 HStack(spacing: 7) {
                     BrandMark(size: 22)
-                    Text("StockDock")
+                    Text("StockDeck")
                         .font(.inter(13, weight: .bold, relativeTo: .headline))
                         .foregroundStyle(DS.ink)
                     Text(appVersion)
@@ -184,7 +184,7 @@ struct ContentView: View {
 
                 // The clear way into the full desktop app.
                 Button(action: {
-                    NSLog("[StockDock] Open button tapped in popover")
+                    NSLog("[StockDeck] Open button tapped in popover")
                     openWindowAction()
                 }) {
                     HStack(spacing: 4) {
@@ -197,14 +197,14 @@ struct ContentView: View {
                     .background(Capsule().fill(DS.brand))
                 }
                 .buttonStyle(.plain)
-                .help("Open the full StockDock window")
+                .help("Open the full StockDeck window")
 
                 Button(action: { NSApp.terminate(nil) }) {
                     Image(systemName: "power")
                         .font(.inter(11, relativeTo: .subheadline))
                 }
                 .buttonStyle(.borderless)
-                .help("Quit StockDock")
+                .help("Quit StockDeck")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

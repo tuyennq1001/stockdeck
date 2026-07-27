@@ -10,9 +10,9 @@ No account. No API keys. No subscription. No tracking. Just your watchlist and p
 
 <br>
 
-[![Latest Release](https://img.shields.io/github/v/release/simonsruggi/StockDock?label=download&logo=apple&color=black)](https://github.com/simonsruggi/StockDock/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/simonsruggi/StockDock/total?logo=github&color=2ea44f)](https://github.com/simonsruggi/StockDock/releases)
-[![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://github.com/simonsruggi/StockDock/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/simonsruggi/StockDock?label=download&logo=apple&color=black)](https://github.com/simonsruggi/StockDeck/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/simonsruggi/StockDeck/total?logo=github&color=2ea44f)](https://github.com/simonsruggi/StockDeck/releases)
+[![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](https://github.com/simonsruggi/StockDeck/releases/latest)
 [![Swift](https://img.shields.io/badge/Swift-5.9-orange?logo=swift&logoColor=white)](https://swift.org)
 [![License: MIT](https://img.shields.io/github/license/simonsruggi/StockDock?color=blue)](LICENSE)
 [![Star](https://img.shields.io/github/stars/simonsruggi/StockDock?style=social)](https://github.com/simonsruggi/StockDock)
@@ -24,7 +24,7 @@ No account. No API keys. No subscription. No tracking. Just your watchlist and p
 brew install simonsruggi/tap/stockdock
 ```
 
-**[⬇️ Download](https://github.com/simonsruggi/StockDock/releases/latest)** · **[✨ Features](#features)** · **[📸 Screenshots](#screenshots)** · **[❤️ Sponsor](https://github.com/sponsors/simonsruggi)** · **[🐛 Report a bug](https://github.com/simonsruggi/StockDock/issues)**
+**[⬇️ Download](https://github.com/simonsruggi/StockDeck/releases/latest)** · **[✨ Features](#features)** · **[📸 Screenshots](#screenshots)** · **[❤️ Sponsor](https://github.com/sponsors/simonsruggi)** · **[🐛 Report a bug](https://github.com/simonsruggi/StockDeck/issues)**
 
 </div>
 
@@ -106,7 +106,7 @@ The app updates itself automatically via Sparkle — no need to run `brew upgrad
 
 ### Download
 
-1. Download the latest `StockDock.zip` from [Releases](https://github.com/simonsruggi/StockDock/releases/latest)
+1. Download the latest `StockDock.zip` from [Releases](https://github.com/simonsruggi/StockDeck/releases/latest)
 2. Unzip and move `StockDock.app` to `/Applications`
 3. Launch — the app appears in the menu bar (no Dock icon)
 
@@ -224,7 +224,7 @@ StockDock checks for updates automatically on launch via [Sparkle](https://spark
 
 - Real-time prices via Yahoo Finance WebSocket (~1 update/sec per symbol)
 - REST polling every 5 min as fallback for exchange rates
-- All data is stored locally in `~/Library/Application Support/StockDock/data.json` (watchlist, portfolios, alerts, portfolio notifications, webhook, and preferences)
+- All data is stored locally in `~/Library/Application Support/StockDeck/data.json` (watchlist, portfolios, alerts, portfolio notifications, webhook, and preferences)
 - No data is sent anywhere — the app only talks to Yahoo Finance APIs (and your own Discord/Slack webhook, if you enable it)
 - No account required, no API keys needed
 

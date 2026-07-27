@@ -125,7 +125,7 @@ struct PortfolioWindowView: View {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
             Button("") { showNewPortfolio = true }.keyboardShortcut("n", modifiers: .command)
-            // ⌘W closes just this window — StockDock keeps living in the menu bar.
+            // ⌘W closes just this window — StockDeck keeps living in the menu bar.
             Button("") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w", modifiers: .command)
         }
         .opacity(0)
@@ -141,7 +141,7 @@ struct PortfolioWindowView: View {
             HStack(spacing: 6) {
                 Spacer()
                 SupportButton(icon: "star", title: "Star", hoverTint: DS.gold,
-                              url: "https://github.com/simonsruggi/StockDock", compact: true)
+                              url: "https://github.com/simonsruggi/StockDeck", compact: true)
                 SupportButton(icon: "heart", title: "Sponsor", hoverTint: Color(red: 0.86, green: 0.30, blue: 0.46),
                               url: "https://github.com/sponsors/simonsruggi", compact: true)
             }
@@ -209,7 +209,7 @@ struct PortfolioWindowView: View {
     }
 
 
-    /// Explicit exit: closing the window keeps StockDock in the menu bar, so a
+    /// Explicit exit: closing the window keeps StockDeck in the menu bar, so a
     /// separate "Quit" affordance makes "leave everything" discoverable.
     @State private var quitHover = false
     private var quitRow: some View {
@@ -220,7 +220,7 @@ struct PortfolioWindowView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "power").font(.system(size: 11, weight: .medium))
-                    Text("Quit StockDock").font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                    Text("Quit StockDeck").font(.inter(11.5, weight: .medium, relativeTo: .caption))
                     Spacer()
                     Text("⌘Q").font(.inter(10, relativeTo: .caption2)).foregroundStyle(DS.inkTertiary)
                 }
@@ -232,7 +232,7 @@ struct PortfolioWindowView: View {
             .buttonStyle(.plain)
             .keyboardShortcut("q", modifiers: .command)
             .onHover { quitHover = $0 }
-            .help("Quit StockDock completely — closing the window keeps it in the menu bar")
+            .help("Quit StockDeck completely — closing the window keeps it in the menu bar")
         }
     }
 
@@ -275,7 +275,7 @@ struct PortfolioWindowView: View {
         HStack(spacing: 10) {
             BrandMark(size: 30)
             VStack(alignment: .leading, spacing: 1) {
-                Text("StockDock").font(.inter(15, weight: .bold, relativeTo: .headline)).foregroundStyle(DS.ink)
+                Text("StockDeck").font(.inter(15, weight: .bold, relativeTo: .headline)).foregroundStyle(DS.ink)
                 Text(appVersion).font(DS.micro).foregroundStyle(DS.inkTertiary)
             }
             Spacer()

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "StockDock",
+    name: "StockDeck",
     defaultLocalization: "en",
     platforms: [.macOS(.v14)],
     dependencies: [
@@ -11,12 +11,12 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "StockDock",
+            name: "StockDeck",
             dependencies: [
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "StockDock",
+            path: "StockDeck",
             resources: [
                 .process("Assets.xcassets"),
                 .copy("Resources/AppIcon.icns"),
@@ -24,9 +24,10 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "StockDockTests",
-            dependencies: ["StockDock"],
+            name: "StockDeckTests",
+            dependencies: ["StockDeck"],
             path: "Tests"
         ),
     ]
 )
+

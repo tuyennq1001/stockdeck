@@ -437,10 +437,10 @@ class StorageService: ObservableObject {
     private init() {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             let fallback = FileManager.default.temporaryDirectory
-            self.fileURL = fallback.appendingPathComponent("StockDock_data.json")
+            self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
             return
         }
-        let dirName = "StockDock"
+        let dirName = "StockDeck"
         let dir = appSupport.appendingPathComponent(dirName, isDirectory: true)
         let oldDir = appSupport.appendingPathComponent("StockBar", isDirectory: true)
         if FileManager.default.fileExists(atPath: oldDir.path) && !FileManager.default.fileExists(atPath: dir.path) {
@@ -464,6 +464,46 @@ class StorageService: ObservableObject {
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
         watchlist.move(fromOffsets: source, toOffset: destination)
+    }
+
+    func moveWatchlistSymbol(_ symbol: String, toIndex destination: Int) {
+        guard let sourceIndex = watchlist.firstIndex(of: symbol),
+              destination >= 0, destination < watchlist.count,
+              sourceIndex != destination else { return }
+        let item = watchlist.remove(at: sourceIndex)
+        watchlist.insert(item, at: destination)
+    }
+
+    func moveWatchlistSymbol(_ sourceSymbol: String, beforeOrAfter targetSymbol: String) {
+        guard sourceSymbol != targetSymbol,
+              let srcIndex = watchlist.firstIndex(of: sourceSymbol),
+              let tgtIndex = watchlist.firstIndex(of: targetSymbol) else { return }
+        let item = watchlist.remove(at: srcIndex)
+        let newTargetIndex = watchlist.firstIndex(of: targetSymbol) ?? tgtIndex
+        watchlist.insert(item, at: newTargetIndex)
+    }
+
+    func reorderWatchlist(fromOffsets source: IndexSet, toOffset destination: Int, currentProjections: [String]) {
+        guard !currentProjections.isEmpty else { return }
+        if currentProjections == watchlist {
+            watchlist.move(fromOffsets: source, toOffset: destination)
+            return
+        }
+        var list = watchlist
+        let itemsToMove = source.compactMap { idx in idx < currentProjections.count ? currentProjections[idx] : nil }
+        guard !itemsToMove.isEmpty else { return }
+        list.removeAll { itemsToMove.contains($0) }
+        var targetIndex: Int
+        if destination >= currentProjections.count {
+            targetIndex = list.count
+        } else if destination <= 0 {
+            targetIndex = 0
+        } else {
+            let anchorSymbol = currentProjections[destination]
+            targetIndex = list.firstIndex(of: anchorSymbol) ?? list.count
+        }
+        list.insert(contentsOf: itemsToMove, at: targetIndex)
+        watchlist = list
     }
 
     func addPortfolio(name: String) {

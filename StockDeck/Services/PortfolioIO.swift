@@ -21,7 +21,7 @@ enum PortfolioIO {
         guard let data = storageService.exportPortfolios(portfolios) else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        let name = portfolios.count == 1 ? portfolios[0].name : "StockDock Portfolios"
+        let name = portfolios.count == 1 ? portfolios[0].name : "StockDeck Portfolios"
         panel.nameFieldStringValue = "\(name).json"
         panel.title = "Export Portfolios"
         if restoreActivationPolicy {

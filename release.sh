@@ -2,17 +2,17 @@
 set -euo pipefail
 
 # --- Config ---
-SCHEME="StockDock"
-APP_NAME="StockDock"
-BUNDLE_ID="com.simone.stockdock"
+SCHEME="StockDeck"
+APP_NAME="StockDeck"
+BUNDLE_ID="com.simone.stockdeck"
 SIGNING_IDENTITY="Developer ID Application: Simone Ruggiero (M6TP9DBCVL)"
-ENTITLEMENTS="StockDock.entitlements"
+ENTITLEMENTS="StockDeck.entitlements"
 NOTARY_PROFILE="notarytool"
 SPARKLE_SIGN=".build/artifacts/sparkle/Sparkle/bin/sign_update"
 APPCAST="appcast.xml"
-PLIST="StockDock/Info.plist"
-GITHUB_REPO="simonsruggi/StockDock"
-HOMEBREW_TAP_CASK="/opt/homebrew/Library/Taps/simonsruggi/homebrew-tap/Casks/stockdock.rb"
+PLIST="StockDeck/Info.plist"
+GITHUB_REPO="simonsruggi/StockDeck"
+HOMEBREW_TAP_CASK="/opt/homebrew/Library/Taps/simonsruggi/homebrew-tap/Casks/stockdeck.rb"
 BUILD_DIR=".build/xcode"
 MIN_SYSTEM_VERSION="14.0"
 PRODUCTS_DIR="${BUILD_DIR}/Build/Products/Release"
@@ -99,7 +99,7 @@ mkdir -p "$APP_PATH/Contents/Frameworks"
 
 cp "$BINARY" "$APP_PATH/Contents/MacOS/${APP_NAME}"
 cp "$PLIST" "$APP_PATH/Contents/Info.plist"
-cp "StockDock/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+cp "StockDeck/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 cp -R "${PRODUCTS_DIR}/Sparkle.framework" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
 # Copy SPM resource bundles (fonts, assets)
@@ -109,7 +109,7 @@ done
 
 # Copy localization .lproj into the app's top-level Resources (Bundle.main),
 # so SwiftUI's LocalizedStringKey lookups resolve the chosen in-app language.
-for lproj in StockDock/Resources/*.lproj; do
+for lproj in StockDeck/Resources/*.lproj; do
     [[ -d "$lproj" ]] && cp -R "$lproj" "$APP_PATH/Contents/Resources/"
 done
 
@@ -266,8 +266,8 @@ if [[ -f "$HOMEBREW_TAP_CASK" ]]; then
     sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$HOMEBREW_TAP_CASK"
 
     TAP_DIR=$(dirname "$HOMEBREW_TAP_CASK")
-    git -C "$TAP_DIR" add stockdock.rb
-    git -C "$TAP_DIR" commit -m "stockdock ${VERSION}"
+    git -C "$TAP_DIR" add stockdeck.rb
+    git -C "$TAP_DIR" commit -m "stockdeck ${VERSION}"
     git -C "$TAP_DIR" push
 
     info "Homebrew cask updated and pushed"
@@ -283,7 +283,7 @@ echo -e "${GREEN}  ${APP_NAME} v${VERSION} released successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "  GitHub:   https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
-echo "  Homebrew: brew install --cask simonsruggi/tap/stockdock"
+echo "  Homebrew: brew install --cask simonsruggi/tap/stockdeck"
 echo ""
 
 rm -f "$ZIP_NAME"

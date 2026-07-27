@@ -26,7 +26,7 @@ enum FontRegistration {
     static func registerFonts() {
         let candidates = [
             Bundle.main.resourceURL,
-            Bundle.main.url(forResource: "StockDock_StockDock", withExtension: "bundle").flatMap { Bundle(url: $0) }?.resourceURL,
+            Bundle.main.url(forResource: "StockDeck_StockDeck", withExtension: "bundle").flatMap { Bundle(url: $0) }?.resourceURL,
         ]
         for base in candidates.compactMap({ $0 }) {
             let url = base.appendingPathComponent("InterVariable.ttf")

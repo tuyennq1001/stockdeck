@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Verifies the portfolio export → import round-trip that backs the window's
 /// Import/Export feature. Uses the read-only `exportPortfolios`/`importPortfolios`

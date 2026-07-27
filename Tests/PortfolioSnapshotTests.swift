@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers the historical-snapshot foundation for the Portfolio window:
 /// (1) portfolio valuation aggregation (value + cost in the preferred currency,

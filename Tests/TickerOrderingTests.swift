@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers issue #8: index detection (no currency symbol for indices) and the
 /// menu bar ticker ordering (as added / by type / alphabetical).

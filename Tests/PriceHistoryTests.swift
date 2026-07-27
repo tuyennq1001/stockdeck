@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers the pure pairing of Yahoo v8 chart arrays (timestamps + closes with
 /// possible nil holes) into chartable daily price points.

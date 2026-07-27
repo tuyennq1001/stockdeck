@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers the estimated portfolio-value backfill: reconstruct a past value curve
 /// from each holding's real price history × current position, so the Overview

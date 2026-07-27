@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Reproduces the "prices frozen after a long uptime / overnight sleep-wake"
 /// bug: the running app stopped all network activity (no WebSocket, no REST

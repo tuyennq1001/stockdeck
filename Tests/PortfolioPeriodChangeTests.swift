@@ -1,5 +1,5 @@
 import XCTest
-@testable import StockDock
+@testable import StockDeck
 
 /// Covers the hero-pill period change: the delta between the first and last
 /// points of the drawn value curve, so the pill reflects the selected range
