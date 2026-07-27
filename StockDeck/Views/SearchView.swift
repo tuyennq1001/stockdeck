@@ -103,8 +103,17 @@ struct SearchView: View {
                                     .font(.inter(10, relativeTo: .caption))
                             }
                         }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .onHover { inside in
+                        if inside {
+                            NSCursor.pointingHand.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
