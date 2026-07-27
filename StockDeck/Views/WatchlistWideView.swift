@@ -11,9 +11,10 @@ struct WatchlistWideView: View {
 
     enum SortKey { case order, symbol, name, changePercent, extChangePercent }
 
-    @State private var filter = ""
-    @State private var filterFocused = false
-    @FocusState private var filterFieldFocused: Bool
+    @State private var showNewWatchlistAlert = false
+    @State private var newWatchlistName = ""
+    @State private var renamingWatchlist: Watchlist? = nil
+    @State private var renameWatchlistName = ""
     // Default to the manual "as added" order so Move Up/Down is meaningful;
     // clicking a column header re-sorts by that column (toggles direction).
     @State private var sortKey: SortKey = .order
@@ -62,12 +63,7 @@ struct WatchlistWideView: View {
         }
     }
 
-    private var visibleRows: [WatchRow] {
-        let sorted = sortedRows()
-        guard !filter.isEmpty else { return sorted }
-        let f = filter.lowercased()
-        return sorted.filter { $0.symbol.lowercased().contains(f) || $0.name.lowercased().contains(f) }
-    }
+    private var visibleRows: [WatchRow] { sortedRows() }
 
     /// True when any watchlist quote is trading pre/post-market. Drives the row
     /// hierarchy: during extended hours the After-hrs price/% reads first and the
@@ -103,12 +99,12 @@ struct WatchlistWideView: View {
     }
 
     var body: some View {
-        PageScaffold("Watchlist", caption: "\(storageService.watchlist.count) symbols") {
+        PageScaffold(storageService.currentWatchlist.name, caption: "\(storageService.watchlist.count) symbols") {
             HStack(spacing: 12) {
                 RefreshButton(isLoading: stockService.isLoading) {
                     Task { await stockService.refreshAll(storageService: storageService) }
                 }
-                filterField
+                watchlistPickerBar
                 addButton
             }
         } content: {
@@ -123,7 +119,7 @@ struct WatchlistWideView: View {
                     .frame(maxWidth: DS.contentMaxWidth + DS.gutter * 2)
             }
         }
-        .navigationTitle("Watchlist")
+        .navigationTitle(storageService.currentWatchlist.name)
         .task(id: storageService.watchlist) {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
@@ -146,29 +142,95 @@ struct WatchlistWideView: View {
             }) { detailSymbol = nil }
                 .environmentObject(stockService).environmentObject(storageService)
         }
+        .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
+            TextField("Watchlist name", text: $newWatchlistName)
+            Button("Cancel", role: .cancel) { }
+            Button("Create") {
+                storageService.createWatchlist(name: newWatchlistName)
+            }
+        } message: {
+            Text("Enter a name for the new watchlist:")
+        }
+        .alert("Rename Watchlist", isPresented: Binding(
+            get: { renamingWatchlist != nil },
+            set: { if !$0 { renamingWatchlist = nil } }
+        )) {
+            TextField("Watchlist name", text: $renameWatchlistName)
+            Button("Cancel", role: .cancel) { renamingWatchlist = nil }
+            Button("Save") {
+                if let wl = renamingWatchlist {
+                    storageService.renameWatchlist(id: wl.id, newName: renameWatchlistName)
+                    renamingWatchlist = nil
+                }
+            }
+        } message: {
+            Text("Enter a new name for this watchlist:")
+        }
     }
 
     // MARK: - Header controls
 
-    private var filterField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(DS.inkTertiary)
-            TextField("Filter", text: $filter)
-                .textFieldStyle(.plain)
-                .font(DS.body)
-                .focused($filterFieldFocused)
-                .frame(width: 140)
-            if !filter.isEmpty {
-                Button { filter = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
+    private var watchlistPickerBar: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(storageService.watchlists) { wl in
+                        let selected = wl.id == storageService.currentWatchlist.id
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                storageService.selectWatchlist(id: wl.id)
+                            }
+                        }) {
+                            Text(wl.name)
+                                .font(DS.bodyStrong)
+                                .foregroundStyle(selected ? .white : DS.ink)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .id(wl.id)
+                        .contextMenu {
+                            Button("Rename…") {
+                                renamingWatchlist = wl
+                                renameWatchlistName = wl.name
+                            }
+                            if storageService.watchlists.count > 1 {
+                                Button("Delete Watchlist", role: .destructive) {
+                                    storageService.deleteWatchlist(id: wl.id)
+                                }
+                            }
+                        }
+                    }
+
+                    Button(action: {
+                        newWatchlistName = ""
+                        showNewWatchlistAlert = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(DS.brand)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(DS.brand.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("Create new watchlist")
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 2)
+            }
+            .frame(maxWidth: 320)
+            .onChange(of: storageService.selectedWatchlistId) { _, newId in
+                if let newId {
+                    withAnimation { proxy.scrollTo(newId, anchor: .center) }
+                }
             }
         }
-        .padding(.horizontal, 11).padding(.vertical, 6)
-        .background(Capsule().fill(DS.cardAlt))
-        .overlay(Capsule().strokeBorder(filterFieldFocused ? DS.brand : .clear, lineWidth: 1.5))
-        .animation(.easeOut(duration: 0.15), value: filterFieldFocused)
     }
 
     private var addButton: some View {

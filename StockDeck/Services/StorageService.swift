@@ -1,11 +1,46 @@
-import Foundation
+struct Watchlist: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var name: String
+    var symbols: [String]
+}
 
 @MainActor
 class StorageService: ObservableObject {
     static let shared = StorageService()
 
-    @Published var watchlist: [String] = [] {
+    @Published var watchlists: [Watchlist] = [Watchlist(id: UUID(), name: "Watchlist", symbols: [])] {
         didSet { scheduleSave() }
+    }
+
+    @Published var selectedWatchlistId: UUID? = nil {
+        didSet { scheduleSave() }
+    }
+
+    /// The currently selected watchlist object (falls back to first watchlist)
+    var currentWatchlist: Watchlist {
+        if let id = selectedWatchlistId, let wl = watchlists.first(where: { $0.id == id }) {
+            return wl
+        }
+        if let first = watchlists.first { return first }
+        let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+        return def
+    }
+
+    /// Symbols in the active watchlist (backward-compatible API)
+    var watchlist: [String] {
+        get { currentWatchlist.symbols }
+        set {
+            let activeId = currentWatchlist.id
+            if let idx = watchlists.firstIndex(where: { $0.id == activeId }) {
+                watchlists[idx].symbols = newValue
+            } else if !watchlists.isEmpty {
+                watchlists[0].symbols = newValue
+            } else {
+                let newWl = Watchlist(id: activeId, name: "Watchlist", symbols: newValue)
+                watchlists = [newWl]
+                selectedWatchlistId = newWl.id
+            }
+        }
     }
 
     @Published var portfolios: [Portfolio] = [] {
@@ -506,6 +541,41 @@ class StorageService: ObservableObject {
         watchlist = list
     }
 
+    // MARK: - Multi-watchlist operations
+
+    @discardableResult
+    func createWatchlist(name: String) -> Watchlist {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmed.isEmpty ? "Watchlist \(watchlists.count + 1)" : trimmed
+        let newWl = Watchlist(id: UUID(), name: finalName, symbols: [])
+        watchlists.append(newWl)
+        selectedWatchlistId = newWl.id
+        return newWl
+    }
+
+    func renameWatchlist(id: UUID, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = watchlists.firstIndex(where: { $0.id == id }) else { return }
+        watchlists[idx].name = trimmed
+    }
+
+    func deleteWatchlist(id: UUID) {
+        guard let idx = watchlists.firstIndex(where: { $0.id == id }) else { return }
+        watchlists.remove(at: idx)
+        if watchlists.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+            watchlists = [def]
+            selectedWatchlistId = def.id
+        } else if selectedWatchlistId == id {
+            selectedWatchlistId = watchlists[min(idx, watchlists.count - 1)].id
+        }
+    }
+
+    func selectWatchlist(id: UUID) {
+        guard watchlists.contains(where: { $0.id == id }) else { return }
+        selectedWatchlistId = id
+    }
+
     func addPortfolio(name: String) {
         portfolios.append(Portfolio(name: name))
     }
@@ -622,6 +692,8 @@ class StorageService: ObservableObject {
 
     private struct AppData: Codable {
         var watchlist: [String]
+        var watchlists: [Watchlist]?
+        var selectedWatchlistId: UUID?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -666,7 +738,7 @@ class StorageService: ObservableObject {
     }
 
     private func performSave() {
-        let data = AppData(watchlist: watchlist, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -686,7 +758,22 @@ class StorageService: ObservableObject {
         do {
             let data = try Data(contentsOf: fileURL)
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
-            watchlist = decoded.watchlist
+            if let wls = decoded.watchlists, !wls.isEmpty {
+                watchlists = wls
+                if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
+                    selectedWatchlistId = selId
+                } else {
+                    selectedWatchlistId = watchlists.first?.id
+                }
+            } else if !decoded.watchlist.isEmpty {
+                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: decoded.watchlist)
+                watchlists = [def]
+                selectedWatchlistId = def.id
+            } else {
+                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+                watchlists = [def]
+                selectedWatchlistId = def.id
+            }
             portfolios = decoded.portfolios
             preferredCurrency = decoded.preferredCurrency ?? "EUR"
             stockPriceCurrency = decoded.stockPriceCurrency ?? ""
