@@ -66,4 +66,16 @@ final class MultiWatchlistTests: XCTestCase {
         storage.selectWatchlist(id: wl2.id)
         XCTAssertEqual(storage.watchlistMetrics, newMetrics)
     }
+
+    func testPortfolioChartRangePersistence() {
+        let storage = createTestStorage()
+        let pId = UUID().uuidString
+        XCTAssertNil(storage.chartRange(for: pId))
+
+        storage.setChartRange("3Y", for: pId)
+        XCTAssertEqual(storage.chartRange(for: pId), "3Y")
+
+        storage.setChartRange("1Y", for: "all")
+        XCTAssertEqual(storage.chartRange(for: "all"), "1Y")
+    }
 }

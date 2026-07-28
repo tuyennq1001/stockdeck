@@ -247,6 +247,13 @@ struct PortfolioOverview: View {
 
     private var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })) }
 
+    private var scopeKey: String {
+        switch scope {
+        case .all: return "all"
+        case .portfolio(let id): return id.uuidString
+        }
+    }
+
     var body: some View {
         PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)", trailing: {
             HStack(spacing: 12) {
@@ -274,6 +281,23 @@ struct PortfolioOverview: View {
             }
         }
         .navigationTitle(title)
+        .onAppear {
+            if let savedRaw = storageService.chartRange(for: scopeKey),
+               let range = ChartRange(rawValue: savedRaw) {
+                chartRange = range
+            }
+        }
+        .onChange(of: chartRange) { _, newRange in
+            storageService.setChartRange(newRange.rawValue, for: scopeKey)
+        }
+        .onChange(of: scopeKey) { _, newKey in
+            if let savedRaw = storageService.chartRange(for: newKey),
+               let range = ChartRange(rawValue: savedRaw) {
+                chartRange = range
+            } else {
+                chartRange = .all
+            }
+        }
         .task(id: symbols) {
             for symbol in symbols { await stockService.ensurePriceHistory(for: symbol) }
         }

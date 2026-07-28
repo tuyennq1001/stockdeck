@@ -240,6 +240,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// Preferred timeline range option per portfolio scope (e.g. "3Y", "1Y", "All").
+    @Published var portfolioChartRanges: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// Discord/Slack incoming webhook for mirroring notifications.
     @Published var discordWebhookURL: String = "" {
         didSet { scheduleSave() }
@@ -354,6 +359,14 @@ class StorageService: ObservableObject {
                                          totalValue: totalValue, totalCost: totalCost)
         let key = portfolioId.uuidString
         portfolioSnapshots[key] = SnapshotLog.upsert(snapshot, into: portfolioSnapshots[key] ?? [], calendar: calendar)
+    }
+
+    func chartRange(for scopeKey: String) -> String? {
+        portfolioChartRanges[scopeKey]
+    }
+
+    func setChartRange(_ rangeRaw: String, for scopeKey: String) {
+        portfolioChartRanges[scopeKey] = rangeRaw
     }
 
     var lastSelectedTab: String = "Watchlist"
@@ -765,6 +778,7 @@ class StorageService: ObservableObject {
         var showAbsoluteChange: Bool?
         var portfolioNotifications: [String: [PortfolioNotification]]?
         var portfolioSnapshots: [String: [PortfolioSnapshot]]?
+        var portfolioChartRanges: [String: String]?
         var discordWebhookURL: String?
         var discordEnabled: Bool?
         var gainColorHex: String?
@@ -794,7 +808,7 @@ class StorageService: ObservableObject {
     }
 
     private func performSave() {
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -855,6 +869,7 @@ class StorageService: ObservableObject {
             alerts = decoded.alerts ?? []
             portfolioNotifications = decoded.portfolioNotifications ?? [:]
             portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
+            portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
             discordWebhookURL = decoded.discordWebhookURL ?? ""
             discordEnabled = decoded.discordEnabled ?? false
             gainColorHex = decoded.gainColorHex ?? ""
