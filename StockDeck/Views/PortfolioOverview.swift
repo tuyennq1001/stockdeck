@@ -182,12 +182,15 @@ struct PortfolioOverview: View {
         if let days = chartRange.days,
            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
             return series.filter { $0.date >= cutoff }
-        } else if chartRange == .all,
-                  let purchaseDate = earliestPurchaseDate,
-                  let firstSnapDate = series.first?.date,
-                  purchaseDate <= firstSnapDate {
-            let cutoff = Calendar.current.startOfDay(for: purchaseDate)
-            return series.filter { $0.date >= cutoff }
+        } else if chartRange == .all {
+            if let purchaseDate = earliestPurchaseDate {
+                let cutoff = Calendar.current.startOfDay(for: purchaseDate)
+                let filtered = series.filter { $0.date >= cutoff }
+                if !filtered.isEmpty { return filtered }
+            }
+            if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                return series.filter { $0.date >= cutoff5Y }
+            }
         }
         return series
     }
@@ -214,12 +217,16 @@ struct PortfolioOverview: View {
         if let days = chartRange.days,
            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
             return estimatedSeries.filter { $0.date >= cutoff }
-        } else if chartRange == .all,
-                  let purchaseDate = earliestPurchaseDate,
-                  let firstHistDate = estimatedSeries.first?.date,
-                  purchaseDate <= firstHistDate {
-            let cutoff = Calendar.current.startOfDay(for: purchaseDate)
-            return estimatedSeries.filter { $0.date >= cutoff }
+        } else if chartRange == .all {
+            if let purchaseDate = earliestPurchaseDate {
+                let cutoff = Calendar.current.startOfDay(for: purchaseDate)
+                let filtered = estimatedSeries.filter { $0.date >= cutoff }
+                if !filtered.isEmpty { return filtered }
+            }
+            if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                let filtered = estimatedSeries.filter { $0.date >= cutoff5Y }
+                if !filtered.isEmpty { return filtered }
+            }
         }
         return estimatedSeries
     }
