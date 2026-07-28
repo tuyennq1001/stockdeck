@@ -133,13 +133,13 @@ struct PortfolioListView: View {
                                 Text("#")
                                     .frame(width: 16, alignment: .leading)
                                 Text("Symbol")
-                                    .frame(width: 90, alignment: .leading)
+                                    .frame(width: 85, alignment: .leading)
                                 Text("Avg Price")
-                                    .frame(width: 65, alignment: .trailing)
-                                Text("Price")
+                                    .frame(width: 68, alignment: .trailing)
+                                Text("Price %")
                                     .frame(maxWidth: .infinity, alignment: .trailing)
                                 Text("P&L")
-                                    .frame(width: 95, alignment: .trailing)
+                                    .frame(width: 75, alignment: .trailing)
                             }
                             .font(.inter(10, weight: .medium, relativeTo: .caption))
                             .foregroundColor(.secondary)
@@ -1150,7 +1150,7 @@ struct PortfolioQuoteRow: View {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(globalPos.symbol)
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)
                     if storageService.showCompanyName, let q = quote {
@@ -1161,44 +1161,37 @@ struct PortfolioQuoteRow: View {
                     }
                 }
             }
-            .frame(width: 90, alignment: .leading)
+            .frame(width: 85, alignment: .leading)
 
-            // Col 2: Avg Price
+            // Col 2: Avg Price (unified 11pt font)
             Text(StorageService.formatAmount(
                 globalPos.avgPrice,
                 symbol: globalPos.priceSymbol,
                 decimals: StorageService.priceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
             ))
-            .font(.inter(12, relativeTo: .body).monospacedDigit())
+            .font(.inter(11, relativeTo: .caption).monospacedDigit())
             .foregroundColor(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .frame(width: 65, alignment: .trailing)
+            .frame(width: 68, alignment: .trailing)
 
-            // Col 3: Price + Pre/Post badge
-            VStack(alignment: .trailing, spacing: 0) {
+            // Col 3: Price Change % (display % instead of price) + Pre/Post badge
+            HStack(spacing: 2) {
                 if let quote {
-                    HStack(spacing: 2) {
-                        Text("\(currSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate)))")
-                            .font(.inter(12, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.medium)
-                        if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                            Text(quote.marketStateLabel)
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 2)
-                                .padding(.vertical, 1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
-                                )
-                        }
-                    }
-                    if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                        let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
-                        Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
-                            .font(.inter(9, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(.secondary)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                        Text(quote.marketStateLabel)
+                            .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 2)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
+                            )
                     }
                 } else {
                     ProgressView().scaleEffect(0.5)
@@ -1206,21 +1199,14 @@ struct PortfolioQuoteRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Col 4: P&L % + daily change %
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                    .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
-                if let quote {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                }
-            }
-            .frame(width: 95, alignment: .trailing)
+            // Col 4: P&L % ONLY (no extra subtext)
+            Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+                .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                .fontWeight(.bold)
+                .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
+                .frame(width: 75, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
     }
 }
