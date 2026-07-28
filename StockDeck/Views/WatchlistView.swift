@@ -589,51 +589,40 @@ struct QuoteRow: View {
                     }
                 }
             }
-            .frame(width: 90, alignment: .leading)
+            .frame(width: 80, alignment: .leading)
 
-            // Col 2: Price + day range
+            // Col 2: Price (regular price, no Pre/Post badge)
             VStack(alignment: .trailing, spacing: 0) {
-                HStack(spacing: 2) {
-                    Text("\(currSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate)))")
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                    if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                        Text(quote.marketStateLabel)
-                            .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 2)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
-                            )
-                    }
-                }
+                Text("\(currSymbol)\(StorageService.formatNumber(quote.price * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)))")
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
                     let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
                     Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
-                if storageService.show52WeekBar,
-                   let pos = quote.fiftyTwoWeekPosition,
-                   let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
-                    HStack(spacing: 4) {
-                        Text(StorageService.formatNumber(low * priceRate, decimals: 0))
-                            .font(.inter(8, relativeTo: .caption2).monospacedDigit())
-                            .foregroundColor(.secondary)
-                        RangeBar(position: pos)
-                            .frame(width: 56)
-                        Text(StorageService.formatNumber(high * priceRate, decimals: 0))
-                            .font(.inter(8, relativeTo: .caption2).monospacedDigit())
-                            .foregroundColor(.secondary)
-                    }
-                    .help("52-week range")
+            }
+            .frame(width: 75, alignment: .trailing)
+
+            // Col 3: Ext (Extended hours price)
+            VStack(alignment: .trailing, spacing: 0) {
+                let extPrice = quote.postMarketPrice ?? quote.preMarketPrice
+                if storageService.showExtendedHours, let extPrice {
+                    let extDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice * priceRate)
+                    Text("\(currSymbol)\(StorageService.formatNumber(extPrice * priceRate, decimals: extDecimals))")
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                } else {
+                    Text("—")
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(width: 70, alignment: .trailing)
 
-            // Col 3: Change (combines amount & percent to 2 rows max)
+            // Col 4: Change (combines amount & percent to 2 rows max)
             VStack(alignment: .trailing, spacing: 1) {
                 let pctStr = String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent)
                 let changeStr = storageService.showAbsoluteChange
@@ -656,7 +645,7 @@ struct QuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 125, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 3)

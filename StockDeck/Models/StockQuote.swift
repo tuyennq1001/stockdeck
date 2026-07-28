@@ -192,27 +192,38 @@ struct Holding: Identifiable, Codable {
     /// True for a short position (negative quantity).
     var isShort: Bool { quantity < 0 }
 
+    /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
+    var isJapaneseFund: Bool {
+        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard clean.count == 8 else {
+            let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
+            return symbol.unicodeScalars.contains { jpSet.contains($0) }
+        }
+        let regex = "^[0-9A-Z]{8}$"
+        return clean.range(of: regex, options: .regularExpression) != nil
+    }
+
     /// Cost basis in the stock's own currency, signed and leverage-adjusted.
     /// Negative for shorts. Multiply by an FX rate for the preferred currency.
     var costBasisLocal: Double {
-        avgPrice * quantity * effectiveLeverage
+        let scale = isJapaneseFund ? 10000.0 : 1.0
+        return (avgPrice / scale) * quantity * effectiveLeverage
     }
 
     func pnl(currentPrice: Double) -> Double {
-        (currentPrice - avgPrice) * quantity * effectiveLeverage
+        let scale = isJapaneseFund ? 10000.0 : 1.0
+        return ((currentPrice - avgPrice) / scale) * quantity * effectiveLeverage
     }
 
     func pnlPercent(currentPrice: Double) -> Double {
         guard avgPrice > 0 else { return 0 }
-        // Exposure-relative return: a short gains when the price falls, so flip
-        // the sign for negative quantities. Leverage scales P&L and exposure
-        // equally, so it cancels out of the per-position percentage.
         let direction: Double = quantity < 0 ? -1 : 1
         return ((currentPrice - avgPrice) / avgPrice) * 100 * direction
     }
 
     func marketValue(currentPrice: Double) -> Double {
-        currentPrice * quantity * effectiveLeverage
+        let scale = isJapaneseFund ? 10000.0 : 1.0
+        return (currentPrice / scale) * quantity * effectiveLeverage
     }
 }
 
