@@ -125,15 +125,17 @@ struct PortfolioListView: View {
                     let globals = globalPositions
                     if !globals.isEmpty {
                         VStack(spacing: 0) {
-                            HStack(spacing: 8) {
+                            HStack(spacing: 6) {
                                 Text("Symbol")
-                                    .frame(width: 90, alignment: .leading)
+                                    .frame(width: 80, alignment: .leading)
                                 Text("Avg Price")
-                                    .frame(width: 74, alignment: .trailing)
+                                    .frame(width: 68, alignment: .trailing)
                                 Text("Price")
-                                    .frame(width: 90, alignment: .trailing)
+                                    .frame(width: 78, alignment: .trailing)
+                                Text("Ext")
+                                    .frame(width: 78, alignment: .trailing)
                                 Text("P&L")
-                                    .frame(width: 70, alignment: .trailing)
+                                    .frame(width: 65, alignment: .trailing)
                             }
                             .font(.inter(10, weight: .medium, relativeTo: .caption))
                             .foregroundColor(.secondary)
@@ -143,15 +145,15 @@ struct PortfolioListView: View {
                             Divider()
 
                             ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                HStack(spacing: 8) {
-                                    HStack(spacing: 8) {
+                                HStack(spacing: 6) {
+                                    HStack(spacing: 6) {
                                         SymbolLogo(symbol: p.symbol, size: 20)
                                         Text(p.symbol)
                                             .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                             .fontWeight(.semibold)
                                             .lineLimit(1)
                                     }
-                                    .frame(width: 90, alignment: .leading)
+                                    .frame(width: 80, alignment: .leading)
 
                                     Text(StorageService.formatAmount(
                                         p.avgPrice,
@@ -161,11 +163,11 @@ struct PortfolioListView: View {
                                             price: p.avgPrice
                                         )
                                     ))
-                                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
-                                    .frame(width: 74, alignment: .trailing)
+                                    .frame(width: 68, alignment: .trailing)
 
                                     VStack(alignment: .trailing, spacing: 1) {
                                         Text(StorageService.formatAmount(
@@ -183,13 +185,41 @@ struct PortfolioListView: View {
                                     }
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
-                                    .frame(width: 90, alignment: .trailing)
+                                    .frame(width: 78, alignment: .trailing)
+
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        if let extP = p.extPrice {
+                                            Text(StorageService.formatAmount(
+                                                extP,
+                                                symbol: p.priceSymbol,
+                                                decimals: StorageService.priceDecimals(
+                                                    symbol: p.symbol,
+                                                    price: extP
+                                                )
+                                            ))
+                                            .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                            .foregroundColor(.primary)
+
+                                            if let extPct = p.extChangePercent {
+                                                Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                                                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                                                    .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                                            }
+                                        } else {
+                                            Text("-")
+                                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .frame(width: 78, alignment: .trailing)
 
                                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.pct))
                                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.medium)
+                                        .fontWeight(.semibold)
                                         .foregroundColor(p.pct >= 0 ? DS.up : DS.down)
-                                        .frame(width: 70, alignment: .trailing)
+                                        .frame(width: 65, alignment: .trailing)
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 3)
@@ -296,7 +326,7 @@ struct PortfolioListView: View {
             total + portfolio.holdings.reduce(0) { sum, holding in
                 guard let quote = stockService.quotes[holding.symbol] else { return sum }
                 let rate = stockService.rate(from: quote.currency)
-                return sum + holding.marketValue(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
+                return sum + holding.marketValue(currentPrice: quote.price) * rate
             }
         }
     }
@@ -318,6 +348,8 @@ struct PortfolioListView: View {
         let pct: Double           // price return vs. avg (position-direction aware)
         let currentPrice: Double
         let priceChangePercent: Double
+        let extPrice: Double?
+        let extChangePercent: Double?
         let value: Double         // market value (preferred currency), for sorting
         var symbol: String { id }
     }
@@ -336,15 +368,21 @@ struct PortfolioListView: View {
         return qty.compactMap { symbol, q -> GlobalPosition? in
             guard abs(q) >= 1e-9, let quote = stockService.quotes[symbol] else { return nil }
             let avg = qtyPrice[symbol, default: 0] / q
-            let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+            // Regular session price for P&L computation
+            let price = quote.price
             let rawPct = abs(avg) >= 1e-6 ? (price / avg - 1) * 100 : 0
             // A short position gains when the price falls, so flip the sign.
             let pct = q >= 0 ? rawPct : -rawPct
             let priceCurr = storageService.stockPriceCurrency
             let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
             let value = abs(price * q) * stockService.rate(from: quote.currency)
+
+            let extPrice: Double? = quote.isExtendedHours ? quote.alertPrice : nil
+            let extChangePercent: Double? = quote.isExtendedHours ? quote.extendedChangePercent : nil
+
             return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct,
                                   currentPrice: price, priceChangePercent: quote.changePercent,
+                                  extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: value)
         }
         .sorted { $0.value > $1.value }
