@@ -42,4 +42,20 @@ final class PortfolioPeriodChangeTests: XCTestCase {
         XCTAssertNil(PortfolioPeriodChange.percent(points))
         XCTAssertEqual(PortfolioPeriodChange.value(points) ?? -1, 50, accuracy: 1e-9)
     }
+
+    func testCAGRCalculation() {
+        // 100 to 144 over 2 years (730 days) -> CAGR = sqrt(1.44) - 1 = 20%
+        let start = Date(timeIntervalSince1970: 0)
+        let end = Date(timeIntervalSince1970: 730.5 * 86400)
+        let pts = [ValuePoint(date: start, value: 100), ValuePoint(date: end, value: 144)]
+
+        let cagr = PortfolioPeriodChange.cagr(pts)
+        XCTAssertNotNil(cagr)
+        XCTAssertEqual(cagr ?? 0, 20.0, accuracy: 0.1)
+
+        // Short period (< 350 days) should return nil
+        let shortEnd = Date(timeIntervalSince1970: 100 * 86400)
+        let shortPts = [ValuePoint(date: start, value: 100), ValuePoint(date: shortEnd, value: 120)]
+        XCTAssertNil(PortfolioPeriodChange.cagr(shortPts))
+    }
 }

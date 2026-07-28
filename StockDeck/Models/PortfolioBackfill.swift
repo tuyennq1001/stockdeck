@@ -113,4 +113,24 @@ enum PortfolioPeriodChange {
               points.count >= 2, abs(first) >= 0.01 else { return nil }
         return (last - first) / abs(first) * 100
     }
+
+    /// Compound Annual Growth Rate (CAGR) % over the series span.
+    /// Returns nil if series has fewer than 2 points, first value <= 0, last value <= 0,
+    /// or if span is less than 350 days (~1 year).
+    static func cagr(_ points: [ValuePoint]) -> Double? {
+        guard let firstPoint = points.first, let lastPoint = points.last,
+              points.count >= 2, firstPoint.value > 0, lastPoint.value > 0 else { return nil }
+
+        let days = Calendar.current.dateComponents([.day], from: firstPoint.date, to: lastPoint.date).day ?? 0
+        guard days >= 350 else { return nil }
+
+        let years = Double(days) / 365.25
+        guard years >= 0.95 else { return nil }
+
+        let ratio = lastPoint.value / firstPoint.value
+        guard ratio > 0 else { return nil }
+
+        let cagrVal = (pow(ratio, 1.0 / years) - 1.0) * 100.0
+        return cagrVal.isFinite ? cagrVal : nil
+    }
 }

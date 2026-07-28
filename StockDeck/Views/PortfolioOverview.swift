@@ -182,7 +182,10 @@ struct PortfolioOverview: View {
         if let days = chartRange.days,
            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
             return series.filter { $0.date >= cutoff }
-        } else if chartRange == .all, let purchaseDate = earliestPurchaseDate {
+        } else if chartRange == .all,
+                  let purchaseDate = earliestPurchaseDate,
+                  let firstSnapDate = series.first?.date,
+                  purchaseDate <= firstSnapDate {
             let cutoff = Calendar.current.startOfDay(for: purchaseDate)
             return series.filter { $0.date >= cutoff }
         }
@@ -202,15 +205,19 @@ struct PortfolioOverview: View {
         return PortfolioBackfill.series(holdings: hs, historyBySymbol: hist, rateBySymbol: rate)
     }
 
-    /// Daily estimate (2y) for 1M/1Y; monthly full history for "All".
+    /// Daily estimate (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
     private var estimatedSeries: [ValuePoint] {
-        valueSeries(from: chartRange == .all ? stockService.priceHistoryMax : stockService.priceHistory)
+        let useMax = (chartRange == .all || chartRange == .threeYears || chartRange == .fiveYears)
+        return valueSeries(from: useMax ? stockService.priceHistoryMax : stockService.priceHistory)
     }
     private var estimatedFiltered: [ValuePoint] {
         if let days = chartRange.days,
            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
             return estimatedSeries.filter { $0.date >= cutoff }
-        } else if chartRange == .all, let purchaseDate = earliestPurchaseDate {
+        } else if chartRange == .all,
+                  let purchaseDate = earliestPurchaseDate,
+                  let firstHistDate = estimatedSeries.first?.date,
+                  purchaseDate <= firstHistDate {
             let cutoff = Calendar.current.startOfDay(for: purchaseDate)
             return estimatedSeries.filter { $0.date >= cutoff }
         }
@@ -292,6 +299,15 @@ struct PortfolioOverview: View {
             : (PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent)
         let periodLabel = useRealAllTime ? "all-time"
             : (PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today")
+        
+        let cagrVal = PortfolioPeriodChange.cagr(ds.points)
+        let pillText: String
+        if let cagrVal {
+            pillText = String(format: "%+.\(decimals)f%% %@ (%.1f%% CAGR)", periodPercent, periodLabel, cagrVal)
+        } else {
+            pillText = String(format: "%+.\(decimals)f%% %@", periodPercent, periodLabel)
+        }
+        
         // Header sits ABOVE the chart (not over it) so the curve can never rise
         // behind the value/pill text.
         return VStack(alignment: .leading, spacing: 0) {
@@ -308,8 +324,7 @@ struct PortfolioOverview: View {
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.5, dampingFraction: 0.9), value: totalValue)
                 HStack(spacing: 10) {
-                    ChangePill(value: periodValue,
-                               text: String(format: "%+.\(decimals)f%% %@", periodPercent, periodLabel))
+                    ChangePill(value: periodValue, text: pillText)
                     // The all-time figure alongside — hidden on the All range,
                     // where the pill already shows exactly this (no duplicate).
                     if !useRealAllTime {
