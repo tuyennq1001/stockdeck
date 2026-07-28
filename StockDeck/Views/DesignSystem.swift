@@ -201,18 +201,32 @@ struct PageHeader<Trailing: View>: View {
     let title: String
     var caption: String? = nil
     var symbol: String? = nil
+    var onBack: (() -> Void)? = nil
     @ViewBuilder var trailing: Trailing
 
-    init(_ title: String, caption: String? = nil, symbol: String? = nil,
+    init(_ title: String, caption: String? = nil, symbol: String? = nil, onBack: (() -> Void)? = nil,
          @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
         self.title = title
         self.caption = caption
         self.symbol = symbol
+        self.onBack = onBack
         self.trailing = trailing()
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DS.ink)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Back")
+            }
             if let symbol {
                 SymbolLogo(symbol: symbol, size: 38)
             }
@@ -253,22 +267,24 @@ struct PageScaffold<Content: View, Trailing: View>: View {
     let title: String
     var caption: String? = nil
     var symbol: String? = nil
+    var onBack: (() -> Void)? = nil
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
 
-    init(_ title: String, caption: String? = nil, symbol: String? = nil,
+    init(_ title: String, caption: String? = nil, symbol: String? = nil, onBack: (() -> Void)? = nil,
          @ViewBuilder trailing: () -> Trailing = { EmptyView() },
          @ViewBuilder content: () -> Content) {
         self.title = title
         self.caption = caption
         self.symbol = symbol
+        self.onBack = onBack
         self.trailing = trailing()
         self.content = content()
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title, caption: caption, symbol: symbol) { trailing }
+            PageHeader(title, caption: caption, symbol: symbol, onBack: onBack) { trailing }
                 .padding(.horizontal, DS.gutter)
                 .padding(.top, DS.titlebarClearance - 8)
                 .padding(.bottom, 16)

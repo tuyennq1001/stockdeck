@@ -27,16 +27,18 @@ final class PortfolioBackfillTests: XCTestCase {
         XCTAssertEqual(series.first?.value ?? 0, 45, accuracy: 1e-9)
     }
 
-    func testSumsHoldingsOnCommonDaysOnly() {
+    func testSumsHoldingsWithForwardFill() {
         let holdings = [h("A", qty: 10), h("B", qty: 2)]
         let history = [
             "A": [PricePoint(date: day(1), close: 5), PricePoint(date: day(2), close: 6)],
-            "B": [PricePoint(date: day(2), close: 100)], // no day 1 → day 1 excluded
+            "B": [PricePoint(date: day(2), close: 100)],
         ]
         let series = PortfolioBackfill.series(holdings: holdings, historyBySymbol: history, rateBySymbol: ["A": 1, "B": 1])
-        XCTAssertEqual(series.count, 1)
-        XCTAssertEqual(series.first?.date, day(2))
-        XCTAssertEqual(series.first?.value ?? 0, 6 * 10 + 100 * 2, accuracy: 1e-9) // 260
+        XCTAssertEqual(series.count, 2)
+        XCTAssertEqual(series[0].date, day(1))
+        XCTAssertEqual(series[0].value, 5 * 10 + 100 * 2, accuracy: 1e-9) // 250 (B forward filled with initial price 100)
+        XCTAssertEqual(series[1].date, day(2))
+        XCTAssertEqual(series[1].value, 6 * 10 + 100 * 2, accuracy: 1e-9) // 260
     }
 
     func testLeverageAndShort() {

@@ -628,7 +628,7 @@ struct WatchlistWideView: View {
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
-            headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
+            Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
             if isCompact {
                 headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
             } else {

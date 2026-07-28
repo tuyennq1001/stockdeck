@@ -38,8 +38,10 @@ struct HoldingDetailView: View {
         }
     }
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        PageScaffold(holding.symbol, caption: quote.name, symbol: holding.symbol) {
+        PageScaffold(holding.symbol, caption: quote.name, symbol: holding.symbol, onBack: { dismiss() }) {
             HStack(spacing: 10) {
                 if holding.isShort { Tag(text: "SHORT", color: DS.down) }
                 if holding.effectiveLeverage != 1 {

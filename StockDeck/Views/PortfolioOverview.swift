@@ -236,7 +236,8 @@ struct PortfolioOverview: View {
                         statRow
                         HStack(alignment: .top, spacing: DS.gap) {
                             allocationCard.frame(maxWidth: .infinity)
-                            moversCard(proxy: proxy).frame(width: 340)
+                            topGainersCard(proxy: proxy).frame(maxWidth: .infinity)
+                            topLosersCard(proxy: proxy).frame(maxWidth: .infinity)
                         }
                         positionsCard.id("positions")
                     }
@@ -251,9 +252,12 @@ struct PortfolioOverview: View {
         }
         .task(id: "\(symbols.joined())-\(chartRange.rawValue)") {
             switch chartRange {
-            case .week: for s in symbols { await stockService.ensureIntradayWeek(for: s) }
-            case .all: for s in symbols { await stockService.ensurePriceHistoryMax(for: s) }
-            default: break
+            case .week:
+                for s in symbols { await stockService.ensureIntradayWeek(for: s) }
+            case .threeYears, .fiveYears, .all:
+                for s in symbols { await stockService.ensurePriceHistoryMax(for: s) }
+            default:
+                for s in symbols { await stockService.ensurePriceHistory(for: s) }
             }
         }
     }
@@ -593,55 +597,67 @@ struct PortfolioOverview: View {
         return DS.palette[idx % DS.palette.count]
     }
 
-    // MARK: - Movers
+    // MARK: - Movers (Top & Bottom)
 
-    private func moversCard(proxy: ScrollViewProxy) -> some View {
-        Card(title: "Today's movers") {
+    private func topGainersCard(proxy: ScrollViewProxy) -> some View {
+        Card(title: "Top Gainers") {
             var seen = Set<String>()
-            let movers = holdings.filter { seen.insert($0.symbol).inserted }
-                .sorted { abs($0.dayChangePercent) > abs($1.dayChangePercent) }
-            let maxAbs = movers.map { abs($0.dayChangePercent) }.max() ?? 1
-            if movers.isEmpty {
+            let gainers = holdings.filter { seen.insert($0.symbol).inserted }
+                .sorted { $0.dayChangePercent > $1.dayChangePercent }
+            let maxAbs = gainers.map { abs($0.dayChangePercent) }.max() ?? 1
+            if gainers.isEmpty {
                 emptyLine
             } else {
                 VStack(spacing: 0) {
-                    ForEach(movers.prefix(5)) { h in
-                        HStack(spacing: 10) {
-                            SymbolLogo(symbol: h.symbol, size: 24)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
-                                Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(String(format: "%+.\(decimals)f%%", h.dayChangePercent))
-                                    .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
-                                    .foregroundStyle(DS.pnlColor(h.dayChangePercent))
-                                ZStack(alignment: h.dayChangePercent >= 0 ? .leading : .trailing) {
-                                    Capsule().fill(DS.cardAlt).frame(width: 48, height: 4)
-                                    Capsule().fill(DS.pnlColor(h.dayChangePercent))
-                                        .frame(width: max(4, 48 * abs(h.dayChangePercent) / max(maxAbs, 0.01)), height: 4)
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        if h.id != movers.prefix(5).last?.id {
-                            Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-                        }
-                    }
-                    if holdings.count > 5 {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo("positions", anchor: .top) }
-                        } label: {
-                            Text("View all positions ↓")
-                                .font(.inter(10.5, weight: .medium, relativeTo: .caption2))
-                                .foregroundStyle(DS.brand)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 10)
+                    ForEach(gainers.prefix(5)) { h in
+                        moverRow(h, maxAbs: maxAbs, lastId: gainers.prefix(5).last?.id)
                     }
                 }
             }
+        }
+    }
+
+    private func topLosersCard(proxy: ScrollViewProxy) -> some View {
+        Card(title: "Top Losers") {
+            var seen = Set<String>()
+            let losers = holdings.filter { seen.insert($0.symbol).inserted }
+                .sorted { $0.dayChangePercent < $1.dayChangePercent }
+            let maxAbs = losers.map { abs($0.dayChangePercent) }.max() ?? 1
+            if losers.isEmpty {
+                emptyLine
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(losers.prefix(5)) { h in
+                        moverRow(h, maxAbs: maxAbs, lastId: losers.prefix(5).last?.id)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func moverRow(_ h: ValuedHolding, maxAbs: Double, lastId: UUID?) -> some View {
+        HStack(spacing: 10) {
+            SymbolLogo(symbol: h.symbol, size: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(String(format: "%+.\(decimals)f%%", h.dayChangePercent))
+                    .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
+                    .foregroundStyle(DS.pnlColor(h.dayChangePercent))
+                ZStack(alignment: h.dayChangePercent >= 0 ? .leading : .trailing) {
+                    Capsule().fill(DS.cardAlt).frame(width: 48, height: 4)
+                    Capsule().fill(DS.pnlColor(h.dayChangePercent))
+                        .frame(width: max(4, 48 * abs(h.dayChangePercent) / max(maxAbs, 0.01)), height: 4)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        if h.id != lastId {
+            Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
         }
     }
 
@@ -846,15 +862,13 @@ struct PortfolioOverview: View {
 // MARK: - Position summary row
 
 private enum PositionColumnWidth {
-    static let number: CGFloat = 42
-    // Keep the full table (including row padding) within the 1,080 pt card
-    // content width so the default desktop layout never scrolls horizontally.
-    static let symbol: CGFloat = 200
-    static let price: CGFloat = 124
-    static let session: CGFloat = 124
-    static let amount: CGFloat = 140
-    static let weight: CGFloat = 120
-    static let chevron: CGFloat = 20
+    static let number: CGFloat = 28
+    static let symbol: CGFloat = 130
+    static let price: CGFloat = 100
+    static let session: CGFloat = 100
+    static let amount: CGFloat = 110
+    static let weight: CGFloat = 85
+    static let chevron: CGFloat = 16
     static func table(showExtendedHours: Bool) -> CGFloat {
         number + symbol + price + (showExtendedHours ? session : 0)
             + amount * 3 + weight + chevron

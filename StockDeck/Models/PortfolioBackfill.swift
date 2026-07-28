@@ -18,31 +18,66 @@ enum PortfolioBackfill {
     static func series(holdings: [Holding],
                        historyBySymbol: [String: [PricePoint]],
                        rateBySymbol: [String: Double]) -> [ValuePoint] {
-        // Per-symbol date → close lookup, and the set of dates present for ALL
-        // holdings (a day missing any symbol would understate the total).
-        var closeBySymbol: [String: [Date: Double]] = [:]
-        for holding in holdings {
-            guard let points = historyBySymbol[holding.symbol], !points.isEmpty else { return [] }
-            closeBySymbol[holding.symbol] = Dictionary(points.map { ($0.date, $0.close) }, uniquingKeysWith: { a, _ in a })
-        }
-        guard let first = holdings.first,
-              let firstDates = closeBySymbol[first.symbol]?.keys else { return [] }
+        guard !holdings.isEmpty else { return [] }
 
-        var commonDates = Set(firstDates)
-        for holding in holdings.dropFirst() {
-            commonDates.formIntersection(Set(closeBySymbol[holding.symbol]?.keys ?? [:].keys))
-        }
-        guard !commonDates.isEmpty else { return [] }
+        // Filter holdings to those that have price history data
+        let validHoldings = holdings.filter { !(historyBySymbol[$0.symbol]?.isEmpty ?? true) }
+        guard !validHoldings.isEmpty else { return [] }
 
-        return commonDates.sorted().map { date in
-            var total = 0.0
-            for holding in holdings {
-                let close = closeBySymbol[holding.symbol]?[date] ?? 0
-                let rate = rateBySymbol[holding.symbol] ?? 1
-                total += close * holding.quantity * holding.effectiveLeverage * rate
+        // Collect all unique timestamps across valid holdings
+        var allDatesSet = Set<Date>()
+        for h in validHoldings {
+            if let points = historyBySymbol[h.symbol] {
+                for p in points {
+                    allDatesSet.insert(p.date)
+                }
             }
-            return ValuePoint(date: date, value: total)
         }
+        let sortedDates = allDatesSet.sorted()
+        guard !sortedDates.isEmpty else { return [] }
+
+        // Build sorted (date, price) array per symbol
+        var symbolHistory: [String: [(date: Date, price: Double)]] = [:]
+        for h in validHoldings {
+            if let points = historyBySymbol[h.symbol] {
+                symbolHistory[h.symbol] = points.map { ($0.date, $0.close) }.sorted(by: { $0.date < $1.date })
+            }
+        }
+
+        // Initialize forward-fill prices with first available price for each symbol
+        var lastPrice: [String: Double] = [:]
+        var historyIndex: [String: Int] = [:]
+        for h in validHoldings {
+            if let firstP = symbolHistory[h.symbol]?.first {
+                lastPrice[h.symbol] = firstP.price
+                historyIndex[h.symbol] = 0
+            }
+        }
+
+        var result: [ValuePoint] = []
+        result.reserveCapacity(sortedDates.count)
+
+        for date in sortedDates {
+            for h in validHoldings {
+                guard let points = symbolHistory[h.symbol] else { continue }
+                var idx = historyIndex[h.symbol] ?? 0
+                while idx < points.count && points[idx].date <= date {
+                    lastPrice[h.symbol] = points[idx].price
+                    idx += 1
+                }
+                historyIndex[h.symbol] = idx
+            }
+
+            var total = 0.0
+            for h in validHoldings {
+                let price = lastPrice[h.symbol] ?? 0
+                let rate = rateBySymbol[h.symbol] ?? 1
+                total += price * h.quantity * h.effectiveLeverage * rate
+            }
+            result.append(ValuePoint(date: date, value: total))
+        }
+
+        return result
     }
 }
 
