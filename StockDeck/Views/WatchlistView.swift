@@ -589,7 +589,7 @@ struct QuoteRow: View {
                     }
                 }
             }
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 85, alignment: .leading)
 
             // Col 2: Price (regular price, no Pre/Post badge)
             VStack(alignment: .trailing, spacing: 0) {
@@ -605,7 +605,16 @@ struct QuoteRow: View {
             }
             .frame(width: 75, alignment: .trailing)
 
-            // Col 3: Ext (Extended hours price)
+            // Col 3: % (Percent change ONLY)
+            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                .font(.inter(12, relativeTo: .body).monospacedDigit())
+                .fontWeight(.bold)
+                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: 65, alignment: .trailing)
+
+            // Col 4: Ext (Extended hours price to the right of %)
             VStack(alignment: .trailing, spacing: 0) {
                 let extPrice = quote.postMarketPrice ?? quote.preMarketPrice
                 if storageService.showExtendedHours, let extPrice {
@@ -618,31 +627,6 @@ struct QuoteRow: View {
                     Text("—")
                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 70, alignment: .trailing)
-
-            // Col 4: Change (combines amount & percent to 2 rows max)
-            VStack(alignment: .trailing, spacing: 1) {
-                let pctStr = String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent)
-                let changeStr = storageService.showAbsoluteChange
-                    ? "\(StorageService.formatAmount(quote.change * priceRate, symbol: currSymbol, signed: true)) (\(pctStr))"
-                    : pctStr
-
-                Text(changeStr)
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-
-                if storageService.showExtendedHours,
-                   let extChg = quote.extendedChange,
-                   let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.2f (%+.\(storageService.percentDecimals)f%%)", extChg * priceRate, extPct))
-                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
-                        .foregroundColor(extChg >= 0 ? DS.up : DS.down)
-                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)

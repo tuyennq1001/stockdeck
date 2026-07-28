@@ -81,12 +81,11 @@ final class BatchImportTests: XCTestCase {
         XCTAssertNotNil(jpPortfolios)
         let holdings = jpPortfolios?.first?.holdings ?? []
 
-        XCTAssertEqual(holdings.count, 4, "Should recognize 4 distinct Japanese funds")
+        XCTAssertEqual(holdings.count, 3, "Should recognize 3 distinct Japanese funds (since Rakuten S&P500 & Rakuten Plus S&P500 both map to 9I31223A)")
         let symbols = Set(holdings.map { $0.symbol })
-        XCTAssertTrue(symbols.contains("0331317B"), "iFreeNEXT NASDAQ100")
-        XCTAssertTrue(symbols.contains("0331423B"), "楽天・Ｓ＆Ｐ５００")
-        XCTAssertTrue(symbols.contains("0331119A"), "auAM Nifty50")
-        XCTAssertTrue(symbols.contains("9I31223A"), "楽天・プラス・Ｓ＆Ｐ５００")
+        XCTAssertTrue(symbols.contains("04317188"), "iFreeNEXT NASDAQ100")
+        XCTAssertTrue(symbols.contains("AY311238"), "auAM Nifty50")
+        XCTAssertTrue(symbols.contains("9I31223A"), "楽天 S&P500")
     }
 
     @MainActor

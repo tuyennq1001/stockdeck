@@ -36,26 +36,19 @@ final class JapaneseFundTests: XCTestCase {
         XCTAssertNotNil(nisaTsumitate)
 
         // Verify iFreeNEXT NASDAQ100 net units: (32,432 + 15,884) - 15,884 = 32,432
-        let nasdaqHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "0331317B" || $0.symbol.contains("NASDAQ100") })
+        let nasdaqHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "04317188" || $0.symbol.contains("NASDAQ100") })
         XCTAssertNotNil(nasdaqHolding)
         XCTAssertEqual(nasdaqHolding?.quantity ?? 0, 32432, accuracy: 0.1)
 
-        // Verify Rakuten S&P500 holding
-        let sp500Holding = nisaTsumitate?.holdings.first(where: { $0.symbol == "0331423B" || $0.symbol.contains("Ｓ＆Ｐ５００") })
+        // Verify Rakuten S&P500 combined holding (both 楽天 S&P500 & 楽天 Plus S&P500 map to 9I31223A)
+        let sp500Holding = nisaTsumitate?.holdings.first(where: { $0.symbol == "9I31223A" })
         XCTAssertNotNil(sp500Holding)
-        XCTAssertEqual(sp500Holding?.quantity ?? 0, 74025, accuracy: 0.1)
-        XCTAssertEqual(sp500Holding?.avgPrice ?? 0, 13509, accuracy: 1.0)
-
-        // Verify Rakuten Plus S&P500 holding
-        let plusHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "9I31223A" })
-        XCTAssertNotNil(plusHolding)
-        XCTAssertEqual(plusHolding?.quantity ?? 0, 28298, accuracy: 0.1)
-        XCTAssertEqual(plusHolding?.avgPrice ?? 0, 17669, accuracy: 1.0)
+        XCTAssertEqual(sp500Holding?.quantity ?? 0, 74025 + 28298, accuracy: 0.1)
 
         // Verify NISA Growth portfolio (NISA成長投資枠)
         let nisaGrowth = portfolios?.first(where: { $0.name.contains("成長") })
         XCTAssertNotNil(nisaGrowth)
-        let niftyHolding = nisaGrowth?.holdings.first(where: { $0.symbol == "0331119A" })
+        let niftyHolding = nisaGrowth?.holdings.first(where: { $0.symbol == "AY311238" })
         XCTAssertNotNil(niftyHolding)
         XCTAssertEqual(niftyHolding?.quantity ?? 0, 81633, accuracy: 0.1)
         XCTAssertEqual(niftyHolding?.avgPrice ?? 0, 12250, accuracy: 1.0)

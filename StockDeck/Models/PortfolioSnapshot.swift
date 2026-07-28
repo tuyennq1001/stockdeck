@@ -81,11 +81,12 @@ enum TodayPerformance {
         var previousCloseValue = 0.0
 
         for input in inputs {
-            gain += (input.regularPrice - input.previousClose)
+            let scale = input.holding.isJapaneseFund ? 10000.0 : 1.0
+            gain += ((input.regularPrice - input.previousClose) / scale)
                 * input.holding.quantity
                 * input.holding.effectiveLeverage
                 * input.rate
-            previousCloseValue += input.previousClose
+            previousCloseValue += ((input.previousClose) / scale)
                 * input.holding.quantity
                 * input.holding.effectiveLeverage
                 * input.rate
