@@ -268,7 +268,19 @@ enum SpreadsheetIO {
         if ext == "xlsx" {
             return parseXLSX(fileURL: fileURL)
         } else if ext == "csv" {
-            if let content = try? String(contentsOf: fileURL, encoding: .utf8) {
+            var content: String? = nil
+            if let data = try? Data(contentsOf: fileURL) {
+                if let str = String(data: data, encoding: .utf8) {
+                    content = str
+                } else if let str = String(data: data, encoding: .shiftJIS) {
+                    content = str
+                } else {
+                    let cfEncoding = CFStringEncodings.dosJapanese.rawValue
+                    let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
+                    content = String(data: data, encoding: String.Encoding(rawValue: nsEncoding))
+                }
+            }
+            if let content = content {
                 return parseCSV(content: content)
             }
         }
@@ -483,11 +495,179 @@ enum SpreadsheetIO {
         let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         var rows: [[String]] = []
         for line in lines {
-            let delimiter: Character = line.contains(";") ? ";" : ","
-            let cols = line.split(separator: delimiter, omittingEmptySubsequences: false).map { String($0).trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\"", with: "") }
+            let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
+            let cols = splitCSVLine(line, delimiter: delimiter)
             rows.append(cols)
         }
+
+        if let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
+            return jpPortfolios
+        }
+
         return convertRowsToPortfolios(rows: rows)
+    }
+
+    private static func splitCSVLine(_ line: String, delimiter: Character = ",") -> [String] {
+        var result: [String] = []
+        var current = ""
+        var inQuotes = false
+
+        for char in line {
+            if char == "\"" {
+                inQuotes.toggle()
+            } else if char == delimiter && !inQuotes {
+                result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                current = ""
+            } else {
+                current.append(char)
+            }
+        }
+        result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+        return result.map { $0.replacingOccurrences(of: "\"", with: "") }
+    }
+
+    static let japaneseFundNameToCodeMap: [String: String] = [
+        "楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド": "9I31223A",
+        "楽天・プラス・S&P500インデックス・ファンド": "9I31223A",
+        "楽天・プラス・Ｓ＆Ｐ５００": "9I31223A",
+        "楽天・Ｓ＆Ｐ５００インデックス・ファンド": "0331423B",
+        "楽天・Ｓ＆Ｐ５00インデックス・ファンド": "0331423B",
+        "楽天・Ｓ＆Ｐ５００": "0331423B",
+        "eMAXIS Slim米国株式(S&P500)": "03311187",
+        "eMAXIS Slim 米国株式(S&P500)": "03311187",
+        "iFreeNEXT NASDAQ100インデックス": "0331317B",
+        "iFreeNEXT NASDAQ100": "0331317B",
+        "auAM Nifty50インド株ファンド": "0331119A",
+        "auAM Nifty50": "0331119A",
+        "eMAXIS Slim 全世界株式(オール・カントリー)": "03311181",
+        "eMAXIS Slimオルカン": "03311181",
+        "楽天・プラス・オールカントリー・インデックス・ファンド": "9I31123A",
+        "楽天・全米株式インデックス・ファンド": "0331418A"
+    ]
+
+    static func parseJapaneseBrokerCSV(rows: [[String]]) -> [Portfolio]? {
+        guard !rows.isEmpty else { return nil }
+
+        var headerIdx = -1
+        var fundCol = -1, tradeCol = -1, qtyCol = -1, priceCol = -1, accountCol = -1, dateCol = -1
+
+        for (idx, r) in rows.enumerated() {
+            for (cIdx, cell) in r.enumerated() {
+                if cell.contains("ファンド") || cell.contains("銘柄") { fundCol = cIdx }
+                if cell.contains("取引") || cell.contains("売買") { tradeCol = cIdx }
+                if cell.contains("数量") { qtyCol = cIdx }
+                if cell.contains("単価") { priceCol = cIdx }
+                if cell.contains("口座") { accountCol = cIdx }
+                if cell.contains("約定日") || cell.contains("日付") { dateCol = cIdx }
+            }
+            if fundCol != -1 && (qtyCol != -1 || priceCol != -1) {
+                headerIdx = idx
+                break
+            }
+        }
+
+        guard headerIdx != -1 && fundCol != -1 else { return nil }
+
+        struct TradeRecord {
+            let account: String
+            let fundName: String
+            let symbol: String
+            let isBuy: Bool
+            let qty: Double
+            let unitPrice: Double
+            let date: Date?
+        }
+
+        var records: [TradeRecord] = []
+
+        for i in (headerIdx + 1)..<rows.count {
+            let r = rows[i]
+            guard r.count > fundCol else { continue }
+
+            let rawFundName = r[fundCol].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawFundName.isEmpty else { continue }
+
+            let cleanFundName = rawFundName.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            var code = japaneseFundNameToCodeMap[cleanFundName] ?? japaneseFundNameToCodeMap[rawFundName]
+            if code == nil {
+                for (k, v) in japaneseFundNameToCodeMap {
+                    if rawFundName.contains(k) || k.contains(cleanFundName) {
+                        code = v
+                        break
+                    }
+                }
+            }
+            let symbol = code ?? cleanFundName
+
+            let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol] : "買付"
+            let isBuy = tradeType.contains("買") || tradeType.contains("積立")
+
+            let qtyStr = qtyCol != -1 && r.count > qtyCol ? r[qtyCol].replacingOccurrences(of: ",", with: "") : "0"
+            let qty = Double(qtyStr) ?? 0.0
+
+            let priceStr = priceCol != -1 && r.count > priceCol ? r[priceCol].replacingOccurrences(of: ",", with: "") : "0"
+            let price = Double(priceStr) ?? 0.0
+
+            let account = accountCol != -1 && r.count > accountCol && !r[accountCol].isEmpty ? r[accountCol] : "NISA / 投資信託"
+
+            var pDate: Date? = nil
+            if dateCol != -1 && r.count > dateCol {
+                pDate = parseDate(r[dateCol])
+            }
+
+            if qty > 0 {
+                records.append(TradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, qty: qty, unitPrice: price, date: pDate))
+            }
+        }
+
+        guard !records.isEmpty else { return nil }
+
+        struct PositionAccumulator {
+            var totalUnits: Double = 0.0
+            var totalCost: Double = 0.0
+            var latestDate: Date? = nil
+        }
+
+        var accountMap: [String: [String: PositionAccumulator]] = [:]
+
+        for rec in records {
+            var accDict = accountMap[rec.account] ?? [:]
+            var pos = accDict[rec.symbol] ?? PositionAccumulator()
+
+            if rec.isBuy {
+                pos.totalUnits += rec.qty
+                pos.totalCost += rec.qty * (rec.unitPrice / 10000.0)
+            } else {
+                let currentAvgPrice = pos.totalUnits > 0 ? (pos.totalCost / pos.totalUnits) : 0.0
+                pos.totalUnits = max(0, pos.totalUnits - rec.qty)
+                pos.totalCost = max(0, pos.totalUnits * currentAvgPrice)
+            }
+
+            if let d = rec.date {
+                pos.latestDate = d
+            }
+
+            accDict[rec.symbol] = pos
+            accountMap[rec.account] = accDict
+        }
+
+        var resultPortfolios: [Portfolio] = []
+
+        for (accountName, symbolDict) in accountMap {
+            var holdings: [Holding] = []
+            for (symbol, pos) in symbolDict {
+                guard pos.totalUnits > 0 else { continue }
+                let avgPrice10k = (pos.totalCost / pos.totalUnits) * 10000.0
+                let holding = Holding(symbol: symbol, quantity: pos.totalUnits, avgPrice: avgPrice10k, purchaseDate: pos.latestDate)
+                holdings.append(holding)
+            }
+            if !holdings.isEmpty {
+                resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: holdings))
+            }
+        }
+
+        return resultPortfolios.isEmpty ? nil : resultPortfolios
     }
 
     /// Converts tabular rows into Portfolio models.

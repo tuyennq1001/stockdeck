@@ -157,14 +157,36 @@ class StockService: ObservableObject {
     func fetchQuotes(symbols: [String]) async {
         guard !symbols.isEmpty else { return }
 
+        let fundSymbols = symbols.filter { self.isJapaneseMutualFund($0) }
+        let regularSymbols = symbols.filter { !self.isJapaneseMutualFund($0) }
+
+        if !fundSymbols.isEmpty {
+            await withTaskGroup(of: (String, StockQuote?).self) { group in
+                for symbol in fundSymbols {
+                    group.addTask { [weak self] in
+                        let q = await self?.fetchJapaneseFundQuote(symbol: symbol)
+                        return (symbol, q)
+                    }
+                }
+                for await (sym, q) in group {
+                    if let quote = q {
+                        self.quotes[sym] = quote
+                        StorageService.shared.setType("MUTUALFUND", for: sym)
+                    }
+                }
+            }
+        }
+
+        guard !regularSymbols.isEmpty else { return }
+
         // Try v7 batch quote first (single HTTP call, live extended hours)
-        if await fetchQuotesV7(symbols: symbols) {
+        if await fetchQuotesV7(symbols: regularSymbols) {
             return
         }
 
         // Fallback: fetch each symbol via v8 chart API
         await withTaskGroup(of: Void.self) { group in
-            for symbol in symbols {
+            for symbol in regularSymbols {
                 group.addTask { [weak self] in
                     await self?.fetchSingleQuote(symbol: symbol)
                 }
@@ -658,17 +680,138 @@ class StockService: ObservableObject {
         return true
     }
 
+    // MARK: - Japanese Mutual Funds (投資信託)
+
+    static let popularJapaneseFunds: [SearchResult] = [
+        SearchResult(symbol: "9I31223A", name: "楽天・プラス・S&P500インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "0331423B", name: "楽天・S&P500インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "03311187", name: "eMAXIS Slim米国株式(S&P500)", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "0331317B", name: "iFreeNEXT NASDAQ100インデックス", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "0331119A", name: "auAM Nifty50インド株ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "03311181", name: "eMAXIS Slim 全世界株式(オール・カントリー)", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "9I31123A", name: "楽天・プラス・オールカントリー・インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
+        SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
+    ]
+
+    func isJapaneseMutualFund(_ symbol: String) -> Bool {
+        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard clean.count == 8 else { return false }
+        let regex = "^[0-9A-Z]{8}$"
+        return clean.range(of: regex, options: .regularExpression) != nil
+    }
+
+    func fetchJapaneseFundQuote(symbol: String) async -> StockQuote? {
+        let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(cleanCode)") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else { return nil }
+
+            let pattern = "\"code\":\"\(cleanCode)\".*?\"changePriceRate\":\"([^\"]*)\""
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
+               let match = regex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count)) {
+                let jsonSnippet = "{" + (html as NSString).substring(with: match.range) + "}"
+                if let snippetData = jsonSnippet.data(using: .utf8),
+                   let dict = try? JSONSerialization.jsonObject(with: snippetData) as? [String: Any] {
+
+                    let name = (dict["name"] as? String) ?? (dict["fundNickName"] as? String) ?? cleanCode
+                    let priceStr = (dict["price"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
+                    let changeStr = (dict["changePrice"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
+                    let percentStr = (dict["changePriceRate"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
+
+                    let price = Double(priceStr) ?? 0.0
+                    let change = Double(changeStr) ?? 0.0
+                    let percent = Double(percentStr) ?? 0.0
+
+                    return StockQuote(
+                        symbol: symbol,
+                        name: name,
+                        price: price,
+                        change: change,
+                        changePercent: percent,
+                        regularMarketPreviousClose: price - change,
+                        currency: "JPY",
+                        marketState: "CLOSED",
+                        dayHigh: nil,
+                        dayLow: nil,
+                        fiftyTwoWeekHigh: nil,
+                        fiftyTwoWeekLow: nil,
+                        preMarketPrice: nil,
+                        preMarketChange: nil,
+                        preMarketChangePercent: nil,
+                        postMarketPrice: nil,
+                        postMarketChange: nil,
+                        postMarketChangePercent: nil
+                    )
+                }
+            }
+
+            // Fallback parsing title
+            let titlePattern = "<title>(.*?)【"
+            var fundName = cleanCode
+            if let tRegex = try? NSRegularExpression(pattern: titlePattern),
+               let tMatch = tRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                fundName = (html as NSString).substring(with: tMatch.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            return StockQuote(
+                symbol: symbol,
+                name: fundName,
+                price: 0,
+                change: 0,
+                changePercent: 0,
+                regularMarketPreviousClose: 0,
+                currency: "JPY",
+                marketState: "CLOSED",
+                dayHigh: nil,
+                dayLow: nil,
+                fiftyTwoWeekHigh: nil,
+                fiftyTwoWeekLow: nil,
+                preMarketPrice: nil,
+                preMarketChange: nil,
+                preMarketChangePercent: nil,
+                postMarketPrice: nil,
+                postMarketChange: nil,
+                postMarketChangePercent: nil
+            )
+        } catch {
+            return nil
+        }
+    }
+
     func search(query: String) async -> [SearchResult] {
         guard !query.isEmpty else { return [] }
+
+        var fundResults: [SearchResult] = []
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let upperQuery = cleanQuery.uppercased()
+
+        for fund in Self.popularJapaneseFunds {
+            if fund.symbol.contains(upperQuery) || fund.name.localizedCaseInsensitiveContains(cleanQuery) {
+                fundResults.append(fund)
+            }
+        }
+
+        if isJapaneseMutualFund(cleanQuery) && !fundResults.contains(where: { $0.symbol == upperQuery }) {
+            fundResults.append(SearchResult(symbol: upperQuery, name: "投資信託 (\(upperQuery))", exchange: "JP_FUND", type: "MUTUALFUND"))
+        }
+
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else { return [] }
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
+            return fundResults
+        }
 
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooSearchResponse.self, from: data)
-            return response.quotes
+            return fundResults + response.quotes
         } catch {
-            return []
+            return fundResults
         }
     }
 
