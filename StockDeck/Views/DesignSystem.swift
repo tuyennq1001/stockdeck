@@ -1054,9 +1054,9 @@ extension View {
     func pointingHandCursor() -> some View {
         self.onHover { inside in
             if inside {
-                NSCursor.pointingHand.push()
+                NSCursor.pointingHand.set()
             } else {
-                NSCursor.pop()
+                NSCursor.arrow.set()
             }
         }
     }

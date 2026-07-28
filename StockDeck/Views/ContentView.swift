@@ -196,6 +196,8 @@ struct ContentView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(Capsule().fill(DS.brand))
+                    .contentShape(Capsule())
+                    .pointingHandCursor()
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
