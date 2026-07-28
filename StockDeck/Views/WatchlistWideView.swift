@@ -181,40 +181,6 @@ struct WatchlistWideView: View {
 
     var body: some View {
         PageScaffold(storageService.currentWatchlist.name, caption: "\(storageService.watchlist.count) symbols") {
-            HStack(spacing: 12) {
-                Button {
-                    PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
-                        Text("Export All").font(DS.caption)
-                    }
-                    .foregroundStyle(DS.inkSecondary)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Export all watchlists to Excel (.xlsx)")
-
-                RefreshButton(isLoading: stockService.isLoading) {
-                    Task { await stockService.refreshAll(storageService: storageService) }
-                }
-                Button { showMetricCustomizer = true } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
-                        Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
-                    }
-                    .foregroundStyle(DS.brand)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Customize watchlist columns")
-                addButton
-            }
-        } content: {
             if storageService.watchlist.isEmpty {
                 emptyState
             } else {
@@ -534,8 +500,60 @@ struct WatchlistWideView: View {
         return base + extended + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
     }
 
+    private var tableToolbar: some View {
+        HStack(spacing: 8) {
+            Text("\(storageService.watchlist.count) symbols")
+                .font(DS.caption)
+                .foregroundStyle(DS.inkSecondary)
+
+            Spacer()
+
+            Button {
+                PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
+                    Text("Export").font(DS.caption)
+                }
+                .foregroundStyle(DS.inkSecondary)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Export all watchlists to Excel (.xlsx)")
+
+            RefreshButton(isLoading: stockService.isLoading) {
+                Task { await stockService.refreshAll(storageService: storageService) }
+            }
+
+            Button { showMetricCustomizer = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
+                    Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                }
+                .foregroundStyle(DS.brand)
+                .padding(.horizontal, 11).padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Customize watchlist columns")
+
+            addButton
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
     private var tableContents: some View {
         VStack(spacing: 0) {
+            if !isCompact {
+                tableToolbar
+                Divider().overlay(DS.hairline)
+            }
             headerRow
             Divider().overlay(DS.hairline)
             ScrollView {
