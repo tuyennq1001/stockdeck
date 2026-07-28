@@ -588,16 +588,7 @@ enum SpreadsheetIO {
             guard !rawFundName.isEmpty else { continue }
 
             let cleanFundName = rawFundName.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
-
-            var code = japaneseFundNameToCodeMap[cleanFundName] ?? japaneseFundNameToCodeMap[rawFundName]
-            if code == nil {
-                for (k, v) in japaneseFundNameToCodeMap {
-                    if rawFundName.contains(k) || k.contains(cleanFundName) {
-                        code = v
-                        break
-                    }
-                }
-            }
+            let code = resolveJapaneseFundCode(from: rawFundName)
             let symbol = code ?? cleanFundName
 
             let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol] : "買付"
@@ -845,24 +836,54 @@ enum SpreadsheetIO {
         return result
     }
 
+    private static func normalizeFundName(_ str: String) -> String {
+        let clean = str.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        let transformed = clean.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? clean
+        return transformed.lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "・", with: "")
+    }
+
+    static func resolveJapaneseFundCode(from rawText: String) -> String? {
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+
+        let datePattern = #"^\d{4}[/-]\d{1,2}[/-]\d{1,2}\s*"#
+        let cleanText = trimmed.replacingOccurrences(of: datePattern, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanText.isEmpty { return nil }
+
+        let targetNorm = normalizeFundName(cleanText)
+
+        // 1. Direct match on normalized keys
+        for (k, v) in japaneseFundNameToCodeMap {
+            if normalizeFundName(k) == targetNorm {
+                return v
+            }
+        }
+
+        // 2. Substring match sorted by key length DESCENDING so longer, specific keys match first!
+        let sortedEntries = japaneseFundNameToCodeMap.sorted { $0.key.count > $1.key.count }
+        for (k, v) in sortedEntries {
+            let keyNorm = normalizeFundName(k)
+            if !keyNorm.isEmpty && (targetNorm.contains(keyNorm) || keyNorm.contains(targetNorm)) {
+                return v
+            }
+        }
+
+        return nil
+    }
+
     private static func resolveSymbolOrFundCode(_ input: String) -> String {
         var trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "" }
 
-        // Strip leading date if present e.g. "2024/1/30 "
+        if let fundCode = resolveJapaneseFundCode(from: trimmed) {
+            return fundCode
+        }
+
         let datePattern = #"^\d{4}[/-]\d{1,2}[/-]\d{1,2}\s*"#
         trimmed = trimmed.replacingOccurrences(of: datePattern, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "" }
-
-        let cleanFundName = trimmed.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
-        if let code = japaneseFundNameToCodeMap[cleanFundName] ?? japaneseFundNameToCodeMap[trimmed] {
-            return code
-        }
-        for (k, v) in japaneseFundNameToCodeMap {
-            if trimmed.contains(k) || k.contains(cleanFundName) {
-                return v
-            }
-        }
 
         let upper = trimmed.uppercased()
         let jpStockRegex = "^[0-9]{3}[0-9A-Z]$"

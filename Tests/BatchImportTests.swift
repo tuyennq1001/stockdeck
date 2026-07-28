@@ -54,6 +54,41 @@ final class BatchImportTests: XCTestCase {
         XCTAssertEqual(holdings[1].avgPrice, 44607)
     }
 
+    func testParseJapaneseBrokerTSV18Lines() {
+        let text = """
+        約定日	ファンド名	数量［口］	単価
+        2024/1/30	iFreeNEXT NASDAQ100インデックス	32,432	30,834
+        2024/3/11	iFreeNEXT NASDAQ100インデックス	15,884	31,478
+        2024/5/9	iFreeNEXT NASDAQ100インデックス	14,932	33,487
+        2024/6/11	楽天・Ｓ＆Ｐ５００インデックス・ファンド(楽天・Ｓ＆Ｐ５００)	74,025	13,509
+        2024/7/9	楽天・Ｓ＆Ｐ５００インデックス・ファンド(楽天・Ｓ＆Ｐ５００)	69,565	14,375
+        2024/8/9	楽天・Ｓ＆Ｐ５００インデックス・ファンド(楽天・Ｓ＆Ｐ５００)	79,390	12,596
+        2024/11/14	auAM Nifty50インド株ファンド	81,633	12,250
+        2024/11/15	auAM Nifty50インド株ファンド	162,298	12,323
+        2024/12/30	auAM Nifty50インド株ファンド	81,143	12,324
+        2025/8/19	iFreeNEXT NASDAQ100インデックス	15,884	41,791
+        2025/8/19	iFreeNEXT NASDAQ100インデックス	47,364	41,791
+        2026/1/8	楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド(楽天・プラス・Ｓ＆Ｐ５００)	28,298	17,669
+        2026/1/19	楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド(楽天・プラス・Ｓ＆Ｐ５００)	56,177	17,801
+        2026/1/22	auAM Nifty50インド株ファンド	83,250	12,012
+        2026/3/10	楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド(楽天・プラス・Ｓ＆Ｐ５０0)	57,222	17,476
+        2026/3/12	auAM Nifty50インド株ファンド	131,776	11,383
+        2026/4/9	楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド(楽天・プラス・Ｓ＆Ｐ５００)	28,429	17,588
+        2026/7/9	楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド(楽天・プラス・Ｓ＆Ｐ５００)	50,274	19,891
+        """
+
+        let jpPortfolios = SpreadsheetIO.parseCSV(content: text)
+        XCTAssertNotNil(jpPortfolios)
+        let holdings = jpPortfolios?.first?.holdings ?? []
+
+        XCTAssertEqual(holdings.count, 4, "Should recognize 4 distinct Japanese funds")
+        let symbols = Set(holdings.map { $0.symbol })
+        XCTAssertTrue(symbols.contains("0331317B"), "iFreeNEXT NASDAQ100")
+        XCTAssertTrue(symbols.contains("0331423B"), "楽天・Ｓ＆Ｐ５００")
+        XCTAssertTrue(symbols.contains("0331119A"), "auAM Nifty50")
+        XCTAssertTrue(symbols.contains("9I31223A"), "楽天・プラス・Ｓ＆Ｐ５００")
+    }
+
     @MainActor
     func testAddHoldingsBatchPositionMerging() {
         let storageService = StorageService.shared
