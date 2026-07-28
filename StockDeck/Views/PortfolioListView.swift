@@ -316,6 +316,7 @@ struct PortfolioListView: View {
         let avgPrice: Double      // weighted avg buy price, in the price currency
         let priceSymbol: String
         let pct: Double           // price return vs. avg (position-direction aware)
+        let pnl: Double           // total P&L in preferred currency
         let currentPrice: Double
         let priceChangePercent: Double
         let extPrice: Double?
@@ -329,10 +330,19 @@ struct PortfolioListView: View {
     private var globalPositions: [GlobalPosition] {
         var qty: [String: Double] = [:]
         var qtyPrice: [String: Double] = [:]
+        var totalVal: [String: Double] = [:]
+        var totalCost: [String: Double] = [:]
+
         for portfolio in storageService.portfolios {
             for h in portfolio.holdings {
                 qty[h.symbol, default: 0] += h.quantity
                 qtyPrice[h.symbol, default: 0] += h.quantity * h.avgPrice
+                if let quote = stockService.quotes[h.symbol] {
+                    let rate = stockService.rate(from: quote.currency)
+                    let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                    totalVal[h.symbol, default: 0] += h.marketValue(currentPrice: quote.price) * rate
+                    totalCost[h.symbol, default: 0] += h.costBasisLocal * costRate
+                }
             }
         }
         return qty.compactMap { symbol, q -> GlobalPosition? in
@@ -343,6 +353,7 @@ struct PortfolioListView: View {
             let rawPct = abs(avg) >= 1e-6 ? (price / avg - 1) * 100 : 0
             // A short position gains when the price falls, so flip the sign.
             let pct = q >= 0 ? rawPct : -rawPct
+            let pnl = totalVal[symbol, default: 0] - totalCost[symbol, default: 0]
             let priceCurr = storageService.stockPriceCurrency
             let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
             let value = abs(price * q) * stockService.rate(from: quote.currency)
@@ -350,7 +361,7 @@ struct PortfolioListView: View {
             let extPrice: Double? = quote.isExtendedHours ? quote.alertPrice : nil
             let extChangePercent: Double? = quote.isExtendedHours ? quote.extendedChangePercent : nil
 
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct,
+            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct, pnl: pnl,
                                   currentPrice: price, priceChangePercent: quote.changePercent,
                                   extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: value)
@@ -1210,12 +1221,26 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 58, alignment: .trailing)
 
-            // Col 5: P&L % ONLY
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+            // Col 5: P&L (2 lines: Amount on top, Percent on bottom)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(StorageService.formatAmount(
+                    globalPos.pnl,
+                    symbol: globalPos.priceSymbol,
+                    decimals: storageService.amountDecimals,
+                    signed: true
+                ))
                 .font(.inter(11, relativeTo: .caption).monospacedDigit())
                 .fontWeight(.bold)
-                .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                    .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)

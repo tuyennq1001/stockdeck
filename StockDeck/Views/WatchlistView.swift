@@ -620,15 +620,14 @@ struct QuoteRow: View {
                 .minimumScaleFactor(0.7)
                 .frame(width: 65, alignment: .trailing)
 
-            // Col 4: Ext (Extended hours price to the right of %)
+            // Col 4: Ext (Extended hours % change)
             VStack(alignment: .trailing, spacing: 0) {
-                let extPrice = quote.postMarketPrice ?? quote.preMarketPrice
-                if storageService.showExtendedHours, let extPrice {
-                    let extDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice * priceRate)
-                    Text("\(currSymbol)\(StorageService.formatNumber(extPrice * priceRate, decimals: extDecimals))")
+                if storageService.showExtendedHours,
+                   let extPct = quote.extendedChangePercent {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
                         .fontWeight(.medium)
-                        .foregroundColor(.primary)
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                 } else {
                     Text("—")
                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
