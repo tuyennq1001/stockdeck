@@ -953,7 +953,11 @@ struct BatchImportSheet: View {
 
     private func parseInputText(_ text: String) {
         errorMessage = nil
-        parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: text)
+        if let jpPortfolios = SpreadsheetIO.parseCSV(content: text), !jpPortfolios.isEmpty {
+            parsedHoldings = jpPortfolios.flatMap { $0.holdings }
+        } else {
+            parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: text)
+        }
     }
 
     private func selectAndParseFile() {
@@ -968,7 +972,11 @@ struct BatchImportSheet: View {
                 parsedHoldings = allHoldings
                 errorMessage = nil
             } else if let content = try? String(contentsOf: url, encoding: .utf8) {
-                parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: content)
+                if let jpPortfolios = SpreadsheetIO.parseCSV(content: content), !jpPortfolios.isEmpty {
+                    parsedHoldings = jpPortfolios.flatMap { $0.holdings }
+                } else {
+                    parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: content)
+                }
                 errorMessage = nil
             } else {
                 errorMessage = "Could not parse file."
