@@ -707,7 +707,7 @@ struct PortfolioOverview: View {
                         HStack(spacing: 0) {
                             Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
                             sortHeader("Symbol", column: .symbol)
-                                .frame(width: PositionColumnWidth.symbol, alignment: .leading)
+                                .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
                             sortHeader("Price", column: .price)
                                 .frame(width: PositionColumnWidth.price, alignment: .trailing)
                             if storageService.showExtendedHours {
@@ -802,9 +802,7 @@ struct PortfolioOverview: View {
                             }
                         }
                     }
-                    .frame(minWidth: PositionColumnWidth.table(
-                        showExtendedHours: storageService.showExtendedHours
-                    ))
+                    .frame(maxWidth: .infinity)
                 }
                 .navigationDestination(for: UUID.self) { id in
                     if let h = holdings.first(where: { $0.id == id }) {
@@ -863,16 +861,11 @@ struct PortfolioOverview: View {
 
 private enum PositionColumnWidth {
     static let number: CGFloat = 24
-    static let symbol: CGFloat = 130
-    static let price: CGFloat = 85
-    static let session: CGFloat = 90
-    static let amount: CGFloat = 95
-    static let weight: CGFloat = 75
+    static let price: CGFloat = 105
+    static let session: CGFloat = 105
+    static let amount: CGFloat = 115
+    static let weight: CGFloat = 105
     static let chevron: CGFloat = 16
-    static func table(showExtendedHours: Bool) -> CGFloat {
-        number + symbol + price + (showExtendedHours ? session : 0)
-            + amount * 3 + weight + chevron
-    }
 }
 
 private struct PositionSummaryRow: View {
@@ -982,7 +975,7 @@ private struct PositionSummaryRow: View {
                     }
                 }
             }
-            .frame(width: PositionColumnWidth.symbol, alignment: .leading)
+            .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
 
             // Regular price and today's regular-session change.
             let isExtendedSession = showExtendedHours && (first?.quote.isExtendedHours ?? false)

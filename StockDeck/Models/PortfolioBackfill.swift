@@ -77,6 +77,20 @@ enum PortfolioBackfill {
             result.append(ValuePoint(date: date, value: total))
         }
 
+        // Downsample points if array is large (> 200 points) for chart rendering performance
+        if result.count > 200 {
+            let step = Double(result.count - 1) / 199.0
+            var sampled: [ValuePoint] = []
+            sampled.reserveCapacity(200)
+            for i in 0..<200 {
+                let index = Int((Double(i) * step).rounded())
+                if index < result.count {
+                    sampled.append(result[index])
+                }
+            }
+            return sampled
+        }
+
         return result
     }
 }
