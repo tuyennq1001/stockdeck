@@ -10,6 +10,8 @@ struct PortfolioListView: View {
     @State private var importAlert: String?
     @State private var showBatchSheet = false
     @State private var batchImportTargetId: UUID? = nil
+    @State private var confirmDeletePortfolio: Portfolio? = nil
+    @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -127,107 +129,31 @@ struct PortfolioListView: View {
                     let globals = globalPositions
                     if !globals.isEmpty {
                         VStack(spacing: 0) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 0) {
+                                Text("#")
+                                    .frame(width: 20, alignment: .leading)
                                 Text("Symbol")
-                                    .frame(width: 80, alignment: .leading)
+                                    .frame(width: 100, alignment: .leading)
                                 Text("Avg Price")
-                                    .frame(width: 68, alignment: .trailing)
+                                    .frame(width: 74, alignment: .trailing)
                                 Text("Price")
-                                    .frame(width: 78, alignment: .trailing)
-                                Text("Ext")
-                                    .frame(width: 78, alignment: .trailing)
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
                                 Text("P&L")
-                                    .frame(width: 65, alignment: .trailing)
+                                    .frame(width: 110, alignment: .trailing)
                             }
                             .font(.inter(10, weight: .medium, relativeTo: .caption))
                             .foregroundColor(.secondary)
+                            .tracking(0.8)
+                            .textCase(.uppercase)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 4)
 
                             Divider()
 
                             ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                HStack(spacing: 6) {
-                                    HStack(spacing: 6) {
-                                        SymbolLogo(symbol: p.symbol, size: 20)
-                                        Text(p.symbol)
-                                            .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                            .fontWeight(.semibold)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(width: 80, alignment: .leading)
-
-                                    Text(StorageService.formatAmount(
-                                        p.avgPrice,
-                                        symbol: p.priceSymbol,
-                                        decimals: StorageService.priceDecimals(
-                                            symbol: p.symbol,
-                                            price: p.avgPrice
-                                        )
-                                    ))
-                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                    .frame(width: 68, alignment: .trailing)
-
-                                    VStack(alignment: .trailing, spacing: 1) {
-                                        Text(StorageService.formatAmount(
-                                            p.currentPrice,
-                                            symbol: p.priceSymbol,
-                                            decimals: StorageService.priceDecimals(
-                                                symbol: p.symbol,
-                                                price: p.currentPrice
-                                            )
-                                        ))
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.priceChangePercent))
-                                            .font(.inter(9, relativeTo: .caption2).monospacedDigit())
-                                            .foregroundColor(p.priceChangePercent >= 0 ? DS.up : DS.down)
-                                    }
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                    .frame(width: 78, alignment: .trailing)
-
-                                    VStack(alignment: .trailing, spacing: 1) {
-                                        if let extP = p.extPrice {
-                                            Text(StorageService.formatAmount(
-                                                extP,
-                                                symbol: p.priceSymbol,
-                                                decimals: StorageService.priceDecimals(
-                                                    symbol: p.symbol,
-                                                    price: extP
-                                                )
-                                            ))
-                                            .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                            .foregroundColor(.primary)
-
-                                            if let extPct = p.extChangePercent {
-                                                Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                                                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
-                                                    .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                                            }
-                                        } else {
-                                            Text("-")
-                                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                    .frame(width: 78, alignment: .trailing)
-
-                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.pct))
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(p.pct >= 0 ? DS.up : DS.down)
-                                        .frame(width: 65, alignment: .trailing)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 3)
-
+                                PortfolioQuoteRow(position: index + 1, globalPos: p)
                                 if index < globals.count - 1 {
-                                    Divider().padding(.leading, 44)
+                                    Divider().padding(.leading, 36)
                                 }
                             }
                         }
@@ -254,17 +180,24 @@ struct PortfolioListView: View {
                     }
 
                     ForEach(filteredPortfolios) { portfolio in
-                        PortfolioSection(portfolio: portfolio, onBatchImport: { targetId in
-                            batchImportTargetId = targetId
-                            showBatchSheet = true
-                        })
+                        PortfolioSection(
+                            portfolio: portfolio,
+                            confirmDeletePortfolio: $confirmDeletePortfolio,
+                            confirmDeleteHolding: $confirmDeleteHolding,
+                            onBatchImport: { targetId in
+                                batchImportTargetId = targetId
+                                showBatchSheet = true
+                            }
+                        )
                     }
                     .onDelete { offsets in
                         let currentList = filteredPortfolios
                         let ids = offsets.compactMap { idx in
                             idx < currentList.count ? currentList[idx].id : nil
                         }
-                        ids.forEach { storageService.deletePortfolio(id: $0) }
+                        if let firstId = ids.first, let p = currentList.first(where: { $0.id == firstId }) {
+                            confirmDeletePortfolio = p
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -283,16 +216,6 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
 
                     Spacer()
-
-                    Button(action: { batchImportTargetId = nil; showBatchSheet = true }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "rectangle.stack.badge.plus")
-                            Text("Batch Import")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                    }
-                    .buttonStyle(.borderless)
-                    .pointingHandCursor()
 
                     Button(action: importPortfolios) {
                         HStack(spacing: 3) {
@@ -342,6 +265,28 @@ struct PortfolioListView: View {
         } message: {
             Text(importAlert ?? "")
         }
+        .alert("Delete Portfolio", isPresented: Binding(get: { confirmDeletePortfolio != nil }, set: { if !$0 { confirmDeletePortfolio = nil } })) {
+            Button("Cancel", role: .cancel) { confirmDeletePortfolio = nil }
+            Button("Delete", role: .destructive) {
+                if let p = confirmDeletePortfolio {
+                    storageService.deletePortfolio(id: p.id)
+                }
+                confirmDeletePortfolio = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete portfolio '\(confirmDeletePortfolio?.name ?? "")'? This action cannot be undone.")
+        }
+        .alert("Delete Holding", isPresented: Binding(get: { confirmDeleteHolding != nil }, set: { if !$0 { confirmDeleteHolding = nil } })) {
+            Button("Cancel", role: .cancel) { confirmDeleteHolding = nil }
+            Button("Delete", role: .destructive) {
+                if let target = confirmDeleteHolding {
+                    storageService.removeHolding(from: target.portfolioId, holdingId: target.holding.id)
+                }
+                confirmDeleteHolding = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete \(confirmDeleteHolding?.holding.symbol ?? "")? This action cannot be undone.")
+        }
     }
 
     private var grandTotalValue: Double {
@@ -364,7 +309,7 @@ struct PortfolioListView: View {
         }
     }
 
-    private struct GlobalPosition: Identifiable {
+    struct GlobalPosition: Identifiable {
         let id: String            // symbol
         let avgPrice: Double      // weighted avg buy price, in the price currency
         let priceSymbol: String
@@ -440,6 +385,8 @@ struct PortfolioSection: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.addHoldingAction) var addHoldingAction
     let portfolio: Portfolio
+    @Binding var confirmDeletePortfolio: Portfolio?
+    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
     var onBatchImport: ((UUID) -> Void)? = nil
     @State private var isRenaming = false
     @State private var renameText = ""
@@ -530,9 +477,9 @@ struct PortfolioSection: View {
             ForEach(sortedSymbols, id: \.self) { sym in
                 if let group = groupedHoldings[sym] {
                     if group.count == 1, let singleHolding = group.first {
-                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id)
+                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
                     } else {
-                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id)
+                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
                     }
                 }
             }
@@ -592,12 +539,17 @@ struct PortfolioSection: View {
                     } label: {
                         Label("Notifications…", systemImage: "bell")
                     }
+                    Button {
+                        onBatchImport?(portfolio.id)
+                    } label: {
+                        Label("Batch Import…", systemImage: "square.and.arrow.down")
+                    }
                     Button(action: exportSingle) {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
                     Divider()
                     Button(role: .destructive) {
-                        storageService.deletePortfolio(id: portfolio.id)
+                        confirmDeletePortfolio = portfolio
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -628,6 +580,7 @@ struct HoldingRow: View {
     @Environment(\.editHoldingAction) var editHoldingAction
     let holding: Holding
     let portfolioId: UUID
+    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
 
     var quote: StockQuote? {
         stockService.quotes[holding.symbol]
@@ -730,7 +683,7 @@ struct HoldingRow: View {
                 Label("Edit", systemImage: "pencil")
             }
             Button(role: .destructive) {
-                storageService.removeHolding(from: portfolioId, holdingId: holding.id)
+                confirmDeleteHolding = (holding, portfolioId)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -963,6 +916,7 @@ struct GroupedHoldingRow: View {
     let symbol: String
     let holdings: [Holding]
     let portfolioId: UUID
+    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
 
     @State private var isExpanded: Bool = false
 
@@ -1116,7 +1070,7 @@ struct GroupedHoldingRow: View {
                                 .pointingHandCursor()
                                 .help("Edit lot")
 
-                                Button { storageService.removeHolding(from: portfolioId, holdingId: h.id) } label: {
+                                Button { confirmDeleteHolding = (h, portfolioId) } label: {
                                     Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
                                 }
                                 .buttonStyle(.plain)
@@ -1149,5 +1103,131 @@ struct GroupedHoldingRow: View {
                 .padding(.bottom, 4)
             }
         }
+    }
+}
+
+struct PortfolioQuoteRow: View {
+    @EnvironmentObject var stockService: StockService
+    @EnvironmentObject var storageService: StorageService
+
+    let position: Int
+    let globalPos: PortfolioListView.GlobalPosition
+
+    var quote: StockQuote? {
+        stockService.quotes[globalPos.symbol]
+    }
+
+    private var displayCurrency: String {
+        let pref = storageService.stockPriceCurrency
+        guard let q = quote else { return pref }
+        return pref.isEmpty ? q.currency : pref
+    }
+
+    private var priceRate: Double {
+        guard let q = quote else { return 1.0 }
+        return stockService.priceRate(from: q.currency)
+    }
+
+    private var currSymbol: String {
+        StorageService.currencySymbol(for: displayCurrency)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("\(position)")
+                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 20, alignment: .leading)
+
+            // Col 1: Logo + symbol + name
+            HStack(spacing: 6) {
+                SymbolLogo(symbol: globalPos.symbol, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(globalPos.symbol)
+                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                    if storageService.showCompanyName, let q = quote {
+                        Text(q.name)
+                            .font(.inter(10, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(width: 100, alignment: .leading)
+
+            // Col 2: Avg Price
+            Text(StorageService.formatAmount(
+                globalPos.avgPrice,
+                symbol: globalPos.priceSymbol,
+                decimals: StorageService.priceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
+            ))
+            .font(.inter(13, relativeTo: .body).monospacedDigit())
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(width: 74, alignment: .trailing)
+
+            // Col 3: Price + day range / 52-week bar + Pre/Post badge
+            VStack(alignment: .trailing, spacing: 1) {
+                if let quote {
+                    HStack(spacing: 3) {
+                        Text("\(currSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate)))")
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.medium)
+                        if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                            Text(quote.marketStateLabel)
+                                .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
+                                )
+                        }
+                    }
+                    if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
+                        let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
+                        Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
+                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                    if storageService.show52WeekBar,
+                       let pos = quote.fiftyTwoWeekPosition,
+                       let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
+                        HStack(spacing: 4) {
+                            Text(StorageService.formatNumber(low * priceRate, decimals: 0))
+                                .font(.inter(8, relativeTo: .caption2).monospacedDigit())
+                                .foregroundColor(.secondary)
+                            RangeBar(position: pos)
+                                .frame(width: 56)
+                            Text(StorageService.formatNumber(high * priceRate, decimals: 0))
+                                .font(.inter(8, relativeTo: .caption2).monospacedDigit())
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    ProgressView().scaleEffect(0.5)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+
+            // Col 4: P&L % + daily change %
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+                    .font(.inter(13, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.bold)
+                    .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
+                if let quote {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                }
+            }
+            .frame(width: 110, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 }

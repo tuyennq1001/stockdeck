@@ -700,6 +700,17 @@ class StockService: ObservableObject {
         return clean.range(of: regex, options: .regularExpression) != nil
     }
 
+    func detectedCurrency(for symbol: String) -> String {
+        if let quote = quotes[symbol], !quote.currency.isEmpty {
+            return quote.currency
+        }
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if isJapaneseMutualFund(upper) || upper.hasSuffix(".T") {
+            return "JPY"
+        }
+        return "USD"
+    }
+
     func fetchJapaneseFundQuote(symbol: String) async -> StockQuote? {
         let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(cleanCode)") else { return nil }

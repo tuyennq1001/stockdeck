@@ -13,6 +13,8 @@ struct WatchlistView: View {
     @State private var alertSymbol: String? = nil
     @State private var sortColumn: SortColumn = .manual
     @State private var sortAscending: Bool = true
+    @State private var confirmDeleteWatchlist: Watchlist? = nil
+    @State private var confirmRemoveSymbol: String? = nil
 
     enum SortColumn {
         case manual, symbol, price, change
@@ -205,6 +207,28 @@ struct WatchlistView: View {
             } message: {
                 Text("Enter a new name for this watchlist:")
             }
+            .alert("Delete Watchlist", isPresented: Binding(get: { confirmDeleteWatchlist != nil }, set: { if !$0 { confirmDeleteWatchlist = nil } })) {
+                Button("Cancel", role: .cancel) { confirmDeleteWatchlist = nil }
+                Button("Delete", role: .destructive) {
+                    if let w = confirmDeleteWatchlist {
+                        storageService.deleteWatchlist(id: w.id)
+                    }
+                    confirmDeleteWatchlist = nil
+                }
+            } message: {
+                Text("Are you sure you want to delete watchlist '\(confirmDeleteWatchlist?.name ?? "")'?")
+            }
+            .alert("Remove Symbol", isPresented: Binding(get: { confirmRemoveSymbol != nil }, set: { if !$0 { confirmRemoveSymbol = nil } })) {
+                Button("Cancel", role: .cancel) { confirmRemoveSymbol = nil }
+                Button("Remove", role: .destructive) {
+                    if let sym = confirmRemoveSymbol {
+                        storageService.removeFromWatchlist(sym)
+                    }
+                    confirmRemoveSymbol = nil
+                }
+            } message: {
+                Text("Are you sure you want to remove \(confirmRemoveSymbol ?? "") from '\(storageService.currentWatchlist.name)'?")
+            }
     }
 
     private var watchlistPickerBar: some View {
@@ -263,7 +287,7 @@ struct WatchlistView: View {
                             }
                             Divider()
                             Button("Delete Watchlist", role: .destructive) {
-                                storageService.deleteWatchlist(id: wl.id)
+                                confirmDeleteWatchlist = wl
                             }
                         }
                     }
@@ -378,7 +402,7 @@ struct WatchlistView: View {
         }
         Divider()
         Button(role: .destructive) {
-            storageService.removeFromWatchlist(symbol)
+            confirmRemoveSymbol = symbol
         } label: {
             Label("Remove from Watchlist", systemImage: "trash")
         }

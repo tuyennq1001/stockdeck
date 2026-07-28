@@ -387,7 +387,6 @@ struct PortfolioWindowView: View {
             })
         }
         var io = [
-            DSMenuAction(title: "Batch Import to Portfolio…", icon: "rectangle.stack.badge.plus") { showBatchImport = true },
             DSMenuAction(title: "Import Portfolios…", icon: "square.and.arrow.down") { importPortfolios() },
             DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
         ]

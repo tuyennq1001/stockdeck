@@ -838,14 +838,21 @@ struct BatchImportSheet: View {
         SheetShell(title: "Batch Import (Holdings & 投資信託)", onCancel: onDismiss) {
             VStack(alignment: .leading, spacing: 14) {
                 // Target Portfolio Selection
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Target Portfolio").font(DS.caption).foregroundStyle(DS.inkSecondary)
-                    Picker("Target Portfolio", selection: $selectedPortfolioId) {
-                        ForEach(storageService.portfolios) { p in
-                            Text(p.name).tag(p.id)
-                        }
+                if targetPortfolioId != nil, let targetP = storageService.portfolios.first(where: { $0.id == selectedPortfolioId }) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Target Portfolio").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                        Text(targetP.name).font(DS.bodyStrong).foregroundStyle(DS.ink)
                     }
-                    .pickerStyle(.menu)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Target Portfolio").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                        Picker("Target Portfolio", selection: $selectedPortfolioId) {
+                            ForEach(storageService.portfolios) { p in
+                                Text(p.name).tag(p.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
                 }
 
                 // Mode Picker
@@ -908,13 +915,15 @@ struct BatchImportSheet: View {
                         ScrollView {
                             VStack(spacing: 4) {
                                 ForEach(parsedHoldings) { h in
+                                    let curr = stockService.detectedCurrency(for: h.symbol)
+                                    let currSym = StorageService.currencySymbol(for: curr)
                                     HStack {
                                         Text(h.symbol).font(DS.bodyStrong).foregroundStyle(DS.ink)
                                         Spacer()
                                         Text("Qty: \(StorageService.formatNumber(h.quantity, decimals: -1))")
                                             .font(DS.caption).foregroundStyle(DS.inkSecondary)
                                         if h.avgPrice > 0 {
-                                            Text("Avg: \(StorageService.formatNumber(h.avgPrice, decimals: 2))")
+                                            Text("Avg: \(currSym)\(StorageService.formatNumber(h.avgPrice, decimals: 2))")
                                                 .font(DS.caption).foregroundStyle(DS.inkSecondary)
                                         }
                                     }
