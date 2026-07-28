@@ -131,21 +131,21 @@ struct PortfolioListView: View {
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
                                 Text("#")
-                                    .frame(width: 20, alignment: .leading)
+                                    .frame(width: 16, alignment: .leading)
                                 Text("Symbol")
-                                    .frame(width: 100, alignment: .leading)
+                                    .frame(width: 90, alignment: .leading)
                                 Text("Avg Price")
-                                    .frame(width: 74, alignment: .trailing)
+                                    .frame(width: 65, alignment: .trailing)
                                 Text("Price")
                                     .frame(maxWidth: .infinity, alignment: .trailing)
                                 Text("P&L")
-                                    .frame(width: 110, alignment: .trailing)
+                                    .frame(width: 95, alignment: .trailing)
                             }
                             .font(.inter(10, weight: .medium, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .tracking(0.8)
                             .textCase(.uppercase)
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                             .padding(.vertical, 4)
 
                             Divider()
@@ -525,34 +525,40 @@ struct PortfolioSection: View {
                     Text(portfolio.name)
                         .font(.inter(13, weight: .bold, relativeTo: .headline))
                     Spacer()
-                }
-                .contentShape(Rectangle())
-                .contextMenu {
-                    Button {
-                        renameText = portfolio.name
-                        isRenaming = true
+                    Menu {
+                        Button {
+                            renameText = portfolio.name
+                            isRenaming = true
+                        } label: {
+                            Label("Rename Portfolio", systemImage: "pencil")
+                        }
+                        Button {
+                            onBatchImport?(portfolio.id)
+                        } label: {
+                            Label("Batch Import…", systemImage: "square.and.arrow.down")
+                        }
+                        Button {
+                            showNotifications = true
+                        } label: {
+                            Label("Notifications…", systemImage: "bell")
+                        }
+                        Button(action: exportSingle) {
+                            Label("Export (XLSX)", systemImage: "square.and.arrow.up")
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            confirmDeletePortfolio = portfolio
+                        } label: {
+                            Label("Delete Portfolio", systemImage: "trash")
+                        }
                     } label: {
-                        Label("Rename", systemImage: "pencil")
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
                     }
-                    Button {
-                        showNotifications = true
-                    } label: {
-                        Label("Notifications…", systemImage: "bell")
-                    }
-                    Button {
-                        onBatchImport?(portfolio.id)
-                    } label: {
-                        Label("Batch Import…", systemImage: "square.and.arrow.down")
-                    }
-                    Button(action: exportSingle) {
-                        Label("Export", systemImage: "square.and.arrow.up")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        confirmDeletePortfolio = portfolio
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 20, height: 20)
+                    .pointingHandCursor()
                 }
                 .popover(isPresented: $showNotifications, arrowEdge: .trailing) {
                     PortfolioNotificationsView(
@@ -1137,24 +1143,25 @@ struct PortfolioQuoteRow: View {
             Text("\(position)")
                 .font(.inter(10, relativeTo: .caption).monospacedDigit())
                 .foregroundColor(.secondary)
-                .frame(width: 20, alignment: .leading)
+                .frame(width: 16, alignment: .leading)
 
             // Col 1: Logo + symbol + name
-            HStack(spacing: 6) {
-                SymbolLogo(symbol: globalPos.symbol, size: 22)
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                SymbolLogo(symbol: globalPos.symbol, size: 20)
+                VStack(alignment: .leading, spacing: 0) {
                     Text(globalPos.symbol)
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
+                        .lineLimit(1)
                     if storageService.showCompanyName, let q = quote {
                         Text(q.name)
-                            .font(.inter(10, relativeTo: .caption))
+                            .font(.inter(9, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                 }
             }
-            .frame(width: 100, alignment: .leading)
+            .frame(width: 90, alignment: .leading)
 
             // Col 2: Avg Price
             Text(StorageService.formatAmount(
@@ -1162,24 +1169,24 @@ struct PortfolioQuoteRow: View {
                 symbol: globalPos.priceSymbol,
                 decimals: StorageService.priceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
             ))
-            .font(.inter(13, relativeTo: .body).monospacedDigit())
+            .font(.inter(12, relativeTo: .body).monospacedDigit())
             .foregroundColor(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
-            .frame(width: 74, alignment: .trailing)
+            .frame(width: 65, alignment: .trailing)
 
-            // Col 3: Price + day range / 52-week bar + Pre/Post badge
-            VStack(alignment: .trailing, spacing: 1) {
+            // Col 3: Price + Pre/Post badge
+            VStack(alignment: .trailing, spacing: 0) {
                 if let quote {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         Text("\(currSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate)))")
-                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .font(.inter(12, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                         if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                             Text(quote.marketStateLabel)
-                                .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 3)
+                                .padding(.horizontal, 2)
                                 .padding(.vertical, 1)
                                 .background(
                                     RoundedRectangle(cornerRadius: 2)
@@ -1190,22 +1197,8 @@ struct PortfolioQuoteRow: View {
                     if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
                         let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
                         Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
-                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                            .font(.inter(9, relativeTo: .caption).monospacedDigit())
                             .foregroundColor(.secondary)
-                    }
-                    if storageService.show52WeekBar,
-                       let pos = quote.fiftyTwoWeekPosition,
-                       let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
-                        HStack(spacing: 4) {
-                            Text(StorageService.formatNumber(low * priceRate, decimals: 0))
-                                .font(.inter(8, relativeTo: .caption2).monospacedDigit())
-                                .foregroundColor(.secondary)
-                            RangeBar(position: pos)
-                                .frame(width: 56)
-                            Text(StorageService.formatNumber(high * priceRate, decimals: 0))
-                                .font(.inter(8, relativeTo: .caption2).monospacedDigit())
-                                .foregroundColor(.secondary)
-                        }
                     }
                 } else {
                     ProgressView().scaleEffect(0.5)
@@ -1214,20 +1207,20 @@ struct PortfolioQuoteRow: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
 
             // Col 4: P&L % + daily change %
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 0) {
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                    .font(.inter(13, relativeTo: .body).monospacedDigit())
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.bold)
                     .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                 }
             }
-            .frame(width: 110, alignment: .trailing)
+            .frame(width: 95, alignment: .trailing)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
     }
 }
