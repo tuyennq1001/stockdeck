@@ -235,9 +235,9 @@ struct PortfolioOverview: View {
                         heroCard
                         statRow
                         HStack(alignment: .top, spacing: DS.gap) {
-                            allocationCard.frame(maxWidth: .infinity)
-                            topGainersCard(proxy: proxy).frame(maxWidth: .infinity)
-                            topLosersCard(proxy: proxy).frame(maxWidth: .infinity)
+                            allocationCard.frame(minWidth: 380, maxWidth: .infinity)
+                            topGainersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
+                            topLosersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
                         }
                         positionsCard.id("positions")
                     }
