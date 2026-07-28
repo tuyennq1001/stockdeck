@@ -484,10 +484,16 @@ struct WatchlistWideView: View {
     // MARK: - Custom list
 
     private var table: some View {
-        ScrollView(.horizontal, showsIndicators: !isCompact) {
-            tableContents
-                .frame(width: isCompact ? 190 : tableWidth)
-                .frame(maxHeight: .infinity)
+        VStack(spacing: 0) {
+            if !isCompact {
+                tableToolbar
+                Divider().overlay(DS.hairline)
+            }
+            ScrollView(.horizontal, showsIndicators: !isCompact) {
+                tableContents
+                    .frame(width: isCompact ? 190 : tableWidth)
+                    .frame(maxHeight: .infinity)
+            }
         }
         .frame(maxHeight: .infinity)
     }
@@ -546,14 +552,11 @@ struct WatchlistWideView: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
     }
 
     private var tableContents: some View {
         VStack(spacing: 0) {
-            if !isCompact {
-                tableToolbar
-                Divider().overlay(DS.hairline)
-            }
             headerRow
             Divider().overlay(DS.hairline)
             ScrollView {
@@ -661,23 +664,6 @@ struct WatchlistWideView: View {
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
                 }
-                Button {
-                    showMetricCustomizer = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("+ Columns")
-                            .font(DS.label)
-                    }
-                    .foregroundStyle(DS.brand)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(DS.brand.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Customize watchlist columns")
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)

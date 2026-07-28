@@ -48,6 +48,7 @@ struct PortfolioWindowView: View {
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
     @State private var deleteWatchlistTarget: Watchlist? = nil
+    @State private var draggingWatchlistId: UUID? = nil
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
@@ -200,12 +201,23 @@ struct PortfolioWindowView: View {
                         NavRow(icon: "star", title: wl.name,
                                trailing: "\(wl.symbols.count)",
                                trailingTint: DS.inkTertiary,
-                               helpText: "Open “\(wl.name)” watchlist",
+                               helpText: "Open “\(wl.name)” watchlist · Drag to reorder",
                                selected: selection == .watchlist && storageService.selectedWatchlistId == wl.id,
                                namespace: navNamespace) {
                             storageService.selectedWatchlistId = wl.id
                             navigate(to: .watchlist)
                         }
+                        .onDrag {
+                            self.draggingWatchlistId = wl.id
+                            return NSItemProvider(object: wl.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: WatchlistSidebarDropDelegate(
+                            targetId: wl.id,
+                            draggingId: $draggingWatchlistId,
+                            onMove: { srcId, tgtId in
+                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            }
+                        ))
                         .contextMenu {
                             Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
                                 Label("Rename Watchlist…", systemImage: "pencil")
@@ -584,5 +596,27 @@ private struct TotalFooter: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
+    }
+}
+
+private struct WatchlistSidebarDropDelegate: DropDelegate {
+    let targetId: UUID
+    @Binding var draggingId: UUID?
+    let onMove: (UUID, UUID) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingId = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingId = draggingId, draggingId != targetId else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            onMove(draggingId, targetId)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 }
