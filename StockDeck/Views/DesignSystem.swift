@@ -184,7 +184,8 @@ struct SectionLabel: View {
     }
 }
 
-/// An AppKit NSView wrapper that allows dragging the window by mouse down in this view area.
+/// An AppKit NSView wrapper that allows dragging the window by mouse down in this view area,
+/// and double-clicking to zoom/maximize the window to full screen size.
 struct WindowDragArea: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         DragNSView()
@@ -193,6 +194,14 @@ struct WindowDragArea: NSViewRepresentable {
 
     private final class DragNSView: NSView {
         override var mouseDownCanMoveWindow: Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 {
+                self.window?.performZoom(nil)
+            } else {
+                super.mouseDown(with: event)
+            }
+        }
     }
 }
 
