@@ -201,11 +201,13 @@ struct WatchlistWideView: View {
                     Task { await stockService.refreshAll(storageService: storageService) }
                 }
                 Button { showMetricCustomizer = true } label: {
-                    Label("Columns", systemImage: "slider.horizontal.3")
-                        .font(DS.caption)
-                        .foregroundStyle(DS.inkSecondary)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                    HStack(spacing: 4) {
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
+                        Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
@@ -641,6 +643,23 @@ struct WatchlistWideView: View {
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
                 }
+                Button {
+                    showMetricCustomizer = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("+ Columns")
+                            .font(DS.label)
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(DS.brand.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Customize watchlist columns")
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
