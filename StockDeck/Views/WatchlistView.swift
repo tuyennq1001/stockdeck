@@ -72,14 +72,20 @@ struct WatchlistView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    sortHeader("#", column: .manual)
+                    Text("#")
                         .frame(width: 16, alignment: .leading)
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 85, alignment: .leading)
                     sortHeader("Price", column: .price)
+                        .frame(width: 75, alignment: .trailing)
+                    sortHeader("%", column: .change)
+                        .frame(width: 65, alignment: .trailing)
+                    Text("Ext")
+                        .font(.inter(10, weight: .medium, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                        .tracking(0.8)
+                        .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                    sortHeader("Change", column: .change)
-                        .frame(width: 125, alignment: .trailing)
                 }
                 .font(.inter(10, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)

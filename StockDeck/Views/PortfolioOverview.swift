@@ -127,7 +127,14 @@ struct PortfolioOverview: View {
     private var holdings: [ValuedHolding] {
         portfolios.flatMap { portfolio in
             portfolio.holdings.compactMap { holding -> ValuedHolding? in
-                guard let quote = stockService.quotes[holding.symbol] else { return nil }
+                let quote = stockService.quotes[holding.symbol] ?? StockQuote(
+                    symbol: holding.symbol,
+                    name: holding.symbol,
+                    price: holding.avgPrice,
+                    change: 0,
+                    changePercent: 0,
+                    currency: stockService.detectedCurrency(for: holding.symbol)
+                )
                 let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                 let value = holding.marketValue(currentPrice: price) * stockService.rate(from: quote.currency)
                 let cost = holding.costBasisLocal * stockService.rate(from: quote.currency, for: holding.purchaseDate)

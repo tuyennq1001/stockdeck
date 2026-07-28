@@ -40,10 +40,15 @@ final class JapaneseFundTests: XCTestCase {
         XCTAssertNotNil(nasdaqHolding)
         XCTAssertEqual(nasdaqHolding?.quantity ?? 0, 32432, accuracy: 0.1)
 
-        // Verify Rakuten S&P500 combined holding (both 楽天 S&P500 & 楽天 Plus S&P500 map to 9I31223A)
-        let sp500Holding = nisaTsumitate?.holdings.first(where: { $0.symbol == "9I31223A" })
+        // Verify Rakuten S&P500 holding
+        let sp500Holding = nisaTsumitate?.holdings.first(where: { $0.symbol == "0331423B" })
         XCTAssertNotNil(sp500Holding)
-        XCTAssertEqual(sp500Holding?.quantity ?? 0, 74025 + 28298, accuracy: 0.1)
+        XCTAssertEqual(sp500Holding?.quantity ?? 0, 74025, accuracy: 0.1)
+
+        // Verify Rakuten Plus S&P500 holding
+        let plusHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "9I31223A" })
+        XCTAssertNotNil(plusHolding)
+        XCTAssertEqual(plusHolding?.quantity ?? 0, 28298, accuracy: 0.1)
 
         // Verify NISA Growth portfolio (NISA成長投資枠)
         let nisaGrowth = portfolios?.first(where: { $0.name.contains("成長") })

@@ -28,6 +28,46 @@ struct StockQuote: Identifiable, Codable {
 
     var id: String { symbol }
 
+    init(
+        symbol: String,
+        name: String,
+        price: Double,
+        change: Double = 0,
+        changePercent: Double = 0,
+        regularMarketPreviousClose: Double? = nil,
+        currency: String = "USD",
+        marketState: String = "REGULAR",
+        dayHigh: Double? = nil,
+        dayLow: Double? = nil,
+        fiftyTwoWeekHigh: Double? = nil,
+        fiftyTwoWeekLow: Double? = nil,
+        preMarketPrice: Double? = nil,
+        preMarketChange: Double? = nil,
+        preMarketChangePercent: Double? = nil,
+        postMarketPrice: Double? = nil,
+        postMarketChange: Double? = nil,
+        postMarketChangePercent: Double? = nil
+    ) {
+        self.symbol = symbol
+        self.name = name
+        self.price = price
+        self.change = change
+        self.changePercent = changePercent
+        self.regularMarketPreviousClose = regularMarketPreviousClose
+        self.currency = currency
+        self.marketState = marketState
+        self.dayHigh = dayHigh
+        self.dayLow = dayLow
+        self.fiftyTwoWeekHigh = fiftyTwoWeekHigh
+        self.fiftyTwoWeekLow = fiftyTwoWeekLow
+        self.preMarketPrice = preMarketPrice
+        self.preMarketChange = preMarketChange
+        self.preMarketChangePercent = preMarketChangePercent
+        self.postMarketPrice = postMarketPrice
+        self.postMarketChange = postMarketChange
+        self.postMarketChangePercent = postMarketChangePercent
+    }
+
     var isPositive: Bool { change >= 0 }
 
     /// Falls back to the regular price/change pair for legacy persisted quotes
