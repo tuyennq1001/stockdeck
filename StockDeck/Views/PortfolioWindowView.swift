@@ -52,6 +52,8 @@ struct PortfolioWindowView: View {
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
+    @State private var showBatchImport = false
+    @State private var batchImportPortfolioId: UUID? = nil
 
     /// Wraps the edit-holding tuple so it can drive a `.sheet(item:)`.
     struct EditTarget: Identifiable {
@@ -114,6 +116,14 @@ struct PortfolioWindowView: View {
         .sheet(item: $notifTarget) { t in
             PortfolioNotificationsSheet(portfolioId: t.id, portfolioName: t.name) { notifTarget = nil }
                 .environmentObject(storageService)
+        }
+        .sheet(isPresented: $showBatchImport) {
+            BatchImportSheet(targetPortfolioId: batchImportPortfolioId) {
+                showBatchImport = false
+                batchImportPortfolioId = nil
+            }
+            .environmentObject(stockService)
+            .environmentObject(storageService)
         }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil)
@@ -377,6 +387,7 @@ struct PortfolioWindowView: View {
             })
         }
         var io = [
+            DSMenuAction(title: "Batch Import to Portfolio…", icon: "rectangle.stack.badge.plus") { showBatchImport = true },
             DSMenuAction(title: "Import Portfolios…", icon: "square.and.arrow.down") { importPortfolios() },
             DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
         ]

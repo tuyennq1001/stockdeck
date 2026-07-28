@@ -756,4 +756,99 @@ enum SpreadsheetIO {
 
         return nil
     }
+
+    /// Parses raw batch text input (symbols, comma/space-separated, line-by-line, or 投資信託 names) into Holdings.
+    static func parseBatchHoldings(from text: String) -> [Holding] {
+        let lines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+
+        guard !lines.isEmpty else { return [] }
+
+        var result: [Holding] = []
+
+        for line in lines {
+            let lowerLine = line.lowercased()
+            if lowerLine.hasPrefix("symbol") || lowerLine.hasPrefix("ticker") || lowerLine.hasPrefix("code") || lowerLine.contains("portfolio") || lowerLine.hasPrefix("約定日") || lowerLine.hasPrefix("受渡日") {
+                continue
+            }
+
+            var parts: [String] = []
+            if line.contains(",") {
+                parts = splitCSVLine(line, delimiter: ",")
+            } else if line.contains("\t") {
+                parts = line.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            } else {
+                parts = line.components(separatedBy: .whitespaces).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            }
+
+            guard !parts.isEmpty else { continue }
+
+            if line.contains(",") || line.contains("\t") {
+                let secondPartNumber: Double? = parts.count >= 2 ? Double(parts[1].replacingOccurrences(of: ",", with: "")) : nil
+
+                if let qty = secondPartNumber {
+                    let rawSym = parts[0]
+                    let code = resolveSymbolOrFundCode(rawSym)
+                    if !code.isEmpty {
+                        var price = 0.0
+                        if parts.count >= 3 {
+                            let priceStr = parts[2].replacingOccurrences(of: ",", with: "")
+                            price = Double(priceStr) ?? 0.0
+                        }
+                        result.append(Holding(symbol: code, quantity: qty, avgPrice: price))
+                    }
+                } else {
+                    for rawSym in parts {
+                        let code = resolveSymbolOrFundCode(rawSym)
+                        guard !code.isEmpty else { continue }
+                        result.append(Holding(symbol: code, quantity: 1, avgPrice: 0))
+                    }
+                }
+            } else {
+                let count = parts.count
+                let lastNum = count >= 1 ? Double(parts[count - 1].replacingOccurrences(of: ",", with: "")) : nil
+                let secLastNum = count >= 2 ? Double(parts[count - 2].replacingOccurrences(of: ",", with: "")) : nil
+
+                if count >= 3, let price = lastNum, let qty = secLastNum {
+                    let rawSym = parts[0..<(count - 2)].joined(separator: " ")
+                    let code = resolveSymbolOrFundCode(rawSym)
+                    if !code.isEmpty {
+                        result.append(Holding(symbol: code, quantity: qty, avgPrice: price))
+                    }
+                } else if count >= 2, let qty = lastNum {
+                    let rawSym = parts[0..<(count - 1)].joined(separator: " ")
+                    let code = resolveSymbolOrFundCode(rawSym)
+                    if !code.isEmpty {
+                        result.append(Holding(symbol: code, quantity: qty, avgPrice: 0))
+                    }
+                } else {
+                    for rawSym in parts {
+                        let code = resolveSymbolOrFundCode(rawSym)
+                        guard !code.isEmpty else { continue }
+                        result.append(Holding(symbol: code, quantity: 1, avgPrice: 0))
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    private static func resolveSymbolOrFundCode(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+
+        let cleanFundName = trimmed.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        if let code = japaneseFundNameToCodeMap[cleanFundName] ?? japaneseFundNameToCodeMap[trimmed] {
+            return code
+        }
+        for (k, v) in japaneseFundNameToCodeMap {
+            if trimmed.contains(k) {
+                return v
+            }
+        }
+
+        return trimmed.uppercased()
+    }
 }

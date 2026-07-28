@@ -8,6 +8,8 @@ struct PortfolioListView: View {
     @State private var newPortfolioName = ""
     @State private var searchText = ""
     @State private var importAlert: String?
+    @State private var showBatchSheet = false
+    @State private var batchImportTargetId: UUID? = nil
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -252,7 +254,10 @@ struct PortfolioListView: View {
                     }
 
                     ForEach(filteredPortfolios) { portfolio in
-                        PortfolioSection(portfolio: portfolio)
+                        PortfolioSection(portfolio: portfolio, onBatchImport: { targetId in
+                            batchImportTargetId = targetId
+                            showBatchSheet = true
+                        })
                     }
                     .onDelete { offsets in
                         let currentList = filteredPortfolios
@@ -278,6 +283,16 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
 
                     Spacer()
+
+                    Button(action: { batchImportTargetId = nil; showBatchSheet = true }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "rectangle.stack.badge.plus")
+                            Text("Batch Import")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
 
                     Button(action: importPortfolios) {
                         HStack(spacing: 3) {
@@ -313,6 +328,14 @@ struct PortfolioListView: View {
                 .padding(8)
             }
         }
+        }
+        .sheet(isPresented: $showBatchSheet) {
+            BatchImportSheet(targetPortfolioId: batchImportTargetId) {
+                showBatchSheet = false
+                batchImportTargetId = nil
+            }
+            .environmentObject(stockService)
+            .environmentObject(storageService)
         }
         .alert("Import", isPresented: Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } })) {
             Button("OK") { importAlert = nil }
@@ -417,6 +440,7 @@ struct PortfolioSection: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.addHoldingAction) var addHoldingAction
     let portfolio: Portfolio
+    var onBatchImport: ((UUID) -> Void)? = nil
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var showNotifications = false
@@ -513,17 +537,30 @@ struct PortfolioSection: View {
                 }
             }
 
-            // Add holding button
-            Button(action: { addHoldingAction.perform(portfolio.id) }) {
-                HStack {
-                    Image(systemName: "plus")
-                    Text("Add holding")
+            // Add holding / Batch import buttons
+            HStack(spacing: 12) {
+                Button(action: { addHoldingAction.perform(portfolio.id) }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "plus")
+                        Text("Add holding")
+                    }
+                    .font(.inter(10, relativeTo: .caption))
+                    .foregroundColor(.accentColor)
                 }
-                .font(.inter(10, relativeTo: .caption))
-                .foregroundColor(.accentColor)
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
+
+                Button(action: { onBatchImport?(portfolio.id) }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Batch import…")
+                    }
+                    .font(.inter(10, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
             }
-            .buttonStyle(.borderless)
-            .pointingHandCursor()
         } header: {
             if isRenaming {
                 HStack {

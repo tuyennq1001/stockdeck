@@ -672,6 +672,39 @@ class StorageService: ObservableObject {
         portfolios[index].holdings.append(holding)
     }
 
+    func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+
+        var currentHoldings = portfolios[pIndex].holdings
+
+        for newH in newHoldings {
+            let symbol = newH.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard !symbol.isEmpty else { continue }
+
+            if let existingIndex = currentHoldings.firstIndex(where: { $0.symbol == symbol }) {
+                let existing = currentHoldings[existingIndex]
+                let totalQty = existing.quantity + newH.quantity
+                if abs(totalQty) > 1e-9 {
+                    let totalCost = (existing.quantity * existing.avgPrice) + (newH.quantity * newH.avgPrice)
+                    let newAvg = totalCost / totalQty
+                    currentHoldings[existingIndex].quantity = totalQty
+                    currentHoldings[existingIndex].avgPrice = newAvg
+                    if let newDate = newH.purchaseDate {
+                        currentHoldings[existingIndex].purchaseDate = newDate
+                    }
+                } else {
+                    currentHoldings.remove(at: existingIndex)
+                }
+            } else {
+                var cleanHolding = newH
+                cleanHolding.symbol = symbol
+                currentHoldings.append(cleanHolding)
+            }
+        }
+
+        portfolios[pIndex].holdings = currentHoldings
+    }
+
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }

@@ -812,3 +812,169 @@ struct PriceAlertSheet: View {
         onDismiss()
     }
 }
+
+// MARK: - Batch Import Sheet (symbols + 投資信託)
+
+struct BatchImportSheet: View {
+    @EnvironmentObject var stockService: StockService
+    @EnvironmentObject var storageService: StorageService
+
+    let targetPortfolioId: UUID?
+    let onDismiss: () -> Void
+
+    @State private var selectedPortfolioId: UUID
+    @State private var batchText: String = ""
+    @State private var importMode: Int = 0 // 0: Batch Text, 1: CSV/XLSX File
+    @State private var parsedHoldings: [Holding] = []
+    @State private var errorMessage: String? = nil
+
+    init(targetPortfolioId: UUID? = nil, onDismiss: @escaping () -> Void) {
+        self.targetPortfolioId = targetPortfolioId
+        self.onDismiss = onDismiss
+        _selectedPortfolioId = State(initialValue: targetPortfolioId ?? UUID())
+    }
+
+    var body: some View {
+        SheetShell(title: "Batch Import (Holdings & 投資信託)", onCancel: onDismiss) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Target Portfolio Selection
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Target Portfolio").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                    Picker("Target Portfolio", selection: $selectedPortfolioId) {
+                        ForEach(storageService.portfolios) { p in
+                            Text(p.name).tag(p.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                // Mode Picker
+                Picker("Import Mode", selection: $importMode) {
+                    Text("Paste Text / Symbols").tag(0)
+                    Text("Import File (CSV / XLSX)").tag(1)
+                }
+                .pickerStyle(.segmented)
+
+                if importMode == 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Paste symbols or 投資信託 names/codes:")
+                            .font(DS.caption)
+                            .foregroundStyle(DS.inkTertiary)
+                        Text("Formats: 'AAPL, NVDA, 9I31223A' or '9I31223A 28298 17669'")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+
+                        TextEditor(text: $batchText)
+                            .font(.inter(11).monospacedDigit())
+                            .frame(height: 100)
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 6).stroke(DS.inkSecondary.opacity(0.2), lineWidth: 1))
+                            .onChange(of: batchText) { _, newValue in
+                                parseInputText(newValue)
+                            }
+                    }
+                } else {
+                    VStack(alignment: .center, spacing: 12) {
+                        Text("Import Rakuten / SBI Securities CSV or StockDeck XLSX/CSV file directly into this portfolio.")
+                            .font(DS.caption)
+                            .foregroundStyle(DS.inkSecondary)
+                            .multilineTextAlignment(.center)
+
+                        Button(action: selectAndParseFile, label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "square.and.arrow.down")
+                                Text("Choose CSV or XLSX File…")
+                            }
+                            .font(DS.bodyStrong)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt).shadow(radius: 1))
+                        })
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                    }
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                }
+
+                if let err = errorMessage {
+                    Text(err).font(DS.caption).foregroundStyle(DS.down)
+                }
+
+                // Parsed Preview List
+                if !parsedHoldings.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Preview (\(parsedHoldings.count) item\(parsedHoldings.count > 1 ? "s" : ""))").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                        ScrollView {
+                            VStack(spacing: 4) {
+                                ForEach(parsedHoldings) { h in
+                                    HStack {
+                                        Text(h.symbol).font(DS.bodyStrong).foregroundStyle(DS.ink)
+                                        Spacer()
+                                        Text("Qty: \(StorageService.formatNumber(h.quantity, decimals: -1))")
+                                            .font(DS.caption).foregroundStyle(DS.inkSecondary)
+                                        if h.avgPrice > 0 {
+                                            Text("Avg: \(StorageService.formatNumber(h.avgPrice, decimals: 2))")
+                                                .font(DS.caption).foregroundStyle(DS.inkSecondary)
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(DS.cardAlt))
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 120)
+                    }
+                }
+
+                PrimaryButton(
+                    title: "Import \(parsedHoldings.count) Item\(parsedHoldings.count > 1 ? "s" : "") to Portfolio",
+                    enabled: !parsedHoldings.isEmpty && storageService.portfolios.contains(where: { $0.id == selectedPortfolioId }),
+                    action: executeImport
+                )
+            }
+        }
+        .onAppear {
+            if selectedPortfolioId == UUID(), let first = storageService.portfolios.first {
+                selectedPortfolioId = first.id
+            }
+        }
+    }
+
+    private func parseInputText(_ text: String) {
+        errorMessage = nil
+        parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: text)
+    }
+
+    private func selectAndParseFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.commaSeparatedText, .tabSeparatedText, .plainText, .data]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            if let portfolios = SpreadsheetIO.parsePortfolios(from: url), !portfolios.isEmpty {
+                let allHoldings = portfolios.flatMap { $0.holdings }
+                parsedHoldings = allHoldings
+                errorMessage = nil
+            } else if let content = try? String(contentsOf: url, encoding: .utf8) {
+                parsedHoldings = SpreadsheetIO.parseBatchHoldings(from: content)
+                errorMessage = nil
+            } else {
+                errorMessage = "Could not parse file."
+            }
+        }
+    }
+
+    private func executeImport() {
+        guard !parsedHoldings.isEmpty else { return }
+        storageService.addHoldingsBatch(parsedHoldings, to: selectedPortfolioId)
+
+        let symbols = parsedHoldings.map { $0.symbol }
+        Task {
+            await stockService.fetchQuotes(symbols: symbols)
+        }
+        onDismiss()
+    }
+}
