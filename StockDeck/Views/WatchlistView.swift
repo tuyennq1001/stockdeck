@@ -73,19 +73,19 @@ struct WatchlistView: View {
             } else {
                 HStack(spacing: 0) {
                     sortHeader("#", column: .manual)
-                        .frame(width: 20, alignment: .leading)
+                        .frame(width: 16, alignment: .leading)
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 100, alignment: .leading)
+                        .frame(width: 90, alignment: .leading)
                     sortHeader("Price", column: .price)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     sortHeader("Change", column: .change)
-                        .frame(width: 110, alignment: .trailing)
+                        .frame(width: 125, alignment: .trailing)
                 }
                 .font(.inter(10, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
                 .tracking(0.8)
                 .textCase(.uppercase)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 4)
 
                 Divider()
@@ -571,36 +571,37 @@ struct QuoteRow: View {
             Text("\(position)")
                 .font(.inter(10, relativeTo: .caption).monospacedDigit())
                 .foregroundColor(.secondary)
-                .frame(width: 20, alignment: .leading)
+                .frame(width: 16, alignment: .leading)
 
             // Col 1: Logo + symbol + name
-            HStack(spacing: 6) {
-                SymbolLogo(symbol: quote.symbol, size: 22)
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                SymbolLogo(symbol: quote.symbol, size: 20)
+                VStack(alignment: .leading, spacing: 0) {
                     Text(quote.symbol)
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
+                        .lineLimit(1)
                     if storageService.showCompanyName {
                         Text(quote.name)
-                            .font(.inter(10, relativeTo: .caption))
+                            .font(.inter(9, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                 }
             }
-            .frame(width: 100, alignment: .leading)
+            .frame(width: 90, alignment: .leading)
 
             // Col 2: Price + day range
-            VStack(spacing: 1) {
-                HStack(spacing: 3) {
+            VStack(alignment: .trailing, spacing: 0) {
+                HStack(spacing: 2) {
                     Text("\(currSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * priceRate)))")
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                         Text(quote.marketStateLabel)
-                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .font(.inter(8, weight: .semibold, relativeTo: .caption2))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 3)
+                            .padding(.horizontal, 2)
                             .padding(.vertical, 1)
                             .background(
                                 RoundedRectangle(cornerRadius: 2)
@@ -611,7 +612,7 @@ struct QuoteRow: View {
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
                     let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
                     Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
                 if storageService.show52WeekBar,
@@ -630,30 +631,34 @@ struct QuoteRow: View {
                     .help("52-week range")
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Col 3: Change
+            // Col 3: Change (combines amount & percent to 2 rows max)
             VStack(alignment: .trailing, spacing: 1) {
-                if storageService.showAbsoluteChange {
-                    Text(StorageService.formatAmount(quote.change * priceRate, symbol: currSymbol, signed: true))
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                }
-                Text(String(format: "%.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                let pctStr = String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent)
+                let changeStr = storageService.showAbsoluteChange
+                    ? "\(StorageService.formatAmount(quote.change * priceRate, symbol: currSymbol, signed: true)) (\(pctStr))"
+                    : pctStr
+
+                Text(changeStr)
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.bold)
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
 
                 if storageService.showExtendedHours,
                    let extChg = quote.extendedChange,
                    let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.2f (%.\(storageService.percentDecimals)f%%)", extChg * priceRate, extPct))
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(extChg >= 0 ? DS.up.opacity(0.8) : DS.down.opacity(0.8))
+                    Text(String(format: "%+.2f (%+.\(storageService.percentDecimals)f%%)", extChg * priceRate, extPct))
+                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                        .foregroundColor(extChg >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 120, alignment: .trailing)
+            .frame(width: 125, alignment: .trailing)
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
     }
 }
