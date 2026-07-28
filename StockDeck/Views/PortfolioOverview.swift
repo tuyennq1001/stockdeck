@@ -159,6 +159,11 @@ struct PortfolioOverview: View {
     private var dayChangeValue: Double { todayPerformance.gain }
     private var dayChangePercent: Double { todayPerformance.percent }
 
+    private var earliestPurchaseDate: Date? {
+        let dates = holdings.compactMap(\.holding.purchaseDate)
+        return dates.min()
+    }
+
     /// Snapshot series for the scope, merged by day when aggregating portfolios.
     private var series: [PortfolioSnapshot] {
         let logs = portfolios.map { storageService.snapshots(for: $0.id) }
@@ -174,10 +179,14 @@ struct PortfolioOverview: View {
     }
 
     private var filteredSeries: [PortfolioSnapshot] {
-        guard let days = chartRange.days,
-              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-        else { return series }
-        return series.filter { $0.date >= cutoff }
+        if let days = chartRange.days,
+           let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
+            return series.filter { $0.date >= cutoff }
+        } else if chartRange == .all, let purchaseDate = earliestPurchaseDate {
+            let cutoff = Calendar.current.startOfDay(for: purchaseDate)
+            return series.filter { $0.date >= cutoff }
+        }
+        return series
     }
 
     /// Builds an estimated value curve from a given per-symbol price history
@@ -198,10 +207,14 @@ struct PortfolioOverview: View {
         valueSeries(from: chartRange == .all ? stockService.priceHistoryMax : stockService.priceHistory)
     }
     private var estimatedFiltered: [ValuePoint] {
-        guard let days = chartRange.days,
-              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-        else { return estimatedSeries }
-        return estimatedSeries.filter { $0.date >= cutoff }
+        if let days = chartRange.days,
+           let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
+            return estimatedSeries.filter { $0.date >= cutoff }
+        } else if chartRange == .all, let purchaseDate = earliestPurchaseDate {
+            let cutoff = Calendar.current.startOfDay(for: purchaseDate)
+            return estimatedSeries.filter { $0.date >= cutoff }
+        }
+        return estimatedSeries
     }
 
     /// The curve actually drawn. 1M+ prefer real snapshots once
