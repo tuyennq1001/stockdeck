@@ -78,6 +78,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         FontRegistration.registerFonts()
 
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let img = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = img
+        }
+
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
 
@@ -583,6 +588,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[StockDeck] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
         isPresentingPortfolioWindow = true
         _ = NSApp.setActivationPolicy(.regular)
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let img = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = img
+        }
         closePopover()
         // Reuse the window only while it's actually on screen. Once closed with
         // the red button it's ordered out (and not reliably re-showable), so we
