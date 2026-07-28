@@ -51,4 +51,19 @@ final class MultiWatchlistTests: XCTestCase {
         storage.deleteWatchlist(id: wl2.id)
         XCTAssertEqual(storage.currentWatchlist.id, wl1.id)
     }
+
+    func testSharedWatchlistMetricsUpdate() {
+        let storage = createTestStorage()
+        let wl1 = storage.createWatchlist(name: "List 1")
+        let wl2 = storage.createWatchlist(name: "List 2")
+
+        let newMetrics: [WatchlistMetric] = [.oneMonth, .threeMonths, .ytd, .ath]
+        storage.setWatchlistMetrics(newMetrics)
+
+        storage.selectWatchlist(id: wl1.id)
+        XCTAssertEqual(storage.watchlistMetrics, newMetrics)
+
+        storage.selectWatchlist(id: wl2.id)
+        XCTAssertEqual(storage.watchlistMetrics, newMetrics)
+    }
 }

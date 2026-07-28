@@ -47,8 +47,7 @@ class StorageService: ObservableObject {
         }
     }
 
-    /// The selected watchlist owns its metric layout so crypto, equities, and
-    /// research lists can each keep the columns that matter to them.
+    /// All watchlists share a unified metric layout across the app.
     var watchlistMetrics: [WatchlistMetric] {
         currentWatchlist.metrics ?? WatchlistMetric.defaultSelection
     }
@@ -56,10 +55,10 @@ class StorageService: ObservableObject {
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
         objectWillChange.send()
         let normalized = Array(metrics.prefix(12))
-        let activeId = currentWatchlist.id
-        guard let index = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         var updated = watchlists
-        updated[index].metrics = normalized
+        for index in updated.indices {
+            updated[index].metrics = normalized
+        }
         watchlists = updated
     }
 
@@ -591,7 +590,8 @@ class StorageService: ObservableObject {
     func createWatchlist(name: String) -> Watchlist {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = trimmed.isEmpty ? "Watchlist \(watchlists.count + 1)" : trimmed
-        let newWl = Watchlist(id: UUID(), name: finalName, symbols: [])
+        let currentMetrics = watchlistMetrics
+        let newWl = Watchlist(id: UUID(), name: finalName, symbols: [], metrics: currentMetrics)
         watchlists.append(newWl)
         selectedWatchlistId = newWl.id
         return newWl
