@@ -602,7 +602,7 @@ struct PortfolioOverview: View {
     private func topGainersCard(proxy: ScrollViewProxy) -> some View {
         Card(title: "Top Gainers") {
             var seen = Set<String>()
-            let gainers = holdings.filter { seen.insert($0.symbol).inserted }
+            let gainers = holdings.filter { $0.dayChangePercent > 0 && seen.insert($0.symbol).inserted }
                 .sorted { $0.dayChangePercent > $1.dayChangePercent }
             let maxAbs = gainers.map { abs($0.dayChangePercent) }.max() ?? 1
             if gainers.isEmpty {
@@ -620,7 +620,7 @@ struct PortfolioOverview: View {
     private func topLosersCard(proxy: ScrollViewProxy) -> some View {
         Card(title: "Top Losers") {
             var seen = Set<String>()
-            let losers = holdings.filter { seen.insert($0.symbol).inserted }
+            let losers = holdings.filter { $0.dayChangePercent < 0 && seen.insert($0.symbol).inserted }
                 .sorted { $0.dayChangePercent < $1.dayChangePercent }
             let maxAbs = losers.map { abs($0.dayChangePercent) }.max() ?? 1
             if losers.isEmpty {
