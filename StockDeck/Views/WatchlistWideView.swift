@@ -681,7 +681,7 @@ struct WatchlistWideView: View {
                     var updated = selectedMetrics
                     if updated.contains(metric) {
                         updated.removeAll { $0 == metric }
-                    } else if updated.count < 8 {
+                    } else if updated.count < 12 {
                         updated.append(metric)
                     }
                     storageService.setWatchlistMetrics(updated)

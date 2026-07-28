@@ -54,10 +54,13 @@ class StorageService: ObservableObject {
     }
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
-        let normalized = Array(metrics.prefix(8))
+        objectWillChange.send()
+        let normalized = Array(metrics.prefix(12))
         let activeId = currentWatchlist.id
         guard let index = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
-        watchlists[index].metrics = normalized
+        var updated = watchlists
+        updated[index].metrics = normalized
+        watchlists = updated
     }
 
     @Published var portfolios: [Portfolio] = [] {
