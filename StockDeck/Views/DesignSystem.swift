@@ -280,14 +280,30 @@ struct PageScaffold<Content: View, Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
 
-    init(_ title: String, caption: String? = nil, symbol: String? = nil, onBack: (() -> Void)? = nil,
-         @ViewBuilder trailing: () -> Trailing = { EmptyView() },
+    init(_ title: String,
+         caption: String? = nil,
+         symbol: String? = nil,
+         onBack: (() -> Void)? = nil,
+         @ViewBuilder trailing: () -> Trailing,
          @ViewBuilder content: () -> Content) {
         self.title = title
         self.caption = caption
         self.symbol = symbol
         self.onBack = onBack
         self.trailing = trailing()
+        self.content = content()
+    }
+
+    init(_ title: String,
+         caption: String? = nil,
+         symbol: String? = nil,
+         onBack: (() -> Void)? = nil,
+         @ViewBuilder content: () -> Content) where Trailing == EmptyView {
+        self.title = title
+        self.caption = caption
+        self.symbol = symbol
+        self.onBack = onBack
+        self.trailing = EmptyView()
         self.content = content()
     }
 

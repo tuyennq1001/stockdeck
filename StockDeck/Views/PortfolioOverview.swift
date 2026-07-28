@@ -248,14 +248,14 @@ struct PortfolioOverview: View {
     private var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })) }
 
     var body: some View {
-        PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)") {
+        PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)", trailing: {
             HStack(spacing: 12) {
                 portfolioMenu
                 RefreshButton(isLoading: stockService.isLoading) {
                     Task { await stockService.refreshAll(storageService: storageService) }
                 }
             }
-        } content: {
+        }) {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: DS.gap) {
