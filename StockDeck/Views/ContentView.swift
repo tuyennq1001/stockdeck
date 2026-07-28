@@ -65,6 +65,7 @@ private struct OpenWindowActionKey: EnvironmentKey {
 /// AppDelegate/PortfolioWindowView so the Overview header can offer them too.
 struct PortfolioActions {
     var addHolding: (UUID) -> Void = { _ in }
+    var batchImport: (UUID) -> Void = { _ in }
     var rename: (UUID, String) -> Void = { _, _ in }
     var notifications: (UUID, String) -> Void = { _, _ in }
     var export: (Portfolio) -> Void = { _ in }

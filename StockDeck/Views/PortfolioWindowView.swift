@@ -87,6 +87,7 @@ struct PortfolioWindowView: View {
         .environment(\.editHoldingAction, EditHoldingAction { editHolding = EditTarget(portfolioId: $0, holding: $1) })
         .environment(\.portfolioActions, PortfolioActions(
             addHolding: { addHoldingPortfolioId = $0 },
+            batchImport: { batchImportPortfolioId = $0; showBatchImport = true },
             rename: { renameTarget = PortfolioRef(id: $0, name: $1) },
             notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
             export: { exportPortfolios([$0]) },
@@ -260,6 +261,9 @@ struct PortfolioWindowView: View {
                         .contextMenu {
                             Button { addHoldingPortfolioId = portfolio.id } label: {
                                 Label("Add Holding…", systemImage: "plus")
+                            }
+                            Button { batchImportPortfolioId = portfolio.id; showBatchImport = true } label: {
+                                Label("Batch Import…", systemImage: "square.and.arrow.down")
                             }
                             Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
                                 Label("Rename…", systemImage: "pencil")
