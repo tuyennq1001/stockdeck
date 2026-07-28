@@ -1061,3 +1061,22 @@ extension View {
         }
     }
 }
+
+/// Helper for querying app bundle metadata (version, dev vs release).
+enum BundleInfo {
+    static var infoDictionary: [String: Any]? {
+        Bundle.main.infoDictionary
+    }
+
+    static var versionString: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0"
+    }
+
+    static var isDevBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+}

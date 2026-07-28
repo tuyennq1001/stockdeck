@@ -29,7 +29,7 @@ final class UpdaterViewModel: ObservableObject {
     }
 
     init() {
-        if Bundle.main.infoDictionary?["SUFeedURL"] != nil {
+        if let feedURLStr = BundleInfo.infoDictionary?["SUFeedURL"] as? String, !feedURLStr.isEmpty {
             let c = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: sparkleDelegate, userDriverDelegate: nil)
             self.controller = c
         } else {

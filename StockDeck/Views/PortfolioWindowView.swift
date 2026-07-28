@@ -408,8 +408,8 @@ struct PortfolioWindowView: View {
     }
 
     private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let dev = Bundle.main.infoDictionary?["SUFeedURL"] == nil ? " · DEV" : ""
+        let v = BundleInfo.versionString
+        let dev = BundleInfo.isDevBuild ? " · DEV" : ""
         return "v\(v)\(dev)"
     }
 

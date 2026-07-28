@@ -130,9 +130,9 @@ struct ContentView: View {
         }
     }
 
-    /// Marketing version (CFBundleShortVersionString) prefixed with "v", e.g. "v1.5.1".
+    /// Marketing version (CFBundleShortVersionString) prefixed with "v", e.g. "v1.0".
     private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let v = BundleInfo.versionString
         return "v\(v)"
     }
 
@@ -150,7 +150,7 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                     // Dev builds ship without a Sparkle feed URL — flag them so a dev
                     // window is never mistaken for the released app.
-                    if Bundle.main.infoDictionary?["SUFeedURL"] == nil {
+                    if BundleInfo.isDevBuild {
                         Text("DEV")
                             .font(.inter(8, weight: .bold, relativeTo: .caption2))
                             .foregroundColor(.white)
