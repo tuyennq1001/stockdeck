@@ -646,6 +646,32 @@ struct WatchlistWideView: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
         .tracking(0.8)
         .textCase(.uppercase)
+        .contextMenu {
+            Button {
+                showMetricCustomizer = true
+            } label: {
+                Label("Customize Columns…", systemImage: "slider.horizontal.3")
+            }
+            Divider()
+            ForEach(WatchlistMetric.allCases) { metric in
+                Button {
+                    var updated = selectedMetrics
+                    if updated.contains(metric) {
+                        updated.removeAll { $0 == metric }
+                    } else if updated.count < 8 {
+                        updated.append(metric)
+                    }
+                    storageService.setWatchlistMetrics(updated)
+                } label: {
+                    HStack {
+                        if selectedMetrics.contains(metric) {
+                            Image(systemName: "checkmark")
+                        }
+                        Text(metric.title)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
