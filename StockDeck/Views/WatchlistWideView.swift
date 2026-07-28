@@ -180,7 +180,7 @@ struct WatchlistWideView: View {
     }
 
     var body: some View {
-        PageScaffold(storageService.currentWatchlist.name, caption: "\(storageService.watchlist.count) symbols") {
+        PageScaffold(storageService.currentWatchlist.name) {
             if storageService.watchlist.isEmpty {
                 emptyState
             } else {
