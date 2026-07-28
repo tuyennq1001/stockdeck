@@ -774,20 +774,30 @@ enum SpreadsheetIO {
             }
 
             var parts: [String] = []
+            let isDelimiterSeparated = line.contains(",") || line.contains("\t") || line.contains(";")
             if line.contains(",") {
                 parts = splitCSVLine(line, delimiter: ",")
             } else if line.contains("\t") {
                 parts = line.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            } else if line.contains(";") {
+                parts = splitCSVLine(line, delimiter: ";")
             } else {
                 parts = line.components(separatedBy: .whitespaces).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
             }
 
             guard !parts.isEmpty else { continue }
 
-            if line.contains(",") || line.contains("\t") {
-                let secondPartNumber: Double? = parts.count >= 2 ? Double(parts[1].replacingOccurrences(of: ",", with: "")) : nil
+            // If the first token is a date (e.g., "2024/1/30" or "2024-01-30"), strip it so parts[0] is symbol/name
+            let datePattern = #"^\d{4}[/-]\d{1,2}[/-]\d{1,2}$"#
+            if parts.count >= 2 && parts[0].range(of: datePattern, options: .regularExpression) != nil {
+                parts.removeFirst()
+            }
 
-                if let qty = secondPartNumber {
+            guard !parts.isEmpty else { continue }
+
+            if isDelimiterSeparated {
+                let secondNum: Double? = parts.count >= 2 ? Double(parts[1].replacingOccurrences(of: ",", with: "")) : nil
+                if let qty = secondNum {
                     let rawSym = parts[0]
                     let code = resolveSymbolOrFundCode(rawSym)
                     if !code.isEmpty {
@@ -836,7 +846,12 @@ enum SpreadsheetIO {
     }
 
     private static func resolveSymbolOrFundCode(_ input: String) -> String {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+
+        // Strip leading date if present e.g. "2024/1/30 "
+        let datePattern = #"^\d{4}[/-]\d{1,2}[/-]\d{1,2}\s*"#
+        trimmed = trimmed.replacingOccurrences(of: datePattern, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "" }
 
         let cleanFundName = trimmed.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -844,7 +859,7 @@ enum SpreadsheetIO {
             return code
         }
         for (k, v) in japaneseFundNameToCodeMap {
-            if trimmed.contains(k) {
+            if trimmed.contains(k) || k.contains(cleanFundName) {
                 return v
             }
         }
