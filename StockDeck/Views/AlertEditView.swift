@@ -27,6 +27,7 @@ struct AlertEditView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
+                SymbolLogo(symbol: symbol, size: 28)
                 Text("Alert for \(symbol)")
                     .font(.inter(13, weight: .bold, relativeTo: .headline))
                 Spacer()

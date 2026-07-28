@@ -64,6 +64,40 @@ enum PortfolioValuation {
     }
 }
 
+/// Regular-session performance for the current day. The calculation deliberately
+/// ignores pre/post-market prices, includes each position's leverage, and measures
+/// the percentage return against the portfolio's previous-close value.
+enum TodayPerformance {
+    struct Input {
+        var holding: Holding
+        var regularPrice: Double
+        var previousClose: Double
+        /// Stock currency → preferred currency, at the current rate.
+        var rate: Double
+    }
+
+    static func totals(_ inputs: [Input]) -> (gain: Double, percent: Double) {
+        var gain = 0.0
+        var previousCloseValue = 0.0
+
+        for input in inputs {
+            gain += (input.regularPrice - input.previousClose)
+                * input.holding.quantity
+                * input.holding.effectiveLeverage
+                * input.rate
+            previousCloseValue += input.previousClose
+                * input.holding.quantity
+                * input.holding.effectiveLeverage
+                * input.rate
+        }
+
+        let percent = abs(previousCloseValue) >= 0.01
+            ? (gain / abs(previousCloseValue)) * 100
+            : 0
+        return (gain, percent)
+    }
+}
+
 /// Pure operations on a portfolio's snapshot log. Keeps at most one entry per
 /// calendar day.
 enum SnapshotLog {

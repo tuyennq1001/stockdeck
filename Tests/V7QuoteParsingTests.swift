@@ -49,6 +49,7 @@ final class V7QuoteParsingTests: XCTestCase {
         let q = try XCTUnwrap(try StockService.parseV7Response(data).quotes.first)
         XCTAssertEqual(q.change, 10.0, accuracy: 0.0001)
         XCTAssertEqual(q.changePercent, 10.0, accuracy: 0.0001)
+        XCTAssertEqual(q.previousClose, 100.0, accuracy: 0.0001)
     }
 
     func testEmptyResultYieldsNoQuotes() throws {

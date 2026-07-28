@@ -32,8 +32,8 @@ struct WatchlistView: View {
             case .symbol:
                 result = a.localizedCompare(b) == .orderedAscending
             case .price:
-                let pa = qa?.price ?? 0
-                let pb = qb?.price ?? 0
+                let pa = qa?.changePercent ?? 0
+                let pb = qb?.changePercent ?? 0
                 result = pa < pb
             case .change:
                 let ca = qa?.changePercent ?? 0
@@ -73,7 +73,7 @@ struct WatchlistView: View {
                     sortHeader("#", column: .manual)
                         .frame(width: 20, alignment: .leading)
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 70, alignment: .leading)
+                        .frame(width: 100, alignment: .leading)
                     sortHeader("Price", column: .price)
                         .frame(maxWidth: .infinity)
                     sortHeader("Change", column: .change)
@@ -81,15 +81,17 @@ struct WatchlistView: View {
                 }
                 .font(.inter(10, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
+                .tracking(0.8)
+                .textCase(.uppercase)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 4)
 
                 Divider()
 
             List {
-                ForEach(filteredSymbols, id: \.self) { symbol in
+                ForEach(Array(filteredSymbols.enumerated()), id: \.element) { index, symbol in
                     if let quote = stockService.quotes[symbol] {
-                        QuoteRow(quote: quote)
+                        QuoteRow(position: index + 1, quote: quote)
                             .contentShape(Rectangle())
                             .pointingHandCursor()
                             .contextMenu {
@@ -97,6 +99,11 @@ struct WatchlistView: View {
                             }
                     } else {
                         HStack {
+                            Text("\(index + 1)")
+                                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                                .foregroundColor(.secondary)
+                                .frame(width: 20, alignment: .leading)
+                            SymbolLogo(symbol: symbol, size: 22)
                             Text(symbol)
                                 .font(.inter(13, relativeTo: .body).monospacedDigit())
                             Spacer()
@@ -519,6 +526,7 @@ struct QuickAddHoldingView: View {
 struct QuoteRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    let position: Int
     let quote: StockQuote
 
     private var displayCurrency: String {
@@ -536,19 +544,27 @@ struct QuoteRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Col 1: Symbol + name
-            VStack(alignment: .leading, spacing: 1) {
-                Text(quote.symbol)
-                    .font(.inter(13, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                if storageService.showCompanyName {
-                    Text(quote.name)
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+            Text("\(position)")
+                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 20, alignment: .leading)
+
+            // Col 1: Logo + symbol + name
+            HStack(spacing: 6) {
+                SymbolLogo(symbol: quote.symbol, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(quote.symbol)
+                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                    if storageService.showCompanyName {
+                        Text(quote.name)
+                            .font(.inter(10, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 100, alignment: .leading)
 
             // Col 2: Price + day range
             VStack(spacing: 1) {

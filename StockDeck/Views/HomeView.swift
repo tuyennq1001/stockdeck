@@ -220,8 +220,11 @@ private struct TickerChip: View {
     let emphasized: Bool
 
     var body: some View {
-        Text(text)
-            .font(.inter(8, weight: .bold, relativeTo: .caption2))
+        HStack(spacing: 3) {
+            SymbolLogo(symbol: text, size: 13)
+            Text(text)
+                .font(.inter(8, weight: .bold, relativeTo: .caption2))
+        }
             .foregroundColor(emphasized ? .white : DS.brand)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)

@@ -21,6 +21,9 @@ class StockService: ObservableObject {
     @Published var intradayHistory: [String: [PricePoint]] = [:]
     /// Hourly closes over ~7 days for the "7D" chart range. Cached ~15min.
     @Published var intradayWeek: [String: [PricePoint]] = [:]
+    /// One year of daily closes loaded in one batched request for Watchlist
+    /// sparklines and the 1M / 3M / YTD performance columns.
+    @Published var watchlistHistory: [String: [PricePoint]] = [:]
 
     private let session: URLSession
     private var crumb: String?
@@ -281,6 +284,7 @@ class StockService: ObservableObject {
                 price: price,
                 change: change,
                 changePercent: changePercent,
+                regularMarketPreviousClose: previousClose,
                 currency: q.currency ?? "USD",
                 marketState: marketState,
                 dayHigh: q.regularMarketDayHigh,
@@ -387,6 +391,7 @@ class StockService: ObservableObject {
                 price: price,
                 change: change,
                 changePercent: changePercent,
+                regularMarketPreviousClose: previousClose,
                 currency: meta.currency ?? "USD",
                 marketState: marketState,
                 dayHigh: nil,
@@ -562,27 +567,23 @@ class StockService: ObservableObject {
         }
     }
 
-    /// Batched sparkline history: one Yahoo `spark` request fills 1-month daily
-    /// closes for MANY symbols at once (instead of one request per watchlist row).
-    /// Cached ~10min. Only fills symbols missing recent daily history.
+    /// Batched Watchlist history: one Yahoo `spark` request fills five years of
+    /// daily closes for MANY symbols at once. This supports the configurable
+    /// 1Y/2Y/3Y/5Y metrics without one request per table cell.
     func ensureSparklines(for symbols: [String]) async {
-        if let at = sparkFetchedAt, Date().timeIntervalSince(at) < 600 { return }
-        let missing = symbols.filter { (priceHistory[$0]?.isEmpty ?? true) }
+        if let at = sparkFetchedAt,
+           Date().timeIntervalSince(at) < 600,
+           symbols.allSatisfy({ watchlistHistory[$0]?.isEmpty == false }) { return }
+        let missing = symbols.filter { (watchlistHistory[$0]?.isEmpty ?? true) }
         guard !missing.isEmpty else { sparkFetchedAt = Date(); return }
         let joined = missing.joined(separator: ",")
         let encoded = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/spark?symbols=\(encoded)&range=1mo&interval=1d") else { return }
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/spark?symbols=\(encoded)&range=5y&interval=1d") else { return }
         do {
             let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(YahooSparkResponse.self, from: data)
-            for entry in response.spark.result ?? [] {
-                guard let r = entry.response.first else { continue }
-                let points = PriceHistory.points(timestamps: r.timestamp ?? [],
-                                                 closes: r.indicators?.quote?.first?.close ?? [])
-                if !points.isEmpty, priceHistory[entry.symbol]?.isEmpty ?? true {
-                    priceHistory[entry.symbol] = points
-                    priceHistoryFetchedAt[entry.symbol] = Date()
-                }
+            let parsed = try YahooSparkParser.parse(data)
+            for (symbol, points) in parsed where !points.isEmpty {
+                watchlistHistory[symbol] = points
             }
             sparkFetchedAt = Date()
         } catch {
@@ -620,6 +621,7 @@ class StockService: ObservableObject {
         let tickPrice = Double(ticker.price)
         let tickChange = Double(ticker.change)
         let tickChangePercent = Double(ticker.changePercent)
+        let tickPreviousClose = ticker.previousClose == 0 ? nil : Double(ticker.previousClose)
 
         // Only a REGULAR-session tick updates the regular price. A PRE/POST tick
         // must not overwrite it — otherwise a user with extended hours off would
@@ -637,6 +639,7 @@ class StockService: ObservableObject {
             price: price,
             change: change,
             changePercent: changePercent,
+            regularMarketPreviousClose: tickPreviousClose ?? existing?.previousClose,
             currency: ticker.currency.isEmpty ? (existing?.currency ?? "USD") : ticker.currency,
             marketState: marketState,
             dayHigh: existing?.dayHigh,
@@ -725,16 +728,33 @@ class StockService: ObservableObject {
 
 // MARK: - Yahoo Finance v8 Chart API Models
 
-/// Yahoo `v8/finance/spark` — many symbols' close arrays in one response. Reuses
-/// the chart response's `ChartResult` shape for each symbol's `response`.
-private struct YahooSparkResponse: Codable {
-    let spark: Spark
-    struct Spark: Codable {
-        let result: [SparkEntry]?
+/// Yahoo `v8/finance/spark` returns a dictionary keyed by symbol:
+/// `{ "AAPL": { "timestamp": [...], "close": [...] }, ... }`.
+/// Keep this parser independent from the chart endpoint because their response
+/// envelopes are different even though both ultimately contain daily closes.
+enum YahooSparkParser {
+    private struct Series: Decodable {
+        let symbol: String?
+        let timestamp: [Int]?
+        let close: [Double?]?
     }
-    struct SparkEntry: Codable {
-        let symbol: String
-        let response: [YahooChartResponse.ChartResult]
+
+    static func parse(_ data: Data) throws -> [String: [PricePoint]] {
+        let response = try JSONDecoder().decode([String: Series].self, from: data)
+        var histories: [String: [PricePoint]] = [:]
+        histories.reserveCapacity(response.count)
+
+        for (key, series) in response {
+            let symbol = (series.symbol?.isEmpty == false ? series.symbol : nil) ?? key
+            let points = PriceHistory.points(
+                timestamps: series.timestamp ?? [],
+                closes: series.close ?? []
+            )
+            if !points.isEmpty {
+                histories[symbol] = points
+            }
+        }
+        return histories
     }
 }
 

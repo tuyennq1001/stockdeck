@@ -354,9 +354,7 @@ struct HoldingFormSheet: View {
 
     private func symbolChip(_ sym: String, removable: Bool) -> some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous).fill(DS.brand.opacity(0.12))
-                .frame(width: 30, height: 30)
-                .overlay(Text(sym.prefix(2)).font(.inter(10, weight: .bold, relativeTo: .caption2)).foregroundStyle(DS.brand))
+            SymbolLogo(symbol: sym, size: 30)
             Text(sym).font(.inter(14, weight: .semibold, relativeTo: .body).monospacedDigit()).foregroundStyle(DS.ink)
             if let name = stockService.quotes[sym]?.name, !name.isEmpty {
                 Text(name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
@@ -385,6 +383,7 @@ struct HoldingFormSheet: View {
                     ForEach(searchResults.prefix(6)) { r in
                         Button { select(r) } label: {
                             HStack(spacing: 8) {
+                                SymbolLogo(symbol: r.symbol, size: 24)
                                 Text(r.symbol).font(DS.figure).foregroundStyle(DS.ink)
                                 Text(r.name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
                                 Spacer()
@@ -680,6 +679,7 @@ struct WatchlistSearchSheet: View {
                         ForEach(results) { r in
                             Button { add(r) } label: { resultRow(r) }
                                 .buttonStyle(.plain)
+                                .pointingHandCursor()
                             if r.id != results.last?.id {
                                 Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                             }
@@ -697,6 +697,7 @@ struct WatchlistSearchSheet: View {
 
     private func resultRow(_ r: SearchResult) -> some View {
         HStack(spacing: 10) {
+            SymbolLogo(symbol: r.symbol, size: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text(r.symbol).font(DS.figure).foregroundStyle(DS.ink)
                 Text(r.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)

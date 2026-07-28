@@ -115,39 +115,94 @@ struct PortfolioListView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
 
-                    // Per-symbol average buy price, aggregated across ALL portfolios,
-                    // with the price return vs. that average.
-                    let globals = globalPositions
-                    if !globals.isEmpty {
-                        Divider()
-                        VStack(spacing: 4) {
-                            ForEach(globals) { p in
-                                HStack(spacing: 8) {
-                                    Text(p.symbol)
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.semibold)
-                                        .frame(width: 62, alignment: .leading)
-                                    Text("avg \(StorageService.formatAmount(p.avgPrice, symbol: p.priceSymbol, decimals: StorageService.priceDecimals(symbol: p.symbol, price: p.avgPrice)))")
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
-                                    Spacer()
-                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.pct))
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.medium)
-                                        .foregroundColor(p.pct >= 0 ? DS.up : DS.down)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                    }
-
                     Divider()
                 }
 
                 List {
+                    // The all-portfolio symbol table belongs to the scrollable
+                    // content. Only the grand Total value / P&L summary above
+                    // remains fixed when there are many symbols.
+                    let globals = globalPositions
+                    if !globals.isEmpty {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 8) {
+                                Text("Symbol")
+                                    .frame(width: 90, alignment: .leading)
+                                Text("Avg Price")
+                                    .frame(width: 74, alignment: .trailing)
+                                Text("Price")
+                                    .frame(width: 90, alignment: .trailing)
+                                Text("P&L")
+                                    .frame(width: 70, alignment: .trailing)
+                            }
+                            .font(.inter(10, weight: .medium, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+
+                            Divider()
+
+                            ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                                HStack(spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        SymbolLogo(symbol: p.symbol, size: 20)
+                                        Text(p.symbol)
+                                            .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                            .fontWeight(.semibold)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(width: 90, alignment: .leading)
+
+                                    Text(StorageService.formatAmount(
+                                        p.avgPrice,
+                                        symbol: p.priceSymbol,
+                                        decimals: StorageService.priceDecimals(
+                                            symbol: p.symbol,
+                                            price: p.avgPrice
+                                        )
+                                    ))
+                                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .frame(width: 74, alignment: .trailing)
+
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text(StorageService.formatAmount(
+                                            p.currentPrice,
+                                            symbol: p.priceSymbol,
+                                            decimals: StorageService.priceDecimals(
+                                                symbol: p.symbol,
+                                                price: p.currentPrice
+                                            )
+                                        ))
+                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.priceChangePercent))
+                                            .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                                            .foregroundColor(p.priceChangePercent >= 0 ? DS.up : DS.down)
+                                    }
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .frame(width: 90, alignment: .trailing)
+
+                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", p.pct))
+                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                        .fontWeight(.medium)
+                                        .foregroundColor(p.pct >= 0 ? DS.up : DS.down)
+                                        .frame(width: 70, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 3)
+
+                                if index < globals.count - 1 {
+                                    Divider().padding(.leading, 44)
+                                }
+                            }
+                        }
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                    }
+
                     if showNewPortfolio {
                         HStack {
                             TextField("Portfolio name", text: $newPortfolioName)
@@ -261,6 +316,8 @@ struct PortfolioListView: View {
         let avgPrice: Double      // weighted avg buy price, in the price currency
         let priceSymbol: String
         let pct: Double           // price return vs. avg (position-direction aware)
+        let currentPrice: Double
+        let priceChangePercent: Double
         let value: Double         // market value (preferred currency), for sorting
         var symbol: String { id }
     }
@@ -286,7 +343,9 @@ struct PortfolioListView: View {
             let priceCurr = storageService.stockPriceCurrency
             let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
             let value = abs(price * q) * stockService.rate(from: quote.currency)
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct, value: value)
+            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct,
+                                  currentPrice: price, priceChangePercent: quote.changePercent,
+                                  value: value)
         }
         .sorted { $0.value > $1.value }
     }
@@ -506,35 +565,38 @@ struct HoldingRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Ticker + Qty@Avg
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 3) {
-                    Text(holding.symbol)
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
-                    if holding.isShort {
-                        Text("SHORT")
-                            .font(.inter(8, weight: .bold, relativeTo: .caption2))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 3)
-                            .padding(.vertical, 1)
-                            .background(RoundedRectangle(cornerRadius: 2).fill(DS.down))
+            HStack(spacing: 6) {
+                SymbolLogo(symbol: holding.symbol, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 3) {
+                        Text(holding.symbol)
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                        if holding.isShort {
+                            Text("SHORT")
+                                .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 2).fill(DS.down))
+                        }
+                        if holding.effectiveLeverage != 1 {
+                            Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
+                                .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
+                        }
                     }
-                    if holding.effectiveLeverage != 1 {
-                        Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
-                            .font(.inter(8, weight: .bold, relativeTo: .caption2))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 3)
-                            .padding(.vertical, 1)
-                            .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
-                    }
+                    Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: 2))")
+                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
-                Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: 2))")
-                    .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
             }
-            .frame(width: 88, alignment: .leading)
+            .frame(width: 120, alignment: .leading)
 
             if let quote {
                 let rate = stockService.rate(from: quote.currency)
@@ -853,28 +915,31 @@ struct GroupedHoldingRow: View {
             // Parent Summary Row
             HStack(spacing: 0) {
                 // Col 1: Ticker + Lot Count + Chevron
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(DS.brand)
-                        Text(symbol)
-                            .font(.inter(13, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                        Text("\(holdings.count) lots")
-                            .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                            .foregroundColor(DS.brand)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                HStack(spacing: 6) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(DS.brand)
+                    SymbolLogo(symbol: symbol, size: 22)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(symbol)
+                                .font(.inter(13, relativeTo: .body).monospacedDigit())
+                                .fontWeight(.bold)
+                            Text("\(holdings.count) lots")
+                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                                .foregroundColor(DS.brand)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                        }
+                        Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: 2)) avg")
+                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
-                    Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: 2)) avg")
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
                 }
-                .frame(width: 105, alignment: .leading)
+                .frame(width: 140, alignment: .leading)
 
                 if let quote {
                     let rate = stockService.rate(from: quote.currency)

@@ -11,11 +11,9 @@ struct HoldingDetailView: View {
     @Environment(\.addHoldingAction) private var addHoldingAction
     @Environment(\.editHoldingAction) private var editHoldingAction
     let portfolioId: UUID
+    let scope: PortfolioWindowView.Scope
     let holding: Holding
     let quote: StockQuote
-    let value: Double
-    let cost: Double
-    let weight: Double
 
     @State private var showAlert = false
 
@@ -25,8 +23,14 @@ struct HoldingDetailView: View {
     private var priceSymbol: String {
         StorageService.currencySymbol(for: quote.currency)
     }
-    private var pnl: Double { value - cost }
-    private var pnlPercent: Double { abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : 0 }
+    private var scopedPortfolios: [Portfolio] {
+        switch scope {
+        case .all:
+            return storageService.portfolios
+        case .portfolio(let id):
+            return storageService.portfolios.filter { $0.id == id }
+        }
+    }
 
     private var relatedNews: [NewsArticle] {
         stockService.news.filter {
@@ -35,7 +39,7 @@ struct HoldingDetailView: View {
     }
 
     var body: some View {
-        PageScaffold(holding.symbol, caption: quote.name) {
+        PageScaffold(holding.symbol, caption: quote.name, symbol: holding.symbol) {
             HStack(spacing: 10) {
                 if holding.isShort { Tag(text: "SHORT", color: DS.down) }
                 if holding.effectiveLeverage != 1 {
@@ -62,10 +66,7 @@ struct HoldingDetailView: View {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                     statStrip
                     purchaseLotsCard
-                    HStack(alignment: .top, spacing: DS.gap) {
-                        fiftyTwoWeekCard.frame(maxWidth: .infinity)
-                        factsCard.frame(maxWidth: .infinity)
-                    }
+                    fiftyTwoWeekCard.frame(maxWidth: .infinity)
                     if !relatedNews.isEmpty { newsCard }
                 }
                 .pageColumn()
@@ -111,8 +112,17 @@ struct HoldingDetailView: View {
 
     // MARK: - Purchase Lots
 
+    private var showsPortfolioColumn: Bool {
+        if case .all = scope { return true }
+        return false
+    }
+
+    private func portfolioName(for id: UUID) -> String {
+        storageService.portfolios.first { $0.id == id }?.name ?? "—"
+    }
+
     private var allHoldingsForSymbol: [ValuedHolding] {
-        let matched = storageService.portfolios.flatMap { p in
+        let matched = scopedPortfolios.flatMap { p in
             p.holdings.filter { $0.symbol.uppercased() == holding.symbol.uppercased() }.map { h in
                 let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                 let val = h.marketValue(currentPrice: price) * stockService.rate(from: quote.currency)
@@ -122,7 +132,47 @@ struct HoldingDetailView: View {
                                      type: storageService.type(for: h.symbol))
             }
         }
-        return matched.isEmpty ? [ValuedHolding(id: holding.id, portfolioId: portfolioId, holding: holding, quote: quote, value: value, cost: cost, dayChangePercent: quote.changePercent, type: storageService.type(for: holding.symbol))] : matched
+        return matched
+    }
+
+    private var aggregatedHoldings: [Holding] {
+        allHoldingsForSymbol.map(\.holding)
+    }
+
+    private var totalQuantity: Double {
+        HoldingLotAggregation.totalQuantity(aggregatedHoldings)
+    }
+
+    private var weightedAveragePrice: Double {
+        HoldingLotAggregation.weightedAveragePrice(aggregatedHoldings)
+    }
+
+    private var aggregatedValue: Double {
+        allHoldingsForSymbol.reduce(0) { $0 + $1.value }
+    }
+
+    private var aggregatedCost: Double {
+        allHoldingsForSymbol.reduce(0) { $0 + $1.cost }
+    }
+
+    private var aggregatedPnl: Double { aggregatedValue - aggregatedCost }
+
+    private var aggregatedPnlPercent: Double {
+        abs(aggregatedCost) >= 0.01 ? (aggregatedPnl / abs(aggregatedCost)) * 100 : 0
+    }
+
+    private var scopedPortfolioValue: Double {
+        scopedPortfolios.flatMap(\.holdings).reduce(0) { sum, item in
+            guard let itemQuote = stockService.quotes[item.symbol] else { return sum }
+            let price = itemQuote.displayPrice(extendedHours: storageService.showExtendedHours)
+            return sum + item.marketValue(currentPrice: price) * stockService.rate(from: itemQuote.currency)
+        }
+    }
+
+    private var aggregatedWeight: Double {
+        abs(scopedPortfolioValue) >= 0.01
+            ? abs(aggregatedValue) / abs(scopedPortfolioValue) * 100
+            : 0
     }
 
     private var purchaseLotsCard: some View {
@@ -130,6 +180,9 @@ struct HoldingDetailView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     Text("Date").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 90, alignment: .leading)
+                    if showsPortfolioColumn {
+                        Text("Portfolio").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 130, alignment: .leading)
+                    }
                     Text("Qty").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 60, alignment: .trailing)
                     Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
@@ -145,6 +198,15 @@ struct HoldingDetailView: View {
                             .font(DS.caption)
                             .foregroundStyle(DS.ink)
                             .frame(width: 90, alignment: .leading)
+
+                        if showsPortfolioColumn {
+                            Text(portfolioName(for: vh.portfolioId))
+                                .font(DS.caption)
+                                .foregroundStyle(DS.inkSecondary)
+                                .lineLimit(1)
+                                .help(portfolioName(for: vh.portfolioId))
+                                .frame(width: 130, alignment: .leading)
+                        }
 
                         Text("\(formatQty(vh.holding.quantity))")
                             .font(DS.figure)
@@ -223,15 +285,15 @@ struct HoldingDetailView: View {
 
     private var statStrip: some View {
         HStack(spacing: 10) {
-            StatTile(label: "Position", value: "\(formatQty(holding.quantity)) sh", help: "Shares you hold")
-            StatTile(label: "Avg price", value: StorageService.formatAmount(holding.avgPrice, symbol: priceSymbol), help: "Your average purchase price")
-            StatTile(label: "Cost", value: StorageService.formatAmount(cost, symbol: currencySymbol), help: "Total cost basis of this position")
-            StatTile(label: "Value", value: StorageService.formatAmount(value, symbol: currencySymbol), help: "Current market value of this position")
+            StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
+            StatTile(label: "Avg price", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol), help: "Quantity-weighted average purchase price")
+            StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: currencySymbol), help: "Total cost basis across all purchase lots")
+            StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: currencySymbol), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
-                     value: StorageService.formatAmount(pnl, symbol: currencySymbol, signed: true),
-                     caption: String(format: "%+.\(storageService.percentDecimals)f%%", pnlPercent),
-                     captionTint: DS.pnlColor(pnl), valueTint: DS.pnlColor(pnl))
-            StatTile(label: "Weight", value: String(format: "%.1f%%", weight), help: "Share of the portfolio")
+                     value: StorageService.formatAmount(aggregatedPnl, symbol: currencySymbol, signed: true),
+                     caption: String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
+                     captionTint: DS.pnlColor(aggregatedPnl), valueTint: DS.pnlColor(aggregatedPnl))
+            StatTile(label: "Weight", value: String(format: "%.1f%%", aggregatedWeight), help: "Share of the selected portfolio scope")
         }
     }
 
@@ -248,7 +310,7 @@ struct HoldingDetailView: View {
                             Capsule().fill(DS.cardAlt).frame(height: 6)
                             // Tick where the average purchase price sits ("you bought here").
                             if high > low {
-                                let buyPos = min(max((holding.avgPrice - low) / (high - low), 0), 1)
+                                let buyPos = min(max((weightedAveragePrice - low) / (high - low), 0), 1)
                                 Rectangle().fill(DS.inkTertiary)
                                     .frame(width: 1.5, height: 12)
                                     .offset(x: CGFloat(buyPos) * (geo.size.width - 10) + 4)
@@ -280,37 +342,6 @@ struct HoldingDetailView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Facts
-
-    private var factsCard: some View {
-        Card(title: "Position facts") {
-            VStack(spacing: 0) {
-                factRow("Purchase date", holding.purchaseDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
-                divider
-                factRow("Cost basis", StorageService.formatAmount(cost, symbol: currencySymbol))
-                divider
-                factRow("Quote currency", quote.currency)
-                if let lowD = quote.dayLow, let highD = quote.dayHigh {
-                    divider
-                    factRow("Day range", "\(StorageService.formatNumber(lowD, decimals: 2)) – \(StorageService.formatNumber(highD, decimals: 2))")
-                }
-            }
-        }
-    }
-
-    private var divider: some View {
-        Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-    }
-
-    private func factRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(LocalizedStringKey(label)).font(DS.caption).foregroundStyle(DS.inkSecondary)
-            Spacer()
-            Text(value).font(DS.figure).foregroundStyle(DS.ink)
-        }
-        .padding(.vertical, 8)
     }
 
     private static let dateFormatter: DateFormatter = {

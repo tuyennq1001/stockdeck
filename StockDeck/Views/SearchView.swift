@@ -77,7 +77,8 @@ struct SearchView: View {
             } else {
                 List(results) { result in
                     Button(action: { addResult(result) }) {
-                        HStack {
+                        HStack(spacing: 8) {
+                            SymbolLogo(symbol: result.symbol, size: 28)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(result.symbol)
                                     .font(.inter(13, relativeTo: .body).monospacedDigit())

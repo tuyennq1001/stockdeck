@@ -15,6 +15,21 @@ final class StockQuoteTests: XCTestCase {
         XCTAssertEqual(quote(price: 50, high: 150, low: 50).fiftyTwoWeekPosition, 0.0)
     }
 
+    func testPreviousClosePrefersYahooValueAndFallsBackToChange() {
+        var explicit = quote(price: 110, high: nil, low: nil)
+        explicit.regularMarketPreviousClose = 95
+        XCTAssertEqual(explicit.previousClose, 95)
+
+        let fallback = StockQuote(
+            symbol: "X", name: "X", price: 110, change: 10, changePercent: 10,
+            currency: "USD", marketState: "REGULAR", dayHigh: nil, dayLow: nil,
+            fiftyTwoWeekHigh: nil, fiftyTwoWeekLow: nil,
+            preMarketPrice: nil, preMarketChange: nil, preMarketChangePercent: nil,
+            postMarketPrice: nil, postMarketChange: nil, postMarketChangePercent: nil
+        )
+        XCTAssertEqual(fallback.previousClose, 100)
+    }
+
     // MARK: - effectiveChange (extended-hours-aware day change)
 
     private func postMarketQuote(regularChange: Double, postChange: Double) -> StockQuote {

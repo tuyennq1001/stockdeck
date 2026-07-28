@@ -158,6 +158,7 @@ struct SettingsView: View {
                         Text("P&L (+321.09€)").tag("pnl")
                         Text("P&L % (+2.3%)").tag("pnlPercent")
                         Text("P&L + % (+321.09€ +2.3%)").tag("pnlFull")
+                        Text("Today (+321.09€ +1.2%)").tag("todayPnlFull")
                         Text("Total Value (14396.67€)").tag("totalValue")
                         Text("Best Stock (▲ AAPL +1.2%)").tag("bestStock")
                         Text("Worst Stock (▼ TSLA -0.8%)").tag("worstStock")
@@ -169,6 +170,9 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.menu)
                     caption("Choose what to show in the menu bar")
+                    if storageService.menuBarDisplay == "todayPnlFull" {
+                        caption("Uses regular-market prices. Crypto Today resets at 00:00 UTC.")
+                    }
 
                     HStack {
                         Text("Percentage decimals")
@@ -446,6 +450,7 @@ struct AlertRow: View {
                 .font(.inter(10, relativeTo: .caption))
                 .foregroundColor(alert.isEnabled ? .accentColor : .secondary)
                 .frame(width: 14)
+            SymbolLogo(symbol: alert.symbol, size: 24)
             VStack(alignment: .leading, spacing: 1) {
                 Text(alert.symbol)
                     .font(.inter(12, weight: .semibold, relativeTo: .body))

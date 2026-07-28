@@ -26,6 +26,7 @@ struct PortfolioWindowView: View {
     }
 
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
+    @State private var portfolioPath = NavigationPath()
 
     /// Dev affordance: SD_OPEN_TAB=home|watchlist|settings preselects a tab so
     /// each pane can be screenshotted deterministically.
@@ -76,7 +77,7 @@ struct PortfolioWindowView: View {
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         // If News is turned off while its pane is open, fall back to Watchlist.
         .onChange(of: storageService.showNewsTab) { _, showNews in
-            if !showNews, selection == .home { selection = .watchlist }
+            if !showNews, selection == .home { navigate(to: .watchlist) }
         }
         .environment(\.locale, Locale(identifier: storageService.appLanguage))
         .environment(\.addHoldingAction, AddHoldingAction { addHoldingPortfolioId = $0 })
@@ -88,7 +89,7 @@ struct PortfolioWindowView: View {
             export: { exportPortfolios([$0]) },
             delete: { id in
                 storageService.deletePortfolio(id: id)
-                if selection == .portfolio(id) { selection = .portfoliosAll }
+                if selection == .portfolio(id) { navigate(to: .portfoliosAll) }
             }))
         .sheet(isPresented: $showSearch) {
             WatchlistSearchSheet { showSearch = false }
@@ -157,10 +158,10 @@ struct PortfolioWindowView: View {
     /// ⌘1 Home · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘R Refresh · ⌘N New portfolio.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { if storageService.showNewsTab { selection = .home } }.keyboardShortcut("1", modifiers: .command)
-            Button("") { selection = .watchlist }.keyboardShortcut("2", modifiers: .command)
-            Button("") { selection = .portfoliosAll }.keyboardShortcut("3", modifiers: .command)
-            Button("") { selection = .settings }.keyboardShortcut("4", modifiers: .command)
+            Button("") { if storageService.showNewsTab { navigate(to: .home) } }.keyboardShortcut("1", modifiers: .command)
+            Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
+            Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
+            Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
             Button("") {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
@@ -191,7 +192,7 @@ struct PortfolioWindowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if storageService.showNewsTab {
                         NavRow(icon: "newspaper", title: "Home", helpText: "Financial news for your symbols  ⌘1",
-                               selected: selection == .home, namespace: navNamespace) { selection = .home }
+                               selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
                     }
 
                     watchlistsHeader
@@ -203,7 +204,7 @@ struct PortfolioWindowView: View {
                                selected: selection == .watchlist && storageService.selectedWatchlistId == wl.id,
                                namespace: navNamespace) {
                             storageService.selectedWatchlistId = wl.id
-                            selection = .watchlist
+                            navigate(to: .watchlist)
                         }
                         .contextMenu {
                             Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
@@ -225,14 +226,14 @@ struct PortfolioWindowView: View {
                            trailing: trailingPercent(for: storageService.portfolios),
                            trailingTint: DS.pnlColor(aggregatePnlPercent(for: storageService.portfolios)),
                            helpText: "Combined view of every portfolio  ⌘3",
-                           selected: selection == .portfoliosAll, namespace: navNamespace) { selection = .portfoliosAll }
+                           selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
                     ForEach(storageService.portfolios) { portfolio in
                         NavRow(icon: "briefcase", title: portfolio.name,
                                trailing: trailingPercent(for: [portfolio]),
                                trailingTint: DS.pnlColor(aggregatePnlPercent(for: [portfolio])),
                                helpText: "Open “\(portfolio.name)” · right-click for rename, notifications",
                                selected: selection == .portfolio(portfolio.id), namespace: navNamespace) {
-                            selection = .portfolio(portfolio.id)
+                            navigate(to: .portfolio(portfolio.id))
                         }
                         .contextMenu {
                             Button { addHoldingPortfolioId = portfolio.id } label: {
@@ -247,7 +248,7 @@ struct PortfolioWindowView: View {
                             Divider()
                             Button(role: .destructive) {
                                 storageService.deletePortfolio(id: portfolio.id)
-                                if selection == .portfolio(portfolio.id) { selection = .portfoliosAll }
+                                if selection == .portfolio(portfolio.id) { navigate(to: .portfoliosAll) }
                             } label: { Label("Delete", systemImage: "trash") }
                         }
                     }
@@ -257,7 +258,7 @@ struct PortfolioWindowView: View {
             }
             // Pinned bottom block: Settings, then the total footer.
             NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
-                   selected: selection == .settings, namespace: navNamespace) { selection = .settings }
+                   selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
                 .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 6)
             TotalFooter(value: aggregateValue(for: storageService.portfolios),
                         cost: aggregateCost(for: storageService.portfolios),
@@ -408,13 +409,22 @@ struct PortfolioWindowView: View {
             HomeWideView()
         case .watchlist:
             WatchlistWideView(showSearch: $showSearch)
+                .id(storageService.selectedWatchlistId)
         case .settings:
             SettingsWideView()
         case .portfoliosAll:
-            NavigationStack { PortfolioOverview(scope: .all) }
+            NavigationStack(path: $portfolioPath) { PortfolioOverview(scope: .all) }
         case .portfolio(let id):
-            NavigationStack { PortfolioOverview(scope: .portfolio(id)) }
+            NavigationStack(path: $portfolioPath) { PortfolioOverview(scope: .portfolio(id)) }
         }
+    }
+
+    /// Sidebar navigation always exits a pushed portfolio detail first. Keeping
+    /// this path explicit avoids SwiftUI retaining a stale HoldingDetailView when
+    /// the user switches directly to a watchlist or another sidebar destination.
+    private func navigate(to destination: Nav) {
+        portfolioPath = NavigationPath()
+        selection = destination
     }
 
     private var newPortfolioSheet: some View {

@@ -47,6 +47,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var portfolioWindow: NSWindow?
+    private var isPresentingPortfolioWindow = false
+    private var portfolioActivationGeneration = 0
     private var stockService = StockService.shared
     private var storageService = StorageService.shared
     private var webSocketService = WebSocketService.shared
@@ -79,7 +81,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
 
-        // Hide dock icon
+        // Menu-bar-only by default; opening the desktop window temporarily
+        // promotes the app to a regular application.
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -393,6 +396,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let totalPnl = totalValue - totalCost
         let totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 
+        // Always use regular-market prices here, independent of the extended-hours
+        // display preference. Yahoo defines crypto's previous close at 00:00 UTC.
+        let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
+            guard let quote = stockService.quotes[holding.symbol] else { return nil }
+            return TodayPerformance.Input(
+                holding: holding,
+                regularPrice: quote.price,
+                previousClose: quote.previousClose,
+                rate: stockService.rate(from: quote.currency)
+            )
+        }
+        let today = TodayPerformance.totals(todayInputs)
+        let todayGain = today.gain
+        let todayPct = today.percent
+
         // Find best/worst watchlist stock by daily change %
         let bestStock = storageService.watchlist.compactMap { stockService.quotes[$0] }
             .max(by: { $0.changePercent < $1.changePercent })
@@ -409,6 +427,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let downColor: NSColor = storageService.menuBarUseSystemColor ? .labelColor : storageService.lossColor
 
         switch displayMode {
+        case "todayPnl":
+            title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))"
+            color = todayGain >= 0 ? upColor : downColor
+
+        case "todayPnlFull":
+            let todayPctSign = todayPct >= 0 ? "+" : ""
+            let todayPctPart = storageService.menuBarHidePercent ? "" : " (\(todayPctSign)\(String(format: "%.\(storageService.percentDecimals)f", todayPct))%)"
+            title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))\(todayPctPart)"
+            color = todayGain >= 0 ? upColor : downColor
+
         case "totalValue":
             title = " \(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))"
             color = totalPnl >= 0 ? upColor : downColor
@@ -553,6 +581,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showPortfolioWindow() {
         let reusable = portfolioWindow?.isVisible ?? false
         NSLog("[StockDeck] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
+        isPresentingPortfolioWindow = true
+        _ = NSApp.setActivationPolicy(.regular)
         closePopover()
         // Reuse the window only while it's actually on screen. Once closed with
         // the red button it's ordered out (and not reliably re-showable), so we
@@ -593,16 +623,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Brings the desktop window reliably in front of every other app.
     ///
-    /// StockDeck is a menu-bar (accessory) app: we switch to .regular FIRST so
-    /// the app appears in Cmd+Tab at the correct position, then activate + show.
+    /// Promote the menu-bar app only while the desktop window is visible.
     private func bringWindowFront(_ window: NSWindow) {
-        NSApp.setActivationPolicy(.regular)
+        portfolioActivationGeneration += 1
+        let generation = portfolioActivationGeneration
+
+        _ = NSApp.setActivationPolicy(.regular)
+        window.orderFrontRegardless()
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.completePortfolioActivation(window, generation: generation)
+        }
+    }
+
+    private func completePortfolioActivation(
+        _ window: NSWindow,
+        generation: Int
+    ) {
+        guard generation == portfolioActivationGeneration,
+              window === portfolioWindow,
+              window.isVisible else { return }
+
         NSApp.activate(ignoringOtherApps: true)
+        _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
         window.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async {
+
+        // A second pass covers the short interval in which LaunchServices has
+        // registered the app as regular but AppKit has not yet made it key.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.075) { [weak self, weak window] in
+            guard let self, let window,
+                  generation == self.portfolioActivationGeneration,
+                  window === self.portfolioWindow,
+                  window.isVisible else { return }
             NSApp.activate(ignoringOtherApps: true)
+            _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
             window.makeKeyAndOrderFront(nil)
-            NSLog("[StockDeck] window shown — visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
+            self.isPresentingPortfolioWindow = false
+            NSLog("[StockDeck] window shown — active=\(NSApp.isActive) visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
         }
     }
 }
@@ -612,10 +669,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === portfolioWindow else { return }
-        // Back to menu-bar-only mode once the window and popover are both gone.
+        portfolioActivationGeneration += 1
+        isPresentingPortfolioWindow = false
         Task { @MainActor in
-            let popoverShown = popover?.isShown ?? false
-            if !popoverShown { NSApp.setActivationPolicy(.accessory) }
+            if !(popover?.isShown ?? false) { NSApp.setActivationPolicy(.accessory) }
         }
     }
 }
@@ -628,8 +685,10 @@ extension AppDelegate: NSPopoverDelegate {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
         }
-        let hasOtherWindows = NSApp.windows.contains { $0.isVisible && $0.className != "_NSPopoverWindow" }
-        if !hasOtherWindows {
+        let hasDesktopWindow = NSApp.windows.contains {
+            $0.isVisible && $0.className != "_NSPopoverWindow"
+        }
+        if !isPresentingPortfolioWindow && !hasDesktopWindow {
             NSApp.setActivationPolicy(.accessory)
         }
         NotificationCenter.default.post(name: .popoverDidClose, object: nil)

@@ -116,6 +116,7 @@ struct SettingsWideView: View {
                     ("pnl", "P&L (+321.09€)"),
                     ("pnlPercent", "P&L % (+2.3%)"),
                     ("pnlFull", "P&L + %"),
+                    ("todayPnlFull", "Today (+321.09€ +1.2%)"),
                     ("totalValue", "Total value"),
                     ("bestStock", "Best stock"),
                     ("worstStock", "Worst stock"),
@@ -125,6 +126,11 @@ struct SettingsWideView: View {
                     ("tickerPortfolio", "Ticker + Portfolio"),
                     ("icon", "Icon only"),
                 ], selection: $storageService.menuBarDisplay, width: 230)
+            }
+            if storageService.menuBarDisplay == "todayPnlFull" {
+                Text("Uses regular-market prices. Crypto Today resets at 00:00 UTC.")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
             }
             SettingDivider()
             SettingRow("Percentage decimals", caption: "Digits after the decimal point (e.g. +2.34%)") {

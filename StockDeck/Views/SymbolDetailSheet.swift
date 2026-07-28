@@ -23,6 +23,7 @@ struct SymbolDetailSheet: View {
 
             VStack(alignment: .leading, spacing: DS.gap) {
                 HStack(alignment: .firstTextBaseline) {
+                    SymbolLogo(symbol: symbol, size: 38)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
                         if let name = quote?.name, !name.isEmpty {

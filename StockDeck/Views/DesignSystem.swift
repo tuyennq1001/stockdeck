@@ -200,16 +200,22 @@ struct WindowDragArea: NSViewRepresentable {
 struct PageHeader<Trailing: View>: View {
     let title: String
     var caption: String? = nil
+    var symbol: String? = nil
     @ViewBuilder var trailing: Trailing
 
-    init(_ title: String, caption: String? = nil, @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
+    init(_ title: String, caption: String? = nil, symbol: String? = nil,
+         @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
         self.title = title
         self.caption = caption
+        self.symbol = symbol
         self.trailing = trailing()
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
+            if let symbol {
+                SymbolLogo(symbol: symbol, size: 38)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(LocalizedStringKey(title)).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
                 if let caption {
@@ -246,21 +252,23 @@ struct ScrollEdgeFade: View {
 struct PageScaffold<Content: View, Trailing: View>: View {
     let title: String
     var caption: String? = nil
+    var symbol: String? = nil
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
 
-    init(_ title: String, caption: String? = nil,
+    init(_ title: String, caption: String? = nil, symbol: String? = nil,
          @ViewBuilder trailing: () -> Trailing = { EmptyView() },
          @ViewBuilder content: () -> Content) {
         self.title = title
         self.caption = caption
+        self.symbol = symbol
         self.trailing = trailing()
         self.content = content()
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title, caption: caption) { trailing }
+            PageHeader(title, caption: caption, symbol: symbol) { trailing }
                 .padding(.horizontal, DS.gutter)
                 .padding(.top, DS.titlebarClearance - 8)
                 .padding(.bottom, 16)
@@ -389,6 +397,59 @@ struct BrandMark: View {
                                  startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay(Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white))
+    }
+}
+
+/// Reusable market-symbol logo. FMP's public company-image endpoint covers
+/// equities and ETFs; unsupported instruments (for example some crypto pairs or
+/// indices) fall back to a neutral market glyph.
+struct SymbolLogo: View {
+    let symbol: String
+    var size: CGFloat = 28
+
+    private var logoURL: URL? {
+        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        return URL(string: "https://financialmodelingprep.com/image-stock/\(encoded).png")
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .fill(DS.cardAlt)
+
+            if let logoURL {
+                AsyncImage(url: logoURL, transaction: Transaction(animation: .easeOut(duration: 0.15))) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .padding(size * 0.12)
+                    case .empty:
+                        ProgressView().controlSize(.mini)
+                    case .failure:
+                        fallback
+                    @unknown default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .strokeBorder(DS.hairline.opacity(0.8), lineWidth: 0.5)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var fallback: some View {
+        Image(systemName: "chart.line.uptrend.xyaxis")
+            .font(.system(size: size * 0.38, weight: .medium))
+            .foregroundStyle(DS.inkTertiary)
     }
 }
 
@@ -959,4 +1020,3 @@ extension View {
         }
     }
 }
-

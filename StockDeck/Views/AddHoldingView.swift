@@ -86,7 +86,8 @@ struct AddHoldingView: View {
                             }
                             quantityFocused = true
                         }) {
-                            HStack {
+                            HStack(spacing: 8) {
+                                SymbolLogo(symbol: result.symbol, size: 24)
                                 Text(result.symbol)
                                     .fontWeight(.semibold)
                                 Text(result.name)

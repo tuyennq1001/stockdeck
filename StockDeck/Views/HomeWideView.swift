@@ -331,7 +331,10 @@ private struct NewsPlaceholder: View {
 private struct TickerChipWide: View {
     let text: String; let emphasized: Bool
     var body: some View {
-        Text(text).font(DS.micro)
+        HStack(spacing: 3) {
+            SymbolLogo(symbol: text, size: 14)
+            Text(text).font(DS.micro)
+        }
             .foregroundStyle(emphasized ? Color.white : DS.brand)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(RoundedRectangle(cornerRadius: 4, style: .continuous)

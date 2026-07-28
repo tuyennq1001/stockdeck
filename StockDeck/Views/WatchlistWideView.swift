@@ -9,7 +9,7 @@ struct WatchlistWideView: View {
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
 
-    enum SortKey { case order, symbol, name, changePercent, extChangePercent }
+    enum SortKey: Equatable { case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric) }
 
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
@@ -23,6 +23,7 @@ struct WatchlistWideView: View {
     @State private var draggingSymbol: String? = nil
     @State private var addToPortfolio: AddTarget?
     @State private var alertSymbol: AlertTarget?
+    @State private var showMetricCustomizer = false
 
     struct WatchRow: Identifiable {
         let id: String
@@ -36,8 +37,52 @@ struct WatchlistWideView: View {
         let extLabel: String         // "Pre" / "Post"
         let change: Double
         let changePercent: Double
+        let oneMonthChangePercent: Double?
+        let threeMonthChangePercent: Double?
+        let ytdChangePercent: Double?
+        let history: [PricePoint]
+        let allTimeHistory: [PricePoint]
         let loaded: Bool
         let quote: StockQuote?
+
+        func metricValue(for metric: WatchlistMetric) -> Double? {
+            switch metric {
+            case .today:
+                return changePercent
+            case .oneMonth:
+                return oneMonthChangePercent
+            case .threeMonths:
+                return threeMonthChangePercent
+            case .ytd:
+                return ytdChangePercent
+            case .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
+                let calendar = Calendar.current
+                let now = Date()
+                let boundary: Date?
+                switch metric {
+                case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
+                case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
+                case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
+                case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
+                case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+                default: boundary = nil
+                }
+                guard let boundary else { return nil }
+                return PriceHistory.percentChange(points: history, currentPrice: quote?.price ?? 0, since: boundary)
+            case .ath:
+                return allTimeHistory.map(\.effectiveHigh).max()
+            case .atl:
+                return allTimeHistory.map(\.effectiveLow).min()
+            case .fromAth:
+                guard let ath = allTimeHistory.map(\.effectiveHigh).max(), ath > 0 else { return nil }
+                return (price - ath) / ath * 100
+            case .fromAtl:
+                guard let atl = allTimeHistory.map(\.effectiveLow).min(), atl > 0 else { return nil }
+                return (price - atl) / atl * 100
+            case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+                return nil
+            }
+        }
     }
     struct AddTarget: Identifiable { let symbol: String; let portfolioId: UUID; var id: String { "\(symbol)-\(portfolioId)" } }
     struct AlertTarget: Identifiable { let symbol: String; var id: String { symbol } }
@@ -53,6 +98,13 @@ struct WatchlistWideView: View {
             let q = stockService.quotes[symbol]
             let rate = q.map { stockService.priceRate(from: $0.currency) } ?? 1
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
+            let history = stockService.watchlistHistory[symbol] ?? []
+            let calendar = Calendar.current
+            let now = Date()
+            let monthStart = calendar.date(byAdding: .month, value: -1, to: now) ?? now
+            let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now) ?? now
+            let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
+            let regularPrice = q?.price ?? 0
             return WatchRow(
                 id: symbol, order: index, symbol: symbol,
                 name: q?.name ?? "",
@@ -63,12 +115,25 @@ struct WatchlistWideView: View {
                 extLabel: q?.marketStateLabel ?? "",
                 change: (q?.change ?? 0) * rate,
                 changePercent: q?.changePercent ?? 0,
+                oneMonthChangePercent: PriceHistory.percentChange(
+                    points: history, currentPrice: regularPrice, since: monthStart
+                ),
+                threeMonthChangePercent: PriceHistory.percentChange(
+                    points: history, currentPrice: regularPrice, since: threeMonthStart
+                ),
+                ytdChangePercent: PriceHistory.percentChange(
+                    points: history, currentPrice: regularPrice, since: yearStart
+                ),
+                history: history,
+                allTimeHistory: stockService.priceHistoryMax[symbol] ?? [],
                 loaded: q != nil, quote: q
             )
         }
     }
 
     private var visibleRows: [WatchRow] { sortedRows() }
+
+    private var selectedMetrics: [WatchlistMetric] { storageService.watchlistMetrics }
 
     /// True when any watchlist quote is trading pre/post-market. Drives the row
     /// hierarchy: during extended hours the After-hrs price/% reads first and the
@@ -84,10 +149,20 @@ struct WatchlistWideView: View {
         func by<T: Comparable>(_ key: (WatchRow) -> T) -> [WatchRow] {
             base.sorted { asc ? key($0) < key($1) : key($0) > key($1) }
         }
+        func byOptional(_ key: (WatchRow) -> Double?) -> [WatchRow] {
+            base.sorted { lhs, rhs in
+                switch (key(lhs), key(rhs)) {
+                case let (l?, r?) where l != r: return asc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return lhs.order < rhs.order
+                }
+            }
+        }
         switch sortKey {
         case .order:         return asc ? base : base.reversed()
         case .symbol:        return by { $0.symbol }
-        case .name:          return by { $0.name }
+        case .price:         return by { $0.price }
         case .changePercent: return by { $0.changePercent }
         case .extChangePercent:
             // The After-hrs column is hidden when Extended Hours is off, so its
@@ -96,11 +171,12 @@ struct WatchlistWideView: View {
             // Sort by the pre/post-market % move, not the raw extended price.
             // Rows without an extended-hours quote sink to the bottom either way.
             return StorageService.sortedByExtendedPercent(base, ascending: asc) { $0.extChangePercent }
+        case .metric(let m): return byOptional { $0.metricValue(for: m) }
         }
     }
 
     private func toggleSort(_ key: SortKey) {
-        if sortKey == key { sortAsc.toggle() } else { sortKey = key; sortAsc = (key == .order || key == .symbol || key == .name) }
+        if sortKey == key { sortAsc.toggle() } else { sortKey = key; sortAsc = (key == .order || key == .symbol) }
     }
 
     var body: some View {
@@ -124,6 +200,16 @@ struct WatchlistWideView: View {
                 RefreshButton(isLoading: stockService.isLoading) {
                     Task { await stockService.refreshAll(storageService: storageService) }
                 }
+                Button { showMetricCustomizer = true } label: {
+                    Label("Columns", systemImage: "slider.horizontal.3")
+                        .font(DS.caption)
+                        .foregroundStyle(DS.inkSecondary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Customize watchlist columns")
                 addButton
             }
         } content: {
@@ -154,6 +240,12 @@ struct WatchlistWideView: View {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
         }
+        .task(id: selectedMetrics) {
+            guard selectedMetrics.contains(where: { $0.category == .price }) else { return }
+            for symbol in storageService.watchlist where stockService.priceHistoryMax[symbol] == nil {
+                await stockService.ensurePriceHistoryMax(for: symbol)
+            }
+        }
         .sheet(item: $addToPortfolio) { t in
             HoldingFormSheet(mode: .addSymbol(symbol: t.symbol, portfolioId: t.portfolioId)) { addToPortfolio = nil }
                 .environmentObject(stockService).environmentObject(storageService)
@@ -161,6 +253,11 @@ struct WatchlistWideView: View {
         .sheet(item: $alertSymbol) { t in
             PriceAlertSheet(symbol: t.symbol) { alertSymbol = nil }
                 .environmentObject(stockService).environmentObject(storageService)
+        }
+        .sheet(isPresented: $showMetricCustomizer) {
+            WatchlistMetricCustomizer(initialMetrics: selectedMetrics) {
+                storageService.setWatchlistMetrics($0)
+            }
         }
         .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
             TextField("Watchlist name", text: $newWatchlistName)
@@ -194,6 +291,7 @@ struct WatchlistWideView: View {
     private func sideChartPane(symbol: String, quote: StockQuote) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 10) {
+                SymbolLogo(symbol: symbol, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
                     if !quote.name.isEmpty {
@@ -418,6 +516,23 @@ struct WatchlistWideView: View {
     // MARK: - Custom list
 
     private var table: some View {
+        ScrollView(.horizontal, showsIndicators: !isCompact) {
+            tableContents
+                .frame(width: isCompact ? 190 : tableWidth)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var tableWidth: CGFloat {
+        let base = 24 + WCol.symbol + WCol.price
+        let extended = storageService.showExtendedHours ? WCol.ext : 0
+        let metricWidth = selectedMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
+        let columns = 3 + selectedMetrics.count + (storageService.showExtendedHours ? 1 : 0)
+        return base + extended + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
+    }
+
+    private var tableContents: some View {
         VStack(spacing: 0) {
             headerRow
             Divider().overlay(DS.hairline)
@@ -425,10 +540,12 @@ struct WatchlistWideView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
                         WatchRowView(row: row,
+                                     position: idx + 1,
                                      showExtended: storageService.showExtendedHours,
                                      extendedSession: extendedSession,
                                      percentDecimals: storageService.percentDecimals,
                                      valueDecimals: storageService.valueDecimals,
+                                     metrics: selectedMetrics,
                                      isSelected: selectedSymbols.contains(row.symbol),
                                      compact: isCompact,
                                      onOpen: {
@@ -513,33 +630,54 @@ struct WatchlistWideView: View {
         HStack(spacing: WCol.spacing) {
             headerCell("#", .order, width: 24, align: .leading, help: "Sort by manual order")
             if isCompact {
-                headerCell("Symbol", .symbol, width: nil, align: .leading)
+                headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
             } else {
-                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading)
-                headerCell("Name", .name, width: nil, align: .leading)
-                headerCell("Price", .changePercent, width: WCol.price, align: .trailing,
-                           help: "Sort by today's % change")
+                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
+                headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
                 if storageService.showExtendedHours {
-                    headerCell("After hrs", .extChangePercent, width: WCol.ext, align: .trailing,
-                               help: "Sort by the pre/post-market % move")
+                    headerCell("Ext", .extChangePercent, width: WCol.ext, align: .trailing,
+                               help: "Sort by the current pre/post-market % move")
                 }
-                Text("Trend").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.trend)
-                Text("52-week").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.range, alignment: .leading)
+                ForEach(selectedMetrics) { metric in
+                    metricHeader(metric)
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
+        .tracking(0.8)
+        .textCase(.uppercase)
+    }
+
+    @ViewBuilder
+    private func metricHeader(_ metric: WatchlistMetric) -> some View {
+        if metric.isChart {
+            Text(metric.title)
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        } else {
+            headerCell(metric.title, .metric(metric), width: WCol.width(for: metric), align: .trailing,
+                       help: LocalizedStringKey("Sort by \(metric.title)"))
+        }
     }
 
     @ViewBuilder
     private func headerCell(_ title: String, _ key: SortKey, width: CGFloat?, align: Alignment,
                             help: LocalizedStringKey = "") -> some View {
-        Button { withAnimation(.easeOut(duration: 0.15)) { toggleSort(key) } } label: {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                toggleSort(key)
+            }
+        } label: {
             HStack(spacing: 3) {
                 if align == .trailing { Spacer(minLength: 0) }
-                Text(LocalizedStringKey(title)).font(DS.label).foregroundStyle(sortKey == key ? DS.brand : DS.inkTertiary)
+                Text(LocalizedStringKey(title))
+                    .font(DS.label)
+                    .foregroundStyle(sortKey == key ? DS.brand : DS.inkTertiary)
                 if sortKey == key {
                     Image(systemName: sortAsc ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 7, weight: .bold)).foregroundStyle(DS.brand)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(DS.brand)
                 }
                 if align == .leading { Spacer(minLength: 0) }
             }
@@ -548,6 +686,7 @@ struct WatchlistWideView: View {
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
+        .contentShape(Rectangle())
         .frame(maxWidth: width == nil ? .infinity : nil, alignment: align)
         .help(help)
     }
@@ -659,21 +798,28 @@ struct WatchlistWideView: View {
 /// Shared column widths so the header lines up with every row.
 /// File-scope `private` = visible to both `WatchlistWideView` and `WatchRowView`.
 private enum WCol {
-    static let symbol: CGFloat = 128
+    static let symbol: CGFloat = 180
     static let price: CGFloat = 104
     static let ext: CGFloat = 116
+    static let period: CGFloat = 68
     static let trend: CGFloat = 56
     static let range: CGFloat = 100
     static let spacing: CGFloat = 12
+
+    static func width(for metric: WatchlistMetric) -> CGFloat {
+        metric.isChart ? 76 : (metric.category == .price ? 92 : period)
+    }
 }
 
 /// One custom watchlist row: hover tint, click-to-open, right-click actions.
 private struct WatchRowView<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
+    let position: Int
     let showExtended: Bool
     let extendedSession: Bool
     let percentDecimals: Int
     let valueDecimals: Int
+    let metrics: [WatchlistMetric]
     let isSelected: Bool
     var compact: Bool = false
     let onOpen: () -> Void
@@ -711,30 +857,115 @@ private struct WatchRowView<Menu: View>: View {
         }
     }
 
+    @ViewBuilder
+    private func periodCell(_ percent: Double?) -> some View {
+        if let percent {
+            Text(String(format: "%+.\(percentDecimals)f%%", percent))
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.pnlColor(percent))
+                .contentTransition(.numericText())
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    private func periodChange(_ metric: WatchlistMetric) -> Double? {
+        let calendar = Calendar.current
+        let now = Date()
+        let boundary: Date?
+        switch metric {
+        case .oneMonth: boundary = calendar.date(byAdding: .month, value: -1, to: now)
+        case .threeMonths: boundary = calendar.date(byAdding: .month, value: -3, to: now)
+        case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
+        case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
+        case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
+        case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
+        case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+        case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
+        default: boundary = nil
+        }
+        guard let boundary else { return nil }
+        return PriceHistory.percentChange(points: row.history, currentPrice: row.quote?.price ?? 0, since: boundary)
+    }
+
+    private var allTimeHigh: Double? { row.allTimeHistory.map(\.effectiveHigh).max() }
+    private var allTimeLow: Double? { row.allTimeHistory.map(\.effectiveLow).min() }
+
+    @ViewBuilder
+    private func metricCell(_ metric: WatchlistMetric) -> some View {
+        Group {
+            switch metric {
+            case .today:
+                periodCell(row.changePercent)
+            case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
+                periodCell(periodChange(metric))
+            case .ath:
+                priceMetric(allTimeHigh)
+            case .atl:
+                priceMetric(allTimeLow)
+            case .fromAth:
+                periodCell(percentFrom(row.price, reference: allTimeHigh))
+            case .fromAtl:
+                periodCell(percentFrom(row.price, reference: allTimeLow))
+            case .chart24h:
+                Sparkline(symbol: row.symbol, days: 1)
+            case .chart7d:
+                Sparkline(symbol: row.symbol, days: 7)
+            case .chart30d:
+                Sparkline(symbol: row.symbol, days: 30)
+            case .chart60d:
+                Sparkline(symbol: row.symbol, days: 60)
+            case .chart90d:
+                Sparkline(symbol: row.symbol, days: 90)
+            }
+        }
+        .frame(width: WCol.width(for: metric), alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func priceMetric(_ value: Double?) -> some View {
+        if let value {
+            Text("\(StorageService.currencySymbol(for: row.currency))\(StorageService.formatNumber(value, decimals: priceDec(value)))")
+                .font(DS.figure.monospacedDigit()).foregroundStyle(DS.ink)
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    private func percentFrom(_ price: Double, reference: Double?) -> Double? {
+        guard let reference, reference > 0 else { return nil }
+        return (price - reference) / reference * 100
+    }
+
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                // Symbol chip — always visible
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous).fill(DS.brand.opacity(0.10))
-                        .frame(width: 28, height: 28)
-                        .overlay(Text(row.symbol.prefix(2))
-                            .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
-                            .foregroundStyle(DS.brand))
-                    Text(row.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                Text("\(position)")
+                    .font(DS.micro.monospacedDigit())
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(width: 24, alignment: .leading)
+
+                HStack(spacing: 9) {
+                    SymbolLogo(symbol: row.symbol, size: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(row.symbol)
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                        if !row.name.isEmpty {
+                            Text(row.name)
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                                .lineLimit(1)
+                        }
+                    }
                 }
                 .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
 
                 if !compact {
-                    // Name
-                    Text(row.name.isEmpty ? "—" : row.name)
-                        .font(DS.body).foregroundStyle(DS.inkSecondary).lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
                     // Regular price + today's % move.
                     Group {
                         if row.loaded {
-                            pairedCell(price: row.price, pct: row.changePercent,
+                            pairedCell(price: row.price, pct: nil,
                                        label: nil, emphasised: !extendedSession)
                         } else {
                             DSSpinner(size: 12)
@@ -755,29 +986,9 @@ private struct WatchRowView<Menu: View>: View {
                         .frame(width: WCol.ext, alignment: .trailing)
                     }
 
-                    // Trend sparkline
-                    Sparkline(symbol: row.symbol).frame(width: WCol.trend)
-
-                    // 52-week range
-                    Group {
-                        if let q = row.quote, let pos = q.fiftyTwoWeekPosition {
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(DS.cardAlt).frame(height: 5)
-                                    Circle().fill(.white)
-                                        .frame(width: 9, height: 9)
-                                        .overlay(Circle().strokeBorder(DS.brand, lineWidth: 1.5))
-                                        .shadow(color: .black.opacity(0.10), radius: 1.5, y: 0.5)
-                                        .offset(x: CGFloat(pos) * (geo.size.width - 9))
-                                }
-                                .frame(maxHeight: .infinity, alignment: .center)
-                            }
-                            .frame(height: 12)
-                        } else {
-                            Text("—").foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                    ForEach(metrics) { metric in
+                        metricCell(metric)
                     }
-                    .frame(width: WCol.range)
                 }
             }
             .padding(.horizontal, 14).padding(.vertical, 9)
@@ -813,4 +1024,3 @@ private struct WatchlistDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
-

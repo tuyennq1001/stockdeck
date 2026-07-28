@@ -6,6 +6,8 @@ struct StockQuote: Identifiable, Codable {
     let price: Double
     let change: Double
     let changePercent: Double
+    /// Exact regular-session previous close supplied by Yahoo when available.
+    var regularMarketPreviousClose: Double? = nil
     let currency: String
     let marketState: String
 
@@ -27,6 +29,10 @@ struct StockQuote: Identifiable, Codable {
     var id: String { symbol }
 
     var isPositive: Bool { change >= 0 }
+
+    /// Falls back to the regular price/change pair for legacy persisted quotes
+    /// and feeds where Yahoo omits the explicit previous-close field.
+    var previousClose: Double { regularMarketPreviousClose ?? (price - change) }
 
     /// Position of the current price within the 52-week range, 0 (low) … 1 (high).
     /// nil when range data is missing or degenerate (high == low).
@@ -134,6 +140,24 @@ struct Portfolio: Identifiable, Codable {
         self.id = id
         self.name = name
         self.holdings = holdings
+    }
+}
+
+/// Aggregation shared by grouped position UIs. Average purchase price is
+/// quantity-weighted across lots; leverage affects exposure/P&L, not the price
+/// paid per share.
+enum HoldingLotAggregation {
+    static func totalQuantity(_ holdings: [Holding]) -> Double {
+        holdings.reduce(0) { $0 + $1.quantity }
+    }
+
+    static func weightedAveragePrice(_ holdings: [Holding]) -> Double {
+        let totalAbsoluteQuantity = holdings.reduce(0) { $0 + abs($1.quantity) }
+        guard totalAbsoluteQuantity >= 1e-9 else { return 0 }
+        let weightedCost = holdings.reduce(0) {
+            $0 + abs($1.quantity) * $1.avgPrice
+        }
+        return weightedCost / totalAbsoluteQuantity
     }
 }
 

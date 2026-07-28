@@ -4,6 +4,8 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
     var symbols: [String]
+    /// Nil keeps imported/older watchlists on the default layout.
+    var metrics: [WatchlistMetric]? = nil
 }
 
 @MainActor
@@ -43,6 +45,19 @@ class StorageService: ObservableObject {
                 selectedWatchlistId = newWl.id
             }
         }
+    }
+
+    /// The selected watchlist owns its metric layout so crypto, equities, and
+    /// research lists can each keep the columns that matter to them.
+    var watchlistMetrics: [WatchlistMetric] {
+        currentWatchlist.metrics ?? WatchlistMetric.defaultSelection
+    }
+
+    func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
+        let normalized = Array(metrics.prefix(8))
+        let activeId = currentWatchlist.id
+        guard let index = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
+        watchlists[index].metrics = normalized
     }
 
     @Published var portfolios: [Portfolio] = [] {
@@ -93,7 +108,8 @@ class StorageService: ObservableObject {
         set { appearanceRaw = newValue.rawValue }
     }
 
-    /// What to display in the menu bar: "pnl", "totalValue", "icon"
+    /// What to display in the menu bar (for example "pnl", "todayPnlFull",
+    /// "totalValue", or "icon").
     @Published var menuBarDisplay: String = "pnl" {
         didSet { scheduleSave() }
     }

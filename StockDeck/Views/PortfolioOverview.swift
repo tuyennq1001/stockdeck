@@ -64,7 +64,8 @@ struct PortfolioOverview: View {
     }
     enum PositionSortColumn: String, CaseIterable {
         case symbol
-        case last
+        case price
+        case extended
         case cost
         case value
         case pnl
@@ -143,18 +144,20 @@ struct PortfolioOverview: View {
     private var totalPnl: Double { totalValue - totalCost }
     private var totalPnlPercent: Double { abs(totalCost) >= 0.01 ? (totalPnl / abs(totalCost)) * 100 : 0 }
 
-    private var dayChangeValue: Double {
-        holdings.reduce(0) { sum, h in
-            // Use the change consistent with the price the value is computed at
-            // (extended-hours-aware), so TODAY can't disagree in sign with the value.
-            let change = h.quote.effectiveChange(extendedHours: storageService.showExtendedHours)
-            return sum + change * h.holding.quantity * h.holding.effectiveLeverage * stockService.rate(from: h.quote.currency)
+    private var todayPerformance: (gain: Double, percent: Double) {
+        let inputs = portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
+            guard let quote = stockService.quotes[holding.symbol] else { return nil }
+            return TodayPerformance.Input(
+                holding: holding,
+                regularPrice: quote.price,
+                previousClose: quote.previousClose,
+                rate: stockService.rate(from: quote.currency)
+            )
         }
+        return TodayPerformance.totals(inputs)
     }
-    private var dayChangePercent: Double {
-        let base = totalValue - dayChangeValue
-        return abs(base) >= 0.01 ? (dayChangeValue / abs(base)) * 100 : 0
-    }
+    private var dayChangeValue: Double { todayPerformance.gain }
+    private var dayChangePercent: Double { todayPerformance.percent }
 
     /// Snapshot series for the scope, merged by day when aggregating portfolios.
     private var series: [PortfolioSnapshot] {
@@ -537,6 +540,7 @@ struct PortfolioOverview: View {
                             ForEach(allocation.prefix(6)) { slice in
                                 HStack(spacing: 9) {
                                     RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
+                                    SymbolLogo(symbol: slice.symbol, size: 20)
                                     Text(slice.symbol).font(DS.figure).foregroundStyle(DS.ink)
                                     Spacer()
                                     Text(String(format: "%.1f%%", slice.fraction * 100))
@@ -603,11 +607,7 @@ struct PortfolioOverview: View {
                 VStack(spacing: 0) {
                     ForEach(movers.prefix(5)) { h in
                         HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(DS.brand.opacity(0.10))
-                                .frame(width: 24, height: 24)
-                                .overlay(Text(h.symbol.prefix(1))
-                                    .font(DS.micro).foregroundStyle(DS.brand))
+                            SymbolLogo(symbol: h.symbol, size: 24)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
                                 Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
@@ -686,84 +686,114 @@ struct PortfolioOverview: View {
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        sortHeader("Symbol", column: .symbol).frame(width: 168, alignment: .leading)
-                        sortHeader("Last", column: .last).frame(maxWidth: .infinity, alignment: .trailing)
-                        sortHeader("Cost", column: .cost).frame(maxWidth: .infinity, alignment: .trailing)
-                        sortHeader("Value", column: .value).frame(maxWidth: .infinity, alignment: .trailing)
-                        sortHeader("P&L", column: .pnl).frame(maxWidth: .infinity, alignment: .trailing)
-                        sortHeader("Weight", column: .weight).frame(width: 110, alignment: .trailing)
-                        Color.clear.frame(width: 16)
-                    }
-                    .font(DS.label)
-                    .foregroundStyle(DS.inkTertiary)
-                    .tracking(0.8).textCase(.uppercase)
-                    .padding(.bottom, 12)
-                    Divider().overlay(DS.hairline)
-
-                    let groupedValued = Dictionary(grouping: holdings) { $0.symbol.uppercased() }
-                    let sortedSymbols = groupedValued.keys.sorted { sym1, sym2 in
-                        guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
-                        let isAsc = sortAscending
-
-                        switch sortColumn {
-                        case .symbol:
-                            return isAsc ? sym1 < sym2 : sym1 > sym2
-                        case .last:
-                            let p1 = g1.first?.quote.displayPrice(extendedHours: false) ?? 0
-                            let p2 = g2.first?.quote.displayPrice(extendedHours: false) ?? 0
-                            return isAsc ? p1 < p2 : p1 > p2
-                        case .cost:
-                            let c1 = g1.reduce(0) { $0 + $1.cost }
-                            let c2 = g2.reduce(0) { $0 + $1.cost }
-                            return isAsc ? c1 < c2 : c1 > c2
-                        case .value, .weight:
-                            let v1 = g1.reduce(0) { $0 + $1.value }
-                            let v2 = g2.reduce(0) { $0 + $1.value }
-                            return isAsc ? v1 < v2 : v1 > v2
-                        case .pnl:
-                            let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
-                            let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
-                            return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
-                        }
-                    }
-
-                    ForEach(sortedSymbols, id: \.self) { sym in
-                        if let group = groupedValued[sym], let first = group.first {
-                            let groupVal = group.reduce(0) { $0 + $1.value }
-                            let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
-
-                            NavigationLink(value: first.id) {
-                                PositionSummaryRow(symbol: sym,
-                                                   holdings: group,
-                                                   currencySymbol: currencySymbol,
-                                                   weight: weight,
-                                                   topWeight: topWeight,
-                                                   decimals: decimals,
-                                                   valueDecimals: storageService.valueDecimals)
+                ScrollView(.horizontal, showsIndicators: true) {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
+                            sortHeader("Symbol", column: .symbol)
+                                .frame(width: PositionColumnWidth.symbol, alignment: .leading)
+                            sortHeader("Price", column: .price)
+                                .frame(width: PositionColumnWidth.price, alignment: .trailing)
+                            if storageService.showExtendedHours {
+                                sortHeader("Ext", column: .extended)
+                                    .frame(width: PositionColumnWidth.session, alignment: .trailing)
+                                    .help("Sort by the current pre/post-market % move")
                             }
-                            .buttonStyle(.plain)
-                            .help("View \(sym) details")
-                            .contextMenu {
-                                if group.count == 1 {
-                                    Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
-                                    Button(role: .destructive) {
-                                        storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
-                                    } label: { Label("Delete", systemImage: "trash") }
+                            sortHeader("Cost", column: .cost)
+                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                            sortHeader("Value", column: .value)
+                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                            sortHeader("P&L", column: .pnl)
+                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                            sortHeader("Weight", column: .weight)
+                                .frame(width: PositionColumnWidth.weight, alignment: .trailing)
+                            Color.clear.frame(width: PositionColumnWidth.chevron)
+                        }
+                        .font(DS.label)
+                        .foregroundStyle(DS.inkTertiary)
+                        .tracking(0.8).textCase(.uppercase)
+                        .padding(.bottom, 12)
+                        Divider().overlay(DS.hairline)
+
+                        let groupedValued = Dictionary(grouping: holdings) { $0.symbol.uppercased() }
+                        let sortedSymbols = groupedValued.keys.sorted { sym1, sym2 in
+                            guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
+                            let isAsc = sortAscending
+
+                            func compareOptional(_ lhs: Double?, _ rhs: Double?) -> Bool {
+                                switch (lhs, rhs) {
+                                case let (l?, r?): return isAsc ? l < r : l > r
+                                case (_?, nil): return true
+                                case (nil, _?): return false
+                                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
                                 }
                             }
-                            if sym != sortedSymbols.last {
-                                Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+
+                            switch sortColumn {
+                            case .symbol:
+                                return isAsc ? sym1 < sym2 : sym1 > sym2
+                            case .price:
+                                let p1 = g1.first?.quote.changePercent ?? 0
+                                let p2 = g2.first?.quote.changePercent ?? 0
+                                return isAsc ? p1 < p2 : p1 > p2
+                            case .extended:
+                                return compareOptional(g1.first?.quote.extendedChangePercent,
+                                                       g2.first?.quote.extendedChangePercent)
+                            case .cost:
+                                let c1 = g1.reduce(0) { $0 + $1.cost }
+                                let c2 = g2.reduce(0) { $0 + $1.cost }
+                                return isAsc ? c1 < c2 : c1 > c2
+                            case .value, .weight:
+                                let v1 = g1.reduce(0) { $0 + $1.value }
+                                let v2 = g2.reduce(0) { $0 + $1.value }
+                                return isAsc ? v1 < v2 : v1 > v2
+                            case .pnl:
+                                let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
+                                let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
+                                return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+                            }
+                        }
+
+                        ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
+                            if let group = groupedValued[sym], let first = group.first {
+                                let groupVal = group.reduce(0) { $0 + $1.value }
+                                let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+
+                                NavigationLink(value: first.id) {
+                                    PositionSummaryRow(position: index + 1,
+                                                       symbol: sym,
+                                                       holdings: group,
+                                                       currencySymbol: currencySymbol,
+                                                       weight: weight,
+                                                       topWeight: topWeight,
+                                                       decimals: decimals,
+                                                       valueDecimals: storageService.valueDecimals,
+                                                       showExtendedHours: storageService.showExtendedHours)
+                                }
+                                .buttonStyle(.plain)
+                                .help("View \(sym) details")
+                                .contextMenu {
+                                    if group.count == 1 {
+                                        Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                        Button(role: .destructive) {
+                                            storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
+                                        } label: { Label("Delete", systemImage: "trash") }
+                                    }
+                                }
+                                if index < sortedSymbols.count - 1 {
+                                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                                }
                             }
                         }
                     }
+                    .frame(minWidth: PositionColumnWidth.table(
+                        showExtendedHours: storageService.showExtendedHours
+                    ))
                 }
                 .navigationDestination(for: UUID.self) { id in
                     if let h = holdings.first(where: { $0.id == id }) {
-                        HoldingDetailView(portfolioId: h.portfolioId, holding: h.holding, quote: h.quote,
-                                          value: h.value, cost: h.cost,
-                                          weight: abs(totalValue) >= 0.01 ? abs(h.value) / abs(totalValue) * 100 : 0)
+                        HoldingDetailView(portfolioId: h.portfolioId, scope: scope,
+                                          holding: h.holding, quote: h.quote)
                     }
                 }
             }
@@ -815,8 +845,25 @@ struct PortfolioOverview: View {
 
 // MARK: - Position summary row
 
+private enum PositionColumnWidth {
+    static let number: CGFloat = 42
+    // Keep the full table (including row padding) within the 1,080 pt card
+    // content width so the default desktop layout never scrolls horizontally.
+    static let symbol: CGFloat = 200
+    static let price: CGFloat = 124
+    static let session: CGFloat = 124
+    static let amount: CGFloat = 140
+    static let weight: CGFloat = 120
+    static let chevron: CGFloat = 20
+    static func table(showExtendedHours: Bool) -> CGFloat {
+        number + symbol + price + (showExtendedHours ? session : 0)
+            + amount * 3 + weight + chevron
+    }
+}
+
 private struct PositionSummaryRow: View {
     @EnvironmentObject var storageService: StorageService
+    let position: Int
     let symbol: String
     let holdings: [ValuedHolding]
     let currencySymbol: String
@@ -824,6 +871,7 @@ private struct PositionSummaryRow: View {
     let topWeight: Double
     let decimals: Int
     let valueDecimals: Int
+    let showExtendedHours: Bool
 
     @State private var hovered = false
 
@@ -851,16 +899,56 @@ private struct PositionSummaryRow: View {
         valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: symbol, price: price)
     }
 
+    @ViewBuilder
+    private func priceCell(
+        price: Double?,
+        percent: Double?,
+        sessionLabel: String? = nil,
+        emphasised: Bool = true
+    ) -> some View {
+        if let price {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(StorageService.formatAmount(price, symbol: currencySymbol, decimals: priceDec(price)))
+                    .font(DS.figure)
+                    .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
+                    .contentTransition(.numericText())
+                if let percent {
+                    HStack(spacing: 4) {
+                        if let sessionLabel, !sessionLabel.isEmpty {
+                            Text(sessionLabel)
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        if emphasised {
+                            ChangePill(
+                                value: percent,
+                                text: String(format: "%+.\(decimals)f%%", percent)
+                            )
+                        } else {
+                            Text(String(format: "%+.\(decimals)f%%", percent))
+                                .font(DS.micro)
+                                .foregroundStyle(DS.pnlColor(percent).opacity(0.55))
+                        }
+                    }
+                }
+            }
+        } else {
+            Text("—")
+                .font(DS.figure)
+                .foregroundStyle(DS.inkTertiary)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
+            Text("\(position)")
+                .font(DS.micro.monospacedDigit())
+                .foregroundStyle(DS.inkTertiary)
+                .frame(width: PositionColumnWidth.number, alignment: .leading)
+
             // Symbol column
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(DS.brand.opacity(0.10))
-                    .frame(width: 30, height: 30)
-                    .overlay(Text(symbol.prefix(2))
-                        .font(.inter(10, weight: .bold, relativeTo: .caption2))
-                        .foregroundStyle(DS.brand))
+            HStack(spacing: 9) {
+                SymbolLogo(symbol: symbol, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
                         Text(symbol).font(DS.figure).foregroundStyle(DS.ink)
@@ -880,24 +968,37 @@ private struct PositionSummaryRow: View {
                     }
                 }
             }
-            .frame(width: 168, alignment: .leading)
+            .frame(width: PositionColumnWidth.symbol, alignment: .leading)
 
-            // Last price column
-            let lastPrice = first?.quote.displayPrice(extendedHours: false) ?? 0
-            Text(StorageService.formatAmount(lastPrice, symbol: currencySymbol, decimals: priceDec(lastPrice)))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .font(DS.figure).foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
+            // Regular price and today's regular-session change.
+            let isExtendedSession = showExtendedHours && (first?.quote.isExtendedHours ?? false)
+            priceCell(
+                price: first?.quote.price,
+                percent: first?.quote.changePercent,
+                emphasised: !isExtendedSession
+            )
+                .frame(width: PositionColumnWidth.price, alignment: .trailing)
+
+            // Current extended session: pre-market or after-hours.
+            if showExtendedHours {
+                let extQuote = first?.quote
+                let extPrice = extQuote.flatMap { $0.isExtendedHours ? $0.effectivePrice : nil }
+                priceCell(price: extPrice,
+                          percent: extPrice == nil ? nil : extQuote?.extendedChangePercent,
+                          sessionLabel: extPrice == nil ? nil : extQuote?.marketStateLabel,
+                          emphasised: extPrice != nil)
+                    .frame(width: PositionColumnWidth.session, alignment: .trailing)
+            }
 
             // Cost basis column
             Text(StorageService.formatAmount(totalCost, symbol: currencySymbol, decimals: amountDec))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
             // Market Value column
             Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: amountDec))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
@@ -910,7 +1011,7 @@ private struct PositionSummaryRow: View {
                     .font(DS.micro)
             }
             .foregroundStyle(DS.pnlColor(totalPnl))
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(width: PositionColumnWidth.amount, alignment: .trailing)
 
             // Weight column
             HStack(spacing: 7) {
@@ -923,14 +1024,14 @@ private struct PositionSummaryRow: View {
                     .font(.inter(11, relativeTo: .caption).monospacedDigit())
                     .foregroundStyle(DS.inkSecondary)
             }
-            .frame(width: 110, alignment: .trailing)
+            .frame(width: PositionColumnWidth.weight, alignment: .trailing)
 
             // Chevron
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(hovered ? DS.brand : DS.inkTertiary)
-                .frame(width: 16)
+                .frame(width: PositionColumnWidth.chevron)
         }
-        .padding(.vertical, 9).padding(.horizontal, 8)
+        .padding(.vertical, 11).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
         .animation(.easeOut(duration: 0.15), value: hovered)
         .contentShape(Rectangle())

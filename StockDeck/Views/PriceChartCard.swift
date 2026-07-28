@@ -354,10 +354,11 @@ struct PriceChartCard: View {
 struct Sparkline: View {
     @ObservedObject private var stockService = StockService.shared
     let symbol: String
+    var days: Int = 30
 
     private var points: [PricePoint] {
-        guard let all = stockService.priceHistory[symbol],
-              let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())
+        guard let all = stockService.watchlistHistory[symbol],
+              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
         else { return [] }
         return all.filter { $0.date >= cutoff }
     }
