@@ -678,8 +678,12 @@ class StorageService: ObservableObject {
         var currentHoldings = portfolios[pIndex].holdings
 
         for newH in newHoldings {
-            let symbol = newH.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            var symbol = newH.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             guard !symbol.isEmpty else { continue }
+            let jpStockRegex = "^[0-9]{3}[0-9A-Z]$"
+            if symbol.count == 4 && symbol.range(of: jpStockRegex, options: .regularExpression) != nil {
+                symbol += ".T"
+            }
 
             if let existingIndex = currentHoldings.firstIndex(where: { $0.symbol == symbol }) {
                 let existing = currentHoldings[existingIndex]

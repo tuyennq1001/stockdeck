@@ -849,6 +849,12 @@ enum SpreadsheetIO {
             }
         }
 
-        return trimmed.uppercased()
+        let upper = trimmed.uppercased()
+        let jpStockRegex = "^[0-9]{3}[0-9A-Z]$"
+        if upper.count == 4 && upper.range(of: jpStockRegex, options: .regularExpression) != nil {
+            return upper + ".T"
+        }
+
+        return upper
     }
 }

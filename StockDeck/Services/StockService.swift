@@ -693,7 +693,26 @@ class StockService: ObservableObject {
         SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
     ]
 
+    func containsJapaneseCharacters(_ str: String) -> Bool {
+        for scalar in str.unicodeScalars {
+            if (0x3040...0x309F).contains(scalar.value) ||
+               (0x30A0...0x30FF).contains(scalar.value) ||
+               (0x4E00...0x9FAF).contains(scalar.value) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func isJapaneseStock(_ symbol: String) -> Bool {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if upper.hasSuffix(".T") || upper.hasSuffix(".JP") { return true }
+        let jpStockRegex = "^[0-9]{3}[0-9A-Z]$"
+        return upper.range(of: jpStockRegex, options: .regularExpression) != nil
+    }
+
     func isJapaneseMutualFund(_ symbol: String) -> Bool {
+        if containsJapaneseCharacters(symbol) { return true }
         let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard clean.count == 8 else { return false }
         let regex = "^[0-9A-Z]{8}$"
@@ -701,12 +720,12 @@ class StockService: ObservableObject {
     }
 
     func detectedCurrency(for symbol: String) -> String {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if isJapaneseMutualFund(symbol) || isJapaneseStock(symbol) || containsJapaneseCharacters(symbol) {
+            return "JPY"
+        }
         if let quote = quotes[symbol], !quote.currency.isEmpty {
             return quote.currency
-        }
-        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if isJapaneseMutualFund(upper) || upper.hasSuffix(".T") {
-            return "JPY"
         }
         return "USD"
     }

@@ -633,10 +633,12 @@ struct HoldingRow: View {
             .frame(width: 120, alignment: .leading)
 
             if let quote {
-                let rate = stockService.rate(from: quote.currency)
-                let pRate = stockService.priceRate(from: quote.currency)
+                let assetCurr = stockService.detectedCurrency(for: holding.symbol)
+                let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
+                let rate = stockService.rate(from: quoteCurr)
+                let pRate = stockService.priceRate(from: quoteCurr)
                 let priceCurr = storageService.stockPriceCurrency
-                let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
+                let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quoteCurr : priceCurr)
                 let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
 
                 // Col 2: Price + badge
@@ -661,7 +663,7 @@ struct HoldingRow: View {
                 // Col 3: Controvalore + P&L in preferred currency
                 let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                 let marketVal = holding.marketValue(currentPrice: displayPrice) * rate
-                let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+                let costRate = stockService.rate(from: quoteCurr, for: holding.purchaseDate)
                 let costBasis = holding.costBasisLocal * costRate
                 let pnl = marketVal - costBasis
                 let pnlPct = abs(costBasis) >= 0.01 ? (pnl / abs(costBasis)) * 100 : 0
