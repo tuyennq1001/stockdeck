@@ -15,7 +15,7 @@ struct PortfolioWindowView: View {
 
     /// Sidebar destinations — the dock tabs, with Portfolios expanded per portfolio.
     enum Nav: Hashable {
-        case home, watchlist, portfoliosAll, settings
+        case home, watchlist, portfoliosAll, importExport, settings
         case portfolio(UUID)
     }
 
@@ -282,69 +282,11 @@ struct PortfolioWindowView: View {
                     }
 
                     importExportHeader
-
-                    NavRow(icon: "square.and.arrow.down", title: "Import Standard Portfolio…",
-                           helpText: "Import portfolios from CSV or Excel file",
-                           selected: false, namespace: navNamespace) { importStandard() }
-
-                    NavRow(icon: "doc.text", title: "Import 投資信託 (Japanese Funds)…",
-                           helpText: "Import 投資信託 trade history CSV/XLSX",
-                           selected: false, namespace: navNamespace) { importJapaneseFunds() }
-
-                    NavRow(icon: "star", title: "Import Watchlist…",
-                           helpText: "Import symbols into a watchlist from CSV/XLSX/TXT",
-                           selected: false, namespace: navNamespace) { importWatchlist() }
-
-                    DSMenu(width: 250, sections: [
-                        [
-                            DSMenuAction(title: "Download Portfolio Sample (XLSX)", icon: "doc.badge.plus") { downloadSampleFile() },
-                            DSMenuAction(title: "Download 投資信託 Template (XLSX)", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() },
-                            DSMenuAction(title: "Download Watchlist Sample (XLSX)", icon: "doc.badge.plus") { downloadWatchlistSampleFile() }
-                        ]
-                    ]) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "doc.badge.plus")
-                                .font(.system(size: 13))
-                                .frame(width: 18, alignment: .center)
-                                .foregroundStyle(DS.inkSecondary)
-                            Text("Download Sample Templates…")
-                                .font(.inter(12.5, weight: .medium, relativeTo: .body))
-                                .foregroundStyle(DS.ink)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(DS.inkTertiary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
+                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export Hub",
+                           helpText: "Import portfolios & watchlists, download templates, or export data",
+                           selected: selection == .importExport, namespace: navNamespace) {
+                        navigate(to: .importExport)
                     }
-                    .help("Download sample Excel files for portfolio, 投資信託, or watchlist")
-
-                    DSMenu(width: 230, sections: [
-                        [
-                            DSMenuAction(title: "Export All Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) },
-                            DSMenuAction(title: "Export All Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) }
-                        ]
-                    ]) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 13))
-                                .frame(width: 18, alignment: .center)
-                                .foregroundStyle(DS.inkSecondary)
-                            Text("Export Data (XLSX)…")
-                                .font(.inter(12.5, weight: .medium, relativeTo: .body))
-                                .foregroundStyle(DS.ink)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(DS.inkTertiary)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
-                    }
-                    .help("Export portfolios or watchlists to Excel (.xlsx)")
 
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
@@ -542,6 +484,17 @@ struct PortfolioWindowView: View {
                 .id(storageService.selectedWatchlistId)
         case .settings:
             SettingsWideView()
+        case .importExport:
+            ImportExportWideView(
+                onImportStandard: { importStandard() },
+                onImportJapaneseFunds: { importJapaneseFunds() },
+                onImportWatchlist: { importWatchlist() },
+                onDownloadSample: { downloadSampleFile() },
+                onDownloadJapaneseFundSample: { downloadJapaneseFundSampleFile() },
+                onDownloadWatchlistSample: { downloadWatchlistSampleFile() },
+                onExportPortfolios: { exportPortfolios(storageService.portfolios) },
+                onExportWatchlists: { exportWatchlists(storageService.watchlists) }
+            )
         case .portfoliosAll:
             NavigationStack(path: $portfolioPath) { PortfolioOverview(scope: .all) }
         case .portfolio(let id):

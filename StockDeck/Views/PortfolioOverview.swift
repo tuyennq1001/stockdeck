@@ -397,10 +397,8 @@ struct PortfolioOverview: View {
         if case .portfolio(let id) = scope, let p = portfolios.first {
             DSMenu(sections: [
                 [ DSMenuAction(title: "Add Holding…", icon: "plus") { portfolioActions.addHolding(id) },
-                  DSMenuAction(title: "Batch Import…", icon: "square.and.arrow.down") { portfolioActions.batchImport(id) },
                   DSMenuAction(title: "Rename…", icon: "pencil") { portfolioActions.rename(id, p.name) },
-                  DSMenuAction(title: "Notifications…", icon: "bell") { portfolioActions.notifications(id, p.name) },
-                  DSMenuAction(title: "Export…", icon: "square.and.arrow.up") { portfolioActions.export(p) } ],
+                  DSMenuAction(title: "Notifications…", icon: "bell") { portfolioActions.notifications(id, p.name) } ],
                 [ DSMenuAction(title: "Delete Portfolio", icon: "trash", destructive: true) { portfolioActions.delete(id) } ],
             ]) {
                 Image(systemName: "ellipsis")
@@ -409,7 +407,7 @@ struct PortfolioOverview: View {
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(DS.cardAlt))
             }
-            .help("Portfolio actions — add holding, rename, notifications, export, delete")
+            .help("Portfolio actions — add holding, rename, notifications, delete")
         }
     }
 
