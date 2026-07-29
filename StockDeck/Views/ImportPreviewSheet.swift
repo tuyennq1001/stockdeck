@@ -75,7 +75,7 @@ struct ImportPreviewSheet: View {
 
                 Divider()
 
-                // List Controls: Select / Deselect All
+                // List Controls: Select / Deselect All & Template Download
                 HStack {
                     Text("Parsed Positions (\(items.count))")
                         .font(DS.bodyStrong)
@@ -83,6 +83,16 @@ struct ImportPreviewSheet: View {
                     
                     Spacer()
                     
+                    if isFundImport {
+                        Button("Download 投資信託 Template (XLSX)") {
+                            PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true)
+                        }
+                        .buttonStyle(.borderless)
+                        .font(DS.caption)
+
+                        Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    }
+
                     Button("Select All") {
                         for i in items.indices { items[i].isChecked = true }
                     }
