@@ -127,11 +127,8 @@ struct PortfolioListView: View {
                             .padding(.vertical, 4)
                         }
 
-                        ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                        ForEach(globals) { p in
                             PortfolioQuoteRow(globalPos: p)
-                            if index < globals.count - 1 {
-                                Divider().padding(.leading, 36)
-                            }
                         }
                     }
                     .listStyle(.plain)
