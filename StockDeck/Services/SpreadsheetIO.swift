@@ -794,47 +794,52 @@ enum SpreadsheetIO {
             }
         }
 
-        struct PositionAccumulator {
-            var totalUnits: Double = 0.0
-            var totalCost: Double = 0.0
-            var latestDate: Date? = nil
+        struct PositionLot {
+            let symbol: String
+            var qty: Double
+            let unitPrice: Double
+            let date: Date?
         }
 
-        var accountMap: [String: [String: PositionAccumulator]] = [:]
+        var accountLotsMap: [String: [PositionLot]] = [:]
 
         for rec in records {
-            var accDict = accountMap[rec.account] ?? [:]
-            var pos = accDict[rec.symbol] ?? PositionAccumulator()
+            var lots = accountLotsMap[rec.account] ?? []
 
             if rec.isBuy {
-                pos.totalUnits += rec.qty
-                pos.totalCost += rec.qty * (rec.unitPrice / 10000.0)
+                lots.append(PositionLot(symbol: rec.symbol, qty: rec.qty, unitPrice: rec.unitPrice, date: rec.date))
             } else {
-                let currentAvgPrice = pos.totalUnits > 0 ? (pos.totalCost / pos.totalUnits) : 0.0
-                pos.totalUnits = max(0, pos.totalUnits - rec.qty)
-                pos.totalCost = max(0, pos.totalUnits * currentAvgPrice)
+                // FIFO deduct from existing lots for this symbol
+                var remainingToSell = rec.qty
+                var updatedLots: [PositionLot] = []
+                for var lot in lots {
+                    if lot.symbol == rec.symbol && remainingToSell > 0 {
+                        if lot.qty <= remainingToSell {
+                            remainingToSell -= lot.qty
+                            lot.qty = 0
+                        } else {
+                            lot.qty -= remainingToSell
+                            remainingToSell = 0
+                            updatedLots.append(lot)
+                        }
+                    } else {
+                        updatedLots.append(lot)
+                    }
+                }
+                lots = updatedLots.filter { $0.qty > 0 }
             }
 
-            if let d = rec.date {
-                pos.latestDate = d
-            }
-
-            accDict[rec.symbol] = pos
-            accountMap[rec.account] = accDict
+            accountLotsMap[rec.account] = lots
         }
 
         var resultPortfolios: [Portfolio] = []
 
-        for (accountName, symbolDict) in accountMap {
-            var holdings: [Holding] = []
-            for (symbol, pos) in symbolDict {
-                guard pos.totalUnits > 0 else { continue }
-                let avgPrice10k = (pos.totalCost / pos.totalUnits) * 10000.0
-                let holding = Holding(symbol: symbol, quantity: pos.totalUnits, avgPrice: avgPrice10k, purchaseDate: pos.latestDate)
-                holdings.append(holding)
+        for (accountName, lots) in accountLotsMap {
+            let activeHoldings = lots.filter { $0.qty > 0 }.map { lot in
+                Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date)
             }
-            if !holdings.isEmpty {
-                resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: holdings))
+            if !activeHoldings.isEmpty {
+                resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: activeHoldings))
             }
         }
 

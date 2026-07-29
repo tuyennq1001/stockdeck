@@ -35,15 +35,13 @@ final class JapaneseFundTests: XCTestCase {
         let nisaTsumitate = portfolios?.first(where: { $0.name.contains("つみたて") })
         XCTAssertNotNil(nisaTsumitate)
 
-        // Verify iFreeNEXT NASDAQ100 net units: (32,432 + 15,884) - 15,884 = 32,432
-        let nasdaqHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "04317188" || $0.symbol.contains("NASDAQ100") })
-        XCTAssertNotNil(nasdaqHolding)
-        XCTAssertEqual(nasdaqHolding?.quantity ?? 0, 32432, accuracy: 0.1)
+        // Verify iFreeNEXT NASDAQ100 net units across lots: (32,432 + 15,884) - 15,884 = 32,432
+        let totalNasdaqQty = nisaTsumitate?.holdings.filter({ $0.symbol == "04317188" || $0.symbol.contains("NASDAQ100") }).reduce(0) { $0 + $1.quantity } ?? 0
+        XCTAssertEqual(totalNasdaqQty, 32432, accuracy: 0.1)
 
-        // Verify Rakuten Plus S&P500 holding (merging both 2024 and 2026 purchases)
-        let plusHolding = nisaTsumitate?.holdings.first(where: { $0.symbol == "9I31223A" })
-        XCTAssertNotNil(plusHolding)
-        XCTAssertEqual(plusHolding?.quantity ?? 0, 102323, accuracy: 1.0)
+        // Verify Rakuten Plus S&P500 holding (merging both 2024 and 2026 purchases across lots)
+        let totalPlusQty = nisaTsumitate?.holdings.filter({ $0.symbol == "9I31223A" }).reduce(0) { $0 + $1.quantity } ?? 0
+        XCTAssertEqual(totalPlusQty, 102323, accuracy: 1.0)
 
         // Verify NISA Growth portfolio (NISA成長投資枠)
         let nisaGrowth = portfolios?.first(where: { $0.name.contains("成長") })

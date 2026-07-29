@@ -81,8 +81,8 @@ final class BatchImportTests: XCTestCase {
         XCTAssertNotNil(jpPortfolios)
         let holdings = jpPortfolios?.first?.holdings ?? []
 
-        XCTAssertEqual(holdings.count, 3, "Should recognize 3 distinct Japanese funds")
         let symbols = Set(holdings.map { $0.symbol })
+        XCTAssertEqual(symbols.count, 3, "Should recognize 3 distinct Japanese fund symbols across lots")
         XCTAssertTrue(symbols.contains("04317188"), "iFreeNEXT NASDAQ100")
         XCTAssertTrue(symbols.contains("AY311238"), "auAM Nifty50")
         XCTAssertTrue(symbols.contains("9I31223A"), "楽天 Plus S&P500")
