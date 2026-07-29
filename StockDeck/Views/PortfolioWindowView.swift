@@ -209,6 +209,12 @@ struct PortfolioWindowView: View {
                                selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
                     }
 
+                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export",
+                           helpText: "Import portfolios & watchlists, download templates, or export data",
+                           selected: selection == .importExport, namespace: navNamespace) {
+                        navigate(to: .importExport)
+                    }
+
                     watchlistsHeader
                     ForEach(storageService.watchlists) { wl in
                         NavRow(icon: "star", title: wl.name,
@@ -280,21 +286,17 @@ struct PortfolioWindowView: View {
                             } label: { Label("Delete", systemImage: "trash") }
                         }
                     }
-
-                    importExportHeader
-                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export Hub",
-                           helpText: "Import portfolios & watchlists, download templates, or export data",
-                           selected: selection == .importExport, namespace: navNamespace) {
-                        navigate(to: .importExport)
-                    }
-
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
-            // Pinned bottom block: Settings, then the total footer.
+            // Pinned bottom block: Import / Export, Settings, then total footer.
+            NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
+                   selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
+                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
+
             NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                    selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 6)
+                .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
             TotalFooter(value: aggregateValue(for: storageService.portfolios),
                         cost: aggregateCost(for: storageService.portfolios),
                         currency: storageService.preferredCurrency,
