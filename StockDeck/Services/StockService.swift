@@ -775,6 +775,22 @@ class StockService: ObservableObject {
         return "USD"
     }
 
+    static let codeToFundNameMap: [String: String] = [
+        "04317188": "iFreeNEXT NASDAQ100インデックス",
+        "0331423B": "楽天・Ｓ＆Ｐ５００インデックス・ファンド",
+        "AY311238": "auAM Nifty50インド株ファンド",
+        "9I31223A": "楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド",
+        "03311187": "eMAXIS Slim 米国株式(S&P500)",
+        "0331418A": "eMAXIS Slim 全世界株式(オール・カントリー)",
+        "9I31123A": "楽天・プラス・オールカントリー・インデックス・ファンド",
+        "9I312179": "楽天・全米株式インデックス・ファンド",
+        "0331119A": "eMAXIS Slim 国内リートインデックス",
+        "0331218A": "eMAXIS Slim 先進国株式インデックス",
+        "0331318A": "eMAXIS Slim 新興国株式インデックス",
+        "0331118A": "eMAXIS Slim 国内株式(TOPIX)",
+        "03312187": "eMAXIS Slim 国内株式(日経平均)"
+    ]
+
     func fetchJapaneseFundQuote(symbol: String) async -> StockQuote? {
         let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(cleanCode)") else { return nil }
@@ -794,7 +810,10 @@ class StockService: ObservableObject {
                 if let snippetData = jsonSnippet.data(using: .utf8),
                    let dict = try? JSONSerialization.jsonObject(with: snippetData) as? [String: Any] {
 
-                    let name = (dict["name"] as? String) ?? (dict["fundNickName"] as? String) ?? cleanCode
+                    var name = (dict["name"] as? String) ?? (dict["fundNickName"] as? String) ?? cleanCode
+                    if name == cleanCode || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        name = Self.codeToFundNameMap[cleanCode] ?? cleanCode
+                    }
                     let priceStr = (dict["price"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
                     let changeStr = (dict["changePrice"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
                     let percentStr = (dict["changePriceRate"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
@@ -832,6 +851,9 @@ class StockService: ObservableObject {
             if let tRegex = try? NSRegularExpression(pattern: titlePattern),
                let tMatch = tRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
                 fundName = (html as NSString).substring(with: tMatch.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if fundName == cleanCode || fundName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fundName = Self.codeToFundNameMap[cleanCode] ?? cleanCode
             }
 
             return StockQuote(

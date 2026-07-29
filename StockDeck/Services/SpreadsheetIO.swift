@@ -1013,11 +1013,16 @@ enum SpreadsheetIO {
     }
 
     private static func normalizeFundName(_ str: String) -> String {
-        let clean = str.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = str.components(separatedBy: "(")[0]
+                       .components(separatedBy: "（")[0]
+                       .trimmingCharacters(in: .whitespacesAndNewlines)
         let transformed = clean.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? clean
         return transformed.lowercased()
             .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "　", with: "")
             .replacingOccurrences(of: "・", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "‐", with: "")
     }
 
     static func resolveJapaneseFundCode(from rawText: String) -> String? {
