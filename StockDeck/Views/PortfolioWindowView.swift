@@ -281,6 +281,71 @@ struct PortfolioWindowView: View {
                         }
                     }
 
+                    importExportHeader
+
+                    NavRow(icon: "square.and.arrow.down", title: "Import Standard Portfolio…",
+                           helpText: "Import portfolios from CSV or Excel file",
+                           selected: false, namespace: navNamespace) { importStandard() }
+
+                    NavRow(icon: "doc.text", title: "Import 投資信託 (Japanese Funds)…",
+                           helpText: "Import 投資信託 trade history CSV/XLSX",
+                           selected: false, namespace: navNamespace) { importJapaneseFunds() }
+
+                    NavRow(icon: "star", title: "Import Watchlist…",
+                           helpText: "Import symbols into a watchlist from CSV/XLSX/TXT",
+                           selected: false, namespace: navNamespace) { importWatchlist() }
+
+                    DSMenu(width: 250, sections: [
+                        [
+                            DSMenuAction(title: "Download Portfolio Sample (XLSX)", icon: "doc.badge.plus") { downloadSampleFile() },
+                            DSMenuAction(title: "Download 投資信託 Template (XLSX)", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() },
+                            DSMenuAction(title: "Download Watchlist Sample (XLSX)", icon: "doc.badge.plus") { downloadWatchlistSampleFile() }
+                        ]
+                    ]) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.badge.plus")
+                                .font(.system(size: 13))
+                                .frame(width: 18, alignment: .center)
+                                .foregroundStyle(DS.inkSecondary)
+                            Text("Download Sample Templates…")
+                                .font(.inter(12.5, weight: .medium, relativeTo: .body))
+                                .foregroundStyle(DS.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .help("Download sample Excel files for portfolio, 投資信託, or watchlist")
+
+                    DSMenu(width: 230, sections: [
+                        [
+                            DSMenuAction(title: "Export All Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) },
+                            DSMenuAction(title: "Export All Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) }
+                        ]
+                    ]) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 13))
+                                .frame(width: 18, alignment: .center)
+                                .foregroundStyle(DS.inkSecondary)
+                            Text("Export Data (XLSX)…")
+                                .font(.inter(12.5, weight: .medium, relativeTo: .body))
+                                .foregroundStyle(DS.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .help("Export portfolios or watchlists to Excel (.xlsx)")
+
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
@@ -357,7 +422,7 @@ struct PortfolioWindowView: View {
         }
     }
 
-    /// "PORTFOLIOS" label with dedicated Import menu and quiet + button. Right click exports all portfolios.
+    /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -365,19 +430,6 @@ struct PortfolioWindowView: View {
                 .foregroundStyle(DS.inkTertiary)
                 .tracking(0.8).textCase(.uppercase)
             Spacer()
-
-            DSMenu(width: 260, sections: importMenuSections) {
-                HStack(spacing: 3) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("Import")
-                        .font(DS.caption)
-                }
-                .foregroundStyle(DS.inkSecondary)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-            .help("Import portfolios, watchlists, or download sample templates…")
 
             DSMenu(width: 230, sections: plusMenuSections) {
                 Image(systemName: "plus")
@@ -396,6 +448,26 @@ struct PortfolioWindowView: View {
                 Label("Export All Portfolios (XLSX)…", systemImage: "square.and.arrow.up")
             }
         }
+    }
+
+    /// "IMPORT / EXPORT" section header in the sidebar.
+    private var importExportHeader: some View {
+        HStack {
+            Text("Import / Export")
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .tracking(0.8).textCase(.uppercase)
+            Spacer()
+
+            DSMenu(width: 260, sections: importMenuSections) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.inkSecondary)
+                    .frame(width: 20, height: 20)
+            }
+            .help("Import portfolios/watchlists, download samples, or export data…")
+        }
+        .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
     }
 
     /// Dedicated menu sections for Import & Sample Downloads.
