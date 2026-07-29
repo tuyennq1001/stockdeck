@@ -127,8 +127,8 @@ struct HoldingDetailView: View {
         let matched = scopedPortfolios.flatMap { p in
             p.holdings.filter { $0.symbol.uppercased() == holding.symbol.uppercased() }.map { h in
                 let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                let val = h.marketValue(currentPrice: price) * stockService.rate(from: quote.currency)
-                let cst = h.costBasisLocal * stockService.rate(from: quote.currency, for: h.purchaseDate)
+                let val = h.marketValue(currentPrice: price)
+                let cst = h.costBasisLocal
                 return ValuedHolding(id: h.id, portfolioId: p.id, holding: h, quote: quote,
                                      value: val, cost: cst, dayChangePercent: quote.changePercent,
                                      type: storageService.type(for: h.symbol))
@@ -171,9 +171,15 @@ struct HoldingDetailView: View {
         }
     }
 
+    private var aggregatedValueInPreferredCurrency: Double {
+        let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+        let rate = stockService.rate(from: quote.currency)
+        return aggregatedHoldings.reduce(0) { $0 + $1.marketValue(currentPrice: price) } * rate
+    }
+
     private var aggregatedWeight: Double {
         abs(scopedPortfolioValue) >= 0.01
-            ? abs(aggregatedValue) / abs(scopedPortfolioValue) * 100
+            ? abs(aggregatedValueInPreferredCurrency) / abs(scopedPortfolioValue) * 100
             : 0
     }
 
@@ -215,18 +221,18 @@ struct HoldingDetailView: View {
                             .foregroundStyle(DS.ink)
                             .frame(width: 60, alignment: .trailing)
 
-                        Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol))
+                        Text(StorageService.formatCompactAmount(vh.holding.avgPrice, symbol: priceSymbol))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        Text(StorageService.formatAmount(vh.value, symbol: currencySymbol))
+                        Text(StorageService.formatCompactAmount(vh.value, symbol: priceSymbol))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(StorageService.formatAmount(vh.pnl, symbol: currencySymbol, signed: true))
+                            Text(StorageService.formatCompactAmount(vh.pnl, symbol: priceSymbol, signed: true))
                                 .font(DS.figure)
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
                                 .font(DS.micro)
@@ -288,11 +294,11 @@ struct HoldingDetailView: View {
     private var statStrip: some View {
         HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
-            StatTile(label: "Avg price", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol), help: "Quantity-weighted average purchase price")
-            StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: currencySymbol), help: "Total cost basis across all purchase lots")
-            StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: currencySymbol), help: "Current market value across all purchase lots")
+            StatTile(label: "Avg price", value: StorageService.formatCompactAmount(weightedAveragePrice, symbol: priceSymbol), help: "Quantity-weighted average purchase price")
+            StatTile(label: "Cost", value: StorageService.formatCompactAmount(aggregatedCost, symbol: priceSymbol), help: "Total cost basis across all purchase lots")
+            StatTile(label: "Value", value: StorageService.formatCompactAmount(aggregatedValue, symbol: priceSymbol), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
-                     value: StorageService.formatAmount(aggregatedPnl, symbol: currencySymbol, signed: true),
+                     value: StorageService.formatCompactAmount(aggregatedPnl, symbol: priceSymbol, signed: true),
                      caption: String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
                      captionTint: DS.pnlColor(aggregatedPnl), valueTint: DS.pnlColor(aggregatedPnl))
             StatTile(label: "Weight", value: String(format: "%.1f%%", aggregatedWeight), help: "Share of the selected portfolio scope")
