@@ -262,6 +262,18 @@ enum SpreadsheetIO {
         return try? Data(contentsOf: outFile)
     }
 
+    /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history.
+    static func generateJapaneseFundTemplateXLSXData() -> Data? {
+        let headers = ["約定日", "受渡日", "ファンド名", "分配金", "口座", "取引", "買付方法", "数量［口］", "単価", "経費", "為替レート"]
+        let rows: [[String]] = [
+            ["2024/01/30", "2024/02/02", "eMAXIS Slim 米国株式(S&P500)", "再投資型", "NISAつみたて投資枠", "買付", "積立", "32,432", "30,834", "0", "-"],
+            ["2024/03/11", "2024/03/14", "iFreeNEXT NASDAQ100インデックス", "受取型", "NISAつみたて投資枠", "買付", "積立", "15,884", "31,478", "0", "-"],
+            ["2024/06/11", "2024/06/14", "楽天・Ｓ＆Ｐ５００インデックス・ファンド", "再投資型", "NISA成長投資枠", "買付", "通常", "74,025", "13,509", "0", "-"],
+            ["2024/11/14", "2024/11/20", "auAM Nifty50インド株ファンド", "再投資型", "特定口座", "買付", "通常", "81,633", "12,250", "0", "-"]
+        ]
+        return generateXLSXData(headers: headers, rows: rows)
+    }
+
     /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).
     static func parseStandardPortfolios(from fileURL: URL) -> [Portfolio]? {
         let ext = fileURL.pathExtension.lowercased()
@@ -274,8 +286,15 @@ enum SpreadsheetIO {
         return nil
     }
 
-    /// Option 2: 投資信託 (Japanese Funds Trade History CSV) import.
+    /// Option 2: 投資信託 (Japanese Funds Trade History CSV/XLSX) import.
     static func parseJapaneseFundCSV(from fileURL: URL) -> [Portfolio]? {
+        let ext = fileURL.pathExtension.lowercased()
+        if ext == "xlsx" {
+            if let rows = parseXLSXRows(fileURL: fileURL), !rows.isEmpty {
+                return parseJapaneseBrokerCSV(rows: rows)
+            }
+            return nil
+        }
         guard let content = readTextFile(url: fileURL) else { return nil }
         let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         var rows: [[String]] = []
@@ -326,12 +345,21 @@ enum SpreadsheetIO {
         return nil
     }
 
-    /// Extracts rows from an .xlsx file sheet XML using Python with fallback to Swift.
-    static func parseXLSX(fileURL: URL) -> [Portfolio]? {
+    /// Extracts raw string rows from an .xlsx file sheet XML using Python with fallback to Swift.
+    static func parseXLSXRows(fileURL: URL) -> [[String]]? {
         if let rows = parseXLSXWithPython(fileURL: fileURL), !rows.isEmpty {
-            return convertRowsToPortfolios(rows: rows)
+            return rows
         }
-        return parseXLSXWithSwift(fileURL: fileURL)
+        return parseXLSXRowsWithSwift(fileURL: fileURL)
+    }
+
+    /// Extracts portfolios from an .xlsx file (supporting both Japanese broker and standard formats).
+    static func parseXLSX(fileURL: URL) -> [Portfolio]? {
+        guard let rows = parseXLSXRows(fileURL: fileURL), !rows.isEmpty else { return nil }
+        if let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
+            return jpPortfolios
+        }
+        return convertRowsToPortfolios(rows: rows)
     }
 
     private static func parseXLSXWithPython(fileURL: URL) -> [[String]]? {
@@ -386,7 +414,22 @@ enum SpreadsheetIO {
                         if col_letter:
                             row_dict[col_letter] = val
                     
-                    cols = ["A", "B", "C", "D", "E", "F"]
+                    max_c = 6
+                    for k in row_dict.keys():
+                        n = 0
+                        for ch in k:
+                            if 'A' <= ch <= 'Z':
+                                n = n * 26 + (ord(ch) - ord('A') + 1)
+                        if n > max_c: max_c = n
+                    cols = []
+                    for idx in range(1, max_c + 1):
+                        temp = idx
+                        letters = ""
+                        while temp > 0:
+                            rem = (temp - 1) % 26
+                            letters = chr(65 + rem) + letters
+                            temp = (temp - 1) // 26
+                        cols.append(letters)
                     r_vals = [row_dict.get(col, "") for col in cols]
                     if any(r_vals):
                         rows.append(r_vals)
@@ -408,7 +451,7 @@ enum SpreadsheetIO {
         return jsonRows
     }
 
-    private static func parseXLSXWithSwift(fileURL: URL) -> [Portfolio]? {
+    private static func parseXLSXRowsWithSwift(fileURL: URL) -> [[String]]? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         task.arguments = ["-p", fileURL.path, "xl/worksheets/sheet1.xml"]
@@ -431,6 +474,14 @@ enum SpreadsheetIO {
         let sharedStrings = parseSharedStringsSwift(xml: String(data: dataSS, encoding: .utf8) ?? "")
 
         return parseSheetXMLSwift(xml: xmlString, sharedStrings: sharedStrings)
+    }
+
+    private static func parseXLSXWithSwift(fileURL: URL) -> [Portfolio]? {
+        guard let rows = parseXLSXRowsWithSwift(fileURL: fileURL), !rows.isEmpty else { return nil }
+        if let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
+            return jpPortfolios
+        }
+        return convertRowsToPortfolios(rows: rows)
     }
 
     private static func parseSharedStringsSwift(xml: String) -> [String] {
@@ -457,7 +508,7 @@ enum SpreadsheetIO {
         return result
     }
 
-    private static func parseSheetXMLSwift(xml: String, sharedStrings: [String]) -> [Portfolio]? {
+    private static func parseSheetXMLSwift(xml: String, sharedStrings: [String]) -> [[String]]? {
         let rowPattern = "<row[^>]*>(.*?)</row>"
         guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.dotMatchesLineSeparators]) else { return nil }
         let nsXml = xml as NSString
@@ -518,15 +569,26 @@ enum SpreadsheetIO {
                 rowValues[colRef] = val
             }
 
-            let cols = ["A", "B", "C", "D", "E", "F"]
+            var maxColIdx = 6
+            for colRef in rowValues.keys {
+                var n = 0
+                for ch in colRef.unicodeScalars {
+                    if ch.value >= 65 && ch.value <= 90 {
+                        n = n * 26 + Int(ch.value - 65 + 1)
+                    }
+                }
+                if n > maxColIdx { maxColIdx = n }
+            }
+
             var rowArray: [String] = []
-            for col in cols {
-                rowArray.append(rowValues[col] ?? "")
+            for cIdx in 1...maxColIdx {
+                let colLetter = columnLetter(cIdx)
+                rowArray.append(rowValues[colLetter] ?? "")
             }
             parsedRows.append(rowArray)
         }
 
-        return convertRowsToPortfolios(rows: parsedRows)
+        return parsedRows.isEmpty ? nil : parsedRows
     }
 
     /// Parses CSV content lines.

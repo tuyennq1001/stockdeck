@@ -394,8 +394,9 @@ struct PortfolioWindowView: View {
         }
         var io = [
             DSMenuAction(title: "Import Standard File (CSV/XLSX)…", icon: "square.and.arrow.down") { importStandard() },
-            DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV)…", icon: "doc.text") { importJapaneseFunds() },
-            DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
+            DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV/XLSX)…", icon: "doc.text") { importJapaneseFunds() },
+            DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() },
+            DSMenuAction(title: "Download 投資信託 Template (XLSX)…", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() }
         ]
         if !storageService.portfolios.isEmpty {
             io.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
@@ -514,6 +515,12 @@ struct PortfolioWindowView: View {
 
     private func downloadSampleFile() {
         PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: false) { message in
+            importAlert = message
+        }
+    }
+
+    private func downloadJapaneseFundSampleFile() {
+        PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: false) { message in
             importAlert = message
         }
     }

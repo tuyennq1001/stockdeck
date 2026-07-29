@@ -39,7 +39,10 @@ struct PortfolioListView: View {
                 .pointingHandCursor()
                 Menu {
                     Button("Import Standard (CSV/XLSX)…") { importStandard() }
-                    Button("Import 投資信託 (Japanese Funds CSV)…") { importJapaneseFunds() }
+                    Button("Import 投資信託 (Japanese Funds CSV/XLSX)…") { importJapaneseFunds() }
+                    Divider()
+                    Button("Download Standard Sample (XLSX)…") { downloadSampleFile() }
+                    Button("Download 投資信託 Template (XLSX)…") { downloadJapaneseFundSampleFile() }
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "square.and.arrow.down")
@@ -49,14 +52,17 @@ struct PortfolioListView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .pointingHandCursor()
-                Button(action: downloadSampleFile) {
+                Menu {
+                    Button("Download Standard Sample (XLSX)") { downloadSampleFile() }
+                    Button("Download 投資信託 Template (XLSX)") { downloadJapaneseFundSampleFile() }
+                } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "doc.badge.plus")
                         Text("Sample")
                     }
                     .font(.inter(10, relativeTo: .caption))
                 }
-                .buttonStyle(.borderless)
+                .menuStyle(.borderlessButton)
                 .pointingHandCursor()
                 Spacer()
             }
@@ -217,7 +223,10 @@ struct PortfolioListView: View {
 
                     Menu {
                         Button("Import Standard (CSV/XLSX)…") { importStandard() }
-                        Button("Import 投資信託 (Japanese Funds CSV)…") { importJapaneseFunds() }
+                        Button("Import 投資信託 (Japanese Funds CSV/XLSX)…") { importJapaneseFunds() }
+                        Divider()
+                        Button("Download Standard Sample (XLSX)…") { downloadSampleFile() }
+                        Button("Download 投資信託 Template (XLSX)…") { downloadJapaneseFundSampleFile() }
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "square.and.arrow.down")
@@ -228,14 +237,17 @@ struct PortfolioListView: View {
                     .menuStyle(.borderlessButton)
                     .pointingHandCursor()
 
-                    Button(action: downloadSampleFile) {
+                    Menu {
+                        Button("Download Standard Sample (XLSX)") { downloadSampleFile() }
+                        Button("Download 投資信託 Template (XLSX)") { downloadJapaneseFundSampleFile() }
+                    } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "doc.badge.plus")
                             Text("Sample")
                         }
                         .font(.inter(10, relativeTo: .caption))
                     }
-                    .buttonStyle(.borderless)
+                    .menuStyle(.borderlessButton)
                     .pointingHandCursor()
 
                     Button(action: { exportPortfolios(storageService.portfolios) }) {
@@ -390,6 +402,12 @@ struct PortfolioListView: View {
 
     private func downloadSampleFile() {
         PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true) { message in
+            self.importAlert = message
+        }
+    }
+
+    private func downloadJapaneseFundSampleFile() {
+        PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
     }

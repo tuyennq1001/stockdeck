@@ -70,4 +70,22 @@ final class JapaneseFundTests: XCTestCase {
         let allHoldings = portfolios?.flatMap { $0.holdings } ?? []
         XCTAssertGreaterThanOrEqual(allHoldings.count, 3)
     }
+
+    func testGenerateAndParseJapaneseFundXLSXTemplate() {
+        guard let xlsxData = SpreadsheetIO.generateJapaneseFundTemplateXLSXData() else {
+            XCTFail("Failed to generate Japanese Fund XLSX template data")
+            return
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".xlsx")
+        try? xlsxData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let portfolios = SpreadsheetIO.parseJapaneseFundCSV(from: tempURL)
+        XCTAssertNotNil(portfolios, "Parsing generated Japanese Fund XLSX template should return portfolios")
+        XCTAssertGreaterThanOrEqual(portfolios?.count ?? 0, 1)
+
+        let allHoldings = portfolios?.flatMap { $0.holdings } ?? []
+        XCTAssertGreaterThanOrEqual(allHoldings.count, 3, "Generated template should contain Japanese fund holdings")
+    }
 }

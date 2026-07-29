@@ -120,9 +120,13 @@ enum PortfolioIO {
         onAlert: @escaping (String) -> Void
     ) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.commaSeparatedText, .plainText, .data]
+        var types: [UTType] = [.commaSeparatedText, .plainText, .data]
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            types.append(xlsxType)
+        }
+        panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
-        panel.title = "Import 投資信託 (Japanese Funds Trade History CSV)"
+        panel.title = "Import 投資信託 (Japanese Funds Trade History CSV/XLSX)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -139,7 +143,7 @@ enum PortfolioIO {
                 if let res = parseJapaneseFundFile(fileURL: url) {
                     onParsed(res)
                 } else {
-                    onAlert("Could not parse 投資信託 CSV file or no valid trades found.")
+                    onAlert("Could not parse 投資信託 file or no valid trades found.")
                 }
             }
         }
@@ -191,6 +195,27 @@ enum PortfolioIO {
             onAlert?("Saved \(targetURL.lastPathComponent) to Downloads folder.")
         } catch {
             onAlert?("Could not save sample file.")
+        }
+    }
+
+    /// Generates a sample 投資信託 (Japanese Funds) Excel (.xlsx) file and saves it directly to ~/Downloads.
+    static func downloadJapaneseFundSample(restoreActivationPolicy: Bool = true, onAlert: ((String) -> Void)? = nil) {
+        guard let data = SpreadsheetIO.generateJapaneseFundTemplateXLSXData() else { return }
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+
+        var targetURL = downloadsURL.appendingPathComponent("japanese_funds_template.xlsx")
+        var counter = 1
+        while FileManager.default.fileExists(atPath: targetURL.path) {
+            targetURL = downloadsURL.appendingPathComponent("japanese_funds_template (\(counter)).xlsx")
+            counter += 1
+        }
+
+        do {
+            try data.write(to: targetURL, options: .atomic)
+            NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+            onAlert?("Saved \(targetURL.lastPathComponent) to Downloads folder.")
+        } catch {
+            onAlert?("Could not save 投資信託 template file.")
         }
     }
 }
