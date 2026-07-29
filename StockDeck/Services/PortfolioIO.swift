@@ -69,10 +69,8 @@ enum PortfolioIO {
         }
     }
 
-    /// Presents an NSOpenPanel, reads and merges the imported portfolios, and
-    /// reports the result via `onAlert` (mirrors the exact alert wording used
-    /// at both call sites). See `exportAll` for `restoreActivationPolicy`.
-    static func importInto(_ storageService: StorageService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
+    /// Option 1: Standard symbol/portfolio file import (CSV, XLSX, JSON).
+    static func importStandardInto(_ storageService: StorageService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
         let panel = NSOpenPanel()
         var types: [UTType] = [.json, .commaSeparatedText]
         if let xlsxType = UTType(filenameExtension: "xlsx") {
@@ -80,7 +78,7 @@ enum PortfolioIO {
         }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
-        panel.title = "Import Portfolios (XLSX, CSV, or JSON)"
+        panel.title = "Import Standard Portfolios (CSV, XLSX, JSON)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -99,7 +97,7 @@ enum PortfolioIO {
             }
             Task { @MainActor in
                 let imported: [Portfolio]?
-                if let spreadsheetImport = SpreadsheetIO.parsePortfolios(from: url) {
+                if let spreadsheetImport = SpreadsheetIO.parseStandardPortfolios(from: url) {
                     imported = spreadsheetImport
                 } else {
                     imported = storageService.importPortfolios(from: data)
@@ -112,6 +110,46 @@ enum PortfolioIO {
 
                 storageService.mergeImportedPortfolios(imported)
                 onAlert("Imported \(imported.count) portfolio\(imported.count == 1 ? "" : "s").")
+            }
+        }
+    }
+
+    /// Option 2: 投資信託 (Japanese Funds Trade History CSV) import.
+    /// Default currency is strictly JPY for all imported fund holdings.
+    static func importJapaneseFundsInto(_ storageService: StorageService, stockService: StockService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText, .data]
+        panel.allowsMultipleSelection = false
+        panel.title = "Import 投資信託 (Japanese Funds Trade History CSV)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                guard let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty else {
+                    onAlert("Could not parse 投資信託 CSV file or no valid trades found.")
+                    return
+                }
+
+                let allHoldings = imported.flatMap { $0.holdings }
+                storageService.mergeImportedPortfolios(imported)
+
+                let symbols = allHoldings.map { $0.symbol }
+                if !symbols.isEmpty {
+                    Task {
+                        await stockService.fetchQuotes(symbols: symbols)
+                    }
+                }
+
+                onAlert("Imported \(imported.count) 投資信託 portfolio\(imported.count == 1 ? "" : "s") (\(allHoldings.count) positions, Currency: JPY).")
             }
         }
     }

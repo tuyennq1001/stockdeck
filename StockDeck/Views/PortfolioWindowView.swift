@@ -118,14 +118,6 @@ struct PortfolioWindowView: View {
             PortfolioNotificationsSheet(portfolioId: t.id, portfolioName: t.name) { notifTarget = nil }
                 .environmentObject(storageService)
         }
-        .sheet(isPresented: $showBatchImport) {
-            BatchImportSheet(targetPortfolioId: batchImportPortfolioId) {
-                showBatchImport = false
-                batchImportPortfolioId = nil
-            }
-            .environmentObject(stockService)
-            .environmentObject(storageService)
-        }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil)
         .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
@@ -391,7 +383,8 @@ struct PortfolioWindowView: View {
             })
         }
         var io = [
-            DSMenuAction(title: "Import Portfolios…", icon: "square.and.arrow.down") { importPortfolios() },
+            DSMenuAction(title: "Import Standard File (CSV/XLSX)…", icon: "square.and.arrow.down") { importStandard() },
+            DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV)…", icon: "doc.text") { importJapaneseFunds() },
             DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() }
         ]
         if !storageService.portfolios.isEmpty {
@@ -493,8 +486,14 @@ struct PortfolioWindowView: View {
         PortfolioIO.exportWatchlists(watchlists, stockService: stockService, restoreActivationPolicy: false)
     }
 
-    private func importPortfolios() {
-        PortfolioIO.importInto(storageService, restoreActivationPolicy: false) { message in
+    private func importStandard() {
+        PortfolioIO.importStandardInto(storageService, restoreActivationPolicy: false) { message in
+            importAlert = message
+        }
+    }
+
+    private func importJapaneseFunds() {
+        PortfolioIO.importJapaneseFundsInto(storageService, stockService: stockService, restoreActivationPolicy: false) { message in
             importAlert = message
         }
     }

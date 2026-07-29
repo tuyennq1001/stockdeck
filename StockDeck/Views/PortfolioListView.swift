@@ -38,14 +38,17 @@ struct PortfolioListView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .pointingHandCursor()
-                Button(action: importPortfolios) {
+                Menu {
+                    Button("Import Standard (CSV/XLSX)…") { importStandard() }
+                    Button("Import 投資信託 (Japanese Funds CSV)…") { importJapaneseFunds() }
+                } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "square.and.arrow.down")
                         Text("Import")
                     }
                     .font(.inter(10, relativeTo: .caption))
                 }
-                .buttonStyle(.borderless)
+                .menuStyle(.borderlessButton)
                 .pointingHandCursor()
                 Button(action: downloadSampleFile) {
                     HStack(spacing: 3) {
@@ -217,14 +220,17 @@ struct PortfolioListView: View {
 
                     Spacer()
 
-                    Button(action: importPortfolios) {
+                    Menu {
+                        Button("Import Standard (CSV/XLSX)…") { importStandard() }
+                        Button("Import 投資信託 (Japanese Funds CSV)…") { importJapaneseFunds() }
+                    } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "square.and.arrow.down")
                             Text("Import")
                         }
                         .font(.inter(10, relativeTo: .caption))
                     }
-                    .buttonStyle(.borderless)
+                    .menuStyle(.borderlessButton)
                     .pointingHandCursor()
 
                     Button(action: downloadSampleFile) {
@@ -251,14 +257,6 @@ struct PortfolioListView: View {
                 .padding(8)
             }
         }
-        }
-        .sheet(isPresented: $showBatchSheet) {
-            BatchImportSheet(targetPortfolioId: batchImportTargetId) {
-                showBatchSheet = false
-                batchImportTargetId = nil
-            }
-            .environmentObject(stockService)
-            .environmentObject(storageService)
         }
         .alert("Import", isPresented: Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } })) {
             Button("OK") { importAlert = nil }
@@ -371,8 +369,14 @@ struct PortfolioListView: View {
         PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: true)
     }
 
-    private func importPortfolios() {
-        PortfolioIO.importInto(storageService, restoreActivationPolicy: true) { message in
+    private func importStandard() {
+        PortfolioIO.importStandardInto(storageService, restoreActivationPolicy: true) { message in
+            self.importAlert = message
+        }
+    }
+
+    private func importJapaneseFunds() {
+        PortfolioIO.importJapaneseFundsInto(storageService, stockService: stockService, restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
     }
@@ -1170,11 +1174,11 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 85, alignment: .leading)
 
-            // Col 2: Avg Cost (font matched to PRICE column)
+            // Col 2: Avg Cost (formatted without decimals)
             Text(StorageService.formatAmount(
                 globalPos.avgPrice,
                 symbol: globalPos.priceSymbol,
-                decimals: StorageService.priceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
+                decimals: 0
             ))
             .font(.inter(11, relativeTo: .caption).monospacedDigit())
             .fontWeight(.medium)

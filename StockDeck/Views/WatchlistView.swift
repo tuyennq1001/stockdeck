@@ -73,7 +73,7 @@ struct WatchlistView: View {
             } else {
                 HStack(spacing: 0) {
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 100, alignment: .leading)
                     sortHeader("Price", column: .price)
                         .frame(width: 75, alignment: .trailing)
                     sortHeader("%", column: .change)
@@ -584,16 +584,15 @@ struct QuoteRow: View {
                     }
                 }
             }
-            .frame(width: 85, alignment: .leading)
+            .frame(width: 100, alignment: .leading)
 
-            // Col 2: Price (regular price, no Pre/Post badge)
+            // Col 2: Price (regular price, integer without decimals)
             VStack(alignment: .trailing, spacing: 0) {
-                Text("\(currSymbol)\(StorageService.formatNumber(quote.price * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)))")
+                Text("\(currSymbol)\(StorageService.formatNumber(quote.price * priceRate, decimals: 0))")
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    let rangeDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low * priceRate)
-                    Text("\(StorageService.formatNumber(low * priceRate, decimals: rangeDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: rangeDecimals))")
+                    Text("\(StorageService.formatNumber(low * priceRate, decimals: 0)) – \(StorageService.formatNumber(high * priceRate, decimals: 0))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }

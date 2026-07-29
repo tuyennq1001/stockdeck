@@ -262,25 +262,64 @@ enum SpreadsheetIO {
         return try? Data(contentsOf: outFile)
     }
 
+    /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).
+    static func parseStandardPortfolios(from fileURL: URL) -> [Portfolio]? {
+        let ext = fileURL.pathExtension.lowercased()
+        if ext == "xlsx" {
+            return parseXLSX(fileURL: fileURL)
+        } else if ext == "csv" {
+            guard let content = readTextFile(url: fileURL) else { return nil }
+            return parseStandardCSV(content: content)
+        }
+        return nil
+    }
+
+    /// Option 2: 投資信託 (Japanese Funds Trade History CSV) import.
+    static func parseJapaneseFundCSV(from fileURL: URL) -> [Portfolio]? {
+        guard let content = readTextFile(url: fileURL) else { return nil }
+        let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        var rows: [[String]] = []
+        for line in lines {
+            let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
+            let cols = splitCSVLine(line, delimiter: delimiter)
+            rows.append(cols)
+        }
+        return parseJapaneseBrokerCSV(rows: rows)
+    }
+
+    /// Helper to read text files with fallback encodings (UTF-8, Shift-JIS, DOS Japanese).
+    static func readTextFile(url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if let str = String(data: data, encoding: .utf8) {
+            return str
+        } else if let str = String(data: data, encoding: .shiftJIS) {
+            return str
+        } else {
+            let cfEncoding = CFStringEncodings.dosJapanese.rawValue
+            let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
+            return String(data: data, encoding: String.Encoding(rawValue: nsEncoding))
+        }
+    }
+
+    /// Parses CSV content lines for standard symbol format.
+    static func parseStandardCSV(content: String) -> [Portfolio]? {
+        let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        var rows: [[String]] = []
+        for line in lines {
+            let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
+            let cols = splitCSVLine(line, delimiter: delimiter)
+            rows.append(cols)
+        }
+        return convertRowsToPortfolios(rows: rows)
+    }
+
     /// Parses a file (XLSX, CSV, or JSON) into a list of Portfolio objects.
     static func parsePortfolios(from fileURL: URL) -> [Portfolio]? {
         let ext = fileURL.pathExtension.lowercased()
         if ext == "xlsx" {
             return parseXLSX(fileURL: fileURL)
         } else if ext == "csv" {
-            var content: String? = nil
-            if let data = try? Data(contentsOf: fileURL) {
-                if let str = String(data: data, encoding: .utf8) {
-                    content = str
-                } else if let str = String(data: data, encoding: .shiftJIS) {
-                    content = str
-                } else {
-                    let cfEncoding = CFStringEncodings.dosJapanese.rawValue
-                    let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
-                    content = String(data: data, encoding: String.Encoding(rawValue: nsEncoding))
-                }
-            }
-            if let content = content {
+            if let content = readTextFile(url: fileURL) {
                 return parseCSV(content: content)
             }
         }

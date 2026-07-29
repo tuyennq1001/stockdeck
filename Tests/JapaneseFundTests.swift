@@ -58,4 +58,16 @@ final class JapaneseFundTests: XCTestCase {
         XCTAssertEqual(niftyHolding?.quantity ?? 0, 81633, accuracy: 0.1)
         XCTAssertEqual(niftyHolding?.avgPrice ?? 0, 12250, accuracy: 1.0)
     }
+
+    func testParseJapaneseFundTemplateFile() {
+        let templateURL = URL(fileURLWithPath: "template/tradehistory(INVST)_20260728.csv")
+        guard FileManager.default.fileExists(atPath: templateURL.path) else { return }
+
+        let portfolios = SpreadsheetIO.parseJapaneseFundCSV(from: templateURL)
+        XCTAssertNotNil(portfolios)
+        XCTAssertGreaterThanOrEqual(portfolios?.count ?? 0, 1)
+
+        let allHoldings = portfolios?.flatMap { $0.holdings } ?? []
+        XCTAssertGreaterThanOrEqual(allHoldings.count, 3)
+    }
 }
