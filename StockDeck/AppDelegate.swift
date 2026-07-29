@@ -566,7 +566,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let rect = NSRect(x: 0, y: 0, width: button.bounds.width, height: 0)
             popover.show(relativeTo: rect, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            if let window = popover.contentViewController?.view.window {
+                window.makeKey()
+            }
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 self?.closePopover()
             }

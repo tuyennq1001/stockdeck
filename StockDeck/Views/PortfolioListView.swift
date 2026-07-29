@@ -56,6 +56,19 @@ struct PortfolioListView: View {
                     let pnl = totalVal - totalCost
                     let pnlPct = abs(totalCost) >= 0.01 ? (pnl / abs(totalCost)) * 100 : 0
 
+                    let todayInputs = activePortfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
+                        guard let quote = stockService.quotes[holding.symbol] else { return nil }
+                        return TodayPerformance.Input(
+                            holding: holding,
+                            regularPrice: quote.price,
+                            previousClose: quote.previousClose,
+                            rate: stockService.rate(from: quote.currency)
+                        )
+                    }
+                    let today = TodayPerformance.totals(todayInputs)
+                    let todayGain = today.gain
+                    let todayPct = today.percent
+
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Total value")
@@ -66,17 +79,32 @@ struct PortfolioListView: View {
                                 .fontWeight(.bold)
                         }
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("P&L")
-                                .font(.inter(10, relativeTo: .caption))
-                                .foregroundColor(.secondary)
-                            HStack(spacing: 2) {
-                                Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
-                                Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
+                        VStack(alignment: .trailing, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text("Today P&L")
+                                    .font(.inter(10, relativeTo: .caption))
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 2) {
+                                    Text(StorageService.formatAmount(todayGain, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
+                                    Text(String(format: "(%.\(storageService.percentDecimals)f%%)", todayPct))
+                                }
+                                .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                .fontWeight(.semibold)
+                                .foregroundColor(todayGain >= 0 ? DS.up : DS.down)
                             }
-                            .font(.inter(13, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                            .foregroundColor(pnl >= 0 ? DS.up : DS.down)
+
+                            HStack(spacing: 6) {
+                                Text("Total P&L")
+                                    .font(.inter(10, relativeTo: .caption))
+                                    .foregroundColor(.secondary)
+                                HStack(spacing: 2) {
+                                    Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
+                                    Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
+                                }
+                                .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                .fontWeight(.bold)
+                                .foregroundColor(pnl >= 0 ? DS.up : DS.down)
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
