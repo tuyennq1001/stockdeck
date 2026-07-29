@@ -349,35 +349,43 @@ struct PortfolioListView: View {
                 }
                 qty[sym, default: 0] += h.quantity
                 qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
-                if let quote = stockService.quotes[h.symbol] {
-                    let rate = stockService.rate(from: quote.currency)
-                    let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
-                    totalVal[sym, default: 0] += h.marketValue(currentPrice: quote.price) * rate
-                    totalCost[sym, default: 0] += h.costBasisLocal * costRate
-                }
+
+                let quote = stockService.quotes[h.symbol] ?? stockService.quotes[sym] ?? StockQuote(
+                    symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
+                    currency: stockService.detectedCurrency(for: h.symbol)
+                )
+                let rate = stockService.rate(from: quote.currency)
+                let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol) || h.isJapaneseFund
+                let scale = isJpFund ? 10000.0 : 1.0
+                let lev = h.effectiveLeverage
+                let q = h.quantity
+                let val = (quote.price / scale) * q * lev * rate
+                let cst = (h.avgPrice / scale) * q * lev * costRate
+                totalVal[sym, default: 0] += val
+                totalCost[sym, default: 0] += cst
             }
         }
         return qty.compactMap { symbol, q -> GlobalPosition? in
-            guard abs(q) >= 1e-9, let quote = stockService.quotes[symbol] else { return nil }
+            guard abs(q) >= 1e-9 else { return nil }
+            let quote = stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()]
             let avg = qtyPrice[symbol, default: 0] / q
-            let price = quote.price
-            let scale = stockService.isJapaneseMutualFund(symbol) ? 10000.0 : 1.0
-            let rawPct = abs(avg) >= 1e-6 ? (price / avg - 1) * 100 : 0
-            let pct = q >= 0 ? rawPct : -rawPct
-            let valLocal = (price / scale) * q
-            let costLocal = (avg / scale) * q
-            let pnl = valLocal - costLocal
-            let priceCurr = storageService.stockPriceCurrency
-            let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
-            let value = abs((price / scale) * q) * stockService.rate(from: quote.currency)
+            let price = quote?.price ?? avg
+            let val = totalVal[symbol, default: 0]
+            let cst = totalCost[symbol, default: 0]
+            let pnl = val - cst
+            let pct = abs(cst) >= 0.01 ? (pnl / abs(cst)) * 100 : 0
 
-            let extPrice: Double? = quote.isExtendedHours ? quote.alertPrice : nil
-            let extChangePercent: Double? = quote.isExtendedHours ? quote.extendedChangePercent : nil
+            let prefCurr = storageService.preferredCurrency
+            let prefSymbol = StorageService.currencySymbol(for: prefCurr)
 
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: priceSymbol, pct: pct, pnl: pnl,
-                                  currentPrice: price, priceChangePercent: quote.changePercent,
+            let extPrice: Double? = (quote?.isExtendedHours == true) ? quote?.alertPrice : nil
+            let extChangePercent: Double? = (quote?.isExtendedHours == true) ? quote?.extendedChangePercent : nil
+
+            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: prefSymbol, pct: pct, pnl: pnl,
+                                  currentPrice: price, priceChangePercent: quote?.changePercent ?? 0,
                                   extPrice: extPrice, extChangePercent: extChangePercent,
-                                  value: value)
+                                  value: val)
         }
         .sorted { (orderMap[$0.id] ?? 999) < (orderMap[$1.id] ?? 999) }
     }
