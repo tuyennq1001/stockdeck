@@ -1204,7 +1204,7 @@ struct PortfolioQuoteRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                         .lineLimit(1)
@@ -1222,7 +1222,7 @@ struct PortfolioQuoteRow: View {
                     }
                 } else {
                     Text("—")
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
             }
