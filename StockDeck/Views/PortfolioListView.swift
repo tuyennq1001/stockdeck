@@ -340,7 +340,9 @@ struct PortfolioListView: View {
             let rawPct = abs(avg) >= 1e-6 ? (price / avg - 1) * 100 : 0
             // A short position gains when the price falls, so flip the sign.
             let pct = q >= 0 ? rawPct : -rawPct
-            let pnl = totalVal[symbol, default: 0] - totalCost[symbol, default: 0]
+            let valLocal = q * price
+            let costLocal = qtyPrice[symbol, default: 0]
+            let pnl = valLocal - costLocal
             let priceCurr = storageService.stockPriceCurrency
             let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
             let value = abs(price * q) * stockService.rate(from: quote.currency)
