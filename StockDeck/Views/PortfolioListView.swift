@@ -104,48 +104,39 @@ struct PortfolioListView: View {
                         .padding(.vertical, 4)
                     }
 
-                    if selectedPortfolioId == nil {
-                        let globals = globalPositions
-                        if !globals.isEmpty {
-                            VStack(spacing: 0) {
-                                HStack(spacing: 0) {
-                                    Text("Symbol")
-                                        .frame(width: 80, alignment: .leading)
-                                    Text("Avg Cost")
-                                        .frame(width: 72, alignment: .trailing)
-                                    Text("Price")
-                                        .frame(width: 72, alignment: .trailing)
-                                    Text("%")
-                                        .frame(width: 60, alignment: .trailing)
-                                    Text("P&L")
-                                        .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                                .font(.inter(10, weight: .medium, relativeTo: .caption))
-                                .foregroundColor(.secondary)
-                                .tracking(0.8)
-                                .textCase(.uppercase)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 4)
+                    let globals = globalPositions
+                    if !globals.isEmpty {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 0) {
+                                Text("Symbol")
+                                    .frame(width: 80, alignment: .leading)
+                                Text("Avg Cost")
+                                    .frame(width: 72, alignment: .trailing)
+                                Text("Price")
+                                    .frame(width: 72, alignment: .trailing)
+                                Text("%")
+                                    .frame(width: 60, alignment: .trailing)
+                                Text("P&L")
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                            .font(.inter(10, weight: .medium, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .tracking(0.8)
+                            .textCase(.uppercase)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
 
-                                Divider()
+                            Divider()
 
-                                ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                    PortfolioQuoteRow(globalPos: p)
-                                    if index < globals.count - 1 {
-                                        Divider().padding(.leading, 36)
-                                    }
+                            ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                                PortfolioQuoteRow(globalPos: p)
+                                if index < globals.count - 1 {
+                                    Divider().padding(.leading, 36)
                                 }
                             }
-                            .listRowInsets(EdgeInsets())
-                            .listRowSeparator(.hidden)
                         }
-                    } else if let selectedId = selectedPortfolioId,
-                              let targetPortfolio = filteredPortfolios.first(where: { $0.id == selectedId }) {
-                        PortfolioSection(
-                            portfolio: targetPortfolio,
-                            confirmDeletePortfolio: $confirmDeletePortfolio,
-                            confirmDeleteHolding: $confirmDeleteHolding
-                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
@@ -315,7 +306,7 @@ struct PortfolioListView: View {
         var totalVal: [String: Double] = [:]
         var totalCost: [String: Double] = [:]
 
-        for portfolio in storageService.portfolios {
+        for portfolio in activePortfoliosForSummary {
             for h in portfolio.holdings {
                 qty[h.symbol, default: 0] += h.quantity
                 qtyPrice[h.symbol, default: 0] += h.quantity * h.avgPrice
