@@ -636,24 +636,29 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func portfolioPerformance(for period: PerformancePeriod) -> Double? {
-        let points = valueSeries(from: stockService.priceHistoryMax)
-        guard points.count >= 2, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
+    private func portfolioPerformance(for period: PerformancePeriod, points: [ValuePoint]) -> Double? {
+        guard points.count >= 2, let firstDate = points.first?.date, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
-        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first, abs(startPoint.value) > 1e-9 else { return nil }
+        // Require history to actually stretch back to the cutoff date (allowing a 7-day grace window for weekend/holiday offsets)
+        let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
+        guard firstDate <= graceCutoff else { return nil }
+        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.value) > 1e-9 else { return nil }
         return ((lastVal - startPoint.value) / abs(startPoint.value)) * 100
     }
 
     private func spxPerformance(for period: PerformancePeriod) -> Double? {
         let points = stockService.priceHistoryMax["^GSPC"] ?? stockService.priceHistory["^GSPC"] ?? []
-        guard points.count >= 2, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
+        guard points.count >= 2, let firstDate = points.first?.date, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
-        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first, abs(startPoint.close) > 1e-9 else { return nil }
+        let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
+        guard firstDate <= graceCutoff else { return nil }
+        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.close) > 1e-9 else { return nil }
         return ((lastPrice - startPoint.close) / abs(startPoint.close)) * 100
     }
 
     private var performanceMatrixCard: some View {
-        Card(title: "Performance & Benchmark") {
+        let maxPoints = valueSeries(from: stockService.priceHistoryMax)
+        return Card(title: "Performance & Benchmark") {
             VStack(spacing: 12) {
                 HStack(spacing: 0) {
                     Text("Timeline")
@@ -686,7 +691,7 @@ struct PortfolioOverview: View {
                     .frame(width: 140, alignment: .leading)
 
                     ForEach(PerformancePeriod.allCases) { period in
-                        let pct = portfolioPerformance(for: period)
+                        let pct = portfolioPerformance(for: period, points: maxPoints)
                         if let pct {
                             Text(String(format: "%+.\(decimals)f%%", pct))
                                 .font(DS.figure.monospacedDigit())

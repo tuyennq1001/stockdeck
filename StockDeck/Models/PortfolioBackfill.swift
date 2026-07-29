@@ -15,14 +15,33 @@ struct ValuePoint: Identifiable, Equatable {
 /// current holdings were held over the whole window and uses the current FX rate.
 /// Real snapshots, once present, take precedence.
 enum PortfolioBackfill {
+    private struct CacheKey: Hashable {
+        let holdingsKey: String
+        let historyCount: Int
+        let ratesKey: String
+    }
+    private static var cache: [CacheKey: [ValuePoint]] = [:]
+    private static let lock = NSLock()
+
     static func series(holdings: [Holding],
                        historyBySymbol: [String: [PricePoint]],
                        rateBySymbol: [String: Double]) -> [ValuePoint] {
         guard !holdings.isEmpty else { return [] }
 
-        // Filter holdings to those that have price history data
         let validHoldings = holdings.filter { !(historyBySymbol[$0.symbol]?.isEmpty ?? true) }
         guard !validHoldings.isEmpty else { return [] }
+
+        let hKey = validHoldings.map { "\($0.symbol):\($0.quantity):\($0.avgPrice)" }.sorted().joined(separator: "|")
+        let rKey = rateBySymbol.map { "\($0.key):\($0.value)" }.sorted().joined(separator: "|")
+        let histCount = validHoldings.reduce(0) { $0 + (historyBySymbol[$1.symbol]?.count ?? 0) }
+        let key = CacheKey(holdingsKey: hKey, historyCount: histCount, ratesKey: rKey)
+
+        lock.lock()
+        if let cached = cache[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
 
         // Collect all unique timestamps across valid holdings
         var allDatesSet = Set<Date>()
@@ -34,7 +53,12 @@ enum PortfolioBackfill {
             }
         }
         let sortedDates = allDatesSet.sorted()
-        guard !sortedDates.isEmpty else { return [] }
+        guard !sortedDates.isEmpty else {
+            lock.lock()
+            cache[key] = []
+            lock.unlock()
+            return []
+        }
 
         // Build sorted (date, price) array per symbol
         var symbolHistory: [String: [(date: Date, price: Double)]] = [:]
@@ -72,13 +96,13 @@ enum PortfolioBackfill {
             for h in validHoldings {
                 let price = lastPrice[h.symbol] ?? 0
                 let rate = rateBySymbol[h.symbol] ?? 1
-                total += price * h.quantity * h.effectiveLeverage * rate
+                let scale = h.isJapaneseFund ? 10000.0 : 1.0
+                total += (price / scale) * h.quantity * h.effectiveLeverage * rate
             }
             result.append(ValuePoint(date: date, value: total))
         }
 
-        // Downsample points if array is large (> 200 points) for chart rendering performance
-        if result.count > 200 {
+        let finalSeries = result.count > 200 ? {
             let step = Double(result.count - 1) / 199.0
             var sampled: [ValuePoint] = []
             sampled.reserveCapacity(200)
@@ -89,9 +113,14 @@ enum PortfolioBackfill {
                 }
             }
             return sampled
-        }
+        }() : result
 
-        return result
+        lock.lock()
+        if cache.count > 20 { cache.removeAll(keepingCapacity: true) }
+        cache[key] = finalSeries
+        lock.unlock()
+
+        return finalSeries
     }
 }
 
