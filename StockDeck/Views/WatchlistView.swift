@@ -72,10 +72,8 @@ struct WatchlistView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    Text("#")
-                        .frame(width: 16, alignment: .leading)
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 85, alignment: .leading)
+                        .frame(width: 90, alignment: .leading)
                     sortHeader("Price", column: .price)
                         .frame(width: 75, alignment: .trailing)
                     sortHeader("%", column: .change)
@@ -97,9 +95,9 @@ struct WatchlistView: View {
                 Divider()
 
             List {
-                ForEach(Array(filteredSymbols.enumerated()), id: \.element) { index, symbol in
+                ForEach(filteredSymbols, id: \.self) { symbol in
                     if let quote = stockService.quotes[symbol] {
-                        QuoteRow(position: index + 1, quote: quote)
+                        QuoteRow(quote: quote)
                             .contentShape(Rectangle())
                             .pointingHandCursor()
                             .contextMenu {
@@ -107,13 +105,9 @@ struct WatchlistView: View {
                             }
                     } else {
                         HStack {
-                            Text("\(index + 1)")
-                                .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                                .foregroundColor(.secondary)
-                                .frame(width: 20, alignment: .leading)
-                            SymbolLogo(symbol: symbol, size: 22)
+                            SymbolLogo(symbol: symbol, size: 20)
                             Text(symbol)
-                                .font(.inter(13, relativeTo: .body).monospacedDigit())
+                                .font(.inter(12, relativeTo: .body).monospacedDigit())
                             Spacer()
                             ProgressView()
                                 .scaleEffect(0.6)
@@ -556,7 +550,6 @@ struct QuickAddHoldingView: View {
 struct QuoteRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    let position: Int
     let quote: StockQuote
 
     private var displayCurrency: String {
@@ -574,10 +567,6 @@ struct QuoteRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text("\(position)")
-                .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                .foregroundColor(.secondary)
-                .frame(width: 16, alignment: .leading)
 
             // Col 1: Logo + symbol + name
             HStack(spacing: 5) {

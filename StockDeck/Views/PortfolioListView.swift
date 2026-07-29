@@ -130,11 +130,9 @@ struct PortfolioListView: View {
                     if !globals.isEmpty {
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
-                                Text("#")
-                                    .frame(width: 16, alignment: .leading)
                                 Text("Symbol")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("Avg Price")
+                                    .frame(width: 90, alignment: .leading)
+                                Text("Avg Cost")
                                     .frame(width: 65, alignment: .trailing)
                                 Text("Price")
                                     .frame(width: 58, alignment: .trailing)
@@ -153,7 +151,7 @@ struct PortfolioListView: View {
                             Divider()
 
                             ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                PortfolioQuoteRow(position: index + 1, globalPos: p)
+                                PortfolioQuoteRow(globalPos: p)
                                 if index < globals.count - 1 {
                                     Divider().padding(.leading, 36)
                                 }
@@ -1131,7 +1129,6 @@ struct PortfolioQuoteRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
-    let position: Int
     let globalPos: PortfolioListView.GlobalPosition
 
     var quote: StockQuote? {
@@ -1155,11 +1152,6 @@ struct PortfolioQuoteRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text("\(position)")
-                .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                .foregroundColor(.secondary)
-                .frame(width: 16, alignment: .leading)
-
             // Col 1: Logo + symbol + name
             HStack(spacing: 5) {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
@@ -1176,9 +1168,9 @@ struct PortfolioQuoteRow: View {
                     }
                 }
             }
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 85, alignment: .leading)
 
-            // Col 2: Avg Price (font matched to PRICE column)
+            // Col 2: Avg Cost (font matched to PRICE column)
             Text(StorageService.formatAmount(
                 globalPos.avgPrice,
                 symbol: globalPos.priceSymbol,
@@ -1221,12 +1213,12 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 58, alignment: .trailing)
 
-            // Col 5: P&L (2 lines: Amount on top, Percent on bottom)
+            // Col 5: P&L (2 lines: Amount on top without decimals, Percent on bottom)
             VStack(alignment: .trailing, spacing: 1) {
                 Text(StorageService.formatAmount(
                     globalPos.pnl,
                     symbol: globalPos.priceSymbol,
-                    decimals: storageService.amountDecimals,
+                    decimals: 0,
                     signed: true
                 ))
                 .font(.inter(11, relativeTo: .caption).monospacedDigit())
