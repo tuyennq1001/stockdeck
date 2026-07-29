@@ -96,6 +96,18 @@ struct PortfolioOverview: View {
             case .all: return "all-time"
             }
         }
+        var performancePeriod: PerformancePeriod? {
+            switch self {
+            case .month: return .m1
+            case .threeMonths: return .m3
+            case .sixMonths: return .m6
+            case .ytd: return .ytd
+            case .year: return .y1
+            case .threeYears: return .y3
+            case .fiveYears: return .y5
+            case .week, .all: return nil
+            }
+        }
     }
     enum PositionSortColumn: String, CaseIterable {
         case manual
@@ -304,17 +316,15 @@ struct PortfolioOverview: View {
         return estimatedSeries
     }
 
-    /// The curve actually drawn. 1M+ prefer real snapshots once
-    /// they're as dense as the daily estimate. `isEstimated` drives the badge.
+    /// The curve actually drawn and used for period change calculations.
+    /// Uses intraday 5-min series for 7D, and daily price-history market curve for 1M+.
+    /// This ensures period changes reflect true market performance consistently across
+    /// the top pill and the Performance & Benchmark matrix without distortion from cash/holding additions.
     private var displaySeries: (points: [ValuePoint], isEstimated: Bool) {
         if chartRange == .week {
             return (valueSeries(from: stockService.intradayWeek), true)
         } else {
-            let real = filteredSeries.map { ValuePoint(date: $0.date, value: $0.totalValue) }
-            let est = estimatedFiltered
-            if real.count >= 2 && real.count >= est.count { return (real, false) }
-            if est.count >= 2 { return (est, true) }
-            return (real, false)
+            return (estimatedFiltered, true)
         }
     }
 
@@ -410,17 +420,26 @@ struct PortfolioOverview: View {
         // Compute the (expensive) value series ONCE per render — it was being
         // recomputed 5× (badge, picker, chart points, chart dash), which showed
         // up as lag when switching portfolios (each switch rebuilds this view).
+        let perf = cachedPerformance
         let ds = displaySeries
-        // Pill reflects the SELECTED range: change across the drawn curve. When
-        // the curve is too sparse to span a period (e.g. day one), fall back to
-        // the day-over-day figure so the pill is never empty.
         let useRealAllTime = chartRange == .all
-        let periodValue = useRealAllTime ? totalPnl
-            : (PortfolioPeriodChange.value(ds.points) ?? dayChangeValue)
-        let periodPercent = useRealAllTime ? totalPnlPercent
-            : (PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent)
-        let periodLabel = useRealAllTime ? "all-time"
-            : (PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today")
+        let periodValue: Double
+        let periodPercent: Double
+        let periodLabel: String
+
+        if useRealAllTime {
+            periodValue = totalPnl
+            periodPercent = totalPnlPercent
+            periodLabel = "all-time"
+        } else if let p = chartRange.performancePeriod, let perfPct = perf.portfolio[p] ?? nil {
+            periodPercent = perfPct
+            periodValue = totalValue * (perfPct / 100.0)
+            periodLabel = chartRange.changeLabel
+        } else {
+            periodValue = PortfolioPeriodChange.value(ds.points) ?? dayChangeValue
+            periodPercent = PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent
+            periodLabel = PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today"
+        }
         
         let cagrVal = PortfolioPeriodChange.cagr(ds.points)
         let pillText: String
