@@ -586,13 +586,15 @@ struct QuoteRow: View {
             }
             .frame(width: 100, alignment: .leading)
 
-            // Col 2: Price (regular price, integer without decimals)
+            // Col 2: Price (consistent with Portfolio & extended hours setting)
+            let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+            let pDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice * priceRate)
             VStack(alignment: .trailing, spacing: 0) {
-                Text("\(currSymbol)\(StorageService.formatNumber(quote.price * priceRate, decimals: 0))")
+                Text("\(currSymbol)\(StorageService.formatNumber(displayPrice * priceRate, decimals: pDecimals))")
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    Text("\(StorageService.formatNumber(low * priceRate, decimals: 0)) – \(StorageService.formatNumber(high * priceRate, decimals: 0))")
+                    Text("\(StorageService.formatNumber(low * priceRate, decimals: pDecimals)) – \(StorageService.formatNumber(high * priceRate, decimals: pDecimals))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }

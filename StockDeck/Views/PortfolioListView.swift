@@ -708,11 +708,12 @@ struct HoldingRow: View {
                 let pnl = marketVal - costBasis
                 let pnlPct = abs(costBasis) >= 0.01 ? (pnl / abs(costBasis)) * 100 : 0
 
+                let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(StorageService.formatAmount(marketVal, symbol: prefSymbol, decimals: storageService.amountDecimals))
+                    Text(StorageService.formatAmount(marketVal, symbol: prefSymbol, decimals: dec))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
-                    Text("\(StorageService.formatAmount(pnl, symbol: prefSymbol, decimals: storageService.amountDecimals, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
+                    Text("\(StorageService.formatAmount(pnl, symbol: prefSymbol, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
                         .font(.inter(10, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                 }
@@ -1043,11 +1044,12 @@ struct GroupedHoldingRow: View {
                     let totalPnl = totalMarketVal - totalCostBasis
                     let totalPnlPct = abs(totalCostBasis) >= 0.01 ? (totalPnl / abs(totalCostBasis)) * 100 : 0
 
+                    let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(StorageService.formatAmount(totalMarketVal, symbol: prefSymbol, decimals: storageService.amountDecimals))
+                        Text(StorageService.formatAmount(totalMarketVal, symbol: prefSymbol, decimals: dec))
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
-                        Text("\(StorageService.formatAmount(totalPnl, symbol: prefSymbol, decimals: storageService.amountDecimals, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
+                        Text("\(StorageService.formatAmount(totalPnl, symbol: prefSymbol, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
                             .font(.inter(10, relativeTo: .caption).monospacedDigit())
                             .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
                     }
