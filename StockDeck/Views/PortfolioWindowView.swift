@@ -209,12 +209,6 @@ struct PortfolioWindowView: View {
                                selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
                     }
 
-                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export",
-                           helpText: "Import portfolios & watchlists, download templates, or export data",
-                           selected: selection == .importExport, namespace: navNamespace) {
-                        navigate(to: .importExport)
-                    }
-
                     watchlistsHeader
                     ForEach(storageService.watchlists) { wl in
                         NavRow(icon: "star", title: wl.name,
