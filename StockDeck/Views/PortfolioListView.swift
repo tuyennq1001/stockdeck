@@ -137,8 +137,8 @@ struct PortfolioListView: View {
                                 Text("Avg Cost")
                                     .frame(width: 65, alignment: .trailing)
                                 Text("Price")
-                                    .frame(width: 58, alignment: .trailing)
-                                Text("Ext")
+                                    .frame(width: 65, alignment: .trailing)
+                                Text("%")
                                     .frame(width: 58, alignment: .trailing)
                                 Text("P&L")
                                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -1179,7 +1179,7 @@ struct PortfolioQuoteRow: View {
                     }
                 }
             }
-            .frame(width: 85, alignment: .leading)
+            .frame(width: 90, alignment: .leading)
 
             // Col 2: Avg Cost (formatted without decimals)
             Text(StorageService.formatAmount(
@@ -1194,28 +1194,41 @@ struct PortfolioQuoteRow: View {
             .minimumScaleFactor(0.7)
             .frame(width: 65, alignment: .trailing)
 
-            // Col 3: Price Change % (without Pre/Post badge)
+            // Col 3: Price (current price in decimal format)
             HStack(spacing: 2) {
+                if let quote {
+                    let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)
+                    Text(StorageService.formatAmount(quote.price * priceRate, symbol: currSymbol, decimals: dec))
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                } else {
+                    ProgressView().scaleEffect(0.5)
+                }
+            }
+            .frame(width: 65, alignment: .trailing)
+
+            // Col 4: % (2 lines: % change on top, % ext on bottom, formatted like P&L)
+            VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                } else {
-                    ProgressView().scaleEffect(0.5)
-                }
-            }
-            .frame(width: 58, alignment: .trailing)
+                        .lineLimit(1)
 
-            // Col 4: Ext % (Extended hours price change %)
-            HStack(spacing: 2) {
-                if storageService.showExtendedHours,
-                   let quote,
-                   let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                    if storageService.showExtendedHours, let extPct = quote.extendedChangePercent {
+                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                            .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                            .lineLimit(1)
+                    } else {
+                        Text("—")
+                            .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
                 } else {
                     Text("—")
                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
