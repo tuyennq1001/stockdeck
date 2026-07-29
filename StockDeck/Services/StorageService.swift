@@ -723,7 +723,9 @@ class StorageService: ObservableObject {
                 symbol += ".T"
             }
 
-            if let existingIndex = currentHoldings.firstIndex(where: { $0.symbol == symbol }) {
+            if let existingIndex = currentHoldings.firstIndex(where: {
+                $0.symbol == symbol && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
+            }) {
                 let existing = currentHoldings[existingIndex]
                 let totalQty = existing.quantity + newH.quantity
                 if abs(totalQty) > 1e-9 {
@@ -731,9 +733,6 @@ class StorageService: ObservableObject {
                     let newAvg = totalCost / totalQty
                     currentHoldings[existingIndex].quantity = totalQty
                     currentHoldings[existingIndex].avgPrice = newAvg
-                    if let newDate = newH.purchaseDate {
-                        currentHoldings[existingIndex].purchaseDate = newDate
-                    }
                 } else {
                     currentHoldings.remove(at: existingIndex)
                 }

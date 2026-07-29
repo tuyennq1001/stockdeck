@@ -775,7 +775,7 @@ class StockService: ObservableObject {
         return "USD"
     }
 
-    static let codeToFundNameMap: [String: String] = [
+    nonisolated static let codeToFundNameMap: [String: String] = [
         "04317188": "iFreeNEXT NASDAQ100インデックス",
         "0331423B": "楽天・Ｓ＆Ｐ５００インデックス・ファンド",
         "AY311238": "auAM Nifty50インド株ファンド",

@@ -699,12 +699,15 @@ enum SpreadsheetIO {
     }
 
     static let japaneseFundNameToCodeMap: [String: String] = [
+        "楽天・プラス・Ｓ＆Ｐ５０0インデックス・ファンド": "9I31223A",
         "楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド": "9I31223A",
         "楽天・プラス・S&P500インデックス・ファンド": "9I31223A",
         "楽天・プラス・Ｓ＆Ｐ５００": "9I31223A",
+        "楽天・プラス・S&P500": "9I31223A",
         "楽天・Ｓ＆Ｐ５００インデックス・ファンド": "0331423B",
         "楽天・Ｓ＆Ｐ５00インデックス・ファンド": "0331423B",
         "楽天・Ｓ＆Ｐ５００": "0331423B",
+        "楽天・S&P500": "0331423B",
         "eMAXIS Slim米国株式(S&P500)": "03311187",
         "eMAXIS Slim 米国株式(S&P500)": "03311187",
         "iFreeNEXT NASDAQ100インデックス": "04317188",
@@ -787,8 +790,6 @@ enum SpreadsheetIO {
                 records.append(TradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, qty: qty, unitPrice: price, date: pDate))
             }
         }
-
-        guard !records.isEmpty else { return nil }
 
         struct PositionAccumulator {
             var totalUnits: Double = 0.0

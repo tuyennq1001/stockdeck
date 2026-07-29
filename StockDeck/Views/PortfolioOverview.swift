@@ -14,7 +14,12 @@ struct ValuedHolding: Identifiable {
     let type: String
 
     var symbol: String { holding.symbol }
-    var name: String { quote.name.isEmpty ? holding.symbol : quote.name }
+    var name: String {
+        if quote.isJapaneseFund {
+            return quote.displayName
+        }
+        return quote.name.isEmpty ? holding.symbol : quote.name
+    }
     var pnl: Double { value - cost }
     var pnlPercent: Double { abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : 0 }
 }
@@ -958,6 +963,7 @@ private enum PositionColumnWidth {
 
 private struct PositionSummaryRow: View {
     @EnvironmentObject var storageService: StorageService
+    @EnvironmentObject var stockService: StockService
     let position: Int
     let symbol: String
     let holdings: [ValuedHolding]
@@ -1044,11 +1050,15 @@ private struct PositionSummaryRow: View {
                 .frame(width: PositionColumnWidth.number, alignment: .leading)
 
             // Symbol column
+            let isJpFund = (first?.quote.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
+            let titleText = isJpFund ? (first?.quote.displayName ?? symbol) : symbol
+            let subTitleText = isJpFund ? "" : (first?.name ?? "")
+
             HStack(spacing: 9) {
                 SymbolLogo(symbol: symbol, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
-                        Text(symbol).font(DS.figure).foregroundStyle(DS.ink)
+                        Text(titleText).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
                         if holdings.count > 1 {
                             Text("\(holdings.count) lots")
                                 .font(.inter(8, weight: .semibold, relativeTo: .caption2))
@@ -1060,8 +1070,8 @@ private struct PositionSummaryRow: View {
                             Tag(text: "S", color: DS.down)
                         }
                     }
-                    if let name = first?.name {
-                        Text(name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    if !subTitleText.isEmpty {
+                        Text(subTitleText).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
                     }
                 }
             }

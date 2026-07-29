@@ -169,6 +169,36 @@ struct StockQuote: Identifiable, Codable {
         default: return "Closed"
         }
     }
+
+    /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
+    var isJapaneseFund: Bool {
+        let upper = symbol.uppercased()
+        if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
+            return false
+        }
+        let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
+        if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
+            return true
+        }
+        let clean = upper.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count == 8 else { return false }
+        let toushinRegex = "^[0-9A-Z]{8}$"
+        return clean.range(of: toushinRegex, options: .regularExpression) != nil
+    }
+
+    /// Display name for symbol. For Japanese mutual funds (投資信託), returns the Japanese fund name.
+    nonisolated var displayName: String {
+        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if let mapName = StockService.codeToFundNameMap[clean], !mapName.isEmpty {
+            return mapName
+        }
+        if isJapaneseFund {
+            if !name.isEmpty && name != symbol && name != clean {
+                return name
+            }
+        }
+        return name.isEmpty ? symbol : name
+    }
 }
 
 struct Portfolio: Identifiable, Codable {

@@ -1168,15 +1168,19 @@ struct PortfolioQuoteRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Logo + symbol + name
+            let isJpFund = stockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
+            let titleText = isJpFund ? (quote?.displayName ?? globalPos.symbol) : globalPos.symbol
+            let subTitleText = isJpFund ? "" : (quote?.name ?? "")
+
             HStack(spacing: 4) {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(globalPos.symbol)
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                    Text(titleText)
+                        .font(.inter(13, relativeTo: .body))
                         .fontWeight(.bold)
                         .lineLimit(1)
-                    if storageService.showCompanyName, let q = quote {
-                        Text(q.name)
+                    if storageService.showCompanyName, !subTitleText.isEmpty {
+                        Text(subTitleText)
                             .font(.inter(10, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .lineLimit(1)

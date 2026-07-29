@@ -41,7 +41,11 @@ struct HoldingDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        PageScaffold(holding.symbol, caption: quote.name, symbol: holding.symbol) {
+        let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol)
+        let mainTitle = isJpFund ? quote.displayName : holding.symbol
+        let subTitle = isJpFund ? "" : quote.name
+
+        PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol) {
             HStack(spacing: 10) {
                 if holding.isShort { Tag(text: "SHORT", color: DS.down) }
                 if holding.effectiveLeverage != 1 {
