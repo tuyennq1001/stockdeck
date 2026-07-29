@@ -248,7 +248,7 @@ struct Holding: Identifiable, Codable {
             let regex = "^[0-9A-Z]{8}$"
             return clean.range(of: regex, options: .regularExpression) != nil
         }
-        let toushinRegex = "^[0-9][0-9A-Z]{7}$"
+        let toushinRegex = "^[0-9A-Z]{8}$"
         return clean.range(of: toushinRegex, options: .regularExpression) != nil
     }
 
