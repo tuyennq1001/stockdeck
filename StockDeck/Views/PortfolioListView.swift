@@ -85,61 +85,78 @@ struct PortfolioListView: View {
                     Divider()
                 }
 
-                List {
-                    if showNewPortfolio {
-                        HStack {
-                            TextField("Portfolio name", text: $newPortfolioName)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit {
+                let globals = globalPositions
+                if !globals.isEmpty {
+                    HStack(spacing: 0) {
+                        Text("Symbol")
+                            .frame(width: 80, alignment: .leading)
+                        Text("Avg Cost")
+                            .frame(width: 72, alignment: .trailing)
+                        Text("Price")
+                            .frame(width: 72, alignment: .trailing)
+                        Text("%")
+                            .frame(width: 60, alignment: .trailing)
+                        Text("P&L")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .font(.inter(10, weight: .medium, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                    .tracking(0.8)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+
+                    Divider()
+
+                    List {
+                        if showNewPortfolio {
+                            HStack {
+                                TextField("Portfolio name", text: $newPortfolioName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit {
+                                        createPortfolio()
+                                    }
+                                Button("OK") {
                                     createPortfolio()
                                 }
-                            Button("OK") {
-                                createPortfolio()
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .pointingHandCursor()
+                                .disabled(newPortfolioName.isEmpty)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .pointingHandCursor()
-                            .disabled(newPortfolioName.isEmpty)
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    let globals = globalPositions
-                    if !globals.isEmpty {
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                Text("Symbol")
-                                    .frame(width: 80, alignment: .leading)
-                                Text("Avg Cost")
-                                    .frame(width: 72, alignment: .trailing)
-                                Text("Price")
-                                    .frame(width: 72, alignment: .trailing)
-                                Text("%")
-                                    .frame(width: 60, alignment: .trailing)
-                                Text("P&L")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                            }
-                            .font(.inter(10, weight: .medium, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                            .tracking(0.8)
-                            .textCase(.uppercase)
-                            .padding(.horizontal, 12)
                             .padding(.vertical, 4)
+                        }
 
-                            Divider()
-
-                            ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                PortfolioQuoteRow(globalPos: p)
-                                if index < globals.count - 1 {
-                                    Divider().padding(.leading, 36)
-                                }
+                        ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                            PortfolioQuoteRow(globalPos: p)
+                            if index < globals.count - 1 {
+                                Divider().padding(.leading, 36)
                             }
                         }
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
                     }
+                    .listStyle(.plain)
+                } else {
+                    List {
+                        if showNewPortfolio {
+                            HStack {
+                                TextField("Portfolio name", text: $newPortfolioName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit {
+                                        createPortfolio()
+                                    }
+                                Button("OK") {
+                                    createPortfolio()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .pointingHandCursor()
+                                .disabled(newPortfolioName.isEmpty)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
 
                 Divider()
 
