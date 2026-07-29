@@ -262,14 +262,14 @@ enum SpreadsheetIO {
         return try? Data(contentsOf: outFile)
     }
 
-    /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history.
+    /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history containing required fields.
     static func generateJapaneseFundTemplateXLSXData() -> Data? {
-        let headers = ["約定日", "受渡日", "ファンド名", "分配金", "口座", "取引", "買付方法", "数量［口］", "単価", "経費", "為替レート"]
+        let headers = ["約定日", "ファンド名", "口座", "取引", "数量", "単価"]
         let rows: [[String]] = [
-            ["2024/01/30", "2024/02/02", "eMAXIS Slim 米国株式(S&P500)", "再投資型", "NISAつみたて投資枠", "買付", "積立", "32,432", "30,834", "0", "-"],
-            ["2024/03/11", "2024/03/14", "iFreeNEXT NASDAQ100インデックス", "受取型", "NISAつみたて投資枠", "買付", "積立", "15,884", "31,478", "0", "-"],
-            ["2024/06/11", "2024/06/14", "楽天・Ｓ＆Ｐ５００インデックス・ファンド", "再投資型", "NISA成長投資枠", "買付", "通常", "74,025", "13,509", "0", "-"],
-            ["2024/11/14", "2024/11/20", "auAM Nifty50インド株ファンド", "再投資型", "特定口座", "買付", "通常", "81,633", "12,250", "0", "-"]
+            ["2024/01/30", "eMAXIS Slim 米国株式(S&P500)", "NISAつみたて投資枠", "買付", "32432", "30834"],
+            ["2024/03/11", "iFreeNEXT NASDAQ100インデックス", "NISAつみたて投資枠", "買付", "15884", "31478"],
+            ["2024/06/11", "楽天・Ｓ＆Ｐ５００インデックス・ファンド", "NISA成長投資枠", "買付", "74025", "13509"],
+            ["2024/11/14", "auAM Nifty50インド株ファンド", "特定口座", "買付", "81633", "12250"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
