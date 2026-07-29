@@ -382,15 +382,18 @@ enum SpreadsheetIO {
     /// Helper to read text files with fallback encodings (UTF-8, Shift-JIS, DOS Japanese).
     static func readTextFile(url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        if let str = String(data: data, encoding: .utf8) {
+        if let str = String(data: data, encoding: .utf8), !str.contains("") {
             return str
-        } else if let str = String(data: data, encoding: .shiftJIS) {
-            return str
-        } else {
-            let cfEncoding = CFStringEncodings.dosJapanese.rawValue
-            let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
-            return String(data: data, encoding: String.Encoding(rawValue: nsEncoding))
         }
+        if let str = String(data: data, encoding: .shiftJIS), !str.contains("") {
+            return str
+        }
+        let cfEncoding = CFStringEncodings.dosJapanese.rawValue
+        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
+        if let str = String(data: data, encoding: String.Encoding(rawValue: nsEncoding)), !str.contains("") {
+            return str
+        }
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .shiftJIS)
     }
 
     /// Parses CSV content lines for standard symbol format.
