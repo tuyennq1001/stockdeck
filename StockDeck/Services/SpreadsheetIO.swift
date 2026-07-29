@@ -262,14 +262,14 @@ enum SpreadsheetIO {
         return try? Data(contentsOf: outFile)
     }
 
-    /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history containing required fields.
+    /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history using standard English headers.
     static func generateJapaneseFundTemplateXLSXData() -> Data? {
-        let headers = ["約定日", "ファンド名", "口座", "取引", "数量", "単価"]
+        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Price", "Purchase Date"]
         let rows: [[String]] = [
-            ["2024/01/30", "eMAXIS Slim 米国株式(S&P500)", "NISAつみたて投資枠", "買付", "32432", "30834"],
-            ["2024/03/11", "iFreeNEXT NASDAQ100インデックス", "NISAつみたて投資枠", "買付", "15884", "31478"],
-            ["2024/06/11", "楽天・Ｓ＆Ｐ５００インデックス・ファンド", "NISA成長投資枠", "買付", "74025", "13509"],
-            ["2024/11/14", "auAM Nifty50インド株ファンド", "特定口座", "買付", "81633", "12250"]
+            ["NISA Portfolio", "eMAXIS Slim 米国株式(S&P500)", "32432", "30834", "2024-01-30"],
+            ["NISA Portfolio", "iFreeNEXT NASDAQ100インデックス", "15884", "31478", "2024-03-11"],
+            ["NISA Portfolio", "楽天・Ｓ＆Ｐ５００インデックス・ファンド", "74025", "13509", "2024-06-11"],
+            ["Taxable Portfolio", "auAM Nifty50インド株ファンド", "81633", "12250", "2024-11-14"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
@@ -353,12 +353,9 @@ enum SpreadsheetIO {
         return parseXLSXRowsWithSwift(fileURL: fileURL)
     }
 
-    /// Extracts portfolios from an .xlsx file (supporting both Japanese broker and standard formats).
+    /// Extracts portfolios from an .xlsx file for standard portfolio import.
     static func parseXLSX(fileURL: URL) -> [Portfolio]? {
         guard let rows = parseXLSXRows(fileURL: fileURL), !rows.isEmpty else { return nil }
-        if let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
-            return jpPortfolios
-        }
         return convertRowsToPortfolios(rows: rows)
     }
 
@@ -601,7 +598,8 @@ enum SpreadsheetIO {
             rows.append(cols)
         }
 
-        if let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
+        let isJapaneseBrokerFile = content.contains("ファンド") || content.contains("銘柄") || content.contains("約定日") || content.contains("受渡日")
+        if isJapaneseBrokerFile, let jpPortfolios = parseJapaneseBrokerCSV(rows: rows), !jpPortfolios.isEmpty {
             return jpPortfolios
         }
 
@@ -657,12 +655,13 @@ enum SpreadsheetIO {
 
         for (idx, r) in rows.enumerated() {
             for (cIdx, cell) in r.enumerated() {
-                if cell.contains("ファンド") || cell.contains("銘柄") { fundCol = cIdx }
-                if cell.contains("取引") || cell.contains("売買") { tradeCol = cIdx }
-                if cell.contains("数量") { qtyCol = cIdx }
-                if cell.contains("単価") { priceCol = cIdx }
-                if cell.contains("口座") { accountCol = cIdx }
-                if cell.contains("約定日") || cell.contains("日付") { dateCol = cIdx }
+                let lowerCell = cell.lowercased()
+                if lowerCell.contains("ファンド") || lowerCell.contains("銘柄") || lowerCell == "symbol" || lowerCell.contains("fund") { fundCol = cIdx }
+                if lowerCell.contains("取引") || lowerCell.contains("売買") || lowerCell.contains("trade") || lowerCell.contains("type") { tradeCol = cIdx }
+                if lowerCell.contains("数量") || lowerCell.contains("quantity") || lowerCell.contains("qty") || lowerCell.contains("units") { qtyCol = cIdx }
+                if lowerCell.contains("単価") || lowerCell.contains("avg price") || lowerCell.contains("unit price") || lowerCell.contains("price") { priceCol = cIdx }
+                if lowerCell.contains("口座") || lowerCell.contains("portfolio") || lowerCell.contains("account") { accountCol = cIdx }
+                if lowerCell.contains("約定日") || lowerCell.contains("日付") || lowerCell.contains("purchase date") || lowerCell.contains("date") { dateCol = cIdx }
             }
             if fundCol != -1 && (qtyCol != -1 || priceCol != -1) {
                 headerIdx = idx
@@ -695,8 +694,8 @@ enum SpreadsheetIO {
             let code = resolveJapaneseFundCode(from: rawFundName)
             let symbol = code ?? cleanFundName
 
-            let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol] : "買付"
-            let isBuy = tradeType.contains("買") || tradeType.contains("積立")
+            let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol].lowercased() : "買付"
+            let isBuy = tradeType.contains("買") || tradeType.contains("積立") || tradeType.contains("buy") || tradeType.contains("purchase") || tradeType.isEmpty || tradeType == "買付"
 
             let qtyStr = qtyCol != -1 && r.count > qtyCol ? r[qtyCol].replacingOccurrences(of: ",", with: "") : "0"
             let qty = Double(qtyStr) ?? 0.0
