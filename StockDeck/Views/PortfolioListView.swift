@@ -11,6 +11,7 @@ struct PortfolioListView: View {
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var confirmDeletePortfolio: Portfolio? = nil
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
+    @State private var selectedPortfolioId: UUID? = nil
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -64,22 +65,26 @@ struct PortfolioListView: View {
 
                 Divider()
 
-                // Grand total
+                // Horizontal Portfolio Picker Bar (All Portfolios - Portfolio 1 - Portfolio 2...)
+                portfolioPickerBar
+
+                Divider()
+
+                // Total summary for selected tab
                 if storageService.portfolios.count > 0 {
                     let currSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
-                    let grandTotal = grandTotalValue
-                    let grandCost = grandTotalCost
-                    let grandPnl = grandTotal - grandCost
-                    // Use the magnitude of the cost basis so long/short baskets
-                    // (where the signed cost can be near zero) still report a %.
-                    let grandPnlPct = abs(grandCost) >= 0.01 ? (grandPnl / abs(grandCost)) * 100 : 0
+                    let activePortfolios = activePortfoliosForSummary
+                    let totalVal = portfolioValue(for: activePortfolios)
+                    let totalCost = portfolioCost(for: activePortfolios)
+                    let pnl = totalVal - totalCost
+                    let pnlPct = abs(totalCost) >= 0.01 ? (pnl / abs(totalCost)) * 100 : 0
 
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Total value")
                                 .font(.inter(10, relativeTo: .caption))
                                 .foregroundColor(.secondary)
-                            Text(StorageService.formatAmount(grandTotal, symbol: currSym, decimals: storageService.amountDecimals))
+                            Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
                                 .font(.inter(13, relativeTo: .body).monospacedDigit())
                                 .fontWeight(.bold)
                         }
@@ -89,12 +94,12 @@ struct PortfolioListView: View {
                                 .font(.inter(10, relativeTo: .caption))
                                 .foregroundColor(.secondary)
                             HStack(spacing: 2) {
-                                Text(StorageService.formatAmount(grandPnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
-                                Text(String(format: "(%.\(storageService.percentDecimals)f%%)", grandPnlPct))
+                                Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
+                                Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
                             }
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.bold)
-                            .foregroundColor(grandPnl >= 0 ? DS.up : DS.down)
+                            .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -104,44 +109,6 @@ struct PortfolioListView: View {
                 }
 
                 List {
-                    // The all-portfolio symbol table belongs to the scrollable
-                    // content. Only the grand Total value / P&L summary above
-                    // remains fixed when there are many symbols.
-                    let globals = globalPositions
-                    if !globals.isEmpty {
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                Text("Symbol")
-                                    .frame(width: 90, alignment: .leading)
-                                Text("Avg Cost")
-                                    .frame(width: 65, alignment: .trailing)
-                                Text("Price")
-                                    .frame(width: 65, alignment: .trailing)
-                                Text("%")
-                                    .frame(width: 58, alignment: .trailing)
-                                Text("P&L")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                            }
-                            .font(.inter(10, weight: .medium, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                            .tracking(0.8)
-                            .textCase(.uppercase)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-
-                            Divider()
-
-                            ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                PortfolioQuoteRow(globalPos: p)
-                                if index < globals.count - 1 {
-                                    Divider().padding(.leading, 36)
-                                }
-                            }
-                        }
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                    }
-
                     if showNewPortfolio {
                         HStack {
                             TextField("Portfolio name", text: $newPortfolioName)
@@ -160,21 +127,56 @@ struct PortfolioListView: View {
                         .padding(.vertical, 4)
                     }
 
-                    ForEach(filteredPortfolios) { portfolio in
+                    if selectedPortfolioId == nil {
+                        let globals = globalPositions
+                        if !globals.isEmpty {
+                            VStack(spacing: 0) {
+                                HStack(spacing: 0) {
+                                    Text("Symbol")
+                                        .frame(width: 90, alignment: .leading)
+                                    Text("Avg Cost")
+                                        .frame(width: 65, alignment: .trailing)
+                                    Text("Price")
+                                        .frame(width: 65, alignment: .trailing)
+                                    Text("%")
+                                        .frame(width: 58, alignment: .trailing)
+                                    Text("P&L")
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                                .font(.inter(10, weight: .medium, relativeTo: .caption))
+                                .foregroundColor(.secondary)
+                                .tracking(0.8)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+
+                                Divider()
+
+                                ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                                    PortfolioQuoteRow(globalPos: p)
+                                    if index < globals.count - 1 {
+                                        Divider().padding(.leading, 36)
+                                    }
+                                }
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                        }
+
+                        ForEach(filteredPortfolios) { portfolio in
+                            PortfolioSection(
+                                portfolio: portfolio,
+                                confirmDeletePortfolio: $confirmDeletePortfolio,
+                                confirmDeleteHolding: $confirmDeleteHolding
+                            )
+                        }
+                    } else if let selectedId = selectedPortfolioId,
+                              let targetPortfolio = filteredPortfolios.first(where: { $0.id == selectedId }) {
                         PortfolioSection(
-                            portfolio: portfolio,
+                            portfolio: targetPortfolio,
                             confirmDeletePortfolio: $confirmDeletePortfolio,
                             confirmDeleteHolding: $confirmDeleteHolding
                         )
-                    }
-                    .onDelete { offsets in
-                        let currentList = filteredPortfolios
-                        let ids = offsets.compactMap { idx in
-                            idx < currentList.count ? currentList[idx].id : nil
-                        }
-                        if let firstId = ids.first, let p = currentList.first(where: { $0.id == firstId }) {
-                            confirmDeletePortfolio = p
-                        }
                     }
                 }
                 .listStyle(.plain)
@@ -193,17 +195,6 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
 
                     Spacer()
-
-                    Button(action: { exportPortfolios(storageService.portfolios) }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "square.and.arrow.up")
-                            Text("Export All")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(storageService.portfolios.isEmpty)
-                    .pointingHandCursor()
                 }
                 .padding(8)
             }
@@ -246,8 +237,67 @@ struct PortfolioListView: View {
         }
     }
 
-    private var grandTotalValue: Double {
-        storageService.portfolios.reduce(0) { total, portfolio in
+    private var activePortfoliosForSummary: [Portfolio] {
+        if let pId = selectedPortfolioId {
+            return storageService.portfolios.filter { $0.id == pId }
+        }
+        return storageService.portfolios
+    }
+
+    private var portfolioPickerBar: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    let isAllSelected = selectedPortfolioId == nil
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedPortfolioId = nil
+                        }
+                    }) {
+                        Text("All Portfolios")
+                            .font(.inter(11, weight: isAllSelected ? .bold : .medium, relativeTo: .caption))
+                            .foregroundColor(isAllSelected ? .white : DS.ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(isAllSelected ? DS.brand : Color.primary.opacity(0.06))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .id("all_portfolios_tab")
+
+                    ForEach(storageService.portfolios) { p in
+                        let selected = p.id == selectedPortfolioId
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selectedPortfolioId = p.id
+                            }
+                        }) {
+                            Text(p.name)
+                                .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
+                                .foregroundColor(selected ? .white : DS.ink)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule()
+                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .id(p.id)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func portfolioValue(for portfolios: [Portfolio]) -> Double {
+        portfolios.reduce(0) { total, portfolio in
             total + portfolio.holdings.reduce(0) { sum, holding in
                 guard let quote = stockService.quotes[holding.symbol] else { return sum }
                 let rate = stockService.rate(from: quote.currency)
@@ -256,14 +306,22 @@ struct PortfolioListView: View {
         }
     }
 
-    private var grandTotalCost: Double {
-        storageService.portfolios.reduce(0) { total, portfolio in
+    private func portfolioCost(for portfolios: [Portfolio]) -> Double {
+        portfolios.reduce(0) { total, portfolio in
             total + portfolio.holdings.reduce(0) { sum, holding in
                 guard let quote = stockService.quotes[holding.symbol] else { return sum }
                 let rate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
                 return sum + holding.costBasisLocal * rate
             }
         }
+    }
+
+    private var grandTotalValue: Double {
+        portfolioValue(for: storageService.portfolios)
+    }
+
+    private var grandTotalCost: Double {
+        portfolioCost(for: storageService.portfolios)
     }
 
     struct GlobalPosition: Identifiable {
