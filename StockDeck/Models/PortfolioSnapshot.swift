@@ -87,8 +87,9 @@ enum PortfolioValuation {
             )
             // Portfolio valuation uses regular session closing price (quote.price) to remain stable after market close, independent of extended hours.
             let price = quote.price
-            let rate = stockService.rate(from: quote.currency)
-            let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+            let currency = stockService.detectedCurrency(for: holding.symbol)
+            let rate = stockService.rate(from: currency)
+            let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
             let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
             return Input(
                 holding: holding,

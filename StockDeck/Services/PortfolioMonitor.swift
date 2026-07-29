@@ -142,7 +142,8 @@ final class PortfolioMonitor {
         for holding in portfolio.holdings {
             guard let quote = stockService.quotes[holding.symbol] else { continue }
             m.hasData = true
-            let rate = stockService.rate(from: quote.currency)
+            let curr = stockService.detectedCurrency(for: holding.symbol)
+            let rate = stockService.rate(from: curr)
             let displayPrice = quote.displayPrice(extendedHours: storage.showExtendedHours)
             let value = holding.marketValue(currentPrice: displayPrice) * rate
             // Today's change uses the regular-session change per share, scaled by

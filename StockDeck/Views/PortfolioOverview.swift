@@ -199,8 +199,9 @@ struct PortfolioOverview: View {
                     currency: stockService.detectedCurrency(for: holding.symbol)
                 )
                 let price = quote.price
-                let rate = stockService.rate(from: quote.currency)
-                let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+                let currency = stockService.detectedCurrency(for: holding.symbol)
+                let rate = stockService.rate(from: currency)
+                let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
                 let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
                 let scale = isJpFund ? 10000.0 : 1.0
                 let lev = holding.effectiveLeverage
@@ -223,11 +224,12 @@ struct PortfolioOverview: View {
     private var todayPerformance: (gain: Double, percent: Double) {
         let inputs = portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
             guard let quote = stockService.quotes[holding.symbol] else { return nil }
+            let currency = stockService.detectedCurrency(for: holding.symbol)
             return TodayPerformance.Input(
                 holding: holding,
                 regularPrice: quote.price,
                 previousClose: quote.previousClose,
-                rate: stockService.rate(from: quote.currency)
+                rate: stockService.rate(from: currency)
             )
         }
         return TodayPerformance.totals(inputs)

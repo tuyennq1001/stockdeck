@@ -354,8 +354,9 @@ struct PortfolioListView: View {
                     symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
                     currency: stockService.detectedCurrency(for: h.symbol)
                 )
-                let rate = stockService.rate(from: quote.currency)
-                let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                let currency = stockService.detectedCurrency(for: h.symbol)
+                let rate = stockService.rate(from: currency)
+                let costRate = stockService.rate(from: currency, for: h.purchaseDate)
                 let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol) || h.isJapaneseFund
                 let scale = isJpFund ? 10000.0 : 1.0
                 let lev = h.effectiveLeverage
@@ -1097,10 +1098,11 @@ struct GroupedHoldingRow: View {
                             Spacer()
 
                             if let quote {
-                                let rate = stockService.rate(from: quote.currency)
+                                let curr = stockService.detectedCurrency(for: h.symbol)
+                                let rate = stockService.rate(from: curr)
                                 let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                                 let val = h.marketValue(currentPrice: displayPrice) * rate
-                                let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
+                                let costRate = stockService.rate(from: curr, for: h.purchaseDate)
                                 let cost = h.costBasisLocal * costRate
                                 let pnl = val - cost
                                 let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
