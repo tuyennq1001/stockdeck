@@ -218,4 +218,59 @@ enum PortfolioIO {
             onAlert?("Could not save 投資信託 template file.")
         }
     }
+
+    /// Presents an NSOpenPanel to pick a Watchlist file (CSV/XLSX/TXT) and imports symbols into a Watchlist.
+    static func pickAndParseWatchlist(storageService: StorageService, restoreActivationPolicy: Bool = true, onAlert: ((String) -> Void)? = nil) {
+        let panel = NSOpenPanel()
+        var types: [UTType] = [.commaSeparatedText, .plainText, .data]
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            types.append(xlsxType)
+        }
+        panel.allowedContentTypes = types
+        panel.allowsMultipleSelection = false
+        panel.title = "Import Watchlist (CSV/XLSX/TXT)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                if let (wlName, symbols) = SpreadsheetIO.parseWatchlistFile(from: url) {
+                    let created = storageService.createWatchlist(name: wlName)
+                    storageService.addMultipleToWatchlist(Set(symbols), targetWatchlistId: created.id)
+                    onAlert?("Imported \(symbols.count) symbols to watchlist “\(wlName)”.")
+                } else {
+                    onAlert?("Could not parse watchlist file or no valid symbols found.")
+                }
+            }
+        }
+    }
+
+    /// Generates a sample Watchlist Excel (.xlsx) file and saves it directly to ~/Downloads.
+    static func downloadWatchlistSample(restoreActivationPolicy: Bool = true, onAlert: ((String) -> Void)? = nil) {
+        guard let data = SpreadsheetIO.generateWatchlistSampleXLSXData() else { return }
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+
+        var targetURL = downloadsURL.appendingPathComponent("watchlist_sample.xlsx")
+        var counter = 1
+        while FileManager.default.fileExists(atPath: targetURL.path) {
+            targetURL = downloadsURL.appendingPathComponent("watchlist_sample (\(counter)).xlsx")
+            counter += 1
+        }
+
+        do {
+            try data.write(to: targetURL, options: .atomic)
+            NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+            onAlert?("Saved \(targetURL.lastPathComponent) to Downloads folder.")
+        } catch {
+            onAlert?("Could not save watchlist sample file.")
+        }
+    }
 }

@@ -274,6 +274,79 @@ enum SpreadsheetIO {
         return generateXLSXData(headers: headers, rows: rows)
     }
 
+    /// Generates a sample Watchlist Excel (.xlsx) file data.
+    static func generateWatchlistSampleXLSXData() -> Data? {
+        let headers = ["Watchlist Name", "Symbol", "Notes"]
+        let rows: [[String]] = [
+            ["Tech Watchlist", "AAPL", "Apple Inc."],
+            ["Tech Watchlist", "NVDA", "NVIDIA Corporation"],
+            ["Tech Watchlist", "MSFT", "Microsoft Corporation"],
+            ["Global Indices", "^GSPC", "S&P 500"],
+            ["Japanese Funds", "eMAXIS Slim 米国株式(S&P500)", "03311187"]
+        ]
+        return generateXLSXData(headers: headers, rows: rows)
+    }
+
+    /// Parses a file (CSV or XLSX) into a list of (watchlistName, symbols).
+    static func parseWatchlistFile(from fileURL: URL) -> (name: String, symbols: [String])? {
+        let ext = fileURL.pathExtension.lowercased()
+        let fileName = fileURL.deletingPathExtension().lastPathComponent
+        var symbols: [String] = []
+        var wlName = fileName.isEmpty ? "Imported Watchlist" : fileName
+
+        var rows: [[String]] = []
+
+        if ext == "xlsx" {
+            if let parsed = parseXLSXRows(fileURL: fileURL) {
+                rows = parsed
+            }
+        } else {
+            if let content = readTextFile(url: fileURL) {
+                let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                for line in lines {
+                    let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
+                    let cols = splitCSVLine(line, delimiter: delimiter)
+                    rows.append(cols)
+                }
+            }
+        }
+
+        guard !rows.isEmpty else { return nil }
+
+        var startIdx = 0
+        var symbolCol = 0
+        var nameCol = -1
+
+        for (cIdx, col) in rows[0].enumerated() {
+            let lower = col.lowercased()
+            if lower.contains("symbol") || lower.contains("ticker") || lower.contains("銘柄") || lower == "code" {
+                symbolCol = cIdx
+                startIdx = 1
+            }
+            if lower.contains("watchlist") || (lower.contains("name") && !lower.contains("symbol")) {
+                nameCol = cIdx
+            }
+        }
+
+        for idx in startIdx..<rows.count {
+            let row = rows[idx]
+            guard symbolCol < row.count else { continue }
+            let sym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sym.isEmpty && sym.lowercased() != "symbol" {
+                symbols.append(sym)
+                if nameCol >= 0 && nameCol < row.count {
+                    let candidateName = row[nameCol].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !candidateName.isEmpty && candidateName.lowercased() != "watchlist name" {
+                        wlName = candidateName
+                    }
+                }
+            }
+        }
+
+        guard !symbols.isEmpty else { return nil }
+        return (wlName, symbols)
+    }
+
     /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).
     static func parseStandardPortfolios(from fileURL: URL) -> [Portfolio]? {
         let ext = fileURL.pathExtension.lowercased()

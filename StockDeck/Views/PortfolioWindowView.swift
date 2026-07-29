@@ -357,7 +357,7 @@ struct PortfolioWindowView: View {
         }
     }
 
-    /// "PORTFOLIOS" label with the quiet + button (replaces the old toolbar menu). Right click exports all portfolios.
+    /// "PORTFOLIOS" label with dedicated Import menu and quiet + button. Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -365,13 +365,27 @@ struct PortfolioWindowView: View {
                 .foregroundStyle(DS.inkTertiary)
                 .tracking(0.8).textCase(.uppercase)
             Spacer()
+
+            DSMenu(width: 260, sections: importMenuSections) {
+                HStack(spacing: 3) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Import")
+                        .font(DS.caption)
+                }
+                .foregroundStyle(DS.inkSecondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+            .help("Import portfolios, watchlists, or download sample templates…")
+
             DSMenu(width: 230, sections: plusMenuSections) {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(DS.inkSecondary)
                     .frame(width: 20, height: 20)
             }
-            .help("New portfolio, add holding, import or export…")
+            .help("New portfolio or add holding…")
         }
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
         .contentShape(Rectangle())
@@ -384,7 +398,34 @@ struct PortfolioWindowView: View {
         }
     }
 
-    /// Sections for the sidebar "+" DSMenu (submenu flattened to inline rows).
+    /// Dedicated menu sections for Import & Sample Downloads.
+    private var importMenuSections: [[DSMenuAction]] {
+        var sections: [[DSMenuAction]] = [
+            [
+                DSMenuAction(title: "Import Standard Portfolio (CSV/XLSX)…", icon: "briefcase") { importStandard() },
+                DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV/XLSX)…", icon: "doc.text") { importJapaneseFunds() },
+                DSMenuAction(title: "Import Watchlist (CSV/XLSX/TXT)…", icon: "star") { importWatchlist() }
+            ],
+            [
+                DSMenuAction(title: "Download Portfolio Sample (XLSX)", icon: "doc.badge.plus") { downloadSampleFile() },
+                DSMenuAction(title: "Download 投資信託 Template (XLSX)", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() },
+                DSMenuAction(title: "Download Watchlist Sample (XLSX)", icon: "doc.badge.plus") { downloadWatchlistSampleFile() }
+            ]
+        ]
+        var exportActions: [DSMenuAction] = []
+        if !storageService.portfolios.isEmpty {
+            exportActions.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
+        }
+        if !storageService.watchlists.isEmpty {
+            exportActions.append(DSMenuAction(title: "Export Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) })
+        }
+        if !exportActions.isEmpty {
+            sections.append(exportActions)
+        }
+        return sections
+    }
+
+    /// Sections for the sidebar "+" DSMenu.
     private var plusMenuSections: [[DSMenuAction]] {
         var s: [[DSMenuAction]] = [[ DSMenuAction(title: "New Portfolio…", icon: "folder.badge.plus") { showNewPortfolio = true } ]]
         if !storageService.portfolios.isEmpty {
@@ -392,19 +433,6 @@ struct PortfolioWindowView: View {
                 DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingPortfolioId = p.id }
             })
         }
-        var io = [
-            DSMenuAction(title: "Import Standard File (CSV/XLSX)…", icon: "square.and.arrow.down") { importStandard() },
-            DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV/XLSX)…", icon: "doc.text") { importJapaneseFunds() },
-            DSMenuAction(title: "Download Sample File…", icon: "doc.badge.plus") { downloadSampleFile() },
-            DSMenuAction(title: "Download 投資信託 Template (XLSX)…", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() }
-        ]
-        if !storageService.portfolios.isEmpty {
-            io.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
-        }
-        if !storageService.watchlists.isEmpty {
-            io.append(DSMenuAction(title: "Export Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) })
-        }
-        s.append(io)
         return s
     }
 
@@ -521,6 +549,18 @@ struct PortfolioWindowView: View {
 
     private func downloadJapaneseFundSampleFile() {
         PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: false) { message in
+            importAlert = message
+        }
+    }
+
+    private func importWatchlist() {
+        PortfolioIO.pickAndParseWatchlist(storageService: storageService, restoreActivationPolicy: false) { message in
+            importAlert = message
+        }
+    }
+
+    private func downloadWatchlistSampleFile() {
+        PortfolioIO.downloadWatchlistSample(restoreActivationPolicy: false) { message in
             importAlert = message
         }
     }

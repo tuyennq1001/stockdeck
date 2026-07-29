@@ -37,33 +37,6 @@ struct PortfolioListView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .pointingHandCursor()
-                Menu {
-                    Button("Import Standard (CSV/XLSX)…") { importStandard() }
-                    Button("Import 投資信託 (Japanese Funds CSV/XLSX)…") { importJapaneseFunds() }
-                    Divider()
-                    Button("Download Standard Sample (XLSX)…") { downloadSampleFile() }
-                    Button("Download 投資信託 Template (XLSX)…") { downloadJapaneseFundSampleFile() }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.down")
-                        Text("Import")
-                    }
-                    .font(.inter(10, relativeTo: .caption))
-                }
-                .menuStyle(.borderlessButton)
-                .pointingHandCursor()
-                Menu {
-                    Button("Download Standard Sample (XLSX)") { downloadSampleFile() }
-                    Button("Download 投資信託 Template (XLSX)") { downloadJapaneseFundSampleFile() }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.badge.plus")
-                        Text("Sample")
-                    }
-                    .font(.inter(10, relativeTo: .caption))
-                }
-                .menuStyle(.borderlessButton)
-                .pointingHandCursor()
                 Spacer()
             }
         } else {
@@ -220,35 +193,6 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
 
                     Spacer()
-
-                    Menu {
-                        Button("Import Standard (CSV/XLSX)…") { importStandard() }
-                        Button("Import 投資信託 (Japanese Funds CSV/XLSX)…") { importJapaneseFunds() }
-                        Divider()
-                        Button("Download Standard Sample (XLSX)…") { downloadSampleFile() }
-                        Button("Download 投資信託 Template (XLSX)…") { downloadJapaneseFundSampleFile() }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "square.and.arrow.down")
-                            Text("Import")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .pointingHandCursor()
-
-                    Menu {
-                        Button("Download Standard Sample (XLSX)") { downloadSampleFile() }
-                        Button("Download 投資信託 Template (XLSX)") { downloadJapaneseFundSampleFile() }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "doc.badge.plus")
-                            Text("Sample")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .pointingHandCursor()
 
                     Button(action: { exportPortfolios(storageService.portfolios) }) {
                         HStack(spacing: 3) {
