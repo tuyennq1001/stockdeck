@@ -284,12 +284,7 @@ struct PortfolioOverview: View {
 
     var body: some View {
         PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)", trailing: {
-            HStack(spacing: 12) {
-                portfolioMenu
-                RefreshButton(isLoading: stockService.isLoading) {
-                    Task { await stockService.refreshAll(storageService: storageService) }
-                }
-            }
+            portfolioMenu
         }) {
             ScrollViewReader { proxy in
                 ScrollView {

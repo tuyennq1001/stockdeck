@@ -169,21 +169,6 @@ struct ContentView: View {
                         .frame(width: 16, height: 16)
                 }
 
-                Button(action: {
-                    Task {
-                        await stockService.refreshAll(storageService: storageService)
-                        if selectedTab == .home {
-                            await stockService.refreshNews(storageService: storageService, force: true)
-                        }
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.inter(12, relativeTo: .callout))
-                }
-                .buttonStyle(.borderless)
-                .disabled(stockService.isLoading)
-                .pointingHandCursor()
-
                 // The clear way into the full desktop app.
                 Button(action: {
                     NSLog("[StockDeck] Open button tapped in popover")
@@ -225,15 +210,14 @@ struct ContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
 
-            // Tab picker — Home is present only when News is enabled (issue #11).
-            Picker("", selection: $selectedTab) {
+            // Tab picker with pointer cursor for tabs
+            HStack(spacing: 4) {
                 if storageService.showNewsTab {
-                    Text("Home").tag(Tab.home)
+                    tabButton("Home", tab: .home)
                 }
-                Text("Watchlist").tag(Tab.watchlist)
-                Text("Portfolios").tag(Tab.portfolios)
+                tabButton("Watchlist", tab: .watchlist)
+                tabButton("Portfolios", tab: .portfolios)
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
@@ -265,5 +249,21 @@ struct ContentView: View {
         // Issue #7: in-app language override. Reactive because ContentView observes
         // storageService, so changing the language re-applies the locale to all children.
         .environment(\.locale, Locale(identifier: storageService.appLanguage))
+    }
+
+    private func tabButton(_ title: String, tab: Tab) -> some View {
+        Button(action: { selectedTab = tab }) {
+            Text(title)
+                .font(.inter(11, weight: selectedTab == tab ? .semibold : .medium, relativeTo: .caption))
+                .foregroundStyle(selectedTab == tab ? DS.ink : DS.inkSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(selectedTab == tab ? DS.cardAlt : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
     }
 }

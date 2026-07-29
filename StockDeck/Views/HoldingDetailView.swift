@@ -62,9 +62,6 @@ struct HoldingDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Set a price alert")
-                RefreshButton(isLoading: stockService.isLoading) {
-                    Task { await stockService.refreshAll(storageService: storageService) }
-                }
             }
         } content: {
             ScrollView {

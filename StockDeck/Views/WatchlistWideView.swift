@@ -529,10 +529,6 @@ struct WatchlistWideView: View {
             .pointingHandCursor()
             .help("Export all watchlists to Excel (.xlsx)")
 
-            RefreshButton(isLoading: stockService.isLoading) {
-                Task { await stockService.refreshAll(storageService: storageService) }
-            }
-
             Button { showMetricCustomizer = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))

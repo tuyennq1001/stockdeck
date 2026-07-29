@@ -27,12 +27,7 @@ struct HomeWideView: View {
 
     var body: some View {
         PageScaffold("News", caption: newsCaption) {
-            HStack(spacing: 12) {
-                searchField
-                RefreshButton(isLoading: stockService.isLoadingNews) {
-                    Task { await stockService.refreshNews(storageService: storageService, force: true) }
-                }
-            }
+            searchField
         } content: {
             if stockService.news.isEmpty {
                 emptyState
