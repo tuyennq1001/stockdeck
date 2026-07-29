@@ -291,8 +291,8 @@ struct PortfolioOverview: View {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         heroCard
                         statRow
+                        allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
-                            allocationCard.frame(minWidth: 380, maxWidth: .infinity)
                             topGainersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
                             topLosersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
                         }
@@ -322,16 +322,36 @@ struct PortfolioOverview: View {
             }
         }
         .task(id: symbols) {
-            for symbol in symbols { await stockService.ensurePriceHistory(for: symbol) }
+            await withTaskGroup(of: Void.self) { group in
+                for symbol in symbols {
+                    let s = symbol
+                    group.addTask { await stockService.ensurePriceHistory(for: s) }
+                }
+            }
         }
         .task(id: "\(symbols.joined())-\(chartRange.rawValue)") {
             switch chartRange {
             case .week:
-                for s in symbols { await stockService.ensureIntradayWeek(for: s) }
+                await withTaskGroup(of: Void.self) { group in
+                    for s in symbols {
+                        let sym = s
+                        group.addTask { await stockService.ensureIntradayWeek(for: sym) }
+                    }
+                }
             case .threeYears, .fiveYears, .all:
-                for s in symbols { await stockService.ensurePriceHistoryMax(for: s) }
+                await withTaskGroup(of: Void.self) { group in
+                    for s in symbols {
+                        let sym = s
+                        group.addTask { await stockService.ensurePriceHistoryMax(for: sym) }
+                    }
+                }
             default:
-                for s in symbols { await stockService.ensurePriceHistory(for: s) }
+                await withTaskGroup(of: Void.self) { group in
+                    for s in symbols {
+                        let sym = s
+                        group.addTask { await stockService.ensurePriceHistory(for: sym) }
+                    }
+                }
             }
         }
     }
