@@ -69,8 +69,20 @@ enum PortfolioIO {
         }
     }
 
-    /// Option 1: Standard symbol/portfolio file import (CSV, XLSX, JSON).
-    static func importStandardInto(_ storageService: StorageService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
+    struct ImportResult: Identifiable {
+        let id = UUID()
+        let items: [ParsedImportItem]
+        let suggestedPortfolioName: String?
+        let isFundImport: Bool
+    }
+
+    /// Helper to pick a file and parse standard holdings for preview.
+    static func pickAndParseStandard(
+        storageService: StorageService,
+        restoreActivationPolicy: Bool,
+        onParsed: @escaping (ImportResult) -> Void,
+        onAlert: @escaping (String) -> Void
+    ) {
         let panel = NSOpenPanel()
         var types: [UTType] = [.json, .commaSeparatedText]
         if let xlsxType = UTType(filenameExtension: "xlsx") {
@@ -91,32 +103,22 @@ enum PortfolioIO {
                 }
             }
             guard response == .OK, let url = panel.url else { return }
-            guard let data = try? Data(contentsOf: url) else {
-                Task { @MainActor in onAlert("Could not read file.") }
-                return
-            }
             Task { @MainActor in
-                let imported: [Portfolio]?
-                if let spreadsheetImport = SpreadsheetIO.parseStandardPortfolios(from: url) {
-                    imported = spreadsheetImport
+                if let res = parseStandardFile(fileURL: url, storageService: storageService) {
+                    onParsed(res)
                 } else {
-                    imported = storageService.importPortfolios(from: data)
-                }
-
-                guard let imported, !imported.isEmpty else {
                     onAlert("Invalid file format or empty portfolio file.")
-                    return
                 }
-
-                storageService.mergeImportedPortfolios(imported)
-                onAlert("Imported \(imported.count) portfolio\(imported.count == 1 ? "" : "s").")
             }
         }
     }
 
-    /// Option 2: 投資信託 (Japanese Funds Trade History CSV) import.
-    /// Default currency is strictly JPY for all imported fund holdings.
-    static func importJapaneseFundsInto(_ storageService: StorageService, stockService: StockService, restoreActivationPolicy: Bool, onAlert: @escaping (String) -> Void) {
+    /// Helper to pick a file and parse Japanese 投資信託 fund holdings for preview.
+    static func pickAndParseJapaneseFunds(
+        restoreActivationPolicy: Bool,
+        onParsed: @escaping (ImportResult) -> Void,
+        onAlert: @escaping (String) -> Void
+    ) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.commaSeparatedText, .plainText, .data]
         panel.allowsMultipleSelection = false
@@ -134,24 +136,41 @@ enum PortfolioIO {
             }
             guard response == .OK, let url = panel.url else { return }
             Task { @MainActor in
-                guard let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty else {
+                if let res = parseJapaneseFundFile(fileURL: url) {
+                    onParsed(res)
+                } else {
                     onAlert("Could not parse 投資信託 CSV file or no valid trades found.")
-                    return
                 }
-
-                let allHoldings = imported.flatMap { $0.holdings }
-                storageService.mergeImportedPortfolios(imported)
-
-                let symbols = allHoldings.map { $0.symbol }
-                if !symbols.isEmpty {
-                    Task {
-                        await stockService.fetchQuotes(symbols: symbols)
-                    }
-                }
-
-                onAlert("Imported \(imported.count) 投資信託 portfolio\(imported.count == 1 ? "" : "s") (\(allHoldings.count) positions, Currency: JPY).")
             }
         }
+    }
+
+    static func parseStandardFile(fileURL url: URL, storageService: StorageService) -> ImportResult? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let imported: [Portfolio]?
+        if let spreadsheetImport = SpreadsheetIO.parseStandardPortfolios(from: url) {
+            imported = spreadsheetImport
+        } else {
+            imported = storageService.importPortfolios(from: data)
+        }
+        guard let imported, !imported.isEmpty else { return nil }
+
+        let allHoldings = imported.flatMap { $0.holdings }
+        let items = allHoldings.map { ParsedImportItem(holding: $0, isChecked: true, isFund: false, originalAccountName: nil) }
+        let suggestedName = imported.first?.name
+        return ImportResult(items: items, suggestedPortfolioName: suggestedName, isFundImport: false)
+    }
+
+    static func parseJapaneseFundFile(fileURL url: URL) -> ImportResult? {
+        guard let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty else { return nil }
+        var items: [ParsedImportItem] = []
+        for p in imported {
+            for h in p.holdings {
+                items.append(ParsedImportItem(holding: h, isChecked: true, isFund: true, originalAccountName: p.name))
+            }
+        }
+        let suggestedName = imported.first?.name
+        return ImportResult(items: items, suggestedPortfolioName: suggestedName, isFundImport: true)
     }
 
     /// Generates a clean sample Excel (.xlsx) file and saves it directly to ~/Downloads.

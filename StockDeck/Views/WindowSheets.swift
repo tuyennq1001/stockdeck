@@ -214,7 +214,7 @@ struct FieldBlock<Content: View>: View {
 }
 
 /// Shared sheet chrome: title + Cancel, DS ground, fixed width.
-private struct SheetShell<Content: View>: View {
+struct SheetShell<Content: View>: View {
     let title: String
     let onCancel: () -> Void
     var width: CGFloat = 460
@@ -241,7 +241,7 @@ private struct SheetShell<Content: View>: View {
 }
 
 /// A brand-filled primary button (Add / Save / Create).
-private struct PrimaryButton: View {
+struct PrimaryButton: View {
     let title: String
     var enabled: Bool = true
     let action: () -> Void

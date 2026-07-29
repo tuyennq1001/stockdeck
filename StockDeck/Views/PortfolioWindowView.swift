@@ -52,8 +52,7 @@ struct PortfolioWindowView: View {
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
-    @State private var showBatchImport = false
-    @State private var batchImportPortfolioId: UUID? = nil
+    @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
 
     /// Wraps the edit-holding tuple so it can drive a `.sheet(item:)`.
     struct EditTarget: Identifiable {
@@ -87,7 +86,7 @@ struct PortfolioWindowView: View {
         .environment(\.editHoldingAction, EditHoldingAction { editHolding = EditTarget(portfolioId: $0, holding: $1) })
         .environment(\.portfolioActions, PortfolioActions(
             addHolding: { addHoldingPortfolioId = $0 },
-            batchImport: { batchImportPortfolioId = $0; showBatchImport = true },
+            batchImport: { _ in importStandard() },
             rename: { renameTarget = PortfolioRef(id: $0, name: $1) },
             notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
             export: { exportPortfolios([$0]) },
@@ -118,8 +117,19 @@ struct PortfolioWindowView: View {
             PortfolioNotificationsSheet(portfolioId: t.id, portfolioName: t.name) { notifTarget = nil }
                 .environmentObject(storageService)
         }
+        .sheet(item: $pendingImportResult) { res in
+            ImportPreviewSheet(
+                items: res.items,
+                suggestedPortfolioName: res.suggestedPortfolioName,
+                isFundImport: res.isFundImport
+            ) {
+                pendingImportResult = nil
+            }
+            .environmentObject(stockService)
+            .environmentObject(storageService)
+        }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
-                 title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil)
+                 title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
         .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
             TextField("Watchlist name", text: $newWatchlistName)
             Button("Cancel", role: .cancel) { newWatchlistName = "" }
@@ -254,8 +264,8 @@ struct PortfolioWindowView: View {
                             Button { addHoldingPortfolioId = portfolio.id } label: {
                                 Label("Add Holding…", systemImage: "plus")
                             }
-                            Button { batchImportPortfolioId = portfolio.id; showBatchImport = true } label: {
-                                Label("Batch Import…", systemImage: "square.and.arrow.down")
+                            Button { importStandard() } label: {
+                                Label("Import File…", systemImage: "square.and.arrow.down")
                             }
                             Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
                                 Label("Rename…", systemImage: "pencil")
@@ -487,15 +497,19 @@ struct PortfolioWindowView: View {
     }
 
     private func importStandard() {
-        PortfolioIO.importStandardInto(storageService, restoreActivationPolicy: false) { message in
-            importAlert = message
-        }
+        PortfolioIO.pickAndParseStandard(storageService: storageService, restoreActivationPolicy: false, onParsed: { result in
+            self.pendingImportResult = result
+        }, onAlert: { message in
+            self.importAlert = message
+        })
     }
 
     private func importJapaneseFunds() {
-        PortfolioIO.importJapaneseFundsInto(storageService, stockService: stockService, restoreActivationPolicy: false) { message in
-            importAlert = message
-        }
+        PortfolioIO.pickAndParseJapaneseFunds(restoreActivationPolicy: false, onParsed: { result in
+            self.pendingImportResult = result
+        }, onAlert: { message in
+            self.importAlert = message
+        })
     }
 
     private func downloadSampleFile() {

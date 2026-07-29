@@ -8,8 +8,7 @@ struct PortfolioListView: View {
     @State private var newPortfolioName = ""
     @State private var searchText = ""
     @State private var importAlert: String?
-    @State private var showBatchSheet = false
-    @State private var batchImportTargetId: UUID? = nil
+    @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var confirmDeletePortfolio: Portfolio? = nil
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
 
@@ -186,11 +185,7 @@ struct PortfolioListView: View {
                         PortfolioSection(
                             portfolio: portfolio,
                             confirmDeletePortfolio: $confirmDeletePortfolio,
-                            confirmDeleteHolding: $confirmDeleteHolding,
-                            onBatchImport: { targetId in
-                                batchImportTargetId = targetId
-                                showBatchSheet = true
-                            }
+                            confirmDeleteHolding: $confirmDeleteHolding
                         )
                     }
                     .onDelete { offsets in
@@ -258,11 +253,19 @@ struct PortfolioListView: View {
             }
         }
         }
-        .alert("Import", isPresented: Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } })) {
-            Button("OK") { importAlert = nil }
-        } message: {
-            Text(importAlert ?? "")
+        .sheet(item: $pendingImportResult) { res in
+            ImportPreviewSheet(
+                items: res.items,
+                suggestedPortfolioName: res.suggestedPortfolioName,
+                isFundImport: res.isFundImport
+            ) {
+                pendingImportResult = nil
+            }
+            .environmentObject(stockService)
+            .environmentObject(storageService)
         }
+        .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
+                 title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
         .alert("Delete Portfolio", isPresented: Binding(get: { confirmDeletePortfolio != nil }, set: { if !$0 { confirmDeletePortfolio = nil } })) {
             Button("Cancel", role: .cancel) { confirmDeletePortfolio = nil }
             Button("Delete", role: .destructive) {
@@ -370,15 +373,19 @@ struct PortfolioListView: View {
     }
 
     private func importStandard() {
-        PortfolioIO.importStandardInto(storageService, restoreActivationPolicy: true) { message in
+        PortfolioIO.pickAndParseStandard(storageService: storageService, restoreActivationPolicy: true, onParsed: { result in
+            self.pendingImportResult = result
+        }, onAlert: { message in
             self.importAlert = message
-        }
+        })
     }
 
     private func importJapaneseFunds() {
-        PortfolioIO.importJapaneseFundsInto(storageService, stockService: stockService, restoreActivationPolicy: true) { message in
+        PortfolioIO.pickAndParseJapaneseFunds(restoreActivationPolicy: true, onParsed: { result in
+            self.pendingImportResult = result
+        }, onAlert: { message in
             self.importAlert = message
-        }
+        })
     }
 
     private func downloadSampleFile() {
