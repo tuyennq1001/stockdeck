@@ -24,6 +24,32 @@ struct ValuedHolding: Identifiable {
     var pnlPercent: Double { abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : 0 }
 }
 
+/// Session cache for Performance & Benchmark values so they evaluate ONCE
+/// per session / scope and never re-compute on real-time quote updates.
+enum PerformanceBenchmarkCache {
+    private static var cache: [String: (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?])] = [:]
+    private static let lock = NSLock()
+
+    static func performance(for scopeKey: String,
+                            compute: () -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]))
+    -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]) {
+        lock.lock()
+        if let existing = cache[scopeKey] {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let result = compute()
+
+        lock.lock()
+        cache[scopeKey] = result
+        lock.unlock()
+
+        return result
+    }
+}
+
 struct PortfolioOverview: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -636,12 +662,27 @@ struct PortfolioOverview: View {
         }
     }
 
+    private var portfolioInceptionDate: Date? {
+        if let purchaseDate = earliestPurchaseDate {
+            return Calendar.current.startOfDay(for: purchaseDate)
+        }
+        if let snapDate = series.first?.date {
+            return Calendar.current.startOfDay(for: snapDate)
+        }
+        return nil
+    }
+
     private func portfolioPerformance(for period: PerformancePeriod, points: [ValuePoint]) -> Double? {
         guard points.count >= 2, let firstDate = points.first?.date, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
-        // Require history to actually stretch back to the cutoff date (allowing a 7-day grace window for weekend/holiday offsets)
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
-        guard firstDate <= graceCutoff else { return nil }
+
+        if let inception = portfolioInceptionDate {
+            guard inception <= graceCutoff else { return nil }
+        } else {
+            guard firstDate <= graceCutoff else { return nil }
+        }
+
         guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.value) > 1e-9 else { return nil }
         return ((lastVal - startPoint.value) / abs(startPoint.value)) * 100
     }
@@ -656,8 +697,22 @@ struct PortfolioOverview: View {
         return ((lastPrice - startPoint.close) / abs(startPoint.close)) * 100
     }
 
+    /// Evaluates benchmark matrix once per app session (not updating real-time).
+    private var cachedPerformance: (portfolio: [PerformancePeriod: Double?], spx: [PerformancePeriod: Double?]) {
+        PerformanceBenchmarkCache.performance(for: scopeKey) {
+            let maxPoints = valueSeries(from: stockService.priceHistoryMax)
+            var pDict: [PerformancePeriod: Double?] = [:]
+            var sDict: [PerformancePeriod: Double?] = [:]
+            for period in PerformancePeriod.allCases {
+                pDict[period] = portfolioPerformance(for: period, points: maxPoints)
+                sDict[period] = spxPerformance(for: period)
+            }
+            return (pDict, sDict)
+        }
+    }
+
     private var performanceMatrixCard: some View {
-        let maxPoints = valueSeries(from: stockService.priceHistoryMax)
+        let perf = cachedPerformance
         return Card(title: "Performance & Benchmark") {
             VStack(spacing: 12) {
                 HStack(spacing: 0) {
@@ -691,7 +746,7 @@ struct PortfolioOverview: View {
                     .frame(width: 140, alignment: .leading)
 
                     ForEach(PerformancePeriod.allCases) { period in
-                        let pct = portfolioPerformance(for: period, points: maxPoints)
+                        let pct = perf.portfolio[period] ?? nil
                         if let pct {
                             Text(String(format: "%+.\(decimals)f%%", pct))
                                 .font(DS.figure.monospacedDigit())
@@ -721,7 +776,7 @@ struct PortfolioOverview: View {
                     .frame(width: 140, alignment: .leading)
 
                     ForEach(PerformancePeriod.allCases) { period in
-                        let pct = spxPerformance(for: period)
+                        let pct = perf.spx[period] ?? nil
                         if let pct {
                             Text(String(format: "%+.\(decimals)f%%", pct))
                                 .font(DS.figure.monospacedDigit())
