@@ -139,14 +139,6 @@ struct PortfolioListView: View {
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                         }
-
-                        ForEach(filteredPortfolios) { portfolio in
-                            PortfolioSection(
-                                portfolio: portfolio,
-                                confirmDeletePortfolio: $confirmDeletePortfolio,
-                                confirmDeleteHolding: $confirmDeleteHolding
-                            )
-                        }
                     } else if let selectedId = selectedPortfolioId,
                               let targetPortfolio = filteredPortfolios.first(where: { $0.id == selectedId }) {
                         PortfolioSection(
