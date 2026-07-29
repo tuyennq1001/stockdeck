@@ -586,8 +586,8 @@ struct QuoteRow: View {
             }
             .frame(width: 100, alignment: .leading)
 
-            // Col 2: Price (consistent with Portfolio & extended hours setting)
-            let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+            // Col 2: Price (regular closing price, unified with Portfolio)
+            let displayPrice = quote.price
             let pDecimals = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice * priceRate)
             VStack(alignment: .trailing, spacing: 0) {
                 Text("\(currSymbol)\(StorageService.formatNumber(displayPrice * priceRate, decimals: pDecimals))")

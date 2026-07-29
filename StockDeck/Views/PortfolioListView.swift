@@ -997,16 +997,16 @@ struct GroupedHoldingRow: View {
                     let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
                     let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
 
-                    // Col 2: Price
+                    // Col 2: Price (regular closing price formatted as integer)
                     HStack(spacing: 3) {
-                        Text("\(priceSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate)))")
+                        Text("\(priceSymbol)\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                     }
                     .frame(maxWidth: .infinity)
 
                     // Col 3: Total Market Value & Total P&L
-                    let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                    let displayPrice = quote.price
                     let totalMarketVal = holdings.reduce(0) { $0 + ($1.marketValue(currentPrice: displayPrice) * rate) }
                     let totalCostBasis = holdings.reduce(0) { sum, h in
                         let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
@@ -1185,11 +1185,10 @@ struct PortfolioQuoteRow: View {
             .minimumScaleFactor(0.7)
             .frame(width: 65, alignment: .trailing)
 
-            // Col 3: Price (current price in decimal format)
+            // Col 3: Price (regular closing price formatted as integer)
             HStack(spacing: 2) {
                 if let quote {
-                    let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)
-                    Text(StorageService.formatAmount(quote.price * priceRate, symbol: currSymbol, decimals: dec))
+                    Text(StorageService.formatAmount(quote.price * priceRate, symbol: currSymbol, decimals: 0))
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
