@@ -291,6 +291,7 @@ struct PortfolioOverview: View {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         heroCard
                         statRow
+                        performanceMatrixCard
                         allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
                             topGainersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
@@ -323,6 +324,7 @@ struct PortfolioOverview: View {
         }
         .task(id: symbols) {
             await withTaskGroup(of: Void.self) { group in
+                group.addTask { await stockService.ensurePriceHistoryMax(for: "^GSPC") }
                 for symbol in symbols {
                     let s = symbol
                     group.addTask { await stockService.ensurePriceHistory(for: s) }
@@ -595,6 +597,134 @@ struct PortfolioOverview: View {
                      caption: topSymbol.map { topWeight > 40 ? "high · top \($0)" : "top · \($0)" } ?? "—",
                      captionTint: topWeight > 40 ? DS.gold : DS.inkTertiary,
                      help: "Weight of your largest position — a diversification risk gauge")
+        }
+    }
+
+    // MARK: - Performance & Benchmark Matrix
+
+    enum PerformancePeriod: String, CaseIterable, Identifiable {
+        case m1 = "1M"
+        case m3 = "3M"
+        case m6 = "6M"
+        case ytd = "YTD"
+        case y1 = "1Y"
+        case y3 = "3Y"
+        case y5 = "5Y"
+        case y10 = "10Y"
+
+        var id: String { rawValue }
+
+        func cutoffDate() -> Date {
+            let cal = Calendar.current
+            let now = Date()
+            switch self {
+            case .m1: return cal.date(byAdding: .month, value: -1, to: now) ?? now
+            case .m3: return cal.date(byAdding: .month, value: -3, to: now) ?? now
+            case .m6: return cal.date(byAdding: .month, value: -6, to: now) ?? now
+            case .ytd: return cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+            case .y1: return cal.date(byAdding: .year, value: -1, to: now) ?? now
+            case .y3: return cal.date(byAdding: .year, value: -3, to: now) ?? now
+            case .y5: return cal.date(byAdding: .year, value: -5, to: now) ?? now
+            case .y10: return cal.date(byAdding: .year, value: -10, to: now) ?? now
+            }
+        }
+    }
+
+    private func portfolioPerformance(for period: PerformancePeriod) -> Double? {
+        let points = valueSeries(from: stockService.priceHistoryMax)
+        guard points.count >= 2, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
+        let cutoff = period.cutoffDate()
+        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first, abs(startPoint.value) > 1e-9 else { return nil }
+        return ((lastVal - startPoint.value) / abs(startPoint.value)) * 100
+    }
+
+    private func spxPerformance(for period: PerformancePeriod) -> Double? {
+        let points = stockService.priceHistoryMax["^GSPC"] ?? stockService.priceHistory["^GSPC"] ?? []
+        guard points.count >= 2, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
+        let cutoff = period.cutoffDate()
+        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first, abs(startPoint.close) > 1e-9 else { return nil }
+        return ((lastPrice - startPoint.close) / abs(startPoint.close)) * 100
+    }
+
+    private var performanceMatrixCard: some View {
+        Card(title: "Performance & Benchmark") {
+            VStack(spacing: 12) {
+                HStack(spacing: 0) {
+                    Text("Timeline")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(width: 140, alignment: .leading)
+
+                    ForEach(PerformancePeriod.allCases) { p in
+                        Text(p.rawValue)
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                }
+                .padding(.bottom, 2)
+
+                Divider().overlay(DS.hairline)
+
+                // Row 1: Portfolio Performance
+                HStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "briefcase.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DS.brand)
+                        Text(title)
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                    }
+                    .frame(width: 140, alignment: .leading)
+
+                    ForEach(PerformancePeriod.allCases) { period in
+                        let pct = portfolioPerformance(for: period)
+                        if let pct {
+                            Text(String(format: "%+.\(decimals)f%%", pct))
+                                .font(DS.figure.monospacedDigit())
+                                .foregroundStyle(DS.pnlColor(pct))
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        } else {
+                            Text("—")
+                                .font(DS.figure)
+                                .foregroundStyle(DS.inkTertiary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                    }
+                }
+
+                Divider().overlay(DS.hairline.opacity(0.5))
+
+                // Row 2: SPX Benchmark Performance
+                HStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DS.inkSecondary)
+                        Text("S&P 500 (SPX)")
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                    }
+                    .frame(width: 140, alignment: .leading)
+
+                    ForEach(PerformancePeriod.allCases) { period in
+                        let pct = spxPerformance(for: period)
+                        if let pct {
+                            Text(String(format: "%+.\(decimals)f%%", pct))
+                                .font(DS.figure.monospacedDigit())
+                                .foregroundStyle(DS.pnlColor(pct))
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        } else {
+                            Text("—")
+                                .font(DS.figure)
+                                .foregroundStyle(DS.inkTertiary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                    }
+                }
+            }
         }
     }
 
