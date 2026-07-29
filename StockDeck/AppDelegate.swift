@@ -246,16 +246,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func recordSnapshots() {
         for portfolio in storageService.portfolios {
             guard !portfolio.holdings.isEmpty else { continue }
-            let inputs: [PortfolioValuation.Input] = portfolio.holdings.compactMap { holding in
-                guard let quote = stockService.quotes[holding.symbol] else { return nil }
-                return PortfolioValuation.Input(
-                    holding: holding,
-                    price: quote.displayPrice(extendedHours: storageService.showExtendedHours),
-                    rate: stockService.rate(from: quote.currency),
-                    costRate: stockService.rate(from: quote.currency, for: holding.purchaseDate)
-                )
-            }
-            guard inputs.count == portfolio.holdings.count else { continue }
+            let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
             let totals = PortfolioValuation.totals(inputs)
             storageService.recordSnapshot(for: portfolio.id, totalValue: totals.value, totalCost: totals.cost)
         }

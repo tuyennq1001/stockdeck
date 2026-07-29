@@ -34,7 +34,7 @@ enum PerformanceBenchmarkCache {
                             compute: () -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]))
     -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]) {
         lock.lock()
-        if let existing = cache[scopeKey] {
+        if let existing = cache[scopeKey], existing.spx.values.contains(where: { $0 != nil }) {
             lock.unlock()
             return existing
         }
@@ -42,9 +42,11 @@ enum PerformanceBenchmarkCache {
 
         let result = compute()
 
-        lock.lock()
-        cache[scopeKey] = result
-        lock.unlock()
+        if result.spx.values.contains(where: { $0 != nil }) {
+            lock.lock()
+            cache[scopeKey] = result
+            lock.unlock()
+        }
 
         return result
     }
@@ -239,20 +241,29 @@ struct PortfolioOverview: View {
     }
 
     private var filteredSeries: [PortfolioSnapshot] {
-        if let days = chartRange.days,
-           let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
-            return series.filter { $0.date >= cutoff }
-        } else if chartRange == .all {
-            if let purchaseDate = earliestPurchaseDate {
-                let cutoff = Calendar.current.startOfDay(for: purchaseDate)
-                let filtered = series.filter { $0.date >= cutoff }
-                if !filtered.isEmpty { return filtered }
+        let baseSeries: [PortfolioSnapshot] = {
+            if let days = chartRange.days,
+               let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
+                return series.filter { $0.date >= cutoff }
+            } else if chartRange == .all {
+                if let purchaseDate = earliestPurchaseDate {
+                    let cutoff = Calendar.current.startOfDay(for: purchaseDate)
+                    let filtered = series.filter { $0.date >= cutoff }
+                    if !filtered.isEmpty { return filtered }
+                }
+                if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                    return series.filter { $0.date >= cutoff5Y }
+                }
             }
-            if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
-                return series.filter { $0.date >= cutoff5Y }
-            }
+            return series
+        }()
+
+        let currentVal = totalValue
+        guard currentVal > 0 else { return baseSeries }
+        return baseSeries.filter { snap in
+            let ratio = snap.totalValue / currentVal
+            return ratio >= 0.25 && ratio <= 4.0
         }
-        return series
     }
 
     /// Builds an estimated value curve from a given per-symbol price history
@@ -673,14 +684,13 @@ struct PortfolioOverview: View {
     }
 
     private func portfolioPerformance(for period: PerformancePeriod, points: [ValuePoint]) -> Double? {
-        guard points.count >= 2, let firstDate = points.first?.date, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
+        guard points.count >= 2, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
 
-        if let inception = portfolioInceptionDate {
+        // Only enforce strict inception cutoff for long-term periods (5Y, 10Y) if portfolio inception is known
+        if (period == .y5 || period == .y10), let inception = portfolioInceptionDate {
             guard inception <= graceCutoff else { return nil }
-        } else {
-            guard firstDate <= graceCutoff else { return nil }
         }
 
         guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.value) > 1e-9 else { return nil }
@@ -689,10 +699,9 @@ struct PortfolioOverview: View {
 
     private func spxPerformance(for period: PerformancePeriod) -> Double? {
         let points = stockService.priceHistoryMax["^GSPC"] ?? stockService.priceHistory["^GSPC"] ?? []
-        guard points.count >= 2, let firstDate = points.first?.date, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
+        guard points.count >= 2, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
-        guard firstDate <= graceCutoff else { return nil }
         guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.close) > 1e-9 else { return nil }
         return ((lastPrice - startPoint.close) / abs(startPoint.close)) * 100
     }
