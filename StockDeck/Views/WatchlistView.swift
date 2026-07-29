@@ -586,14 +586,14 @@ struct QuoteRow: View {
             }
             .frame(width: 100, alignment: .leading)
 
-            // Col 2: Price (regular closing price formatted as integer, unified with Portfolio)
+            // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
             let displayPrice = quote.price
             VStack(alignment: .trailing, spacing: 0) {
-                Text("\(currSymbol)\(StorageService.formatNumber(displayPrice * priceRate, decimals: 0))")
+                Text(StorageService.formatCompactAmount(displayPrice * priceRate, symbol: currSymbol))
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    Text("\(StorageService.formatNumber(low * priceRate, decimals: 0)) – \(StorageService.formatNumber(high * priceRate, decimals: 0))")
+                    Text("\(StorageService.formatCompactNumber(low * priceRate)) – \(StorageService.formatCompactNumber(high * priceRate))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }

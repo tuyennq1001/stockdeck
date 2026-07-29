@@ -492,9 +492,40 @@ class StorageService: ObservableObject {
         case "GBP": return "£"
         case "CHF": return "CHF"
         case "JPY": return "¥"
+        case "VND": return "₫"
         case "CAD": return "C$"
         case "AUD": return "A$"
         default: return code
+        }
+    }
+
+    static func formatCompactNumber(_ value: Double) -> String {
+        let absVal = abs(value)
+        let sign = value < 0 ? "-" : ""
+        if absVal >= 1_000_000 {
+            let m = absVal / 1_000_000
+            return "\(sign)\(String(format: m >= 10 ? "%.1fM" : "%.2fM", m))"
+        } else if absVal >= 10_000 {
+            let k = absVal / 1_000
+            return "\(sign)\(String(format: k >= 100 ? "%.0fK" : "%.1fK", k))"
+        } else {
+            return formatNumber(value, decimals: 0)
+        }
+    }
+
+    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false) -> String {
+        let absVal = abs(value)
+        let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
+        if absVal >= 1_000_000 {
+            let m = absVal / 1_000_000
+            let formatted = String(format: m >= 10 ? "%.1fM" : "%.2fM", m)
+            return "\(sign)\(symbol)\(formatted)"
+        } else if absVal >= 10_000 {
+            let k = absVal / 1_000
+            let formatted = String(format: k >= 100 ? "%.0fK" : "%.1fK", k)
+            return "\(sign)\(symbol)\(formatted)"
+        } else {
+            return formatAmount(value, symbol: symbol, decimals: 0, signed: signed)
         }
     }
 

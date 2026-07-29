@@ -1177,11 +1177,10 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 80, alignment: .leading)
 
-            // Col 2: Avg Cost (formatted without decimals)
-            Text(StorageService.formatAmount(
+            // Col 2: Avg Cost (compact amount for large numbers/currencies)
+            Text(StorageService.formatCompactAmount(
                 globalPos.avgPrice,
-                symbol: globalPos.priceSymbol,
-                decimals: 0
+                symbol: globalPos.priceSymbol
             ))
             .font(.inter(13, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
@@ -1190,10 +1189,10 @@ struct PortfolioQuoteRow: View {
             .minimumScaleFactor(0.85)
             .frame(width: 72, alignment: .trailing)
 
-            // Col 3: Price (regular closing price formatted as integer)
+            // Col 3: Price (regular closing price, compact amount for large numbers/currencies)
             HStack(spacing: 2) {
                 if let quote {
-                    Text(StorageService.formatAmount(quote.price * priceRate, symbol: currSymbol, decimals: 0))
+                    Text(StorageService.formatCompactAmount(quote.price * priceRate, symbol: currSymbol))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
@@ -1233,12 +1232,11 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 60, alignment: .trailing)
 
-            // Col 5: P&L (2 lines: Amount on top without decimals, Percent on bottom)
+            // Col 5: P&L (2 lines: Amount on top compact format, Percent on bottom)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatAmount(
+                Text(StorageService.formatCompactAmount(
                     globalPos.pnl,
                     symbol: globalPos.priceSymbol,
-                    decimals: 0,
                     signed: true
                 ))
                 .font(.inter(13, relativeTo: .body).monospacedDigit())
