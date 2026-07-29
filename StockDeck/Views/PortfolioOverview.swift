@@ -34,7 +34,9 @@ enum PerformanceBenchmarkCache {
                             compute: () -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]))
     -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]) {
         lock.lock()
-        if let existing = cache[scopeKey], existing.spx.values.contains(where: { $0 != nil }) {
+        if let existing = cache[scopeKey],
+           existing.spx.values.contains(where: { $0 != nil }),
+           existing.portfolio.values.contains(where: { $0 != nil }) {
             lock.unlock()
             return existing
         }
@@ -42,7 +44,7 @@ enum PerformanceBenchmarkCache {
 
         let result = compute()
 
-        if result.spx.values.contains(where: { $0 != nil }) {
+        if result.spx.values.contains(where: { $0 != nil }) && result.portfolio.values.contains(where: { $0 != nil }) {
             lock.lock()
             cache[scopeKey] = result
             lock.unlock()
@@ -371,6 +373,7 @@ struct PortfolioOverview: View {
                 for symbol in symbols {
                     let s = symbol
                     group.addTask { await stockService.ensurePriceHistory(for: s) }
+                    group.addTask { await stockService.ensurePriceHistoryMax(for: s) }
                 }
             }
         }
@@ -709,7 +712,12 @@ struct PortfolioOverview: View {
     /// Evaluates benchmark matrix once per app session (not updating real-time).
     private var cachedPerformance: (portfolio: [PerformancePeriod: Double?], spx: [PerformancePeriod: Double?]) {
         PerformanceBenchmarkCache.performance(for: scopeKey) {
-            let maxPoints = valueSeries(from: stockService.priceHistoryMax)
+            let hs = portfolios.flatMap { $0.holdings }
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol] ?? stockService.priceHistory[h.symbol] ?? []
+            }
+            let maxPoints = valueSeries(from: histBySymbol)
             var pDict: [PerformancePeriod: Double?] = [:]
             var sDict: [PerformancePeriod: Double?] = [:]
             for period in PerformancePeriod.allCases {
