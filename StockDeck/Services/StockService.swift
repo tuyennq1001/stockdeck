@@ -807,11 +807,28 @@ class StockService: ObservableObject {
     }
 
     func isJapaneseMutualFund(_ symbol: String) -> Bool {
-        if containsJapaneseCharacters(symbol) { return true }
-        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard clean.count == 8 else { return false }
-        let regex = "^[0-9A-Z]{8}$"
-        return clean.range(of: regex, options: .regularExpression) != nil
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
+            return false
+        }
+        let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
+        if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
+            return true
+        }
+        let clean = upper.replacingOccurrences(of: ".JP", with: "").replacingOccurrences(of: ".T", with: "")
+        if Self.codeToFundNameMap[clean] != nil || Self.codeToFundNameMap[upper] != nil {
+            return true
+        }
+        if clean.hasPrefix("0P") && clean.count >= 8 {
+            return true
+        }
+        let toushinRegex = "^[0-9A-Z]{5,12}$"
+        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+            if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
+                return true
+            }
+        }
+        return false
     }
 
     func detectedCurrency(for symbol: String) -> String {

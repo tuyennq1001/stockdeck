@@ -172,18 +172,28 @@ struct StockQuote: Identifiable, Codable {
 
     /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
     var isJapaneseFund: Bool {
-        let upper = symbol.uppercased()
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
             return false
         }
         let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
-        if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
+        if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) || name.unicodeScalars.contains(where: { jpSet.contains($0) }) {
             return true
         }
-        let clean = upper.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count == 8 else { return false }
-        let toushinRegex = "^[0-9A-Z]{8}$"
-        return clean.range(of: toushinRegex, options: .regularExpression) != nil
+        let clean = upper.replacingOccurrences(of: ".JP", with: "").replacingOccurrences(of: ".T", with: "")
+        if StockService.codeToFundNameMap[clean] != nil || StockService.codeToFundNameMap[upper] != nil {
+            return true
+        }
+        if clean.hasPrefix("0P") && clean.count >= 8 {
+            return true
+        }
+        let toushinRegex = "^[0-9A-Z]{5,12}$"
+        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+            if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
+                return true
+            }
+        }
+        return false
     }
 
     /// Display name for symbol. For Japanese mutual funds (投資信託), returns the Japanese fund name.
@@ -264,7 +274,7 @@ struct Holding: Identifiable, Codable {
 
     /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
     var isJapaneseFund: Bool {
-        let upper = symbol.uppercased()
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
             return false
         }
@@ -272,13 +282,16 @@ struct Holding: Identifiable, Codable {
         if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
             return true
         }
-        let clean = upper.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = upper.replacingOccurrences(of: ".JP", with: "").replacingOccurrences(of: ".T", with: "")
         if StockService.codeToFundNameMap[clean] != nil || StockService.codeToFundNameMap[upper] != nil {
             return true
         }
-        if clean.count == 8 {
-            let regex = "^[0-9A-Z]{8}$"
-            if clean.range(of: regex, options: .regularExpression) != nil {
+        if clean.hasPrefix("0P") && clean.count >= 8 {
+            return true
+        }
+        let toushinRegex = "^[0-9A-Z]{5,12}$"
+        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+            if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
                 return true
             }
         }

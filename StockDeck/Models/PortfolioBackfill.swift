@@ -69,7 +69,7 @@ enum PortfolioBackfill {
         var lastPrice: [String: Double] = [:]
         var historyIndex: [String: Int] = [:]
         for h in holdings {
-            let scale = h.isJapaneseFund ? 10000.0 : 1.0
+            let scale = (h.isJapaneseFund || StockService.codeToFundNameMap[h.symbol] != nil) ? 10000.0 : 1.0
             if let firstP = symbolHistory[h.symbol]?.first {
                 lastPrice[h.symbol] = firstP.price / scale
             } else {
@@ -85,7 +85,7 @@ enum PortfolioBackfill {
             for h in holdings {
                 guard let points = symbolHistory[h.symbol] else { continue }
                 var idx = historyIndex[h.symbol] ?? 0
-                let scale = h.isJapaneseFund ? 10000.0 : 1.0
+                let scale = (h.isJapaneseFund || StockService.codeToFundNameMap[h.symbol] != nil) ? 10000.0 : 1.0
                 while idx < points.count && points[idx].date <= date {
                     lastPrice[h.symbol] = points[idx].price / scale
                     idx += 1
@@ -95,7 +95,7 @@ enum PortfolioBackfill {
 
             var total = 0.0
             for h in holdings {
-                let scale = h.isJapaneseFund ? 10000.0 : 1.0
+                let scale = (h.isJapaneseFund || StockService.codeToFundNameMap[h.symbol] != nil) ? 10000.0 : 1.0
                 let pricePerUnit = lastPrice[h.symbol] ?? (h.avgPrice / scale)
                 let rate = rateBySymbol[h.symbol] ?? 1.0
                 total += pricePerUnit * h.quantity * h.effectiveLeverage * rate
