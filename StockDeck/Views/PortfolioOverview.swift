@@ -182,7 +182,7 @@ struct PortfolioOverview: View {
                     changePercent: 0,
                     currency: stockService.detectedCurrency(for: holding.symbol)
                 )
-                let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                let price = quote.price
                 let rate = stockService.rate(from: quote.currency)
                 let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
                 let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund

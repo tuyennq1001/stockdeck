@@ -8,6 +8,7 @@ class StockService: ObservableObject {
     @Published var isLoading = false
     @Published var exchangeRates: [String: Double] = [:]  // e.g. "USDEUR" -> 0.92 (rate to preferred currency)
     @Published var historicalRates: [String: Double] = [:]  // e.g. "USDEUR:1704067200" -> 0.9045 (rate at date)
+    @Published var lastFxFetchDate: Date? = nil
     @Published var news: [NewsArticle] = []
     @Published var isLoadingNews = false
     /// Daily close history per symbol (~2 years, full daily resolution) for the
@@ -74,8 +75,10 @@ class StockService: ObservableObject {
         await refreshExchangeRates(storageService: storageService)
     }
 
-    /// Refresh only exchange rates (current + historical). Called periodically while WSS handles quotes.
+    /// Refresh only exchange rates (current + historical). Called at app startup; kept fixed for session to stay lightweight.
     func refreshExchangeRates(storageService: StorageService) async {
+        // Keep FX rate fixed once fetched at app launch for lightweight, stable performance
+        if !exchangeRates.isEmpty { return }
         let allSymbols = Self.collectSymbols(storageService: storageService)
         guard !allSymbols.isEmpty else { return }
 
@@ -152,6 +155,7 @@ class StockService: ObservableObject {
                 }
             }
         }
+        lastFxFetchDate = Date()
     }
 
     func fetchQuotes(symbols: [String]) async {
