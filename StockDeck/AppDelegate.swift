@@ -394,7 +394,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                     totalValue += holding.marketValue(currentPrice: displayPrice) * rate
                     let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
-                    totalCost += (holding.avgPrice * holding.quantity) * costRate
+                    totalCost += holding.costBasisLocal * costRate
                 }
             }
         }

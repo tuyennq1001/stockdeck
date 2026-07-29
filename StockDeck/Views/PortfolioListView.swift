@@ -319,33 +319,39 @@ struct PortfolioListView: View {
         var qtyPrice: [String: Double] = [:]
         var totalVal: [String: Double] = [:]
         var totalCost: [String: Double] = [:]
+        var orderMap: [String: Int] = [:]
+        var order = 0
 
         for portfolio in activePortfoliosForSummary {
             for h in portfolio.holdings {
-                qty[h.symbol, default: 0] += h.quantity
-                qtyPrice[h.symbol, default: 0] += h.quantity * h.avgPrice
+                let sym = h.symbol.uppercased()
+                if orderMap[sym] == nil {
+                    orderMap[sym] = order
+                    order += 1
+                }
+                qty[sym, default: 0] += h.quantity
+                qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
                 if let quote = stockService.quotes[h.symbol] {
                     let rate = stockService.rate(from: quote.currency)
                     let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
-                    totalVal[h.symbol, default: 0] += h.marketValue(currentPrice: quote.price) * rate
-                    totalCost[h.symbol, default: 0] += h.costBasisLocal * costRate
+                    totalVal[sym, default: 0] += h.marketValue(currentPrice: quote.price) * rate
+                    totalCost[sym, default: 0] += h.costBasisLocal * costRate
                 }
             }
         }
         return qty.compactMap { symbol, q -> GlobalPosition? in
             guard abs(q) >= 1e-9, let quote = stockService.quotes[symbol] else { return nil }
             let avg = qtyPrice[symbol, default: 0] / q
-            // Regular session price for P&L computation
             let price = quote.price
+            let scale = stockService.isJapaneseMutualFund(symbol) ? 10000.0 : 1.0
             let rawPct = abs(avg) >= 1e-6 ? (price / avg - 1) * 100 : 0
-            // A short position gains when the price falls, so flip the sign.
             let pct = q >= 0 ? rawPct : -rawPct
-            let valLocal = q * price
-            let costLocal = qtyPrice[symbol, default: 0]
+            let valLocal = (price / scale) * q
+            let costLocal = (avg / scale) * q
             let pnl = valLocal - costLocal
             let priceCurr = storageService.stockPriceCurrency
             let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
-            let value = abs(price * q) * stockService.rate(from: quote.currency)
+            let value = abs((price / scale) * q) * stockService.rate(from: quote.currency)
 
             let extPrice: Double? = quote.isExtendedHours ? quote.alertPrice : nil
             let extChangePercent: Double? = quote.isExtendedHours ? quote.extendedChangePercent : nil
@@ -355,7 +361,7 @@ struct PortfolioListView: View {
                                   extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: value)
         }
-        .sorted { $0.value > $1.value }
+        .sorted { (orderMap[$0.id] ?? 999) < (orderMap[$1.id] ?? 999) }
     }
 
     private func exportPortfolios(_ portfolios: [Portfolio]) {

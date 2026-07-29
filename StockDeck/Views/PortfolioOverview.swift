@@ -63,6 +63,7 @@ struct PortfolioOverview: View {
         }
     }
     enum PositionSortColumn: String, CaseIterable {
+        case manual
         case symbol
         case price
         case extended
@@ -71,11 +72,26 @@ struct PortfolioOverview: View {
         case pnl
         case weight
     }
-    @State private var sortColumn: PositionSortColumn = .value
+    @State private var sortColumn: PositionSortColumn = .manual
     @State private var sortAscending: Bool = false
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
+
+    private var insertionOrderedSymbols: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for p in portfolios {
+            for h in p.holdings {
+                let sym = h.symbol.uppercased()
+                if !seen.contains(sym) {
+                    seen.insert(sym)
+                    result.append(sym)
+                }
+            }
+        }
+        return result
+    }
 
     private func sortHeader(_ title: String, column: PositionSortColumn) -> some View {
         Button(action: {
@@ -797,43 +813,50 @@ struct PortfolioOverview: View {
                         Divider().overlay(DS.hairline)
 
                         let groupedValued = Dictionary(grouping: holdings) { $0.symbol.uppercased() }
-                        let sortedSymbols = groupedValued.keys.sorted { sym1, sym2 in
-                            guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
-                            let isAsc = sortAscending
+                        let sortedSymbols: [String] = {
+                            if sortColumn == .manual {
+                                return insertionOrderedSymbols.filter { groupedValued[$0] != nil }
+                            }
+                            return groupedValued.keys.sorted { sym1, sym2 in
+                                guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
+                                let isAsc = sortAscending
 
-                            func compareOptional(_ lhs: Double?, _ rhs: Double?) -> Bool {
-                                switch (lhs, rhs) {
-                                case let (l?, r?): return isAsc ? l < r : l > r
-                                case (_?, nil): return true
-                                case (nil, _?): return false
-                                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                                func compareOptional(_ lhs: Double?, _ rhs: Double?) -> Bool {
+                                    switch (lhs, rhs) {
+                                    case let (l?, r?): return isAsc ? l < r : l > r
+                                    case (_?, nil): return true
+                                    case (nil, _?): return false
+                                    case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                                    }
+                                }
+
+                                switch sortColumn {
+                                case .manual:
+                                    return false
+                                case .symbol:
+                                    return isAsc ? sym1 < sym2 : sym1 > sym2
+                                case .price:
+                                    let p1 = g1.first?.quote.changePercent ?? 0
+                                    let p2 = g2.first?.quote.changePercent ?? 0
+                                    return isAsc ? p1 < p2 : p1 > p2
+                                case .extended:
+                                    return compareOptional(g1.first?.quote.extendedChangePercent,
+                                                           g2.first?.quote.extendedChangePercent)
+                                case .cost:
+                                    let c1 = g1.reduce(0) { $0 + $1.cost }
+                                    let c2 = g2.reduce(0) { $0 + $1.cost }
+                                    return isAsc ? c1 < c2 : c1 > c2
+                                case .value, .weight:
+                                    let v1 = g1.reduce(0) { $0 + $1.value }
+                                    let v2 = g2.reduce(0) { $0 + $1.value }
+                                    return isAsc ? v1 < v2 : v1 > v2
+                                case .pnl:
+                                    let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
+                                    let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
+                                    return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
                                 }
                             }
-
-                            switch sortColumn {
-                            case .symbol:
-                                return isAsc ? sym1 < sym2 : sym1 > sym2
-                            case .price:
-                                let p1 = g1.first?.quote.changePercent ?? 0
-                                let p2 = g2.first?.quote.changePercent ?? 0
-                                return isAsc ? p1 < p2 : p1 > p2
-                            case .extended:
-                                return compareOptional(g1.first?.quote.extendedChangePercent,
-                                                       g2.first?.quote.extendedChangePercent)
-                            case .cost:
-                                let c1 = g1.reduce(0) { $0 + $1.cost }
-                                let c2 = g2.reduce(0) { $0 + $1.cost }
-                                return isAsc ? c1 < c2 : c1 > c2
-                            case .value, .weight:
-                                let v1 = g1.reduce(0) { $0 + $1.value }
-                                let v2 = g2.reduce(0) { $0 + $1.value }
-                                return isAsc ? v1 < v2 : v1 > v2
-                            case .pnl:
-                                let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
-                                let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
-                                return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
-                            }
-                        }
+                        }()
 
                         ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
                             if let group = groupedValued[sym], let first = group.first {
