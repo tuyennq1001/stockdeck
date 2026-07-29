@@ -436,55 +436,100 @@ class StockService: ObservableObject {
 
     func rate(from currency: String, for purchaseDate: Date? = nil) -> Double {
         let preferred = StorageService.shared.preferredCurrency
-        if currency == preferred { return 1.0 }
+        if currency == preferred || currency.isEmpty { return 1.0 }
         if let date = purchaseDate {
             let dayStart = Calendar.current.startOfDay(for: date)
             let ts = Int(dayStart.timeIntervalSince1970)
             let key = "\(currency)\(preferred):\(ts)"
-            if let historical = historicalRates[key] { return historical }
+            if let historical = historicalRates[key], historical > 0 { return historical }
+            let inverseKey = "\(preferred)\(currency):\(ts)"
+            if let inverseHist = historicalRates[inverseKey], inverseHist > 0 { return 1.0 / inverseHist }
         }
-        return exchangeRates["\(currency)\(preferred)"] ?? 1.0
+        if let live = exchangeRates["\(currency)\(preferred)"], live > 0 { return live }
+        if let inverseLive = exchangeRates["\(preferred)\(currency)"], inverseLive > 0 { return 1.0 / inverseLive }
+        return 1.0
     }
 
     func priceRate(from currency: String) -> Double {
         let target = StorageService.shared.stockPriceCurrency
         if target.isEmpty || currency == target { return 1.0 }
-        return exchangeRates["\(currency)\(target)"] ?? 1.0
+        if let live = exchangeRates["\(currency)\(target)"], live > 0 { return live }
+        if let inverseLive = exchangeRates["\(target)\(currency)"], inverseLive > 0 { return 1.0 / inverseLive }
+        return 1.0
     }
 
     private func fetchExchangeRate(from: String, to: String) async {
-        let symbol = "\(from)\(to)=X"
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=1d") else { return }
+        if from == to || from.isEmpty || to.isEmpty { return }
+        let directSymbol = "\(from)\(to)=X"
+        let encodedDirect = directSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? directSymbol
+        if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encodedDirect)?interval=1d&range=1d") {
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+                if let result = response.chart.result?.first {
+                    let p = result.meta.regularMarketPrice
+                    if p > 0 {
+                        exchangeRates["\(from)\(to)"] = p
+                        return
+                    }
+                }
+            } catch {}
+        }
 
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
-            if let result = response.chart.result?.first {
-                exchangeRates["\(from)\(to)"] = result.meta.regularMarketPrice
-            }
-        } catch {
+        // Inverse pair fallback (e.g. USDVND=X for VNDUSD=X)
+        let inverseSymbol = "\(to)\(from)=X"
+        let encodedInverse = inverseSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? inverseSymbol
+        if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encodedInverse)?interval=1d&range=1d") {
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+                if let result = response.chart.result?.first {
+                    let p = result.meta.regularMarketPrice
+                    if p > 0 {
+                        exchangeRates["\(from)\(to)"] = 1.0 / p
+                        exchangeRates["\(to)\(from)"] = p
+                    }
+                }
+            } catch {}
         }
     }
 
     private func fetchHistoricalExchangeRate(from: String, to: String, dateTimestamp: Int) async {
-        let symbol = "\(from)\(to)=X"
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        if from == to || from.isEmpty || to.isEmpty { return }
+        let key = "\(from)\(to):\(dateTimestamp)"
+        let inverseKey = "\(to)\(from):\(dateTimestamp)"
+        let directSymbol = "\(from)\(to)=X"
+        let encodedDirect = directSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? directSymbol
         let period1 = dateTimestamp
         let period2 = dateTimestamp + 86400
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&period1=\(period1)&period2=\(period2)") else { return }
 
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
-            guard let result = response.chart.result?.first,
-                  let closes = result.indicators?.quote?.first?.close,
-                  !closes.isEmpty
-            else { return }
-            let validCloses = closes.compactMap { $0 }
-            guard let rate = validCloses.first else { return }
-            historicalRates["\(from)\(to):\(dateTimestamp)"] = rate
-        } catch {
+        if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encodedDirect)?interval=1d&period1=\(period1)&period2=\(period2)") {
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+                if let result = response.chart.result?.first,
+                   let closes = result.indicators?.quote?.first?.close,
+                   let validCloses = closes.compactMap({ $0 }).first, validCloses > 0 {
+                    historicalRates[key] = validCloses
+                    return
+                }
+            } catch {}
+        }
+
+        // Inverse pair fallback
+        let inverseSymbol = "\(to)\(from)=X"
+        let encodedInverse = inverseSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? inverseSymbol
+        if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encodedInverse)?interval=1d&period1=\(period1)&period2=\(period2)") {
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+                if let result = response.chart.result?.first,
+                   let closes = result.indicators?.quote?.first?.close,
+                   let validCloses = closes.compactMap({ $0 }).first, validCloses > 0 {
+                    historicalRates[key] = 1.0 / validCloses
+                    historicalRates[inverseKey] = validCloses
+                }
+            } catch {}
         }
     }
 

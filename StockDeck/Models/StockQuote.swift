@@ -234,13 +234,22 @@ struct Holding: Identifiable, Codable {
 
     /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
     var isJapaneseFund: Bool {
-        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard clean.count == 8 else {
-            let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
-            return symbol.unicodeScalars.contains { jpSet.contains($0) }
+        let upper = symbol.uppercased()
+        if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
+            return false
         }
-        let regex = "^[0-9A-Z]{8}$"
-        return clean.range(of: regex, options: .regularExpression) != nil
+        let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
+        if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
+            return true
+        }
+        let clean = upper.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count == 8 else { return false }
+        if upper.hasSuffix(".JP") {
+            let regex = "^[0-9A-Z]{8}$"
+            return clean.range(of: regex, options: .regularExpression) != nil
+        }
+        let toushinRegex = "^[0-9][0-9A-Z]{7}$"
+        return clean.range(of: toushinRegex, options: .regularExpression) != nil
     }
 
     /// Cost basis in the stock's own currency, signed and leverage-adjusted.
