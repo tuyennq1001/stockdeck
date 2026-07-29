@@ -385,19 +385,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Compute portfolio stats
-        var totalValue = 0.0
-        var totalCost = 0.0
-        for portfolio in storageService.portfolios {
-            for holding in portfolio.holdings {
-                if let quote = stockService.quotes[holding.symbol] {
-                    let rate = stockService.rate(from: quote.currency)
-                    let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                    totalValue += holding.marketValue(currentPrice: displayPrice) * rate
-                    let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
-                    totalCost += holding.costBasisLocal * costRate
-                }
-            }
-        }
+        let inputs = PortfolioValuation.resolveInputs(for: storageService.portfolios, stockService: stockService, storageService: storageService)
+        let totals = PortfolioValuation.totals(inputs)
+        let totalValue = totals.value
+        let totalCost = totals.cost
         let totalPnl = totalValue - totalCost
         let totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 

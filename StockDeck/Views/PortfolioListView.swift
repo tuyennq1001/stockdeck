@@ -299,23 +299,13 @@ struct PortfolioListView: View {
     }
 
     private func portfolioValue(for portfolios: [Portfolio]) -> Double {
-        portfolios.reduce(0) { total, portfolio in
-            total + portfolio.holdings.reduce(0) { sum, holding in
-                guard let quote = stockService.quotes[holding.symbol] else { return sum }
-                let rate = stockService.rate(from: quote.currency)
-                return sum + holding.marketValue(currentPrice: quote.price) * rate
-            }
-        }
+        let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
+        return PortfolioValuation.totals(inputs).value
     }
 
     private func portfolioCost(for portfolios: [Portfolio]) -> Double {
-        portfolios.reduce(0) { total, portfolio in
-            total + portfolio.holdings.reduce(0) { sum, holding in
-                guard let quote = stockService.quotes[holding.symbol] else { return sum }
-                let rate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
-                return sum + holding.costBasisLocal * rate
-            }
-        }
+        let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
+        return PortfolioValuation.totals(inputs).cost
     }
 
     private var grandTotalValue: Double {
@@ -453,11 +443,8 @@ struct PortfolioSection: View {
     }
 
     var totalValue: Double {
-        portfolio.holdings.reduce(0) { sum, holding in
-            guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rate(from: quote.currency)
-            return sum + holding.marketValue(currentPrice: quote.displayPrice(extendedHours: storageService.showExtendedHours)) * rate
-        }
+        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
+        return PortfolioValuation.totals(inputs).value
     }
 
     var totalPnl: Double {
@@ -465,11 +452,8 @@ struct PortfolioSection: View {
     }
 
     var totalCost: Double {
-        portfolio.holdings.reduce(0) { sum, holding in
-            guard let quote = stockService.quotes[holding.symbol] else { return sum }
-            let rate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
-            return sum + holding.costBasisLocal * rate
-        }
+        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
+        return PortfolioValuation.totals(inputs).cost
     }
 
     var totalPnlPercent: Double {

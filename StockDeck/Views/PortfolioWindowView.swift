@@ -589,15 +589,7 @@ struct PortfolioWindowView: View {
     // MARK: - Aggregation helpers (reuse the shared valuation math)
 
     private func valued(_ portfolios: [Portfolio]) -> [PortfolioValuation.Input] {
-        portfolios.flatMap { $0.holdings }.compactMap { holding in
-            guard let quote = stockService.quotes[holding.symbol] else { return nil }
-            return PortfolioValuation.Input(
-                holding: holding,
-                price: quote.displayPrice(extendedHours: storageService.showExtendedHours),
-                rate: stockService.rate(from: quote.currency),
-                costRate: stockService.rate(from: quote.currency, for: holding.purchaseDate)
-            )
-        }
+        PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
     }
 
     private func aggregateValue(for portfolios: [Portfolio]) -> Double {

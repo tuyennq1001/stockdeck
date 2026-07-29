@@ -62,6 +62,32 @@ enum PortfolioValuation {
         }
         return (value, cost)
     }
+
+    /// Unified resolver for holding inputs across all surfaces (menu bar, sidebar, overview).
+    /// Fallback quote with holding avgPrice and detected currency is used if no live quote exists,
+    /// ensuring holdings are never silently omitted from totals.
+    @MainActor
+    static func resolveInputs(for portfolios: [Portfolio], stockService: StockService, storageService: StorageService) -> [Input] {
+        portfolios.flatMap { $0.holdings }.map { holding in
+            let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
+                symbol: holding.symbol,
+                name: holding.symbol,
+                price: holding.avgPrice,
+                change: 0,
+                changePercent: 0,
+                currency: stockService.detectedCurrency(for: holding.symbol)
+            )
+            let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+            let rate = stockService.rate(from: quote.currency)
+            let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+            return Input(
+                holding: holding,
+                price: price,
+                rate: rate,
+                costRate: costRate
+            )
+        }
+    }
 }
 
 /// Regular-session performance for the current day. The calculation deliberately
