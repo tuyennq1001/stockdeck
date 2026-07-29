@@ -590,11 +590,11 @@ struct QuoteRow: View {
             let displayPrice = quote.price
             VStack(alignment: .trailing, spacing: 0) {
                 Text("\(currSymbol)\(StorageService.formatNumber(displayPrice * priceRate, decimals: 0))")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.semibold)
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
                     Text("\(StorageService.formatNumber(low * priceRate, decimals: 0)) – \(StorageService.formatNumber(high * priceRate, decimals: 0))")
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
             }
@@ -602,7 +602,7 @@ struct QuoteRow: View {
 
             // Col 3: % (Percent change ONLY)
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(.inter(12, relativeTo: .body).monospacedDigit())
                 .fontWeight(.bold)
                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
                 .lineLimit(1)

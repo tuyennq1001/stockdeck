@@ -110,13 +110,13 @@ struct PortfolioListView: View {
                             VStack(spacing: 0) {
                                 HStack(spacing: 0) {
                                     Text("Symbol")
-                                        .frame(width: 90, alignment: .leading)
+                                        .frame(width: 80, alignment: .leading)
                                     Text("Avg Cost")
-                                        .frame(width: 65, alignment: .trailing)
+                                        .frame(width: 72, alignment: .trailing)
                                     Text("Price")
-                                        .frame(width: 65, alignment: .trailing)
+                                        .frame(width: 72, alignment: .trailing)
                                     Text("%")
-                                        .frame(width: 58, alignment: .trailing)
+                                        .frame(width: 60, alignment: .trailing)
                                     Text("P&L")
                                         .frame(maxWidth: .infinity, alignment: .trailing)
                                 }
@@ -1155,7 +1155,7 @@ struct PortfolioQuoteRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Logo + symbol + name
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(globalPos.symbol)
@@ -1170,7 +1170,7 @@ struct PortfolioQuoteRow: View {
                     }
                 }
             }
-            .frame(width: 90, alignment: .leading)
+            .frame(width: 80, alignment: .leading)
 
             // Col 2: Avg Cost (formatted without decimals)
             Text(StorageService.formatAmount(
@@ -1182,8 +1182,8 @@ struct PortfolioQuoteRow: View {
             .fontWeight(.semibold)
             .foregroundColor(.primary)
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .frame(width: 65, alignment: .trailing)
+            .minimumScaleFactor(0.85)
+            .frame(width: 72, alignment: .trailing)
 
             // Col 3: Price (regular closing price formatted as integer)
             HStack(spacing: 2) {
@@ -1193,12 +1193,12 @@ struct PortfolioQuoteRow: View {
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.85)
                 } else {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 65, alignment: .trailing)
+            .frame(width: 72, alignment: .trailing)
 
             // Col 4: % (2 lines: % change on top, % ext on bottom, formatted like P&L)
             VStack(alignment: .trailing, spacing: 1) {
@@ -1226,7 +1226,7 @@ struct PortfolioQuoteRow: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 58, alignment: .trailing)
+            .frame(width: 60, alignment: .trailing)
 
             // Col 5: P&L (2 lines: Amount on top without decimals, Percent on bottom)
             VStack(alignment: .trailing, spacing: 1) {
@@ -1240,7 +1240,7 @@ struct PortfolioQuoteRow: View {
                 .fontWeight(.bold)
                 .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.85)
 
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
                     .font(.inter(10, relativeTo: .caption2).monospacedDigit())
