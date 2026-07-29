@@ -273,13 +273,16 @@ struct Holding: Identifiable, Codable {
             return true
         }
         let clean = upper.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count == 8 else { return false }
-        if upper.hasSuffix(".JP") {
-            let regex = "^[0-9A-Z]{8}$"
-            return clean.range(of: regex, options: .regularExpression) != nil
+        if StockService.codeToFundNameMap[clean] != nil || StockService.codeToFundNameMap[upper] != nil {
+            return true
         }
-        let toushinRegex = "^[0-9A-Z]{8}$"
-        return clean.range(of: toushinRegex, options: .regularExpression) != nil
+        if clean.count == 8 {
+            let regex = "^[0-9A-Z]{8}$"
+            if clean.range(of: regex, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Cost basis in the stock's own currency, signed and leverage-adjusted.
