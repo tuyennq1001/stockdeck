@@ -49,6 +49,8 @@ enum PortfolioValuation {
         var rate: Double
         /// Stock currency → preferred currency, at the holding's purchase date.
         var costRate: Double
+        /// True if quote/holding is a Japanese mutual fund (per 10,000 口).
+        var isJapaneseFund: Bool = false
     }
 
     /// Aggregate market value and cost basis in the preferred currency, reusing
@@ -57,8 +59,14 @@ enum PortfolioValuation {
         var value = 0.0
         var cost = 0.0
         for i in inputs {
-            value += i.holding.marketValue(currentPrice: i.price) * i.rate
-            cost += i.holding.costBasisLocal * i.costRate
+            let isFund = i.isJapaneseFund || i.holding.isJapaneseFund
+            let scale = isFund ? 10000.0 : 1.0
+            let lev = i.holding.effectiveLeverage
+            let qty = i.holding.quantity
+            let val = (i.price / scale) * qty * lev * i.rate
+            let cst = (i.holding.avgPrice / scale) * qty * lev * i.costRate
+            value += val
+            cost += cst
         }
         return (value, cost)
     }
@@ -80,11 +88,13 @@ enum PortfolioValuation {
             let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
             let rate = stockService.rate(from: quote.currency)
             let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+            let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
             return Input(
                 holding: holding,
                 price: price,
                 rate: rate,
-                costRate: costRate
+                costRate: costRate,
+                isJapaneseFund: isJpFund
             )
         }
     }

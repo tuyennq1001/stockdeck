@@ -148,7 +148,7 @@ struct PortfolioOverview: View {
     private var holdings: [ValuedHolding] {
         portfolios.flatMap { portfolio in
             portfolio.holdings.compactMap { holding -> ValuedHolding? in
-                let quote = stockService.quotes[holding.symbol] ?? StockQuote(
+                let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                     symbol: holding.symbol,
                     name: holding.symbol,
                     price: holding.avgPrice,
@@ -157,8 +157,14 @@ struct PortfolioOverview: View {
                     currency: stockService.detectedCurrency(for: holding.symbol)
                 )
                 let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                let value = holding.marketValue(currentPrice: price) * stockService.rate(from: quote.currency)
-                let cost = holding.costBasisLocal * stockService.rate(from: quote.currency, for: holding.purchaseDate)
+                let rate = stockService.rate(from: quote.currency)
+                let costRate = stockService.rate(from: quote.currency, for: holding.purchaseDate)
+                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
+                let scale = isJpFund ? 10000.0 : 1.0
+                let lev = holding.effectiveLeverage
+                let qty = holding.quantity
+                let value = (price / scale) * qty * lev * rate
+                let cost = (holding.avgPrice / scale) * qty * lev * costRate
                 return ValuedHolding(id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
                                      value: value, cost: cost, dayChangePercent: quote.changePercent,
                                      type: storageService.type(for: holding.symbol))
