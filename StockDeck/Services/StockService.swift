@@ -75,18 +75,28 @@ class StockService: ObservableObject {
         await refreshExchangeRates(storageService: storageService)
     }
 
-    /// Refresh only exchange rates (current + historical). Called at app startup; kept fixed for session to stay lightweight.
-    func refreshExchangeRates(storageService: StorageService) async {
-        // Keep FX rate fixed once fetched at app launch for lightweight, stable performance
-        if !exchangeRates.isEmpty { return }
+    private static let fallbackFxToUSD: [String: Double] = [
+        "JPY": 1.0 / 155.0,
+        "EUR": 1.08,
+        "GBP": 1.28,
+        "VND": 1.0 / 25400.0,
+        "AUD": 0.65,
+        "CAD": 0.73,
+        "CHF": 1.12,
+        "HKD": 0.128,
+        "SGD": 0.74,
+        "KRW": 1.0 / 1380.0
+    ]
+
+    /// Refresh exchange rates for tracked currencies once per calendar day or on app launch.
+    func refreshExchangeRates(storageService: StorageService, force: Bool = false) async {
         let allSymbols = Self.collectSymbols(storageService: storageService)
         guard !allSymbols.isEmpty else { return }
 
-        // Fetch exchange rates for all stock currencies toward both target currencies
+        // Collect all pairs we need: (from, to)
         let preferredCurrency = storageService.preferredCurrency
         let priceCurrency = storageService.stockPriceCurrency
 
-        // Collect all pairs we need: (from, to)
         var pairs = Set<String>() // "FROMTO" keys
         for symbol in allSymbols {
             guard let quote = quotes[symbol] else { continue }
@@ -96,6 +106,26 @@ class StockService: ObservableObject {
             if !priceCurrency.isEmpty && quote.currency != priceCurrency {
                 pairs.insert("\(quote.currency)|\(priceCurrency)")
             }
+        }
+
+        // Check if all needed exchange rates are present in cache
+        let hasAllPairs: Bool = {
+            for pair in pairs {
+                let parts = pair.split(separator: "|")
+                guard parts.count >= 2 else { continue }
+                let from = String(parts[0])
+                let to = String(parts[1])
+                let direct = "\(from)\(to)"
+                let inverse = "\(to)\(from)"
+                if exchangeRates[direct] == nil && exchangeRates[inverse] == nil {
+                    return false
+                }
+            }
+            return true
+        }()
+
+        if !force && hasAllPairs && !exchangeRates.isEmpty, let lastDate = lastFxFetchDate, Calendar.current.isDateInToday(lastDate) {
+            return
         }
 
         // Evict exchange rates no longer needed
@@ -156,6 +186,36 @@ class StockService: ObservableObject {
             }
         }
         lastFxFetchDate = Date()
+    }
+
+    func rate(from currency: String, for purchaseDate: Date? = nil) -> Double {
+        let preferred = StorageService.shared.preferredCurrency
+        let fromUpper = currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let prefUpper = preferred.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if fromUpper == prefUpper || fromUpper.isEmpty { return 1.0 }
+
+        if let date = purchaseDate {
+            let dayStart = Calendar.current.startOfDay(for: date)
+            let ts = Int(dayStart.timeIntervalSince1970)
+            let key = "\(fromUpper)\(prefUpper):\(ts)"
+            if let historical = historicalRates[key], historical > 0 { return historical }
+            let inverseKey = "\(prefUpper)\(fromUpper):\(ts)"
+            if let inverseHist = historicalRates[inverseKey], inverseHist > 0 { return 1.0 / inverseHist }
+        }
+
+        if let live = exchangeRates["\(fromUpper)\(prefUpper)"], live > 0 { return live }
+        if let inverseLive = exchangeRates["\(prefUpper)\(fromUpper)"], inverseLive > 0 { return 1.0 / inverseLive }
+
+        // Fallback for cross-currency when live FX rate is not in exchangeRates cache yet
+        if prefUpper == "USD", let rateUSD = Self.fallbackFxToUSD[fromUpper] {
+            return rateUSD
+        } else if fromUpper == "USD", let rateUSD = Self.fallbackFxToUSD[prefUpper], rateUSD > 0 {
+            return 1.0 / rateUSD
+        } else if let fromUSD = Self.fallbackFxToUSD[fromUpper], let toUSD = Self.fallbackFxToUSD[prefUpper], toUSD > 0 {
+            return fromUSD / toUSD
+        }
+
+        return 1.0
     }
 
     func fetchQuotes(symbols: [String]) async {
@@ -438,21 +498,7 @@ class StockService: ObservableObject {
         }
     }
 
-    func rate(from currency: String, for purchaseDate: Date? = nil) -> Double {
-        let preferred = StorageService.shared.preferredCurrency
-        if currency == preferred || currency.isEmpty { return 1.0 }
-        if let date = purchaseDate {
-            let dayStart = Calendar.current.startOfDay(for: date)
-            let ts = Int(dayStart.timeIntervalSince1970)
-            let key = "\(currency)\(preferred):\(ts)"
-            if let historical = historicalRates[key], historical > 0 { return historical }
-            let inverseKey = "\(preferred)\(currency):\(ts)"
-            if let inverseHist = historicalRates[inverseKey], inverseHist > 0 { return 1.0 / inverseHist }
-        }
-        if let live = exchangeRates["\(currency)\(preferred)"], live > 0 { return live }
-        if let inverseLive = exchangeRates["\(preferred)\(currency)"], inverseLive > 0 { return 1.0 / inverseLive }
-        return 1.0
-    }
+
 
     func priceRate(from currency: String) -> Double {
         let target = StorageService.shared.stockPriceCurrency
