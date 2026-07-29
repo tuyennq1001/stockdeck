@@ -260,10 +260,13 @@ struct WatchlistWideView: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 10) {
                 SymbolLogo(symbol: symbol, size: 36)
+                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(symbol)
+                let titleText = isJpFund ? quote.displayName : symbol
+                let subTitleText = isJpFund ? "" : quote.name
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
-                    if !quote.name.isEmpty {
-                        Text(quote.name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink).lineLimit(1)
+                    if !subTitleText.isEmpty {
+                        Text(subTitleText).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
                     }
                 }
                 Spacer()
@@ -990,14 +993,18 @@ private struct WatchRowView<Menu: View>: View {
                     .foregroundStyle(DS.inkTertiary)
                     .frame(width: 24, alignment: .leading)
 
+                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
+                let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
+                let subTitleText = isJpFund ? "" : row.name
                 HStack(spacing: 9) {
                     SymbolLogo(symbol: row.symbol, size: 28)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(row.symbol)
+                        Text(titleText)
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
-                        if !row.name.isEmpty {
-                            Text(row.name)
+                            .lineLimit(1)
+                        if !subTitleText.isEmpty {
+                            Text(subTitleText)
                                 .font(DS.micro)
                                 .foregroundStyle(DS.inkTertiary)
                                 .lineLimit(1)

@@ -76,7 +76,7 @@ struct HoldingDetailView: View {
                 .padding(.top, 4)
             }
         }
-        .navigationTitle(holding.symbol)
+        .navigationTitle(mainTitle)
         .sheet(isPresented: $showAlert) {
             PriceAlertSheet(symbol: holding.symbol) { showAlert = false }
                 .environmentObject(stockService).environmentObject(storageService)

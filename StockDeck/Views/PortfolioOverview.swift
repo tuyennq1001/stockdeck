@@ -646,7 +646,8 @@ struct PortfolioOverview: View {
                                 HStack(spacing: 9) {
                                     RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
                                     SymbolLogo(symbol: slice.symbol, size: 20)
-                                    Text(slice.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                                    let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
+                                    Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
                                     Spacer()
                                     Text(String(format: "%.1f%%", slice.fraction * 100))
                                         .font(DS.figure).foregroundStyle(DS.inkSecondary)
@@ -738,11 +739,16 @@ struct PortfolioOverview: View {
 
     @ViewBuilder
     private func moverRow(_ h: ValuedHolding, maxAbs: Double, lastId: UUID?) -> some View {
+        let isJpFund = h.quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol)
         HStack(spacing: 10) {
             SymbolLogo(symbol: h.symbol, size: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
-                Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                if isJpFund {
+                    Text(h.name).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+                } else {
+                    Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                    Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
