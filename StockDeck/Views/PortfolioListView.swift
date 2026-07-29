@@ -42,29 +42,6 @@ struct PortfolioListView: View {
             }
         } else {
             VStack(spacing: 0) {
-                // Search bar
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                        .font(.inter(10, relativeTo: .caption))
-                    TextField("Filter portfolios…", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.inter(10, relativeTo: .caption))
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                                .font(.inter(10, relativeTo: .caption))
-                        }
-                        .buttonStyle(.borderless)
-                        .pointingHandCursor()
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-
-                Divider()
-
                 // Horizontal Portfolio Picker Bar (All Portfolios - Portfolio 1 - Portfolio 2...)
                 portfolioPickerBar
 
