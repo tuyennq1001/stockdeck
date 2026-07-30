@@ -211,15 +211,79 @@ struct StockQuote: Identifiable, Codable {
     }
 }
 
+enum PortfolioSourceType: Codable, Equatable {
+    case manual
+    case binance(keychainId: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case keychainId
+    }
+
+    enum Types: String, Codable {
+        case manual
+        case binance
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(Types.self, forKey: .type)
+        switch type {
+        case .manual:
+            self = .manual
+        case .binance:
+            let id = try container.decode(String.self, forKey: .keychainId)
+            self = .binance(keychainId: id)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .manual:
+            try container.encode(Types.manual, forKey: .type)
+        case .binance(let keychainId):
+            try container.encode(Types.binance, forKey: .type)
+            try container.encode(keychainId, forKey: .keychainId)
+        }
+    }
+}
+
 struct Portfolio: Identifiable, Codable {
     var id: UUID
     var name: String
     var holdings: [Holding]
+    var sourceType: PortfolioSourceType
+    var lastSyncedAt: Date?
 
-    init(id: UUID = UUID(), name: String, holdings: [Holding] = []) {
+    var isReadOnly: Bool {
+        switch sourceType {
+        case .manual:
+            return false
+        case .binance:
+            return true
+        }
+    }
+
+    init(id: UUID = UUID(), name: String, holdings: [Holding] = [], sourceType: PortfolioSourceType = .manual, lastSyncedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.holdings = holdings
+        self.sourceType = sourceType
+        self.lastSyncedAt = lastSyncedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, holdings, sourceType, lastSyncedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        holdings = try container.decode([Holding].self, forKey: .holdings)
+        sourceType = try container.decodeIfPresent(PortfolioSourceType.self, forKey: .sourceType) ?? .manual
+        lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
     }
 }
 

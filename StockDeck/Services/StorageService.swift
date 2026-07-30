@@ -704,6 +704,13 @@ class StorageService: ObservableObject {
     }
 
     func deletePortfolio(at offsets: IndexSet) {
+        for index in offsets {
+            let p = portfolios[index]
+            if case .binance(let keyId) = p.sourceType {
+                _ = KeychainService.delete(key: "\(keyId)_apiKey")
+                _ = KeychainService.delete(key: "\(keyId)_secretKey")
+            }
+        }
         let removedIds = offsets.map { portfolios[$0].id.uuidString }
         portfolios.remove(atOffsets: offsets)
         removedIds.forEach {
@@ -713,13 +720,56 @@ class StorageService: ObservableObject {
     }
 
     func deletePortfolio(id: UUID) {
+        if let p = portfolios.first(where: { $0.id == id }), case .binance(let keyId) = p.sourceType {
+            _ = KeychainService.delete(key: "\(keyId)_apiKey")
+            _ = KeychainService.delete(key: "\(keyId)_secretKey")
+        }
         portfolios.removeAll { $0.id == id }
         portfolioNotifications[id.uuidString] = nil
         portfolioSnapshots[id.uuidString] = nil
     }
 
+    @discardableResult
+    func createBinancePortfolio(name: String, apiKey: String, secretKey: String) async throws -> Portfolio {
+        let portfolioId = UUID()
+        let keychainId = portfolioId.uuidString
+
+        _ = KeychainService.saveString(apiKey, forKey: "\(keychainId)_apiKey")
+        _ = KeychainService.saveString(secretKey, forKey: "\(keychainId)_secretKey")
+
+        let initialHoldings = try await BinanceAPIService.shared.fetchAccountBalances(apiKey: apiKey, secretKey: secretKey)
+
+        let portfolio = Portfolio(
+            id: portfolioId,
+            name: name,
+            holdings: initialHoldings,
+            sourceType: .binance(keychainId: keychainId),
+            lastSyncedAt: Date()
+        )
+
+        portfolios.append(portfolio)
+        return portfolio
+    }
+
+    func syncBinancePortfolio(id: UUID) async throws {
+        guard let index = portfolios.firstIndex(where: { $0.id == id }) else { return }
+        let p = portfolios[index]
+        guard case .binance(let keychainId) = p.sourceType else { return }
+
+        guard let apiKey = KeychainService.loadString(forKey: "\(keychainId)_apiKey"),
+              let secretKey = KeychainService.loadString(forKey: "\(keychainId)_secretKey") else {
+            throw BinanceAPIError.invalidCredentials
+        }
+
+        let holdings = try await BinanceAPIService.shared.fetchAccountBalances(apiKey: apiKey, secretKey: secretKey)
+
+        portfolios[index].holdings = holdings
+        portfolios[index].lastSyncedAt = Date()
+    }
+
     func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
-        guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
     }

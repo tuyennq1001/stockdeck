@@ -42,6 +42,7 @@ struct PortfolioWindowView: View {
     @State private var addHoldingPortfolioId: UUID?
     @State private var editHolding: EditTarget?
     @State private var showNewPortfolio = false
+    @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
@@ -109,6 +110,11 @@ struct PortfolioWindowView: View {
                 .environmentObject(stockService).environmentObject(storageService)
         }
         .sheet(isPresented: $showNewPortfolio) { newPortfolioSheet }
+        .sheet(isPresented: $showBinanceSheet) {
+            AddBinancePortfolioSheet(storageService: storageService) { newP in
+                selection = .portfolio(newP.id)
+            }
+        }
         .sheet(item: $renameTarget) { t in
             RenamePortfolioSheet(portfolioId: t.id, currentName: t.name) { renameTarget = nil }
                 .environmentObject(storageService)
@@ -512,6 +518,29 @@ struct PortfolioWindowView: View {
             TextField("Portfolio name", text: $newPortfolioName)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(createPortfolio)
+
+            Divider()
+
+            Button(action: {
+                showNewPortfolio = false
+                showBinanceSheet = true
+            }) {
+                HStack {
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .foregroundColor(.yellow)
+                    Text("Connect Binance (Read-Only)...")
+                        .font(.inter(12, weight: .medium, relativeTo: .body))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+
             HStack {
                 Spacer()
                 Button("Cancel") { showNewPortfolio = false; newPortfolioName = "" }
@@ -522,7 +551,7 @@ struct PortfolioWindowView: View {
             }
         }
         .padding(18)
-        .frame(width: 320)
+        .frame(width: 340)
     }
 
     private func createPortfolio() {
