@@ -233,7 +233,7 @@ struct PortfolioOverview: View {
                     type: storageService.type(for: holding.symbol)
                 ))
 
-                if let liveQuote = stockService.quotes[holding.symbol] {
+                if let liveQuote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] {
                     todayInputs.append(TodayPerformance.Input(
                         holding: holding,
                         regularPrice: liveQuote.price,
@@ -280,10 +280,13 @@ struct PortfolioOverview: View {
         guard logs.contains(where: { !$0.isEmpty }) else { return [] }
         if logs.count == 1 { return logs[0] }
         var byDay: [Date: (value: Double, cost: Double)] = [:]
-        for log in logs { for snap in log {
-            byDay[snap.date, default: (0, 0)].value += snap.totalValue
-            byDay[snap.date, default: (0, 0)].cost += snap.totalCost
-        } }
+        for log in logs {
+            for snap in log {
+                let day = Calendar.current.startOfDay(for: snap.date)
+                let existing = byDay[day] ?? (0, 0)
+                byDay[day] = (existing.value + snap.totalValue, existing.cost + snap.totalCost)
+            }
+        }
         return byDay.map { PortfolioSnapshot(date: $0.key, totalValue: $0.value.value, totalCost: $0.value.cost) }
             .sorted { $0.date < $1.date }
     }
@@ -1278,12 +1281,17 @@ private struct PositionSummaryRow: View {
     }
 
     private var totalNativeValue: Double {
-        let price = first?.quote.displayPrice(extendedHours: showExtendedHours) ?? first?.holding.avgPrice ?? 0
-        return holdings.reduce(0) { $0 + $1.holding.marketValue(currentPrice: price) }
+        holdings.reduce(0) { sum, h in
+            let price = h.quote.displayPrice(extendedHours: showExtendedHours)
+            return sum + h.holding.marketValue(currentPrice: price)
+        }
     }
 
     private var totalNativePnl: Double {
-        totalNativeValue - totalNativeCost
+        holdings.reduce(0) { sum, h in
+            let price = h.quote.displayPrice(extendedHours: showExtendedHours)
+            return sum + h.holding.pnl(currentPrice: price)
+        }
     }
 
     private var totalNativePnlPercent: Double {
