@@ -135,14 +135,21 @@ fi
 # --- Step 3: Code-sign ---
 step 3 "Code-sign"
 
-codesign --deep --force --verify --verbose \
-    --sign "$SIGNING_IDENTITY" \
-    --entitlements "$ENTITLEMENTS" \
-    --options runtime \
-    "$APP_PATH"
-
-codesign --verify --deep --strict "$APP_PATH" || fail "Code-sign verification failed"
-info "Code-signed and verified"
+HAS_DEV_ID=false
+if security find-identity -v -p codesigning | grep -q "$SIGNING_IDENTITY"; then
+    codesign --deep --force --verify --verbose \
+        --sign "$SIGNING_IDENTITY" \
+        --entitlements "$ENTITLEMENTS" \
+        --options runtime \
+        "$APP_PATH"
+    codesign --verify --deep --strict "$APP_PATH" || fail "Code-sign verification failed"
+    info "Code-signed with Developer ID ($SIGNING_IDENTITY)"
+    HAS_DEV_ID=true
+else
+    warn "Developer ID identity ($SIGNING_IDENTITY) not found. Using ad-hoc signing."
+    codesign --deep --force --sign - "$APP_PATH"
+    info "Code-signed with ad-hoc identity"
+fi
 
 # --- Step 4: Package ZIP ---
 step 4 "Package ZIP"
@@ -153,22 +160,26 @@ ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
 info "Created $ZIP_NAME (${ZIP_SIZE} bytes)"
 
 # --- Step 5: Notarize ---
-step 5 "Notarize"
+if [[ "$HAS_DEV_ID" == "true" ]]; then
+    step 5 "Notarize"
 
-xcrun notarytool submit "$ZIP_NAME" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    --wait
+    xcrun notarytool submit "$ZIP_NAME" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --wait
 
-info "Notarization accepted"
+    info "Notarization accepted"
 
-# --- Step 6: Staple + re-zip ---
-step 6 "Staple notarization ticket"
+    # --- Step 6: Staple + re-zip ---
+    step 6 "Staple notarization ticket"
 
-xcrun stapler staple "$APP_PATH"
-rm -f "$ZIP_NAME"
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
-info "Re-packaged $ZIP_NAME with stapled ticket (${ZIP_SIZE} bytes)"
+    xcrun stapler staple "$APP_PATH"
+    rm -f "$ZIP_NAME"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
+    ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
+    info "Re-packaged $ZIP_NAME with stapled ticket (${ZIP_SIZE} bytes)"
+else
+    warn "Skipping Notarization & Stapling (requires Developer ID certificate)"
+fi
 
 # --- Step 7: Sparkle EdDSA sign ---
 step 7 "Sparkle EdDSA sign"
