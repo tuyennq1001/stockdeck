@@ -187,9 +187,24 @@ struct PortfolioOverview: View {
     private var currencySymbol: String { StorageService.currencySymbol(for: storageService.preferredCurrency) }
     private var decimals: Int { storageService.percentDecimals }
 
-    private var holdings: [ValuedHolding] {
-        portfolios.flatMap { portfolio in
-            portfolio.holdings.compactMap { holding -> ValuedHolding? in
+    private struct ValuationBundle {
+        let holdings: [ValuedHolding]
+        let totalValue: Double
+        let totalCost: Double
+        let totalPnl: Double
+        let totalPnlPercent: Double
+        let dayChangeValue: Double
+        let dayChangePercent: Double
+    }
+
+    private var valuationBundle: ValuationBundle {
+        var valuedHoldings: [ValuedHolding] = []
+        var totalVal: Double = 0
+        var totalCst: Double = 0
+        var todayInputs: [TodayPerformance.Input] = []
+
+        for portfolio in portfolios {
+            for holding in portfolio.holdings {
                 let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                     symbol: holding.symbol,
                     name: holding.symbol,
@@ -208,34 +223,51 @@ struct PortfolioOverview: View {
                 let qty = holding.quantity
                 let value = (price / scale) * qty * lev * rate
                 let cost = (holding.avgPrice / scale) * qty * lev * costRate
-                return ValuedHolding(id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
-                                     value: value, cost: cost, dayChangePercent: quote.changePercent,
-                                     type: storageService.type(for: holding.symbol))
+
+                totalVal += value
+                totalCst += cost
+
+                valuedHoldings.append(ValuedHolding(
+                    id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
+                    value: value, cost: cost, dayChangePercent: quote.changePercent,
+                    type: storageService.type(for: holding.symbol)
+                ))
+
+                if let liveQuote = stockService.quotes[holding.symbol] {
+                    todayInputs.append(TodayPerformance.Input(
+                        holding: holding,
+                        regularPrice: liveQuote.price,
+                        previousClose: liveQuote.previousClose,
+                        rate: rate
+                    ))
+                }
             }
         }
-        .sorted { abs($0.value) > abs($1.value) }
+
+        valuedHoldings.sort { abs($0.value) > abs($1.value) }
+
+        let pnl = totalVal - totalCst
+        let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
+        let todayTotals = TodayPerformance.totals(todayInputs)
+
+        return ValuationBundle(
+            holdings: valuedHoldings,
+            totalValue: totalVal,
+            totalCost: totalCst,
+            totalPnl: pnl,
+            totalPnlPercent: pnlPct,
+            dayChangeValue: todayTotals.gain,
+            dayChangePercent: todayTotals.percent
+        )
     }
 
-    private var totalValue: Double { holdings.reduce(0) { $0 + $1.value } }
-    private var totalCost: Double { holdings.reduce(0) { $0 + $1.cost } }
-    private var totalPnl: Double { totalValue - totalCost }
-    private var totalPnlPercent: Double { abs(totalCost) >= 0.01 ? (totalPnl / abs(totalCost)) * 100 : 0 }
-
-    private var todayPerformance: (gain: Double, percent: Double) {
-        let inputs = portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
-            guard let quote = stockService.quotes[holding.symbol] else { return nil }
-            let currency = stockService.detectedCurrency(for: holding.symbol)
-            return TodayPerformance.Input(
-                holding: holding,
-                regularPrice: quote.price,
-                previousClose: quote.previousClose,
-                rate: stockService.rate(from: currency)
-            )
-        }
-        return TodayPerformance.totals(inputs)
-    }
-    private var dayChangeValue: Double { todayPerformance.gain }
-    private var dayChangePercent: Double { todayPerformance.percent }
+    private var holdings: [ValuedHolding] { valuationBundle.holdings }
+    private var totalValue: Double { valuationBundle.totalValue }
+    private var totalCost: Double { valuationBundle.totalCost }
+    private var totalPnl: Double { valuationBundle.totalPnl }
+    private var totalPnlPercent: Double { valuationBundle.totalPnlPercent }
+    private var dayChangeValue: Double { valuationBundle.dayChangeValue }
+    private var dayChangePercent: Double { valuationBundle.dayChangePercent }
 
     private var earliestPurchaseDate: Date? {
         let dates = holdings.compactMap(\.holding.purchaseDate)

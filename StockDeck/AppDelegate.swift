@@ -148,6 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Observe StorageService changes (portfolio edits, display mode, currency, etc.)
         storageServiceObserver = storageService.objectWillChange.sink { [weak self] _ in
             Task { @MainActor in
+                self?.invalidateMenuBarStats()
                 self?.updateMenuBarTitle()
             }
         }
@@ -226,6 +227,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if stockService.applyTicks(Array(latest.values)) {
+            invalidateMenuBarStats()
             updateMenuBarTitle()
             alertMonitor.check(quotes: stockService.quotes)
             portfolioMonitor.check()
@@ -282,6 +284,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let symbols = Array(StockService.collectSymbols(storageService: self.storageService))
                 await self.stockService.fetchQuotes(symbols: symbols)
                 await self.stockService.refreshExchangeRates(storageService: self.storageService)
+                self.invalidateMenuBarStats()
                 self.updateMenuBarTitle()
                 self.alertMonitor.check(quotes: self.stockService.quotes)
                 self.portfolioMonitor.check()
@@ -351,6 +354,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return (title, quote.changePercent >= 0 ? upColor : downColor)
     }
 
+    private struct MenuBarStatsCache {
+        let totalValue: Double
+        let totalCost: Double
+        let totalPnl: Double
+        let totalPnlPct: Double
+        let todayGain: Double
+        let todayPct: Double
+        let bestStock: StockQuote?
+        let worstStock: StockQuote?
+    }
+
+    private var cachedMenuBarStats: MenuBarStatsCache? = nil
+
+    private func invalidateMenuBarStats() {
+        cachedMenuBarStats = nil
+    }
+
     private func updateMenuBarTitle() {
         let displayMode = storageService.menuBarDisplay
 
@@ -368,34 +388,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Compute portfolio stats
-        let inputs = PortfolioValuation.resolveInputs(for: storageService.portfolios, stockService: stockService, storageService: storageService)
-        let totals = PortfolioValuation.totals(inputs)
-        let totalValue = totals.value
-        let totalCost = totals.cost
-        let totalPnl = totalValue - totalCost
-        let totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
+        let stats: MenuBarStatsCache
+        if let cached = cachedMenuBarStats {
+            stats = cached
+        } else {
+            let inputs = PortfolioValuation.resolveInputs(for: storageService.portfolios, stockService: stockService, storageService: storageService)
+            let totals = PortfolioValuation.totals(inputs)
+            let totalVal = totals.value
+            let totalCst = totals.cost
+            let pnl = totalVal - totalCst
+            let pnlPct = totalCst > 0 ? (pnl / totalCst) * 100 : 0
 
-        // Always use regular-market prices here, independent of the extended-hours
-        // display preference. Yahoo defines crypto's previous close at 00:00 UTC.
-        let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
-            guard let quote = stockService.quotes[holding.symbol] else { return nil }
-            return TodayPerformance.Input(
-                holding: holding,
-                regularPrice: quote.price,
-                previousClose: quote.previousClose,
-                rate: stockService.rate(from: quote.currency)
+            let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
+                guard let quote = stockService.quotes[holding.symbol] else { return nil }
+                return TodayPerformance.Input(
+                    holding: holding,
+                    regularPrice: quote.price,
+                    previousClose: quote.previousClose,
+                    rate: stockService.rate(from: quote.currency)
+                )
+            }
+            let today = TodayPerformance.totals(todayInputs)
+
+            let best = storageService.watchlist.compactMap { stockService.quotes[$0] }
+                .max(by: { $0.changePercent < $1.changePercent })
+            let worst = storageService.watchlist.compactMap { stockService.quotes[$0] }
+                .min(by: { $0.changePercent < $1.changePercent })
+
+            let computed = MenuBarStatsCache(
+                totalValue: totalVal,
+                totalCost: totalCst,
+                totalPnl: pnl,
+                totalPnlPct: pnlPct,
+                todayGain: today.gain,
+                todayPct: today.percent,
+                bestStock: best,
+                worstStock: worst
             )
+            cachedMenuBarStats = computed
+            stats = computed
         }
-        let today = TodayPerformance.totals(todayInputs)
-        let todayGain = today.gain
-        let todayPct = today.percent
 
-        // Find best/worst watchlist stock by daily change %
-        let bestStock = storageService.watchlist.compactMap { stockService.quotes[$0] }
-            .max(by: { $0.changePercent < $1.changePercent })
-        let worstStock = storageService.watchlist.compactMap { stockService.quotes[$0] }
-            .min(by: { $0.changePercent < $1.changePercent })
+        let totalValue = stats.totalValue
+        let totalCost = stats.totalCost
+        let totalPnl = stats.totalPnl
+        let totalPnlPct = stats.totalPnlPct
+        let todayGain = stats.todayGain
+        let todayPct = stats.todayPct
+        let bestStock = stats.bestStock
+        let worstStock = stats.worstStock
 
         let currSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
         let title: String
