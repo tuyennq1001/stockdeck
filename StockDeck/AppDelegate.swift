@@ -93,7 +93,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+            button.image = menuBarImage
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -382,7 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if displayMode == "icon" {
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.title = ""
-            statusItem?.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+            statusItem?.button?.image = menuBarImage
             return
         }
 
@@ -563,6 +563,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarTitle()
         // Update WSS subscriptions in case symbols changed
         webSocketService.updateSymbols(Array(collectSymbols()))
+    }
+
+    private var menuBarImage: NSImage? {
+        let img: NSImage?
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+           let loaded = NSImage(contentsOf: url) {
+            img = loaded
+        } else if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
+                            Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
+                  let loaded = NSImage(contentsOf: url) {
+            img = loaded
+        } else {
+            img = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+        }
+        img?.isTemplate = true
+        return img
     }
 
     @objc func togglePopover() {

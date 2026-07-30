@@ -22,6 +22,7 @@ let package = Package(
                 .copy("Resources/AppIcon.icns"),
                 .copy("Resources/AppIcon.png"),
                 .copy("Resources/AppLogo.png"),
+                .copy("Resources/MenuBarIcon.png"),
                 .copy("Fonts/InterVariable.ttf")
             ]
         ),

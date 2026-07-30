@@ -28,6 +28,7 @@ cp "$PRODUCTS/StockDeck" "$APP/Contents/MacOS/StockDeck"
 cp "StockDeck/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "StockDeck/Resources/AppLogo.png" "$APP/Contents/Resources/AppLogo.png" 2>/dev/null || true
 cp "StockDeck/Resources/AppIcon.png" "$APP/Contents/Resources/AppIcon.png" 2>/dev/null || true
+cp "StockDeck/Resources/MenuBarIcon.png" "$APP/Contents/Resources/MenuBarIcon.png" 2>/dev/null || true
 cp -R "$PRODUCTS/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
 for bundle in "$PRODUCTS"/*.bundle; do
