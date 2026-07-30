@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:stockdeck}",
+            "name": "Debug StockDeck",
+            "target": "StockDeck",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug StockDeck"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:stockdeck}",
+            "name": "Release StockDeck",
+            "target": "StockDeck",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release StockDeck"
+        }
+    ]
+}

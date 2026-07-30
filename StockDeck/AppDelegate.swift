@@ -336,15 +336,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let quote = stockService.quotes[symbol] else {
             return (" \(symbol)", .secondaryLabelColor)
         }
-        let pRate = stockService.priceRate(from: quote.currency)
-        let priceCurr = storageService.stockPriceCurrency
         // #8.3: indices have no currency, so don't prefix a currency symbol.
         let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
-        let sym = isIndex ? "" : StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
+        let sym = isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
         // #8.2: prefer the readable name when the user opted in and it's available.
         let label = (storageService.tickerShowName && !quote.name.isEmpty) ? quote.name : quote.symbol
         let sign = quote.changePercent >= 0 ? "+" : ""
-        let priceValue = quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate
+        let priceValue = quote.displayPrice(extendedHours: storageService.showExtendedHours)
         let price = StorageService.formatNumber(priceValue, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: priceValue))
         // Issue #10: optionally drop the percentage from the menu-bar ticker.
         let pctPart = storageService.menuBarHidePercent

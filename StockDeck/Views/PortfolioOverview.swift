@@ -54,6 +54,30 @@ enum PerformanceBenchmarkCache {
     }
 }
 
+/// Session cache for Money-weighted return (XIRR) values so they evaluate ONCE
+/// per session / scope and never re-compute on real-time quote updates.
+enum MoneyWeightedReturnCache {
+    private static var cache: [String: InvestmentEffectiveness.Result] = [:]
+    private static let lock = NSLock()
+
+    static func result(for scopeKey: String, compute: () -> InvestmentEffectiveness.Result) -> InvestmentEffectiveness.Result {
+        lock.lock()
+        if let existing = cache[scopeKey], (existing.portfolioXIRR != nil || existing.isYoungerThan30Days || existing.excludedHoldingsCount > 0) {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let res = compute()
+        if res.portfolioXIRR != nil || res.benchmarkXIRR != nil || res.isYoungerThan30Days {
+            lock.lock()
+            cache[scopeKey] = res
+            lock.unlock()
+        }
+        return res
+    }
+}
+
 struct PortfolioOverview: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -385,6 +409,7 @@ struct PortfolioOverview: View {
                         heroCard
                         statRow
                         performanceMatrixCard
+                        moneyWeightedReturnCard
                         allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
                             topGainersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
@@ -870,6 +895,109 @@ struct PortfolioOverview: View {
         }
     }
 
+    private var moneyWeightedComparison: InvestmentEffectiveness.Result {
+        let hs = portfolios.flatMap { $0.holdings }
+        let holdingsFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
+        return MoneyWeightedReturnCache.result(for: fullKey) {
+            InvestmentEffectiveness.evaluate(
+                holdings: hs,
+                stockService: stockService,
+                storageService: storageService
+            )
+        }
+    }
+
+    private var moneyWeightedReturnCard: some View {
+        let res = moneyWeightedComparison
+        let pXIRR = res.portfolioXIRR
+        let bXIRR = res.benchmarkXIRR
+
+        let pFormatted = pXIRR.map { String(format: "%+.\(decimals)f%%", $0) } ?? "—"
+        let bFormatted = bXIRR.map { String(format: "%+.\(decimals)f%%", $0) } ?? "—"
+
+        let verdict: String? = {
+            guard let p = pXIRR, let b = bXIRR else { return nil }
+            let diff = p - b
+            if abs(diff) < 0.05 {
+                return "Matching S&P 500 performance"
+            } else if diff > 0 {
+                return String(format: "Beating S&P 500 by +%.1f pp/yr", diff)
+            } else {
+                return String(format: "Trailing S&P 500 by -%.1f pp/yr", abs(diff))
+            }
+        }()
+
+        return Card(title: "Your Actual Return (XIRR)") {
+            VStack(alignment: .leading, spacing: 12) {
+                if res.isYoungerThan30Days {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 13))
+                            .foregroundStyle(DS.inkTertiary)
+                        Text("Holdings are less than 30 days old. XIRR requires at least 30 days of history to avoid annualization distortion.")
+                            .font(DS.body)
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+                    .padding(.vertical, 4)
+                } else if res.excludedHoldingsCount == portfolios.flatMap({ $0.holdings }).count {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.system(size: 13))
+                            .foregroundStyle(DS.inkTertiary)
+                        Text("Add a purchase date to your positions to see your money-weighted return vs S&P 500.")
+                            .font(DS.body)
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    HStack(spacing: DS.gap) {
+                        StatTile(
+                            label: "Your Return (Annualized)",
+                            value: pFormatted,
+                            caption: "Money-weighted IRR",
+                            valueTint: pXIRR.map { DS.pnlColor($0) } ?? DS.ink
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        StatTile(
+                            label: "S&P 500 Equivalent",
+                            value: bFormatted,
+                            caption: "Same capital & timing",
+                            valueTint: bXIRR.map { DS.pnlColor($0) } ?? DS.ink
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if let verdict {
+                        HStack(spacing: 6) {
+                            Image(systemName: (pXIRR ?? 0) >= (bXIRR ?? 0) ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(DS.pnlColor((pXIRR ?? 0) - (bXIRR ?? 0)))
+                            Text(verdict)
+                                .font(DS.figure.weight(.semibold))
+                                .foregroundStyle(DS.pnlColor((pXIRR ?? 0) - (bXIRR ?? 0)))
+                        }
+                    }
+
+                    if res.excludedHoldingsCount > 0 {
+                        Text("\(res.excludedHoldingsCount) position\(res.excludedHoldingsCount == 1 ? "" : "s") without a purchase date excluded.")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+                }
+
+                Divider().overlay(DS.hairline.opacity(0.5))
+
+                Text("Annualized, money-weighted, based on your actual buy dates and cost — excludes closed/sold positions.")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
+            }
+        }
+    }
+
     private var topSymbol: String? { allocation.first?.symbol }
     private var topWeight: Double { (allocation.first?.fraction ?? 0) * 100 }
 
@@ -913,21 +1041,24 @@ struct PortfolioOverview: View {
                         }
                         .frame(width: 136, height: 136)
 
-                        VStack(alignment: .leading, spacing: 9) {
-                            ForEach(allocation.prefix(6)) { slice in
-                                HStack(spacing: 9) {
-                                    RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
-                                    SymbolLogo(symbol: slice.symbol, size: 20)
-                                    let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
-                                    Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
-                                    Spacer()
-                                    Text(String(format: "%.1f%%", slice.fraction * 100))
-                                        .font(DS.figure).foregroundStyle(DS.inkSecondary)
+                        ScrollView(.vertical, showsIndicators: true) {
+                            VStack(alignment: .leading, spacing: 9) {
+                                ForEach(allocation) { slice in
+                                    HStack(spacing: 9) {
+                                        RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
+                                        SymbolLogo(symbol: slice.symbol, size: 20)
+                                        let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
+                                        Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+                                        Spacer()
+                                        Text(String(format: "%.1f%%", slice.fraction * 100))
+                                            .font(DS.figure).foregroundStyle(DS.inkSecondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onHover { hoveredSlice = $0 ? slice.symbol : nil }
                                 }
-                                .contentShape(Rectangle())
-                                .onHover { hoveredSlice = $0 ? slice.symbol : nil }
                             }
                         }
+                        .frame(maxHeight: 140)
                         .frame(maxWidth: .infinity)
                     }
 
@@ -1086,7 +1217,7 @@ struct PortfolioOverview: View {
                         HStack(spacing: 0) {
                             Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
                             sortHeader("Symbol", column: .symbol)
-                                .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                                .frame(width: PositionColumnWidth.symbol, alignment: .leading)
                             sortHeader("Price", column: .price)
                                 .frame(width: PositionColumnWidth.price, alignment: .trailing)
                             if storageService.showExtendedHours {
@@ -1247,6 +1378,7 @@ struct PortfolioOverview: View {
 
 private enum PositionColumnWidth {
     static let number: CGFloat = 24
+    static let symbol: CGFloat = 98
     static let price: CGFloat = 105
     static let session: CGFloat = 105
     static let amount: CGFloat = 115
@@ -1368,7 +1500,10 @@ private struct PositionSummaryRow: View {
                 SymbolLogo(symbol: symbol, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
-                        Text(titleText).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+                        Text(titleText)
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .fixedSize(horizontal: false, vertical: true)
                         if holdings.count > 1 {
                             Text("\(holdings.count) lots")
                                 .font(.inter(8, weight: .semibold, relativeTo: .caption2))
@@ -1381,11 +1516,14 @@ private struct PositionSummaryRow: View {
                         }
                     }
                     if !subTitleText.isEmpty {
-                        Text(subTitleText).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                        Text(subTitleText)
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+            .frame(width: PositionColumnWidth.symbol, alignment: .leading)
 
             // Regular price and today's regular-session change.
             let isExtendedSession = showExtendedHours && (liveQuote?.isExtendedHours ?? false)

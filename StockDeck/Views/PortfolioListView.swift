@@ -337,6 +337,8 @@ struct PortfolioListView: View {
         var qtyPrice: [String: Double] = [:]
         var totalVal: [String: Double] = [:]
         var totalCost: [String: Double] = [:]
+        var nativeCostMap: [String: Double] = [:]
+        var nativeValMap: [String: Double] = [:]
         var orderMap: [String: Int] = [:]
         var order = 0
 
@@ -365,6 +367,11 @@ struct PortfolioListView: View {
                 let cst = (h.avgPrice / scale) * q * lev * costRate
                 totalVal[sym, default: 0] += val
                 totalCost[sym, default: 0] += cst
+
+                let nativeCst = h.costBasisLocal
+                let nativeVal = h.marketValue(currentPrice: quote.price)
+                nativeCostMap[sym, default: 0] += nativeCst
+                nativeValMap[sym, default: 0] += nativeVal
             }
         }
         return qty.compactMap { symbol, q -> GlobalPosition? in
@@ -373,17 +380,20 @@ struct PortfolioListView: View {
             let avg = qtyPrice[symbol, default: 0] / q
             let price = quote?.price ?? avg
             let val = totalVal[symbol, default: 0]
-            let cst = totalCost[symbol, default: 0]
-            let pnl = val - cst
-            let pct = abs(cst) >= 0.01 ? (pnl / abs(cst)) * 100 : 0
 
-            let prefCurr = storageService.preferredCurrency
-            let prefSymbol = StorageService.currencySymbol(for: prefCurr)
+            let nativeCst = nativeCostMap[symbol, default: 0]
+            let nativeVal = nativeValMap[symbol, default: 0]
+            let nativePnl = nativeVal - nativeCst
+            let pct = abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
+
+            let assetCurr = stockService.detectedCurrency(for: symbol)
+            let quoteCurr = (quote?.currency.isEmpty == false) ? quote!.currency : assetCurr
+            let nativeSymbol = StorageService.currencySymbol(for: quoteCurr)
 
             let extPrice: Double? = (quote?.isExtendedHours == true) ? quote?.alertPrice : nil
             let extChangePercent: Double? = (quote?.isExtendedHours == true) ? quote?.extendedChangePercent : nil
 
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: prefSymbol, pct: pct, pnl: pnl,
+            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: nativeSymbol, pct: pct, pnl: nativePnl,
                                   currentPrice: price, priceChangePercent: quote?.changePercent ?? 0,
                                   extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: val)
@@ -680,13 +690,12 @@ struct HoldingRow: View {
             if let quote {
                 let assetCurr = stockService.detectedCurrency(for: holding.symbol)
                 let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                let pRate = stockService.priceRate(from: quoteCurr)
-                let priceCurr = storageService.stockPriceCurrency
-                let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quoteCurr : priceCurr)
+                let priceSymbol = StorageService.currencySymbol(for: quoteCurr)
+                let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
 
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
-                    Text("\(priceSymbol)\(StorageService.formatNumber(quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.displayPrice(extendedHours: storageService.showExtendedHours) * pRate)))")
+                    Text("\(priceSymbol)\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
@@ -704,7 +713,6 @@ struct HoldingRow: View {
                 .frame(maxWidth: .infinity)
 
                 // Col 3: Value + P&L in native currency
-                let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                 let nativeVal = holding.marketValue(currentPrice: displayPrice)
                 let nativeCost = holding.costBasisLocal
                 let pnl = nativeVal - nativeCost
