@@ -186,8 +186,8 @@ class BinanceAPIService {
             return []
         }
 
-        let fullBody = "\(bodyString)&signature=\(signature)"
-        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+        let fullQuery = "\(bodyString)&signature=\(signature)"
+        guard let url = URL(string: "\(baseURL)\(endpoint)?\(fullQuery)") else {
             return []
         }
 
@@ -195,15 +195,20 @@ class BinanceAPIService {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = fullBody.data(using: .utf8)
+        request.httpBody = fullQuery.data(using: .utf8)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                return (try? JSONDecoder().decode([BinanceFundingAsset].self, from: data)) ?? []
+            if let httpResp = response as? HTTPURLResponse {
+                if httpResp.statusCode == 200 {
+                    return (try? JSONDecoder().decode([BinanceFundingAsset].self, from: data)) ?? []
+                } else {
+                    let errMsg = String(data: data, encoding: .utf8) ?? ""
+                    print("[BinanceAPI] Funding Wallet HTTP \(httpResp.statusCode): \(errMsg)")
+                }
             }
         } catch {
-            print("Funding wallet fetch error: \(error.localizedDescription)")
+            print("[BinanceAPI] Funding wallet fetch error: \(error.localizedDescription)")
         }
         return []
     }
@@ -219,8 +224,8 @@ class BinanceAPIService {
             return []
         }
 
-        let fullBody = "\(bodyString)&signature=\(signature)"
-        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+        let fullQuery = "\(bodyString)&signature=\(signature)"
+        guard let url = URL(string: "\(baseURL)\(endpoint)?\(fullQuery)") else {
             return []
         }
 
@@ -228,15 +233,20 @@ class BinanceAPIService {
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = fullBody.data(using: .utf8)
+        request.httpBody = fullQuery.data(using: .utf8)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                return (try? JSONDecoder().decode([BinanceUserAsset].self, from: data)) ?? []
+            if let httpResp = response as? HTTPURLResponse {
+                if httpResp.statusCode == 200 {
+                    return (try? JSONDecoder().decode([BinanceUserAsset].self, from: data)) ?? []
+                } else {
+                    let errMsg = String(data: data, encoding: .utf8) ?? ""
+                    print("[BinanceAPI] User Asset HTTP \(httpResp.statusCode): \(errMsg)")
+                }
             }
         } catch {
-            print("User asset fetch error: \(error.localizedDescription)")
+            print("[BinanceAPI] User asset fetch error: \(error.localizedDescription)")
         }
         return []
     }
