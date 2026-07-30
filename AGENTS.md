@@ -34,6 +34,10 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 
 ---
 
-## 6. Quy trình Build & Automation Git
-- **Kill App cũ khi Rebuild (`dev.sh`)**: Script `./dev.sh` **bắt buộc kill triệt để mọi phiên bản app StockDeck cũ** trước khi chạy bản build mới.
-- **Tự động Git Commit & Push**: Mỗi khi chỉnh sửa/bổ sung tính năng và chạy kiểm thử (`swift test`) thành công, **tự động thực hiện `git add .`, `git commit` với mô tả rõ ràng, và `git push origin <branch>` lên GitHub** mà không cần chờ nhắc nhở.
+## 6. Quy trình Git Branching & Automation (Feature Branch & PR Workflow)
+- **Tự động tạo Feature / Fix Branch**: Mỗi khi người dùng giao nhiệm vụ sửa bug hoặc phát triển tính năng mới, **tự động tạo nhánh riêng biệt** (`feature/<tên-tính-năng>` hoặc `fix/<tên-lỗi>`) từ `main` trước khi viết code.
+- **Kiểm thử & Commit**: Sau khi viết code xong và bộ kiểm thử (`swift test`) PASS 100%, tự động commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
+- **Tự động Push & Tạo Pull Request (PR)**:
+  - Push nhánh lên GitHub (`git push origin <branch>`).
+  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết các thay đổi.
+  - Tự động merge PR vào `main` (hoặc gửi link PR để bạn review tuỳ bạn chọn) và chạy `./dev.sh` để rebuild ứng dụng mới.
