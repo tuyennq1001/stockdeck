@@ -99,12 +99,12 @@ class StockService: ObservableObject {
 
         var pairs = Set<String>() // "FROMTO" keys
         for symbol in allSymbols {
-            guard let quote = quotes[symbol] else { continue }
-            if quote.currency != preferredCurrency {
-                pairs.insert("\(quote.currency)|\(preferredCurrency)")
+            let curr = detectedCurrency(for: symbol)
+            if curr != preferredCurrency {
+                pairs.insert("\(curr)|\(preferredCurrency)")
             }
-            if !priceCurrency.isEmpty && quote.currency != priceCurrency {
-                pairs.insert("\(quote.currency)|\(priceCurrency)")
+            if !priceCurrency.isEmpty && curr != priceCurrency {
+                pairs.insert("\(curr)|\(priceCurrency)")
             }
         }
 
@@ -371,7 +371,7 @@ class StockService: ObservableObject {
                 change: change,
                 changePercent: changePercent,
                 regularMarketPreviousClose: previousClose,
-                currency: q.currency ?? "USD",
+                currency: (q.currency?.isEmpty == false) ? q.currency! : Self.detectedCurrency(for: q.symbol),
                 marketState: marketState,
                 dayHigh: q.regularMarketDayHigh,
                 dayLow: q.regularMarketDayLow,
@@ -478,7 +478,7 @@ class StockService: ObservableObject {
                 change: change,
                 changePercent: changePercent,
                 regularMarketPreviousClose: previousClose,
-                currency: meta.currency ?? "USD",
+                currency: (meta.currency?.isEmpty == false) ? meta.currency! : detectedCurrency(for: meta.symbol),
                 marketState: marketState,
                 dayHigh: nil,
                 dayLow: nil,
@@ -720,59 +720,74 @@ class StockService: ObservableObject {
         await fetchHistoricalExchangeRate(from: quote.currency, to: StorageService.shared.preferredCurrency, dateTimestamp: ts)
     }
 
-    /// Update a quote from a WebSocket tick. Returns true if the quote was meaningful.
-    func applyTick(_ ticker: Yaticker) -> Bool {
-        let symbol = ticker.id
-        guard !symbol.isEmpty, ticker.price > 0 else { return false }
+    /// Update quotes from a batch of WebSocket ticks. Applies batch updates in a single @Published mutation.
+    @discardableResult
+    func applyTicks(_ tickers: [Yaticker]) -> Bool {
+        guard !tickers.isEmpty else { return false }
+        var updated = quotes
+        var changed = false
 
-        let existing = quotes[symbol]
+        for ticker in tickers {
+            let symbol = ticker.id
+            guard !symbol.isEmpty, ticker.price > 0 else { continue }
 
-        let marketState: String
-        switch ticker.marketHours {
-        case .preMarket: marketState = "PRE"
-        case .postMarket, .extendedHoursMarket: marketState = "POST"
-        case .regularMarket: marketState = "REGULAR"
-        default: marketState = existing?.marketState ?? "CLOSED"
+            let existing = updated[symbol]
+
+            let marketState: String
+            switch ticker.marketHours {
+            case .preMarket: marketState = "PRE"
+            case .postMarket, .extendedHoursMarket: marketState = "POST"
+            case .regularMarket: marketState = "REGULAR"
+            default: marketState = existing?.marketState ?? "CLOSED"
+            }
+
+            let tickPrice = Double(ticker.price)
+            let tickChange = Double(ticker.change)
+            let tickChangePercent = Double(ticker.changePercent)
+            let tickPreviousClose = ticker.previousClose == 0 ? nil : Double(ticker.previousClose)
+
+            let isRegular = (marketState == "REGULAR")
+            let price = isRegular ? tickPrice : (existing?.price ?? (tickPreviousClose ?? tickPrice))
+            let change = isRegular ? tickChange : (existing?.change ?? 0)
+            let changePercent = isRegular ? tickChangePercent : (existing?.changePercent ?? 0)
+
+            let curr = !ticker.currency.isEmpty ? ticker.currency : ((existing?.currency.isEmpty == false) ? existing!.currency : detectedCurrency(for: symbol))
+
+            let quote = StockQuote(
+                symbol: symbol,
+                name: existing?.name ?? ticker.shortName,
+                price: price,
+                change: change,
+                changePercent: changePercent,
+                regularMarketPreviousClose: tickPreviousClose ?? existing?.previousClose,
+                currency: curr,
+                marketState: marketState,
+                dayHigh: existing?.dayHigh,
+                dayLow: existing?.dayLow,
+                fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
+                fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
+                preMarketPrice: marketState == "PRE" ? tickPrice : existing?.preMarketPrice,
+                preMarketChange: marketState == "PRE" ? tickChange : existing?.preMarketChange,
+                preMarketChangePercent: marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent,
+                postMarketPrice: marketState == "POST" ? tickPrice : existing?.postMarketPrice,
+                postMarketChange: marketState == "POST" ? tickChange : existing?.postMarketChange,
+                postMarketChangePercent: marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
+            )
+
+            updated[symbol] = quote
+            changed = true
         }
 
-        let tickPrice = Double(ticker.price)
-        let tickChange = Double(ticker.change)
-        let tickChangePercent = Double(ticker.changePercent)
-        let tickPreviousClose = ticker.previousClose == 0 ? nil : Double(ticker.previousClose)
+        if changed {
+            quotes = updated
+        }
+        return changed
+    }
 
-        // Only a REGULAR-session tick updates the regular price. A PRE/POST tick
-        // must not overwrite it — otherwise a user with extended hours off would
-        // see the pre/post price where they expect the last regular close. The
-        // extended value is routed into the pre/post fields below instead.
-        let isRegular = (marketState == "REGULAR")
-        let price = isRegular ? tickPrice : (existing?.price ?? tickPrice)
-        let change = isRegular ? tickChange : (existing?.change ?? tickChange)
-        let changePercent = isRegular ? tickChangePercent : (existing?.changePercent ?? tickChangePercent)
-
-        // Keep extended hours data from existing quote if WSS doesn't provide it
-        let quote = StockQuote(
-            symbol: symbol,
-            name: existing?.name ?? ticker.shortName,
-            price: price,
-            change: change,
-            changePercent: changePercent,
-            regularMarketPreviousClose: tickPreviousClose ?? existing?.previousClose,
-            currency: ticker.currency.isEmpty ? (existing?.currency ?? "USD") : ticker.currency,
-            marketState: marketState,
-            dayHigh: existing?.dayHigh,
-            dayLow: existing?.dayLow,
-            fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
-            fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
-            preMarketPrice: marketState == "PRE" ? tickPrice : existing?.preMarketPrice,
-            preMarketChange: marketState == "PRE" ? tickChange : existing?.preMarketChange,
-            preMarketChangePercent: marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent,
-            postMarketPrice: marketState == "POST" ? tickPrice : existing?.postMarketPrice,
-            postMarketChange: marketState == "POST" ? tickChange : existing?.postMarketChange,
-            postMarketChangePercent: marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
-        )
-
-        quotes[symbol] = quote
-        return true
+    /// Update a quote from a single WebSocket tick.
+    @discardableResult
+    func applyTick(_ ticker: Yaticker) -> Bool {
+        return applyTicks([ticker])
     }
 
     // MARK: - Japanese Mutual Funds (投資信託)
@@ -788,7 +803,7 @@ class StockService: ObservableObject {
         SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
     ]
 
-    func containsJapaneseCharacters(_ str: String) -> Bool {
+    nonisolated static func containsJapaneseCharacters(_ str: String) -> Bool {
         for scalar in str.unicodeScalars {
             if (0x3040...0x309F).contains(scalar.value) ||
                (0x30A0...0x30FF).contains(scalar.value) ||
@@ -799,14 +814,24 @@ class StockService: ObservableObject {
         return false
     }
 
-    func isJapaneseStock(_ symbol: String) -> Bool {
+    func containsJapaneseCharacters(_ str: String) -> Bool { Self.containsJapaneseCharacters(str) }
+    func isVietnameseStock(_ symbol: String) -> Bool { Self.isVietnameseStock(symbol) }
+    func isJapaneseStock(_ symbol: String) -> Bool { Self.isJapaneseStock(symbol) }
+    func isJapaneseMutualFund(_ symbol: String) -> Bool { Self.isJapaneseMutualFund(symbol) }
+
+    nonisolated static func isVietnameseStock(_ symbol: String) -> Bool {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return upper.hasSuffix(".VN") || upper.hasSuffix(".HM") || upper.hasSuffix(".HN")
+    }
+
+    nonisolated static func isJapaneseStock(_ symbol: String) -> Bool {
         let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if upper.hasSuffix(".T") || upper.hasSuffix(".JP") { return true }
         let jpStockRegex = "^[0-9]{3}[0-9A-Z]$"
         return upper.range(of: jpStockRegex, options: .regularExpression) != nil
     }
 
-    func isJapaneseMutualFund(_ symbol: String) -> Bool {
+    nonisolated static func isJapaneseMutualFund(_ symbol: String) -> Bool {
         let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
             return false
@@ -816,7 +841,7 @@ class StockService: ObservableObject {
             return true
         }
         let clean = upper.replacingOccurrences(of: ".JP", with: "").replacingOccurrences(of: ".T", with: "")
-        if Self.codeToFundNameMap[clean] != nil || Self.codeToFundNameMap[upper] != nil {
+        if codeToFundNameMap[clean] != nil || codeToFundNameMap[upper] != nil {
             return true
         }
         if clean.hasPrefix("0P") && clean.count >= 8 {
@@ -831,15 +856,21 @@ class StockService: ObservableObject {
         return false
     }
 
-    func detectedCurrency(for symbol: String) -> String {
-        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    nonisolated static func detectedCurrency(for symbol: String, quotes: [String: StockQuote] = [:]) -> String {
+        if isVietnameseStock(symbol) {
+            return "VND"
+        }
         if isJapaneseMutualFund(symbol) || isJapaneseStock(symbol) || containsJapaneseCharacters(symbol) {
             return "JPY"
         }
         if let quote = quotes[symbol], !quote.currency.isEmpty {
-            return quote.currency
+            return quote.currency.uppercased()
         }
         return "USD"
+    }
+
+    func detectedCurrency(for symbol: String) -> String {
+        Self.detectedCurrency(for: symbol, quotes: quotes)
     }
 
     nonisolated static let codeToFundNameMap: [String: String] = [

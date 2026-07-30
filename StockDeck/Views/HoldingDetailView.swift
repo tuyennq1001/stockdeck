@@ -168,13 +168,15 @@ struct HoldingDetailView: View {
         scopedPortfolios.flatMap(\.holdings).reduce(0) { sum, item in
             guard let itemQuote = stockService.quotes[item.symbol] else { return sum }
             let price = itemQuote.displayPrice(extendedHours: storageService.showExtendedHours)
-            return sum + item.marketValue(currentPrice: price) * stockService.rate(from: itemQuote.currency)
+            let curr = stockService.detectedCurrency(for: item.symbol)
+            return sum + item.marketValue(currentPrice: price) * stockService.rate(from: curr)
         }
     }
 
     private var aggregatedValueInPreferredCurrency: Double {
         let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-        let rate = stockService.rate(from: quote.currency)
+        let curr = stockService.detectedCurrency(for: holding.symbol)
+        let rate = stockService.rate(from: curr)
         return aggregatedHoldings.reduce(0) { $0 + $1.marketValue(currentPrice: price) } * rate
     }
 

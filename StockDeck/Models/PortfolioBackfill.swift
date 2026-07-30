@@ -158,7 +158,7 @@ enum PortfolioPeriodChange {
         guard years >= 0.95 else { return nil }
 
         let ratio = lastPoint.value / firstPoint.value
-        guard ratio > 0 else { return nil }
+        guard ratio >= 0.001 && ratio <= 1000.0 else { return nil }
 
         let cagrVal = (pow(ratio, 1.0 / years) - 1.0) * 100.0
         return cagrVal.isFinite ? cagrVal : nil

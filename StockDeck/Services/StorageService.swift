@@ -371,7 +371,7 @@ class StorageService: ObservableObject {
 
     var lastSelectedTab: String = "Watchlist"
 
-    static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD"]
+    static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "VND", "CAD", "AUD"]
 
     /// Issue #10: how many decimals to show for a *market price*. Two decimals is
     /// right for normal stocks, but forex pairs (e.g. CADUSD=X = 0.7119) and any

@@ -289,7 +289,8 @@ struct PortfolioOverview: View {
         var rate: [String: Double] = [:]
         var hist: [String: [PricePoint]] = [:]
         for h in hs {
-            if let q = stockService.quotes[h.symbol] { rate[h.symbol] = stockService.rate(from: q.currency) }
+            let curr = stockService.detectedCurrency(for: h.symbol)
+            rate[h.symbol] = stockService.rate(from: curr)
             if let ph = histBySymbol[h.symbol] { hist[h.symbol] = ph }
         }
         return PortfolioBackfill.series(holdings: hs, historyBySymbol: hist, rateBySymbol: rate)
@@ -732,7 +733,9 @@ struct PortfolioOverview: View {
 
     /// Evaluates benchmark matrix once per app session (not updating real-time).
     private var cachedPerformance: (portfolio: [PerformancePeriod: Double?], spx: [PerformancePeriod: Double?]) {
-        PerformanceBenchmarkCache.performance(for: scopeKey) {
+        let holdingsFingerprint = portfolios.flatMap { $0.holdings }.map { "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage)" }.joined(separator: ";")
+        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
+        return PerformanceBenchmarkCache.performance(for: fullKey) {
             let hs = portfolios.flatMap { $0.holdings }
             var histBySymbol: [String: [PricePoint]] = [:]
             for h in hs {

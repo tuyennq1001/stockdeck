@@ -225,14 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             latest[tick.id] = tick
         }
 
-        var changed = false
-        for (_, tick) in latest {
-            if stockService.applyTick(tick) {
-                changed = true
-            }
-        }
-
-        if changed {
+        if stockService.applyTicks(Array(latest.values)) {
             updateMenuBarTitle()
             alertMonitor.check(quotes: stockService.quotes)
             portfolioMonitor.check()
