@@ -256,6 +256,7 @@ if [[ -n "$PREV_TAG" ]]; then
 fi
 
 gh release create "$TAG" "$ZIP_NAME" \
+    --repo "$GITHUB_REPO" \
     --title "${APP_NAME} v${VERSION}" \
     --notes-file "$GH_NOTES_FILE"
 rm -f "$GH_NOTES_FILE"
