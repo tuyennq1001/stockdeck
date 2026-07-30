@@ -39,5 +39,6 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 - **Kiểm thử & Commit**: Sau khi viết code xong và bộ kiểm thử (`swift test`) PASS 100%, tự động commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
 - **Tự động Push & Tạo Pull Request (PR)**:
   - Push nhánh lên GitHub (`git push origin <branch>`).
-  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết các thay đổi.
-  - Tự động merge PR vào `main` (hoặc gửi link PR để bạn review tuỳ bạn chọn) và chạy `./dev.sh` để rebuild ứng dụng mới.
+  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết các thay đổi và gửi link PR cho người dùng.
+- **Xác nhận Merge & Rebuild (Sau khi người dùng đồng ý)**:
+  - **Chờ người dùng xác nhận "OK" / Duyệt**: Sau khi người dùng đồng ý, mới tiến hành merge PR vào `main` (`gh pr merge --merge --delete-branch`), xoá nhánh local/remote, và chạy `./dev.sh` để rebuild ứng dụng mới.
