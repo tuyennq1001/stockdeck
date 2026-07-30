@@ -93,7 +93,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+            button.image = menuBarImage
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -382,7 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if displayMode == "icon" {
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
             statusItem?.button?.title = ""
-            statusItem?.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+            statusItem?.button?.image = menuBarImage
             return
         }
 
@@ -563,6 +563,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarTitle()
         // Update WSS subscriptions in case symbols changed
         webSocketService.updateSymbols(Array(collectSymbols()))
+    }
+
+    private var menuBarImage: NSImage? {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppIcon", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+           let src = NSImage(contentsOf: url) {
+            let targetSize = NSSize(width: 18, height: 18)
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: 36,
+                pixelsHigh: 36,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 36 * 4,
+                bitsPerPixel: 32
+            )
+            if let rep {
+                rep.size = targetSize
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                src.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18),
+                         from: NSRect(x: 0, y: 0, width: src.size.width, height: src.size.height),
+                         operation: .copy, fraction: 1.0)
+                NSGraphicsContext.restoreGraphicsState()
+
+                let icon = NSImage(size: targetSize)
+                icon.addRepresentation(rep)
+                return icon
+            }
+        }
+        return NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
     }
 
     @objc func togglePopover() {

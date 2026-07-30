@@ -37,7 +37,9 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 ## 6. Quy trình Git Branching & Automation (Feature Branch & PR Workflow)
 - **Tự động tạo Feature / Fix Branch**: Mỗi khi người dùng giao nhiệm vụ sửa bug hoặc phát triển tính năng mới, **tự động tạo nhánh riêng biệt** (`feature/<tên-tính-năng>` hoặc `fix/<tên-lỗi>`) từ `main` trước khi viết code.
 - **Kiểm thử & Commit**: Sau khi viết code xong và bộ kiểm thử (`swift test`) PASS 100%, tự động commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
-- **Tự động Push & Tạo Pull Request (PR)**:
+- **Push, Tạo PR & Rebuild app ngay trên Nhánh Feature**:
   - Push nhánh lên GitHub (`git push origin <branch>`).
-  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết các thay đổi.
-  - Tự động merge PR vào `main` (hoặc gửi link PR để bạn review tuỳ bạn chọn) và chạy `./dev.sh` để rebuild ứng dụng mới.
+  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết và gửi link PR cho người dùng.
+  - **Chạy `./dev.sh` ngay trên nhánh feature** để rebuild ứng dụng mới cho người dùng kiểm tra & trải nghiệm trực tiếp.
+- **Xác nhận Merge (Sau khi người dùng đồng ý)**:
+  - **Chờ người dùng xác nhận "OK" / Duyệt**: Sau khi người dùng đồng ý, tiến hành merge PR vào `main` (`gh pr merge --merge --delete-branch`), chuyển về `main` và xoá nhánh local.
