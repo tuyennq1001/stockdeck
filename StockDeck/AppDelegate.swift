@@ -570,10 +570,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
                      Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
            let loaded = NSImage(contentsOf: url) {
+            loaded.size = NSSize(width: 18, height: 18)
             img = loaded
         } else if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
                             Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
                   let loaded = NSImage(contentsOf: url) {
+            loaded.size = NSSize(width: 18, height: 18)
             img = loaded
         } else {
             img = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
