@@ -21,6 +21,7 @@ let package = Package(
                 .process("Assets.xcassets"),
                 .copy("Resources/AppIcon.icns"),
                 .copy("Resources/AppIcon.png"),
+                .copy("Resources/AppLogo.png"),
                 .copy("Fonts/InterVariable.ttf")
             ]
         ),
