@@ -143,7 +143,7 @@ struct PortfolioOverview: View {
         case pnl
         case weight
     }
-    @State private var sortColumn: PositionSortColumn = .manual
+    @State private var sortColumn: PositionSortColumn = .weight
     @State private var sortAscending: Bool = false
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?

@@ -398,7 +398,7 @@ struct PortfolioListView: View {
                                   extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: val)
         }
-        .sorted { (orderMap[$0.id] ?? 999) < (orderMap[$1.id] ?? 999) }
+        .sorted { $0.value > $1.value }
     }
 
     private func exportPortfolios(_ portfolios: [Portfolio]) {
