@@ -61,9 +61,7 @@ if git tag -l "$TAG" | grep -q "$TAG"; then
 fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
-    warn "Working directory has uncommitted changes."
-    read -rp "Continue anyway? [y/N] " ans
-    [[ "$ans" =~ ^[Yy]$ ]] || exit 1
+    warn "Working directory has uncommitted changes — proceeding with release."
 fi
 
 info "Releasing ${APP_NAME} v${VERSION} (build ${BUILD_NUMBER})"
