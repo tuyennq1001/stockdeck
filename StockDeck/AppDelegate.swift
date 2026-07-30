@@ -566,21 +566,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var menuBarImage: NSImage? {
-        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppIcon", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
                      Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
-           let loaded = NSImage(contentsOf: url) {
-            let icon = NSImage(size: NSSize(width: 18, height: 18))
-            icon.lockFocus()
-            loaded.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18),
-                        from: NSRect(x: 0, y: 0, width: loaded.size.width, height: loaded.size.height),
-                        operation: .sourceOver, fraction: 1.0)
-            icon.unlockFocus()
-            icon.isTemplate = true
-            return icon
+           let src = NSImage(contentsOf: url) {
+            let targetSize = NSSize(width: 18, height: 18)
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: 36,
+                pixelsHigh: 36,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 36 * 4,
+                bitsPerPixel: 32
+            )
+            if let rep {
+                rep.size = targetSize
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                src.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18),
+                         from: NSRect(x: 0, y: 0, width: src.size.width, height: src.size.height),
+                         operation: .copy, fraction: 1.0)
+                NSGraphicsContext.restoreGraphicsState()
+
+                let icon = NSImage(size: targetSize)
+                icon.addRepresentation(rep)
+                return icon
+            }
         }
-        let fallback = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
-        fallback?.isTemplate = true
-        return fallback
+        return NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
     }
 
     @objc func togglePopover() {
