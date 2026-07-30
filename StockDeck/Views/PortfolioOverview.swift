@@ -148,6 +148,7 @@ struct PortfolioOverview: View {
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
+    @State private var positionsCardWidth: CGFloat = 0
 
     private var insertionOrderedSymbols: [String] {
         var seen = Set<String>()
@@ -1212,27 +1213,30 @@ struct PortfolioOverview: View {
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             } else {
+                let minTableWidth: CGFloat = storageService.showExtendedHours ? 780 : 680
+                let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(spacing: 0) {
                         HStack(spacing: 0) {
                             Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
                             sortHeader("Symbol", column: .symbol)
-                                .frame(width: PositionColumnWidth.symbol, alignment: .leading)
+                                .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
                             sortHeader("Price", column: .price)
-                                .frame(width: PositionColumnWidth.price, alignment: .trailing)
+                                .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
                             if storageService.showExtendedHours {
                                 sortHeader("Ext", column: .extended)
-                                    .frame(width: PositionColumnWidth.session, alignment: .trailing)
+                                    .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
                                     .help("Sort by the current pre/post-market % move")
                             }
                             sortHeader("Cost", column: .cost)
-                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("Value", column: .value)
-                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("P&L", column: .pnl)
-                                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("Weight", column: .weight)
-                                .frame(width: PositionColumnWidth.weight, alignment: .trailing)
+                                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
                             Color.clear.frame(width: PositionColumnWidth.chevron)
                         }
                         .font(DS.label)
@@ -1319,7 +1323,7 @@ struct PortfolioOverview: View {
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(width: max(availableWidth, minTableWidth))
                 }
                 .navigationDestination(for: UUID.self) { id in
                     if let h = holdings.first(where: { $0.id == id }) {
@@ -1331,6 +1335,16 @@ struct PortfolioOverview: View {
         }
         .padding(DS.pad)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: CardWidthPreferenceKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(CardWidthPreferenceKey.self) { width in
+            if width > 0 && abs(positionsCardWidth - width) > 1 {
+                positionsCardWidth = width
+            }
+        }
         .premiumCard()
     }
 
@@ -1376,13 +1390,21 @@ struct PortfolioOverview: View {
 
 // MARK: - Position summary row
 
+private struct CardWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 { value = next }
+    }
+}
+
 private enum PositionColumnWidth {
     static let number: CGFloat = 24
-    static let symbol: CGFloat = 98
-    static let price: CGFloat = 105
-    static let session: CGFloat = 105
-    static let amount: CGFloat = 115
-    static let weight: CGFloat = 105
+    static let symbolMin: CGFloat = 120
+    static let priceMin: CGFloat = 90
+    static let sessionMin: CGFloat = 90
+    static let amountMin: CGFloat = 95
+    static let weightMin: CGFloat = 95
     static let chevron: CGFloat = 16
 }
 
@@ -1503,7 +1525,7 @@ private struct PositionSummaryRow: View {
                         Text(titleText)
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
                         if holdings.count > 1 {
                             Text("\(holdings.count) lots")
                                 .font(.inter(8, weight: .semibold, relativeTo: .caption2))
@@ -1519,11 +1541,11 @@ private struct PositionSummaryRow: View {
                         Text(subTitleText)
                             .font(DS.micro)
                             .foregroundStyle(DS.inkTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
                     }
                 }
             }
-            .frame(width: PositionColumnWidth.symbol, alignment: .leading)
+            .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
 
             // Regular price and today's regular-session change.
             let isExtendedSession = showExtendedHours && (liveQuote?.isExtendedHours ?? false)
@@ -1532,7 +1554,7 @@ private struct PositionSummaryRow: View {
                 percent: liveQuote?.changePercent,
                 emphasised: !isExtendedSession
             )
-                .frame(width: PositionColumnWidth.price, alignment: .trailing)
+            .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
 
             // Current extended session: pre-market or after-hours.
             if showExtendedHours {
@@ -1542,18 +1564,18 @@ private struct PositionSummaryRow: View {
                           percent: extPrice == nil ? nil : extQuote?.extendedChangePercent,
                           sessionLabel: extPrice == nil ? nil : extQuote?.marketStateLabel,
                           emphasised: extPrice != nil)
-                    .frame(width: PositionColumnWidth.session, alignment: .trailing)
+                    .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
             }
 
             // Cost basis column (Native Currency)
             Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
-                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
             // Market Value column (Native Currency)
             Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
-                .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
@@ -1566,7 +1588,7 @@ private struct PositionSummaryRow: View {
                     .font(DS.micro)
             }
             .foregroundStyle(DS.pnlColor(totalNativePnl))
-            .frame(width: PositionColumnWidth.amount, alignment: .trailing)
+            .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 
             // Weight column
             HStack(spacing: 7) {
@@ -1579,7 +1601,7 @@ private struct PositionSummaryRow: View {
                     .font(.inter(11, relativeTo: .caption).monospacedDigit())
                     .foregroundStyle(DS.inkSecondary)
             }
-            .frame(width: PositionColumnWidth.weight, alignment: .trailing)
+            .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
 
             // Chevron
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
