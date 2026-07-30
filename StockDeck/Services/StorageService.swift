@@ -729,6 +729,24 @@ class StorageService: ObservableObject {
         portfolioSnapshots[id.uuidString] = nil
     }
 
+    nonisolated static func normalizeBinanceHoldingSymbol(_ symbol: String) -> String {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        var base = upper
+        if upper.hasSuffix("-USD") {
+            base = String(upper.dropLast(4))
+        }
+        if base.hasPrefix("LD") && base.count > 2 {
+            base = String(base.dropFirst(2))
+        }
+        if base == "USDT" || base == "USD" || base == "BUSD" || base == "USDC" {
+            return "\(base)-USD"
+        } else if base.contains("-") {
+            return base
+        } else {
+            return "\(base)-USD"
+        }
+    }
+
     @discardableResult
     func createBinancePortfolio(name: String, apiKey: String, secretKey: String) async throws -> Portfolio {
         let portfolioId = UUID()
@@ -748,6 +766,9 @@ class StorageService: ObservableObject {
         )
 
         portfolios.append(portfolio)
+        Task { @MainActor in
+            await StockService.shared.refreshAll(storageService: self)
+        }
         return portfolio
     }
 
@@ -765,6 +786,9 @@ class StorageService: ObservableObject {
 
         portfolios[index].holdings = holdings
         portfolios[index].lastSyncedAt = Date()
+        Task { @MainActor in
+            await StockService.shared.refreshAll(storageService: self)
+        }
     }
 
     func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
@@ -998,7 +1022,27 @@ class StorageService: ObservableObject {
                 watchlists = [def]
                 selectedWatchlistId = def.id
             }
-            portfolios = decoded.portfolios
+            portfolios = decoded.portfolios.map { p in
+                var updated = p
+                var aggregated: [String: Holding] = [:]
+                var hasChanges = false
+                for h in updated.holdings {
+                    let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
+                    if normSym != h.symbol { hasChanges = true }
+                    if var existing = aggregated[normSym] {
+                        existing.quantity += h.quantity
+                        aggregated[normSym] = existing
+                    } else {
+                        var newH = h
+                        newH.symbol = normSym
+                        aggregated[normSym] = newH
+                    }
+                }
+                if hasChanges || updated.isReadOnly {
+                    updated.holdings = Array(aggregated.values)
+                }
+                return updated
+            }
             preferredCurrency = decoded.preferredCurrency ?? "EUR"
             stockPriceCurrency = decoded.stockPriceCurrency ?? ""
             showExtendedHours = decoded.showExtendedHours ?? true

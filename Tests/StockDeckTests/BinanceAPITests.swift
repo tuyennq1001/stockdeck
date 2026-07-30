@@ -76,4 +76,12 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(aggregatedBalances["SOL"] ?? 0, 10.0, accuracy: 1e-9)
         XCTAssertEqual(aggregatedBalances["USDC"] ?? 0, 100.0, accuracy: 1e-9)
     }
+
+    func testNormalizeBinanceHoldingSymbol() throws {
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDBTC-USD"), "BTC-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDSOL-USD"), "SOL-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDETH-USD"), "ETH-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDUSDC-USD"), "USDC-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("BTC-USD"), "BTC-USD")
+    }
 }
