@@ -680,11 +680,9 @@ struct HoldingRow: View {
             if let quote {
                 let assetCurr = stockService.detectedCurrency(for: holding.symbol)
                 let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                let rate = stockService.rate(from: quoteCurr)
                 let pRate = stockService.priceRate(from: quoteCurr)
                 let priceCurr = storageService.stockPriceCurrency
                 let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quoteCurr : priceCurr)
-                let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
 
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
@@ -705,20 +703,20 @@ struct HoldingRow: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                // Col 3: Controvalore + P&L in preferred currency
+                // Col 3: Value + P&L in native currency
                 let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                let marketVal = holding.marketValue(currentPrice: displayPrice) * rate
-                let costRate = stockService.rate(from: quoteCurr, for: holding.purchaseDate)
-                let costBasis = holding.costBasisLocal * costRate
-                let pnl = marketVal - costBasis
-                let pnlPct = abs(costBasis) >= 0.01 ? (pnl / abs(costBasis)) * 100 : 0
+                let nativeVal = holding.marketValue(currentPrice: displayPrice)
+                let nativeCost = holding.costBasisLocal
+                let pnl = nativeVal - nativeCost
+                let pnlPct = abs(nativeCost) >= 0.01 ? (pnl / abs(nativeCost)) * 100 : 0
+                let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
                 let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(StorageService.formatAmount(marketVal, symbol: prefSymbol, decimals: dec))
+                    Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
-                    Text("\(StorageService.formatAmount(pnl, symbol: prefSymbol, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
+                    Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
                         .font(.inter(10, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                 }
@@ -1025,11 +1023,11 @@ struct GroupedHoldingRow: View {
                 .frame(width: 140, alignment: .leading)
 
                 if let quote {
-                    let rate = stockService.rate(from: quote.currency)
-                    let pRate = stockService.priceRate(from: quote.currency)
+                    let assetCurr = stockService.detectedCurrency(for: symbol)
+                    let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
+                    let pRate = stockService.priceRate(from: quoteCurr)
                     let priceCurr = storageService.stockPriceCurrency
-                    let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quote.currency : priceCurr)
-                    let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
+                    let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quoteCurr : priceCurr)
 
                     // Col 2: Price (regular closing price formatted as integer)
                     HStack(spacing: 3) {
@@ -1039,22 +1037,20 @@ struct GroupedHoldingRow: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    // Col 3: Total Market Value & Total P&L
+                    // Col 3: Total Market Value & Total P&L in native currency
                     let displayPrice = quote.price
-                    let totalMarketVal = holdings.reduce(0) { $0 + ($1.marketValue(currentPrice: displayPrice) * rate) }
-                    let totalCostBasis = holdings.reduce(0) { sum, h in
-                        let costRate = stockService.rate(from: quote.currency, for: h.purchaseDate)
-                        return sum + (h.costBasisLocal * costRate)
-                    }
-                    let totalPnl = totalMarketVal - totalCostBasis
-                    let totalPnlPct = abs(totalCostBasis) >= 0.01 ? (totalPnl / abs(totalCostBasis)) * 100 : 0
+                    let nativeVal = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: displayPrice) }
+                    let nativeCost = holdings.reduce(0) { $0 + $1.costBasisLocal }
+                    let totalPnl = nativeVal - nativeCost
+                    let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
+                    let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
                     let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(StorageService.formatAmount(totalMarketVal, symbol: prefSymbol, decimals: dec))
+                        Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
-                        Text("\(StorageService.formatAmount(totalPnl, symbol: prefSymbol, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
+                        Text("\(StorageService.formatAmount(totalPnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
                             .font(.inter(10, relativeTo: .caption).monospacedDigit())
                             .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
                     }
@@ -1099,20 +1095,18 @@ struct GroupedHoldingRow: View {
 
                             if let quote {
                                 let curr = stockService.detectedCurrency(for: h.symbol)
-                                let rate = stockService.rate(from: curr)
                                 let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                                let val = h.marketValue(currentPrice: displayPrice) * rate
-                                let costRate = stockService.rate(from: curr, for: h.purchaseDate)
-                                let cost = h.costBasisLocal * costRate
+                                let val = h.marketValue(currentPrice: displayPrice)
+                                let cost = h.costBasisLocal
                                 let pnl = val - cost
-                                let prefSymbol = StorageService.currencySymbol(for: storageService.preferredCurrency)
+                                let nativeSymbol = StorageService.currencySymbol(for: curr)
 
-                                Text(StorageService.formatAmount(val, symbol: prefSymbol, decimals: storageService.amountDecimals))
+                                Text(StorageService.formatAmount(val, symbol: nativeSymbol, decimals: storageService.amountDecimals))
                                     .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                     .foregroundColor(.secondary)
                                     .frame(width: 70, alignment: .trailing)
 
-                                Text(StorageService.formatAmount(pnl, symbol: prefSymbol, decimals: storageService.amountDecimals, signed: true))
+                                Text(StorageService.formatAmount(pnl, symbol: nativeSymbol, decimals: storageService.amountDecimals, signed: true))
                                     .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                     .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                                     .frame(width: 70, alignment: .trailing)

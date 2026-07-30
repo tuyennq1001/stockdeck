@@ -1236,20 +1236,26 @@ private struct PositionSummaryRow: View {
 
     private var first: ValuedHolding? { holdings.first }
 
-    private var totalCost: Double {
-        holdings.reduce(0) { $0 + $1.cost }
+    private var nativeCurrencySymbol: String {
+        let curr = stockService.detectedCurrency(for: symbol)
+        return StorageService.currencySymbol(for: curr)
     }
 
-    private var totalValue: Double {
-        holdings.reduce(0) { $0 + $1.value }
+    private var totalNativeCost: Double {
+        holdings.reduce(0) { $0 + $1.holding.costBasisLocal }
     }
 
-    private var totalPnl: Double {
-        totalValue - totalCost
+    private var totalNativeValue: Double {
+        let price = first?.quote.displayPrice(extendedHours: showExtendedHours) ?? first?.holding.avgPrice ?? 0
+        return holdings.reduce(0) { $0 + $1.holding.marketValue(currentPrice: price) }
     }
 
-    private var totalPnlPercent: Double {
-        abs(totalCost) >= 0.01 ? (totalPnl / abs(totalCost)) * 100 : 0
+    private var totalNativePnl: Double {
+        totalNativeValue - totalNativeCost
+    }
+
+    private var totalNativePnlPercent: Double {
+        abs(totalNativeCost) >= 0.01 ? (totalNativePnl / abs(totalNativeCost)) * 100 : 0
     }
 
     private var amountDec: Int { valueDecimals >= 0 ? valueDecimals : 2 }
@@ -1267,7 +1273,7 @@ private struct PositionSummaryRow: View {
     ) -> some View {
         if let price {
             let quoteCurr = first?.quote.currency ?? ""
-            let sym = quoteCurr.isEmpty ? currencySymbol : StorageService.currencySymbol(for: quoteCurr)
+            let sym = quoteCurr.isEmpty ? nativeCurrencySymbol : StorageService.currencySymbol(for: quoteCurr)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(StorageService.formatAmount(price, symbol: sym, decimals: priceDec(price)))
                     .font(DS.figure)
@@ -1355,27 +1361,27 @@ private struct PositionSummaryRow: View {
                     .frame(width: PositionColumnWidth.session, alignment: .trailing)
             }
 
-            // Cost basis column
-            Text(StorageService.formatAmount(totalCost, symbol: currencySymbol, decimals: amountDec))
+            // Cost basis column (Native Currency)
+            Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
                 .frame(width: PositionColumnWidth.amount, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
-            // Market Value column
-            Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: amountDec))
+            // Market Value column (Native Currency)
+            Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
                 .frame(width: PositionColumnWidth.amount, alignment: .trailing)
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
-            // P&L column
+            // P&L column (Native Currency)
             VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: amountDec, signed: true))
+                Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
                     .font(DS.figure)
                     .contentTransition(.numericText())
-                Text(String(format: "%+.\(decimals)f%%", totalPnlPercent))
+                Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
                     .font(DS.micro)
             }
-            .foregroundStyle(DS.pnlColor(totalPnl))
+            .foregroundStyle(DS.pnlColor(totalNativePnl))
             .frame(width: PositionColumnWidth.amount, alignment: .trailing)
 
             // Weight column
