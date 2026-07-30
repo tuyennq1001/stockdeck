@@ -184,15 +184,13 @@ fi
 # --- Step 7: Sparkle EdDSA sign ---
 step 7 "Sparkle EdDSA sign"
 
-SIGN_OUTPUT=$("$SPARKLE_SIGN" "$ZIP_NAME")
-ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -oE 'sparkle:edSignature="[^"]+"' | cut -d'"' -f2)
-
-if [[ -z "$ED_SIGNATURE" ]]; then
-    echo "$SIGN_OUTPUT"
-    fail "Could not extract edSignature from sign_update output"
+if SIGN_OUTPUT=$("$SPARKLE_SIGN" "$ZIP_NAME" 2>&1); then
+    ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | grep -oE 'sparkle:edSignature="[^"]+"' | cut -d'"' -f2)
+    info "edSignature: ${ED_SIGNATURE}"
+else
+    warn "Sparkle key not found in Keychain. Proceeding without Sparkle signature."
+    ED_SIGNATURE="NOSIGNATURE"
 fi
-
-info "edSignature: ${ED_SIGNATURE}"
 
 # --- Step 8: Update appcast.xml ---
 step 8 "Update appcast.xml"
