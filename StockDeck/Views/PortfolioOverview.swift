@@ -1271,6 +1271,10 @@ private struct PositionSummaryRow: View {
 
     private var first: ValuedHolding? { holdings.first }
 
+    private var liveQuote: StockQuote? {
+        stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
+    }
+
     private var nativeCurrencySymbol: String {
         let curr = stockService.detectedCurrency(for: symbol)
         return StorageService.currencySymbol(for: curr)
@@ -1282,14 +1286,16 @@ private struct PositionSummaryRow: View {
 
     private var totalNativeValue: Double {
         holdings.reduce(0) { sum, h in
-            let price = h.quote.displayPrice(extendedHours: showExtendedHours)
+            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let price = q.displayPrice(extendedHours: showExtendedHours)
             return sum + h.holding.marketValue(currentPrice: price)
         }
     }
 
     private var totalNativePnl: Double {
         holdings.reduce(0) { sum, h in
-            let price = h.quote.displayPrice(extendedHours: showExtendedHours)
+            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let price = q.displayPrice(extendedHours: showExtendedHours)
             return sum + h.holding.pnl(currentPrice: price)
         }
     }
@@ -1312,7 +1318,7 @@ private struct PositionSummaryRow: View {
         emphasised: Bool = true
     ) -> some View {
         if let price {
-            let quoteCurr = first?.quote.currency ?? ""
+            let quoteCurr = liveQuote?.currency ?? ""
             let sym = quoteCurr.isEmpty ? nativeCurrencySymbol : StorageService.currencySymbol(for: quoteCurr)
             VStack(alignment: .trailing, spacing: 2) {
                 Text(StorageService.formatAmount(price, symbol: sym, decimals: priceDec(price)))
@@ -1354,9 +1360,9 @@ private struct PositionSummaryRow: View {
                 .frame(width: PositionColumnWidth.number, alignment: .leading)
 
             // Symbol column
-            let isJpFund = (first?.quote.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
-            let titleText = isJpFund ? (first?.quote.displayName ?? symbol) : symbol
-            let subTitleText = isJpFund ? "" : (first?.name ?? "")
+            let isJpFund = (liveQuote?.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
+            let titleText = isJpFund ? (liveQuote?.displayName ?? symbol) : symbol
+            let subTitleText = isJpFund ? "" : (liveQuote?.name ?? "")
 
             HStack(spacing: 9) {
                 SymbolLogo(symbol: symbol, size: 28)
@@ -1382,17 +1388,17 @@ private struct PositionSummaryRow: View {
             .frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
 
             // Regular price and today's regular-session change.
-            let isExtendedSession = showExtendedHours && (first?.quote.isExtendedHours ?? false)
+            let isExtendedSession = showExtendedHours && (liveQuote?.isExtendedHours ?? false)
             priceCell(
-                price: first?.quote.price,
-                percent: first?.quote.changePercent,
+                price: liveQuote?.price,
+                percent: liveQuote?.changePercent,
                 emphasised: !isExtendedSession
             )
                 .frame(width: PositionColumnWidth.price, alignment: .trailing)
 
             // Current extended session: pre-market or after-hours.
             if showExtendedHours {
-                let extQuote = first?.quote
+                let extQuote = liveQuote
                 let extPrice = extQuote.flatMap { $0.isExtendedHours ? $0.effectivePrice : nil }
                 priceCell(price: extPrice,
                           percent: extPrice == nil ? nil : extQuote?.extendedChangePercent,
