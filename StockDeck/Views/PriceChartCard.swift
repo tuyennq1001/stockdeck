@@ -61,13 +61,6 @@ struct PriceChartCard: View {
 
     private var displayedPriceInfo: (price: Double, diff: Double, diffPct: Double, label: String) {
         let basePrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-        if let hp = hoverPoint {
-            let startPrice = history.first?.close ?? basePrice
-            let diff = hp.close - startPrice
-            let diffPct = startPrice > 0 ? (diff / startPrice) * 100 : 0
-            return (hp.close, diff, diffPct, chartRange.changeLabel)
-        }
-
         guard history.count >= 2, let firstPrice = history.first?.close, firstPrice > 0 else {
             return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
         }
