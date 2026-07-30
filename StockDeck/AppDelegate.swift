@@ -155,11 +155,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         symbolsObserver = storageService.$portfolios
             .combineLatest(storageService.$watchlists)
-            .dropFirst()
-            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
-                guard let self, !self.isRefreshing else { return }
+                guard let self else { return }
                 let symbols = Array(self.collectSymbols())
+                guard !symbols.isEmpty else { return }
                 self.webSocketService.updateSymbols(symbols)
                 self.refreshTask?.cancel()
                 let start = Date()
