@@ -106,12 +106,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // via `.preferredColorScheme` on the SwiftUI root — not pinned here.
         popover = p
 
+        let start = Date()
+        refreshStartedAt = start
         refreshTask = Task {
-            let start = Date()
-            refreshStartedAt = start
             // Compare-and-clear: only clear if a newer refresh hasn't superseded
             // us, so a cancelled Task's defer can't unblock a live refresh.
-            defer { if refreshStartedAt == start { refreshStartedAt = nil } }
+            defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()

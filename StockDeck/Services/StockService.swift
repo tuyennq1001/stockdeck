@@ -316,9 +316,11 @@ class StockService: ObservableObject {
 
             for quote in parsed.quotes {
                 quotes[quote.symbol] = quote
+                quotes[quote.symbol.uppercased()] = quote
             }
             for (symbol, type) in parsed.types {
                 StorageService.shared.setType(type, for: symbol)
+                StorageService.shared.setType(type, for: symbol.uppercased())
             }
 
             return true
@@ -497,6 +499,9 @@ class StockService: ObservableObject {
             )
 
             quotes[meta.symbol] = quote
+            quotes[meta.symbol.uppercased()] = quote
+            quotes[symbol] = quote
+            quotes[symbol.uppercased()] = quote
             if let t = meta.instrumentType { StorageService.shared.setType(t, for: meta.symbol) }
         } catch {
         }
