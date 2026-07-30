@@ -239,7 +239,12 @@ class StockService: ObservableObject {
                 for await (sym, q) in group {
                     if let quote = q {
                         self.quotes[sym] = quote
+                        self.quotes[sym.uppercased()] = quote
+                        self.quotes[quote.symbol] = quote
+                        self.quotes[quote.name] = quote
                         StorageService.shared.setType("MUTUALFUND", for: sym)
+                        StorageService.shared.setType("MUTUALFUND", for: sym.uppercased())
+                        StorageService.shared.setType("MUTUALFUND", for: quote.symbol)
                     }
                 }
             }
@@ -903,7 +908,16 @@ class StockService: ObservableObject {
 
     func fetchJapaneseFundQuote(symbol: String) async -> StockQuote? {
         let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(cleanCode)") else { return nil }
+        var targetCode = cleanCode
+        if let foundCode = Self.codeToFundNameMap.first(where: {
+            $0.key == cleanCode || $0.value.uppercased() == cleanCode ||
+            $0.value.replacingOccurrences(of: " ", with: "") == cleanCode.replacingOccurrences(of: " ", with: "") ||
+            cleanCode.contains($0.value) || $0.value.contains(cleanCode)
+        })?.key {
+            targetCode = foundCode
+        }
+
+        guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(targetCode)") else { return nil }
 
         var request = URLRequest(url: url)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
@@ -913,66 +927,50 @@ class StockService: ObservableObject {
             guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200,
                   let html = String(data: data, encoding: .utf8) else { return nil }
 
-            let pattern = "\"code\":\"\(cleanCode)\".*?\"changePriceRate\":\"([^\"]*)\""
+            let pattern = "\"code\":\"\(targetCode)\".*?\"changePriceRate\":\"([^\"]*)\""
+            var price: Double = 0
+            var change: Double = 0
+            var percent: Double = 0
+            var name = Self.codeToFundNameMap[targetCode] ?? cleanCode
+
             if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
                let match = regex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count)) {
                 let jsonSnippet = "{" + (html as NSString).substring(with: match.range) + "}"
                 if let snippetData = jsonSnippet.data(using: .utf8),
                    let dict = try? JSONSerialization.jsonObject(with: snippetData) as? [String: Any] {
 
-                    var name = (dict["name"] as? String) ?? (dict["fundNickName"] as? String) ?? cleanCode
-                    if name == cleanCode || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        name = Self.codeToFundNameMap[cleanCode] ?? cleanCode
+                    let parsedName = (dict["name"] as? String) ?? (dict["fundNickName"] as? String)
+                    if let parsedName, !parsedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        name = parsedName
                     }
                     let priceStr = (dict["price"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
                     let changeStr = (dict["changePrice"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
                     let percentStr = (dict["changePriceRate"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
 
-                    let price = Double(priceStr) ?? 0.0
-                    let change = Double(changeStr) ?? 0.0
-                    let percent = Double(percentStr) ?? 0.0
-
-                    return StockQuote(
-                        symbol: symbol,
-                        name: name,
-                        price: price,
-                        change: change,
-                        changePercent: percent,
-                        regularMarketPreviousClose: price - change,
-                        currency: "JPY",
-                        marketState: "CLOSED",
-                        dayHigh: nil,
-                        dayLow: nil,
-                        fiftyTwoWeekHigh: nil,
-                        fiftyTwoWeekLow: nil,
-                        preMarketPrice: nil,
-                        preMarketChange: nil,
-                        preMarketChangePercent: nil,
-                        postMarketPrice: nil,
-                        postMarketChange: nil,
-                        postMarketChangePercent: nil
-                    )
+                    price = Double(priceStr) ?? 0.0
+                    change = Double(changeStr) ?? 0.0
+                    percent = Double(percentStr) ?? 0.0
                 }
             }
 
-            // Fallback parsing title
-            let titlePattern = "<title>(.*?)【"
-            var fundName = cleanCode
-            if let tRegex = try? NSRegularExpression(pattern: titlePattern),
-               let tMatch = tRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
-                fundName = (html as NSString).substring(with: tMatch.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if price <= 0 {
+                let pricePattern = "\"price\":\"([0-9,]+)\""
+                if let pRegex = try? NSRegularExpression(pattern: pricePattern),
+                   let pMatch = pRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                    let priceStr = (html as NSString).substring(with: pMatch.range(at: 1)).replacingOccurrences(of: ",", with: "")
+                    price = Double(priceStr) ?? 0.0
+                }
             }
-            if fundName == cleanCode || fundName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                fundName = Self.codeToFundNameMap[cleanCode] ?? cleanCode
-            }
+
+            guard price > 0 else { return nil }
 
             return StockQuote(
                 symbol: symbol,
-                name: fundName,
-                price: 0,
-                change: 0,
-                changePercent: 0,
-                regularMarketPreviousClose: 0,
+                name: name,
+                price: price,
+                change: change,
+                changePercent: percent,
+                regularMarketPreviousClose: price - change,
                 currency: "JPY",
                 marketState: "CLOSED",
                 dayHigh: nil,
