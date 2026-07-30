@@ -566,22 +566,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var menuBarImage: NSImage? {
-        let img: NSImage?
         if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
                      Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
            let loaded = NSImage(contentsOf: url) {
-            loaded.size = NSSize(width: 18, height: 18)
-            img = loaded
-        } else if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
-                            Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
-                  let loaded = NSImage(contentsOf: url) {
-            loaded.size = NSSize(width: 18, height: 18)
-            img = loaded
-        } else {
-            img = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+            let icon = NSImage(size: NSSize(width: 18, height: 18))
+            icon.lockFocus()
+            loaded.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18),
+                        from: NSRect(x: 0, y: 0, width: loaded.size.width, height: loaded.size.height),
+                        operation: .sourceOver, fraction: 1.0)
+            icon.unlockFocus()
+            icon.isTemplate = true
+            return icon
         }
-        img?.isTemplate = true
-        return img
+        let fallback = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "StockDeck")
+        fallback?.isTemplate = true
+        return fallback
     }
 
     @objc func togglePopover() {
