@@ -221,8 +221,22 @@ class StorageService: ObservableObject {
         symbolType[symbol] = normalized
     }
 
-    /// Asset class for a symbol, or "" if not yet known.
-    func type(for symbol: String) -> String { symbolType[symbol] ?? "" }
+    /// Asset class for a symbol, using fallback heuristics if not yet known.
+    func type(for symbol: String) -> String {
+        if let stored = symbolType[symbol] ?? symbolType[symbol.uppercased()], !stored.isEmpty {
+            return stored
+        }
+        if StockService.isJapaneseMutualFund(symbol) {
+            return "MUTUALFUND"
+        }
+        if StockService.isVietnameseStock(symbol) || StockService.isJapaneseStock(symbol) {
+            return "EQUITY"
+        }
+        if StorageService.isIndex(symbol: symbol, type: symbolType[symbol]) {
+            return "INDEX"
+        }
+        return ""
+    }
 
     /// One-shot price alerts.
     @Published var alerts: [PriceAlert] = [] {
