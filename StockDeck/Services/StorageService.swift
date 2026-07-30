@@ -747,6 +747,17 @@ class StorageService: ObservableObject {
         }
     }
 
+    nonisolated static func isStandardCryptoSymbol(_ symbol: String) -> Bool {
+        let knownCrypto: Set<String> = [
+            "BTC", "ETH", "SOL", "USDT", "USDC", "BNB", "XRP", "ADA", "DOGE", "AVAX",
+            "DOT", "LINK", "MATIC", "SHIB", "LTC", "UNI", "NEAR", "APT", "SUI", "ATOM",
+            "BUSD", "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO"
+        ]
+        let upper = symbol.uppercased()
+        let clean = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+        return knownCrypto.contains(clean)
+    }
+
     @discardableResult
     func createBinancePortfolio(name: String, apiKey: String, secretKey: String) async throws -> Portfolio {
         let portfolioId = UUID()
@@ -1020,26 +1031,35 @@ class StorageService: ObservableObject {
             } else {
                 let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
                 watchlists = [def]
-                selectedWatchlistId = def.id
             }
             portfolios = decoded.portfolios.map { p in
                 var updated = p
-                var aggregated: [String: Holding] = [:]
-                var hasChanges = false
-                for h in updated.holdings {
-                    let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
-                    if normSym != h.symbol { hasChanges = true }
-                    if var existing = aggregated[normSym] {
-                        existing.quantity += h.quantity
-                        aggregated[normSym] = existing
-                    } else {
-                        var newH = h
-                        newH.symbol = normSym
-                        aggregated[normSym] = newH
+                if updated.isReadOnly {
+                    var aggregated: [String: Holding] = [:]
+                    for h in updated.holdings {
+                        let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
+                        if var existing = aggregated[normSym] {
+                            existing.quantity += h.quantity
+                            aggregated[normSym] = existing
+                        } else {
+                            var newH = h
+                            newH.symbol = normSym
+                            aggregated[normSym] = newH
+                        }
                     }
-                }
-                if hasChanges || updated.isReadOnly {
                     updated.holdings = Array(aggregated.values)
+                } else {
+                    // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
+                    updated.holdings = updated.holdings.map { h in
+                        var newH = h
+                        if newH.symbol.hasSuffix("-USD") {
+                            let base = String(newH.symbol.dropLast(4))
+                            if !StorageService.isStandardCryptoSymbol(base) {
+                                newH.symbol = base
+                            }
+                        }
+                        return newH
+                    }
                 }
                 return updated
             }
