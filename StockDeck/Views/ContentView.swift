@@ -161,13 +161,22 @@ struct ContentView: View {
                     }
                 }
 
-                Spacer()
-
-                if stockService.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(width: 16, height: 16)
+                Button(action: {
+                    Task {
+                        await stockService.refreshAll(storageService: storageService)
+                        if selectedTab == .home {
+                            await stockService.refreshNews(storageService: storageService, force: true)
+                        }
+                    }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.inter(12, relativeTo: .callout))
+                        .foregroundStyle(DS.inkSecondary)
                 }
+                .buttonStyle(.plain)
+                .disabled(stockService.isLoading)
+                .pointingHandCursor()
+                .help("Refresh quotes")
 
                 // The clear way into the full desktop app.
                 Button(action: {
