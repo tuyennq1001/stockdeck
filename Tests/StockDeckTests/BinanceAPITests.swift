@@ -52,4 +52,28 @@ final class BinanceAPITests: XCTestCase {
         let balance = BinanceAssetBalance(asset: "BTC", free: "0.5", locked: "0.1")
         XCTAssertEqual(balance.totalQuantity, 0.6, accuracy: 1e-9)
     }
+
+    func testBinanceEarnLDPrefixStripping() throws {
+        let rawBalances = [
+            BinanceAssetBalance(asset: "LDBTC", free: "0.5", locked: "0.0"),
+            BinanceAssetBalance(asset: "BTC", free: "0.1", locked: "0.0"),
+            BinanceAssetBalance(asset: "LDSOL", free: "10.0", locked: "0.0"),
+            BinanceAssetBalance(asset: "LDUSDC", free: "100.0", locked: "0.0")
+        ]
+
+        var aggregatedBalances: [String: Double] = [:]
+        for asset in rawBalances {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            var cleanAsset = asset.asset.uppercased()
+            if cleanAsset.hasPrefix("LD") && cleanAsset.count > 2 {
+                cleanAsset = String(cleanAsset.dropFirst(2))
+            }
+            aggregatedBalances[cleanAsset, default: 0.0] += qty
+        }
+
+        XCTAssertEqual(aggregatedBalances["BTC"] ?? 0, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(aggregatedBalances["SOL"] ?? 0, 10.0, accuracy: 1e-9)
+        XCTAssertEqual(aggregatedBalances["USDC"] ?? 0, 100.0, accuracy: 1e-9)
+    }
 }
