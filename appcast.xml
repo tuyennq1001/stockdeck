@@ -6,24 +6,25 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 2.0</title>
-            <pubDate>Thu, 30 Jul 2026 15:42:15 +0900</pubDate>
-            <sparkle:version>31</sparkle:version>
-            <sparkle:shortVersionString>2.0</sparkle:shortVersionString>
+            <title>Version 1.0</title>
+            <pubDate>Thu, 30 Jul 2026 16:01:05 +0900</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>Responsive Positions Table & Native Currency Precision</h2>
+<h2>Welcome to StockDeck 1.0</h2>
 <ul>
-    <li><strong>Full-Width Responsive Positions Table:</strong> The portfolio positions table now responsively stretches to 100% of the screen width with dynamic column sizing, eliminating wasted side space and keeping stock names cleanly on single lines.</li>
-    <li><strong>Native Currency Consistency:</strong> Cost basis, Average Cost, Market Value, and Position P&L now strictly preserve each asset's native currency symbol (₫, $, ¥, €), keeping position details clear and consistent.</li>
-    <li><strong>Automatic Weight Sorting:</strong> Portfolio positions now default to sorting by weight/market value descending. Newly added assets are automatically placed in their sorted position by weight.</li>
-    <li><strong>Performance & Benchmarks:</strong> Enhanced money-weighted return (XIRR) tracking and period change calculations.</li>
+    <li><strong>Full-Featured Stock & Portfolio Deck:</strong> Track stocks, ETFs, mutual funds, and crypto with realtime price updates and comprehensive portfolio analytics.</li>
+    <li><strong>Responsive Positions Table:</strong> Dynamic positions card with full-width responsive layout matching screen width.</li>
+    <li><strong>Native Currency Precision:</strong> Cost basis, Average Cost, Market Value, and Position P&L strictly preserve each asset's native currency symbol (₫, $, ¥, €).</li>
+    <li><strong>Automatic Weight Sorting:</strong> Portfolio positions automatically sort by weight/market value descending. Newly added assets auto-sort instantly.</li>
+    <li><strong>Performance & Benchmarks:</strong> Money-weighted return (XIRR) tracking and period change performance vs S&P 500 benchmark.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v2.0/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.0/StockDeck.zip"
                        type="application/octet-stream"
                        sparkle:edSignature="NOSIGNATURE"
-                       length="13949606"/>
+                       length="13949604"/>
         </item>
     </channel>
 </rss>
