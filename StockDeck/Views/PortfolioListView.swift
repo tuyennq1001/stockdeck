@@ -5,6 +5,7 @@ struct PortfolioListView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @State private var showNewPortfolio = false
+    @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
     @State private var searchText = ""
     @State private var importAlert: String?
@@ -185,11 +186,22 @@ struct PortfolioListView: View {
 
                 Divider()
 
-                HStack {
+                HStack(spacing: 12) {
                     Button(action: { showNewPortfolio = true }) {
                         HStack {
                             Image(systemName: "plus.circle.fill")
                             Text("New portfolio")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
+                    Button(action: { showBinanceSheet = true }) {
+                        HStack {
+                            Image(systemName: "circle.hexagongrid.fill")
+                                .foregroundColor(.yellow)
+                            Text("Connect Binance")
                         }
                         .font(.inter(10, relativeTo: .caption))
                     }
@@ -201,6 +213,9 @@ struct PortfolioListView: View {
                 .padding(8)
             }
         }
+        }
+        .sheet(isPresented: $showBinanceSheet) {
+            AddBinancePortfolioSheet(storageService: storageService)
         }
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
@@ -452,6 +467,21 @@ struct PortfolioSection: View {
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var showNotifications = false
+    @State private var isSyncingBinance = false
+
+    private func syncBinance() {
+        isSyncingBinance = true
+        Task {
+            do {
+                try await storageService.syncBinancePortfolio(id: portfolio.id)
+            } catch {
+                print("Failed to sync Binance portfolio: \(error.localizedDescription)")
+            }
+            await MainActor.run {
+                isSyncingBinance = false
+            }
+        }
+    }
 
     private func exportSingle() {
         PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
@@ -539,29 +569,55 @@ struct PortfolioSection: View {
                 }
             }
 
-            // Add holding / Batch import buttons
-            HStack(spacing: 12) {
-                Button(action: { addHoldingAction.perform(portfolio.id) }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "plus")
-                        Text("Add holding")
+            // Add holding / Batch import / Binance Sync buttons
+            if portfolio.isReadOnly {
+                HStack(spacing: 12) {
+                    Button(action: syncBinance) {
+                        HStack(spacing: 4) {
+                            if isSyncingBinance {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Sync Binance Now")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.accentColor)
                     }
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.accentColor)
-                }
-                .buttonStyle(.borderless)
-                .pointingHandCursor()
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+                    .disabled(isSyncingBinance)
 
-                Button(action: { onBatchImport?(portfolio.id) }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.down")
-                        Text("Batch import…")
+                    if let lastSync = portfolio.lastSyncedAt {
+                        Text("Last synced: \(lastSync.formatted(.dateTime.hour().minute().second()))")
+                            .font(.inter(9, relativeTo: .caption))
+                            .foregroundColor(.secondary)
                     }
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
                 }
-                .buttonStyle(.borderless)
-                .pointingHandCursor()
+            } else {
+                HStack(spacing: 12) {
+                    Button(action: { addHoldingAction.perform(portfolio.id) }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus")
+                            Text("Add holding")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
+                    Button(action: { onBatchImport?(portfolio.id) }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("Batch import…")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+                }
             }
         } header: {
             if isRenaming {
@@ -576,21 +632,44 @@ struct PortfolioSection: View {
                         .disabled(renameText.isEmpty)
                 }
             } else {
-                HStack {
+                HStack(spacing: 6) {
                     Text(portfolio.name)
                         .font(.inter(13, weight: .bold, relativeTo: .headline))
+
+                    if portfolio.isReadOnly {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9))
+                            Text("Binance")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow.opacity(0.2))
+                        .foregroundColor(.orange)
+                        .cornerRadius(4)
+                    }
+
                     Spacer()
                     Menu {
+                        if portfolio.isReadOnly {
+                            Button(action: syncBinance) {
+                                Label("Sync Binance Now", systemImage: "arrow.clockwise")
+                            }
+                            Divider()
+                        }
                         Button {
                             renameText = portfolio.name
                             isRenaming = true
                         } label: {
                             Label("Rename Portfolio", systemImage: "pencil")
                         }
-                        Button {
-                            onBatchImport?(portfolio.id)
-                        } label: {
-                            Label("Batch Import…", systemImage: "square.and.arrow.down")
+                        if !portfolio.isReadOnly {
+                            Button {
+                                onBatchImport?(portfolio.id)
+                            } label: {
+                                Label("Batch Import…", systemImage: "square.and.arrow.down")
+                            }
                         }
                         Button {
                             showNotifications = true
