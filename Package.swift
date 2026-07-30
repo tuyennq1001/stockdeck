@@ -20,6 +20,7 @@ let package = Package(
             resources: [
                 .process("Assets.xcassets"),
                 .copy("Resources/AppIcon.icns"),
+                .copy("Resources/AppIcon.png"),
                 .copy("Fonts/InterVariable.ttf")
             ]
         ),

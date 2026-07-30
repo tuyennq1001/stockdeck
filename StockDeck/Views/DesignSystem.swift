@@ -411,6 +411,10 @@ struct BrandMark: View {
 
     /// Loaded once from the app's bundled icon (works in dev and release).
     private static let appIcon: NSImage? = {
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
         if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
            let img = NSImage(contentsOf: url) {
             return img
