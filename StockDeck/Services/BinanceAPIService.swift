@@ -83,19 +83,30 @@ class BinanceAPIService {
             throw BinanceAPIError.decodingError
         }
 
-        return account.balances.compactMap { asset -> Holding? in
+        var aggregatedBalances: [String: Double] = [:]
+
+        for asset in account.balances {
             let qty = asset.totalQuantity
             // Ignore dust balances less than 0.00000001
-            guard qty >= 1e-8 else { return nil }
+            guard qty >= 1e-8 else { continue }
 
+            var cleanAsset = asset.asset.uppercased()
+            // Strip Binance Flexible Earn / Lending Deposit prefix (e.g. LDBTC -> BTC, LDUSDC -> USDC)
+            if cleanAsset.hasPrefix("LD") && cleanAsset.count > 2 {
+                cleanAsset = String(cleanAsset.dropFirst(2))
+            }
+
+            aggregatedBalances[cleanAsset, default: 0.0] += qty
+        }
+
+        return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
             let symbol: String
-            let upper = asset.asset.uppercased()
-            if upper == "USDT" || upper == "USD" || upper == "BUSD" || upper == "USDC" {
-                symbol = "\(upper)-USD"
-            } else if upper.contains("-") {
-                symbol = upper
+            if assetName == "USDT" || assetName == "USD" || assetName == "BUSD" || assetName == "USDC" {
+                symbol = "\(assetName)-USD"
+            } else if assetName.contains("-") {
+                symbol = assetName
             } else {
-                symbol = "\(upper)-USD"
+                symbol = "\(assetName)-USD"
             }
 
             return Holding(
