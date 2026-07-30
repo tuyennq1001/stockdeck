@@ -237,11 +237,11 @@ class StockService: ObservableObject {
                     }
                 }
                 for await (sym, q) in group {
-                    if let quote = q {
+                    if let quote = q, quote.price > 0 {
                         self.quotes[sym] = quote
                         self.quotes[sym.uppercased()] = quote
                         self.quotes[quote.symbol] = quote
-                        self.quotes[quote.name] = quote
+                        self.quotes[quote.symbol.uppercased()] = quote
                         StorageService.shared.setType("MUTUALFUND", for: sym)
                         StorageService.shared.setType("MUTUALFUND", for: sym.uppercased())
                         StorageService.shared.setType("MUTUALFUND", for: quote.symbol)
@@ -911,8 +911,8 @@ class StockService: ObservableObject {
         var targetCode = cleanCode
         if let foundCode = Self.codeToFundNameMap.first(where: {
             $0.key == cleanCode || $0.value.uppercased() == cleanCode ||
-            $0.value.replacingOccurrences(of: " ", with: "") == cleanCode.replacingOccurrences(of: " ", with: "") ||
-            cleanCode.contains($0.value) || $0.value.contains(cleanCode)
+            $0.value.replacingOccurrences(of: " ", with: "").uppercased() == cleanCode.replacingOccurrences(of: " ", with: "").uppercased() ||
+            (Self.containsJapaneseCharacters(cleanCode) && (cleanCode.contains($0.value) || $0.value.contains(cleanCode)))
         })?.key {
             targetCode = foundCode
         }

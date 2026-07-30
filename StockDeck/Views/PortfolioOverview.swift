@@ -1287,7 +1287,7 @@ private struct PositionSummaryRow: View {
     private var totalNativeValue: Double {
         holdings.reduce(0) { sum, h in
             let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
-            let price = q.displayPrice(extendedHours: showExtendedHours)
+            let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.marketValue(currentPrice: price)
         }
     }
@@ -1295,7 +1295,7 @@ private struct PositionSummaryRow: View {
     private var totalNativePnl: Double {
         holdings.reduce(0) { sum, h in
             let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
-            let price = q.displayPrice(extendedHours: showExtendedHours)
+            let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.pnl(currentPrice: price)
         }
     }
