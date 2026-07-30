@@ -98,6 +98,8 @@ mkdir -p "$APP_PATH/Contents/Frameworks"
 cp "$BINARY" "$APP_PATH/Contents/MacOS/${APP_NAME}"
 cp "$PLIST" "$APP_PATH/Contents/Info.plist"
 cp "StockDeck/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
+cp "StockDeck/Resources/AppLogo.png" "$APP_PATH/Contents/Resources/AppLogo.png" 2>/dev/null || true
+cp "StockDeck/Resources/AppIcon.png" "$APP_PATH/Contents/Resources/AppIcon.png" 2>/dev/null || true
 cp -R "${PRODUCTS_DIR}/Sparkle.framework" "$APP_PATH/Contents/Frameworks/Sparkle.framework"
 
 # Copy SPM resource bundles (fonts, assets)
