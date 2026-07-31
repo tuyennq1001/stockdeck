@@ -765,6 +765,17 @@ class StorageService: ObservableObject {
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
+    func moveHolding(holdingId: UUID, from sourcePortfolioId: UUID, to targetPortfolioId: UUID) {
+        guard sourcePortfolioId != targetPortfolioId,
+              let sIndex = portfolios.firstIndex(where: { $0.id == sourcePortfolioId }),
+              let tIndex = portfolios.firstIndex(where: { $0.id == targetPortfolioId }),
+              let hIndex = portfolios[sIndex].holdings.firstIndex(where: { $0.id == holdingId })
+        else { return }
+        let holding = portfolios[sIndex].holdings.remove(at: hIndex)
+        portfolios[tIndex].holdings.append(holding)
+    }
+
+
     func updateHolding(in portfolioId: UUID, holdingId: UUID, symbol: String? = nil, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
               let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
