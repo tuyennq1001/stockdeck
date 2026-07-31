@@ -1356,34 +1356,21 @@ struct PortfolioOverview: View {
     /// Visible "+ Add holding" affordance. Adds directly to the focused portfolio;
     /// on "All Portfolios" it picks the one portfolio, or offers a menu to choose.
     @ViewBuilder private var addHoldingButton: some View {
-        let label = HStack(spacing: 4) {
-            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
-            Text("Add holding").font(.inter(11, weight: .semibold, relativeTo: .caption))
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 11).padding(.vertical, 5)
-        .background(Capsule().fill(DS.brand))
-
         switch scope {
         case .portfolio(let id):
+            let label = HStack(spacing: 4) {
+                Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                Text("Add holding").font(.inter(11, weight: .semibold, relativeTo: .caption))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 11).padding(.vertical, 5)
+            .background(Capsule().fill(DS.brand))
+
             Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
                 .pointingHandCursor()
                 .help("Add a holding to this portfolio")
         case .all:
-            if storageService.portfolios.count == 1, let id = storageService.portfolios.first?.id {
-                Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
-                    .pointingHandCursor()
-                    .help("Add a holding")
-            } else if !storageService.portfolios.isEmpty {
-                Menu {
-                    ForEach(storageService.portfolios) { p in
-                        Button(p.name) { addHoldingAction.perform(p.id) }
-                    }
-                } label: { label }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .pointingHandCursor()
-                .help("Add a holding — choose which portfolio")
-            }
+            EmptyView()
         }
     }
 
