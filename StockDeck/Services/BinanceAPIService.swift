@@ -26,24 +26,24 @@ enum BinanceAPIError: LocalizedError {
 
 struct BinanceAssetBalance: Decodable {
     let asset: String
-    let free: String
-    let locked: String
+    let free: String?
+    let locked: String?
 
     var totalQuantity: Double {
-        let freeVal = Double(free) ?? 0
-        let lockedVal = Double(locked) ?? 0
+        let freeVal = Double(free ?? "0") ?? 0
+        let lockedVal = Double(locked ?? "0") ?? 0
         return freeVal + lockedVal
     }
 }
 
 struct BinanceFundingAsset: Decodable {
     let asset: String
-    let free: String
+    let free: String?
     let freeze: String?
     let withdrawing: String?
 
     var totalQuantity: Double {
-        let freeVal = Double(free) ?? 0
+        let freeVal = Double(free ?? "0") ?? 0
         let freezeVal = Double(freeze ?? "0") ?? 0
         let withdrawingVal = Double(withdrawing ?? "0") ?? 0
         return freeVal + freezeVal + withdrawingVal
@@ -52,18 +52,63 @@ struct BinanceFundingAsset: Decodable {
 
 struct BinanceUserAsset: Decodable {
     let asset: String
-    let free: String
+    let free: String?
     let locked: String?
     let freeze: String?
     let withdrawing: String?
 
     var totalQuantity: Double {
-        let freeVal = Double(free) ?? 0
+        let freeVal = Double(free ?? "0") ?? 0
         let lockedVal = Double(locked ?? "0") ?? 0
         let freezeVal = Double(freeze ?? "0") ?? 0
         let withdrawingVal = Double(withdrawing ?? "0") ?? 0
         return freeVal + lockedVal + freezeVal + withdrawingVal
     }
+}
+
+struct BinanceEarnPosition: Decodable {
+    let asset: String
+    let totalAmount: String?
+    let amount: String?
+
+    var totalQuantity: Double {
+        let tAmt = Double(totalAmount ?? "0") ?? 0
+        let amt = Double(amount ?? "0") ?? 0
+        return max(tAmt, amt)
+    }
+}
+
+struct BinanceEarnResponse: Decodable {
+    let rows: [BinanceEarnPosition]?
+}
+
+struct BinanceFuturesAsset: Decodable {
+    let asset: String
+    let walletBalance: String?
+
+    var totalQuantity: Double {
+        return Double(walletBalance ?? "0") ?? 0
+    }
+}
+
+struct BinanceFuturesAccountResponse: Decodable {
+    let assets: [BinanceFuturesAsset]?
+}
+
+struct BinanceMarginAsset: Decodable {
+    let asset: String
+    let free: String?
+    let locked: String?
+
+    var totalQuantity: Double {
+        let f = Double(free ?? "0") ?? 0
+        let l = Double(locked ?? "0") ?? 0
+        return f + l
+    }
+}
+
+struct BinanceMarginAccountResponse: Decodable {
+    let userAssets: [BinanceMarginAsset]?
 }
 
 struct BinanceAccountResponse: Decodable {
@@ -127,15 +172,21 @@ class BinanceAPIService {
         request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Fetch Spot, Funding (P2P), and UserAsset (All Wallets) in parallel
+        // Fetch Spot, Funding (P2P), UserAsset, Earn, Futures, and Margin in parallel
         let spotRequest = request
         async let spotTask = URLSession.shared.data(for: spotRequest)
         async let fundingTask = fetchFundingBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
         async let userAssetTask = fetchUserAssets(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let earnTask = fetchEarnBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let futuresTask = fetchFuturesBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let marginTask = fetchMarginBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
 
         let (data, response) = try await spotTask
         let fundingAssets = await fundingTask
         let userAssets = await userAssetTask
+        let earnAssets = await earnTask
+        let futuresAssets = await futuresTask
+        let marginAssets = await marginTask
 
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
             if let apiErr = try? JSONDecoder().decode(BinanceAPIErrorResponse.self, from: data) {
@@ -167,7 +218,31 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 3. Process getUserAsset balances (all user wallets)
+        // 3. Process Simple Earn Flexible & Locked Positions
+        for asset in earnAssets {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            let clean = cleanAssetName(asset.asset)
+            aggregatedBalances[clean, default: 0.0] += qty
+        }
+
+        // 4. Process USD-M Futures Balances
+        for asset in futuresAssets {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            let clean = cleanAssetName(asset.asset)
+            aggregatedBalances[clean, default: 0.0] += qty
+        }
+
+        // 5. Process Margin Balances
+        for asset in marginAssets {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            let clean = cleanAssetName(asset.asset)
+            aggregatedBalances[clean, default: 0.0] += qty
+        }
+
+        // 6. Process getUserAsset balances (fallback for any remaining user wallets)
         for asset in userAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -268,6 +343,80 @@ class BinanceAPIService {
             }
         } catch {
             print("[BinanceAPI] User asset fetch error: \(error.localizedDescription)")
+        }
+        return []
+    }
+
+    /// Fetch Simple Earn Flexible & Locked Positions
+    func fetchEarnBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceEarnPosition] {
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
+        let recvWindow = 5000
+        let queryString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey) else { return [] }
+
+        var results: [BinanceEarnPosition] = []
+
+        // Flexible Earn
+        if let url = URL(string: "\(baseURL)/sapi/v1/simple-earn/flexible/position?\(queryString)&signature=\(signature)") {
+            var req = URLRequest(url: url)
+            req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            if let (data, resp) = try? await URLSession.shared.data(for: req),
+               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+               let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data),
+               let rows = earnResp.rows {
+                results.append(contentsOf: rows)
+            }
+        }
+
+        // Locked Earn
+        if let url = URL(string: "\(baseURL)/sapi/v1/simple-earn/locked/position?\(queryString)&signature=\(signature)") {
+            var req = URLRequest(url: url)
+            req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            if let (data, resp) = try? await URLSession.shared.data(for: req),
+               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+               let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data),
+               let rows = earnResp.rows {
+                results.append(contentsOf: rows)
+            }
+        }
+
+        return results
+    }
+
+    /// Fetch USD-M Futures balances
+    func fetchFuturesBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceFuturesAsset] {
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
+        let recvWindow = 5000
+        let queryString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
+              let url = URL(string: "https://fapi.binance.com/fapi/v2/account?\(queryString)&signature=\(signature)") else { return [] }
+
+        var req = URLRequest(url: url)
+        req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+           let fResp = try? JSONDecoder().decode(BinanceFuturesAccountResponse.self, from: data),
+           let assets = fResp.assets {
+            return assets
+        }
+        return []
+    }
+
+    /// Fetch Cross Margin balances
+    func fetchMarginBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceMarginAsset] {
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
+        let recvWindow = 5000
+        let queryString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
+              let url = URL(string: "\(baseURL)/sapi/v1/margin/account?\(queryString)&signature=\(signature)") else { return [] }
+
+        var req = URLRequest(url: url)
+        req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+           let mResp = try? JSONDecoder().decode(BinanceMarginAccountResponse.self, from: data),
+           let userAssets = mResp.userAssets {
+            return userAssets
         }
         return []
     }
