@@ -738,7 +738,7 @@ class StorageService: ObservableObject {
         if base.hasPrefix("LD") && base.count > 2 {
             base = String(base.dropFirst(2))
         }
-        if base == "USDT" || base == "USD" || base == "BUSD" || base == "USDC" {
+        if BinanceStablecoin.isUSDPegged(base) {
             return "\(base)-USD"
         } else if base.contains("-") {
             return base
@@ -747,11 +747,23 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Whether a base symbol (e.g. "PEPE", "FDUSD") is a known cryptocurrency
+    /// traded on Binance. Symbols that are NOT in this set fall through to Yahoo
+    /// Finance, which is less reliable for crypto and can fail for newer tokens.
     nonisolated static func isStandardCryptoSymbol(_ symbol: String) -> Bool {
         let knownCrypto: Set<String> = [
-            "BTC", "ETH", "SOL", "USDT", "USDC", "BNB", "XRP", "ADA", "DOGE", "AVAX",
-            "DOT", "LINK", "MATIC", "SHIB", "LTC", "UNI", "NEAR", "APT", "SUI", "ATOM",
-            "BUSD", "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO",
+            // Major / Layer 1
+            "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
+            "DOT", "LINK", "MATIC", "POL", "SHIB", "LTC", "UNI", "NEAR", "APT", "SUI", "ATOM",
+            "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO", "TON",
+            "INJ", "SEI", "TIA", "RUNE", "AAVE", "MKR", "CRV", "ENA", "ONDO", "JUP", "PYTH",
+            "FET", "RENDER", "TAO", "WLD", "STRK", "METIS",
+            "ARB", "OP", "SUI",
+            // Meme coins
+            "PEPE", "WIF", "BONK", "FLOKI", "DOGS", "PNUT", "ORDI", "SATS",
+            // Stablecoins & USD-pegged (BUSD is legacy but still mapped 1.0)
+            "USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG", "USD",
+            // Binance liquid staking / ETH staking wrappers
             "BETH", "WBETH"
         ]
         let upper = symbol.uppercased()
