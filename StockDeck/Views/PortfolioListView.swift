@@ -468,6 +468,7 @@ struct PortfolioSection: View {
     @State private var renameText = ""
     @State private var showNotifications = false
     @State private var isSyncingBinance = false
+    @State private var syncError: String? = nil
 
     private func syncBinance() {
         isSyncingBinance = true
@@ -475,7 +476,9 @@ struct PortfolioSection: View {
             do {
                 try await storageService.syncBinancePortfolio(id: portfolio.id)
             } catch {
-                print("Failed to sync Binance portfolio: \(error.localizedDescription)")
+                await MainActor.run {
+                    syncError = error.localizedDescription
+                }
             }
             await MainActor.run {
                 isSyncingBinance = false
@@ -702,6 +705,11 @@ struct PortfolioSection: View {
                     )
                     .environmentObject(storageService)
                     .frame(width: 340)
+                }
+                .alert("Binance Sync Error", isPresented: Binding(get: { syncError != nil }, set: { if !$0 { syncError = nil } })) {
+                    Button("OK", role: .cancel) { syncError = nil }
+                } message: {
+                    Text(syncError ?? "")
                 }
             }
         }

@@ -78,6 +78,7 @@ struct BinanceAPIErrorResponse: Decodable {
 class BinanceAPIService {
     static let shared = BinanceAPIService()
     private let baseURL = "https://api.binance.com"
+    private var timeOffset: Int64 = 0
 
     private func cleanAssetName(_ name: String) -> String {
         var cleanAsset = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -87,9 +88,28 @@ class BinanceAPIService {
         return cleanAsset
     }
 
+    /// Fetch Binance server time to calculate clock offset and prevent timestamp errors (-1021)
+    func syncServerTime() async {
+        guard let url = URL(string: "\(baseURL)/api/v3/time") else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let serverTime = dict["serverTime"] as? Int64 {
+                    let localTime = Int64(Date().timeIntervalSince1970 * 1000)
+                    self.timeOffset = serverTime - localTime
+                }
+            }
+        } catch {
+            print("[BinanceAPI] Failed to sync server time: \(error)")
+        }
+    }
+
     func fetchAccountBalances(apiKey: String, secretKey: String) async throws -> [Holding] {
+        await syncServerTime()
+
         let endpoint = "/api/v3/account"
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000) + timeOffset
         let recvWindow = 5000
 
         let queryString = "recvWindow=\(recvWindow)&timestamp=\(timestamp)"
@@ -110,8 +130,8 @@ class BinanceAPIService {
         // Fetch Spot, Funding (P2P), and UserAsset (All Wallets) in parallel
         let spotRequest = request
         async let spotTask = URLSession.shared.data(for: spotRequest)
-        async let fundingTask = fetchFundingBalances(apiKey: apiKey, secretKey: secretKey)
-        async let userAssetTask = fetchUserAssets(apiKey: apiKey, secretKey: secretKey)
+        async let fundingTask = fetchFundingBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let userAssetTask = fetchUserAssets(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
 
         let (data, response) = try await spotTask
         let fundingAssets = await fundingTask
@@ -144,8 +164,7 @@ class BinanceAPIService {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
             let clean = cleanAssetName(asset.asset)
-            // If already present from spot, take the max or sum
-            aggregatedBalances[clean] = max(aggregatedBalances[clean] ?? 0.0, qty)
+            aggregatedBalances[clean, default: 0.0] += qty
         }
 
         // 3. Process getUserAsset balances (all user wallets)
@@ -153,7 +172,9 @@ class BinanceAPIService {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
             let clean = cleanAssetName(asset.asset)
-            aggregatedBalances[clean] = max(aggregatedBalances[clean] ?? 0.0, qty)
+            if aggregatedBalances[clean] == nil {
+                aggregatedBalances[clean] = qty
+            }
         }
 
         return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
@@ -176,12 +197,12 @@ class BinanceAPIService {
     }
 
     /// Fetch balances from Binance Funding Wallet (P2P Wallet)
-    func fetchFundingBalances(apiKey: String, secretKey: String) async -> [BinanceFundingAsset] {
+    func fetchFundingBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceFundingAsset] {
         let endpoint = "/sapi/v1/asset/get-funding-asset"
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
         let recvWindow = 5000
 
-        let bodyString = "recvWindow=\(recvWindow)&timestamp=\(timestamp)"
+        let bodyString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
         guard let signature = hmacHMAC256(message: bodyString, secret: secretKey) else {
             return []
         }
@@ -214,12 +235,12 @@ class BinanceAPIService {
     }
 
     /// Fetch balances from Binance User Asset API (covering all user wallets)
-    func fetchUserAssets(apiKey: String, secretKey: String) async -> [BinanceUserAsset] {
+    func fetchUserAssets(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceUserAsset] {
         let endpoint = "/sapi/v3/asset/getUserAsset"
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
         let recvWindow = 5000
 
-        let bodyString = "recvWindow=\(recvWindow)&timestamp=\(timestamp)"
+        let bodyString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
         guard let signature = hmacHMAC256(message: bodyString, secret: secretKey) else {
             return []
         }
