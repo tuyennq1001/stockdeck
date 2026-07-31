@@ -227,18 +227,18 @@ struct HoldingDetailView: View {
                             .foregroundStyle(DS.ink)
                             .frame(width: 60, alignment: .trailing)
 
-                        Text(StorageService.formatCompactAmount(vh.holding.avgPrice, symbol: priceSymbol))
+                        Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        Text(StorageService.formatCompactAmount(vh.value, symbol: priceSymbol))
+                        Text(StorageService.formatAmount(vh.value, symbol: priceSymbol, decimals: storageService.amountDecimals))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(StorageService.formatCompactAmount(vh.pnl, symbol: priceSymbol, signed: true))
+                            Text(StorageService.formatAmount(vh.pnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
                                 .font(DS.figure)
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
                                 .font(DS.micro)
@@ -279,7 +279,7 @@ struct HoldingDetailView: View {
 
                 Divider().overlay(DS.hairline).padding(.top, 4)
                 Button(action: {
-                    addHoldingAction.perform(portfolioId)
+                    addHoldingAction.perform(portfolioId, holding.symbol)
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
@@ -300,11 +300,11 @@ struct HoldingDetailView: View {
     private var statStrip: some View {
         HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
-            StatTile(label: "Avg price", value: StorageService.formatCompactAmount(weightedAveragePrice, symbol: priceSymbol), help: "Quantity-weighted average purchase price")
-            StatTile(label: "Cost", value: StorageService.formatCompactAmount(aggregatedCost, symbol: priceSymbol), help: "Total cost basis across all purchase lots")
-            StatTile(label: "Value", value: StorageService.formatCompactAmount(aggregatedValue, symbol: priceSymbol), help: "Current market value across all purchase lots")
+            StatTile(label: "Avg price", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Quantity-weighted average purchase price")
+            StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Total cost basis across all purchase lots")
+            StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
-                     value: StorageService.formatCompactAmount(aggregatedPnl, symbol: priceSymbol, signed: true),
+                     value: StorageService.formatAmount(aggregatedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true),
                      caption: String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
                      captionTint: DS.pnlColor(aggregatedPnl), valueTint: DS.pnlColor(aggregatedPnl))
             StatTile(label: "Weight", value: String(format: "%.1f%%", aggregatedWeight), help: "Share of the selected portfolio scope")
