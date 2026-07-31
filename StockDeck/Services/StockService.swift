@@ -260,14 +260,19 @@ class StockService: ObservableObject {
             }
         }
 
+        let equitySymbols = regularSymbols.filter { Self.isBinanceEquitySymbol($0) }
         let cryptoSymbols = regularSymbols.filter { sym in
             let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
-            return StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD")
+            return !equitySymbols.contains(sym) && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD"))
         }
-        let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) }
+        let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) && !equitySymbols.contains($0) }
 
         if !cryptoSymbols.isEmpty {
             await fetchBinanceCryptoQuotes(symbols: cryptoSymbols)
+        }
+
+        if !equitySymbols.isEmpty {
+            await fetchBinanceEquityQuotes(symbols: equitySymbols)
         }
 
         guard !stockSymbols.isEmpty else { return }
@@ -312,6 +317,54 @@ class StockService: ObservableObject {
                     self.quotes[sym] = fallbackQuote
                     self.quotes[sym.uppercased()] = fallbackQuote
                 }
+            }
+        }
+    }
+
+    private static func isBinanceEquitySymbol(_ symbol: String) -> Bool {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+        return base.hasPrefix("EQ_") && base.count > 3
+    }
+
+    /// Fetch Binance US-equity quotes through Stocks Trading API. Binance
+    /// exposes the balance as EQ_<ticker>, while the quote endpoint expects
+    /// the underlying ticker (for example EQ_GOOGL -> GOOGL).
+    private func fetchBinanceEquityQuotes(symbols: [String]) async {
+        guard let credentials = StorageService.shared.firstBinanceCredentials() else { return }
+
+        await withTaskGroup(of: (String, BinanceEquityQuote?).self) { group in
+            for symbol in symbols {
+                let upper = symbol.uppercased()
+                let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+                let underlying = String(base.dropFirst(3))
+                group.addTask {
+                    let quote = await BinanceAPIService.shared.fetchEquityQuote(
+                        apiKey: credentials.apiKey,
+                        symbol: underlying
+                    )
+                    return (symbol, quote)
+                }
+            }
+
+            for await (symbol, equityQuote) in group {
+                guard let equityQuote, let price = equityQuote.midpoint else { continue }
+                let upper = symbol.uppercased()
+                let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+                let underlying = String(base.dropFirst(3))
+                let quote = StockQuote(
+                    symbol: symbol,
+                    name: underlying,
+                    price: price,
+                    change: 0,
+                    changePercent: 0,
+                    currency: "USD",
+                    marketState: "REGULAR"
+                )
+                self.quotes[symbol] = quote
+                self.quotes[upper] = quote
+                self.quotes[base] = quote
+                StorageService.shared.setType("STOCK", for: symbol)
             }
         }
     }

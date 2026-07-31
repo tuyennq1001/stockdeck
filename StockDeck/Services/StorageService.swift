@@ -815,6 +815,19 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Returns credentials for the first configured Binance read-only portfolio.
+    /// Market quotes are public account-scoped data, while the API key is still
+    /// required by Binance's Stocks Trading market-data endpoint.
+    func firstBinanceCredentials() -> (apiKey: String, secretKey: String)? {
+        for portfolio in portfolios {
+            guard case .binance(let keychainId) = portfolio.sourceType,
+                  let apiKey = KeychainService.loadString(forKey: "\(keychainId)_apiKey"),
+                  let secretKey = KeychainService.loadString(forKey: "\(keychainId)_secretKey") else { continue }
+            return (apiKey, secretKey)
+        }
+        return nil
+    }
+
     func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
         guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }),
               !portfolios[index].isReadOnly else { return }

@@ -161,6 +161,37 @@ struct BinanceAPIErrorResponse: Decodable {
     let msg: String
 }
 
+struct BinanceEquityQuote: Decodable {
+    let symbol: String
+    let bidPrice: String
+    let askPrice: String
+
+    var midpoint: Double? {
+        guard let bid = Double(bidPrice), let ask = Double(askPrice), bid > 0, ask > 0 else { return nil }
+        return (bid + ask) / 2
+    }
+}
+
+private struct BinanceEquityOrder: Decodable {
+    let symbol: String
+    let side: String
+    let filledQty: String
+    let filledTotal: String
+    let fee: String?
+    let quote: String?
+    let status: String
+    let createdAt: Int64?
+}
+
+private struct BinanceEquityOrderHistoryResponse: Decodable {
+    let rows: [BinanceEquityOrder]
+}
+
+struct BinanceEquityCostBasis {
+    let averagePrice: Double
+    let purchaseDate: Date?
+}
+
 /// Stablecoins pegged 1:1 to USD that Binance serves directly (or legacy delisted
 /// tokens still redeemable at $1). Used for quote fallbacks and holding mapping.
 enum BinanceStablecoin {
@@ -184,6 +215,109 @@ class BinanceAPIService {
             cleanAsset = String(cleanAsset.dropFirst(2))
         }
         return cleanAsset
+    }
+
+    /// Binance Stocks Trading uses the underlying US equity symbol (for
+    /// example GOOGL), while the account balance endpoint exposes it as
+    /// EQ_GOOGL. Keep this mapping local to the equity API path.
+    private func equitySymbol(from balanceAsset: String) -> String? {
+        let upper = balanceAsset.uppercased()
+        guard upper.hasPrefix("EQ_"), upper.count > 3 else { return nil }
+        return String(upper.dropFirst(3))
+    }
+
+    func fetchEquityQuote(apiKey: String, symbol: String) async -> BinanceEquityQuote? {
+        var components = URLComponents(string: "\(baseURL)/sapi/v1/equity/market/quote")
+        components?.queryItems = [URLQueryItem(name: "symbol", value: symbol.uppercased())]
+        guard let url = components?.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else { return nil }
+        return try? JSONDecoder().decode(BinanceEquityQuote.self, from: data)
+    }
+
+    /// Returns weighted average cost from Binance Stocks Trading order history.
+    /// Filled BUY orders add cost; SELL orders remove shares at the running
+    /// average cost. Fees are included when Binance reports them in the quote
+    /// currency, which is the format currently returned by this endpoint.
+    private func fetchEquityCostBasis(
+        apiKey: String,
+        secretKey: String,
+        symbol: String,
+        timestamp: Int64
+    ) async -> BinanceEquityCostBasis? {
+        let recvWindow = 5000
+        let queryString = "symbol=\(symbol)&startTime=0&endTime=\(timestamp)&page=1&size=1000&recvWindow=\(recvWindow)&timestamp=\(timestamp)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
+              let url = URL(string: "\(baseURL)/sapi/v1/equity/order/history?\(queryString)&signature=\(signature)") else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let history = try? JSONDecoder().decode(BinanceEquityOrderHistoryResponse.self, from: data) else {
+            return nil
+        }
+
+        var quantity = 0.0
+        var cost = 0.0
+        var firstBuyDate: Date?
+
+        for order in history.rows.sorted(by: { ($0.createdAt ?? 0) < ($1.createdAt ?? 0) }) {
+            guard order.status.uppercased() == "FILLED",
+                  let filledQty = Double(order.filledQty), filledQty > 0,
+                  let filledTotal = Double(order.filledTotal), filledTotal >= 0 else { continue }
+
+            if order.side.uppercased() == "BUY" {
+                let fee = Double(order.fee ?? "0") ?? 0
+                quantity += filledQty
+                cost += filledTotal + fee
+                if firstBuyDate == nil, let createdAt = order.createdAt {
+                    firstBuyDate = Date(timeIntervalSince1970: TimeInterval(createdAt) / 1000)
+                }
+            } else if order.side.uppercased() == "SELL", quantity > 0 {
+                let removed = min(quantity, filledQty)
+                cost -= (cost / quantity) * removed
+                quantity -= removed
+            }
+        }
+
+        guard quantity > 0, cost > 0 else { return nil }
+        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate)
+    }
+
+    private func fetchEquityCostBases(
+        apiKey: String,
+        secretKey: String,
+        assets: [(name: String, quantity: Double)],
+        timestamp: Int64
+    ) async -> [String: BinanceEquityCostBasis] {
+        await withTaskGroup(of: (String, BinanceEquityCostBasis?).self, returning: [String: BinanceEquityCostBasis].self) { group in
+            for asset in assets {
+                guard let symbol = equitySymbol(from: asset.name) else { continue }
+                group.addTask {
+                    let basis = await self.fetchEquityCostBasis(
+                        apiKey: apiKey,
+                        secretKey: secretKey,
+                        symbol: symbol,
+                        timestamp: timestamp
+                    )
+                    return (asset.name, basis)
+                }
+            }
+
+            var result: [String: BinanceEquityCostBasis] = [:]
+            for await (assetName, basis) in group {
+                if let basis { result[assetName] = basis }
+            }
+            return result
+        }
     }
 
     /// Fetch Binance server time to calculate clock offset and prevent timestamp errors (-1021)
@@ -320,6 +454,16 @@ class BinanceAPIService {
             aggregatedBalances[clean] = max(current, qty)
         }
 
+        let equityAssets = aggregatedBalances.compactMap { name, qty in
+            name.hasPrefix("EQ_") ? (name: name, quantity: qty) : nil
+        }
+        let equityCosts = await fetchEquityCostBases(
+            apiKey: apiKey,
+            secretKey: secretKey,
+            assets: equityAssets,
+            timestamp: timestamp
+        )
+
         return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
             guard qty >= 1e-8 else { return nil }
             let symbol: String
@@ -335,7 +479,8 @@ class BinanceAPIService {
                 id: UUID(),
                 symbol: symbol,
                 quantity: qty,
-                avgPrice: 0.0
+                avgPrice: equityCosts[assetName]?.averagePrice ?? 0.0,
+                purchaseDate: equityCosts[assetName]?.purchaseDate
             )
         }
     }
