@@ -39,7 +39,7 @@ struct PortfolioWindowView: View {
         }
     }
     @State private var showSearch = false
-    @State private var addHoldingPortfolioId: UUID?
+    @State private var addHoldingTarget: AddHoldingTarget?
     @State private var editHolding: EditTarget?
     @State private var showNewPortfolio = false
     @State private var newPortfolioName = ""
@@ -53,6 +53,12 @@ struct PortfolioWindowView: View {
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
+
+    struct AddHoldingTarget: Identifiable {
+        let id = UUID()
+        let portfolioId: UUID
+        let symbol: String?
+    }
 
     /// Wraps the edit-holding tuple so it can drive a `.sheet(item:)`.
     struct EditTarget: Identifiable {
@@ -82,10 +88,10 @@ struct PortfolioWindowView: View {
             if !showNews, selection == .home { navigate(to: .watchlist) }
         }
         .environment(\.locale, Locale(identifier: storageService.appLanguage))
-        .environment(\.addHoldingAction, AddHoldingAction { addHoldingPortfolioId = $0 })
+        .environment(\.addHoldingAction, AddHoldingAction { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: $1) })
         .environment(\.editHoldingAction, EditHoldingAction { editHolding = EditTarget(portfolioId: $0, holding: $1) })
         .environment(\.portfolioActions, PortfolioActions(
-            addHolding: { addHoldingPortfolioId = $0 },
+            addHolding: { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: nil) },
             batchImport: { _ in importStandard() },
             rename: { renameTarget = PortfolioRef(id: $0, name: $1) },
             notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
@@ -98,11 +104,16 @@ struct PortfolioWindowView: View {
             WatchlistSearchSheet { showSearch = false }
                 .environmentObject(stockService).environmentObject(storageService)
         }
-        .sheet(isPresented: Binding(get: { addHoldingPortfolioId != nil }, set: { if !$0 { addHoldingPortfolioId = nil } })) {
-            if let id = addHoldingPortfolioId {
-                HoldingFormSheet(mode: .add(portfolioId: id)) { addHoldingPortfolioId = nil }
-                    .environmentObject(stockService).environmentObject(storageService)
-            }
+        .sheet(item: $addHoldingTarget) { target in
+            let mode: HoldingFormSheet.Mode = {
+                if let sym = target.symbol {
+                    return .addSymbol(symbol: sym, portfolioId: target.portfolioId)
+                } else {
+                    return .add(portfolioId: target.portfolioId)
+                }
+            }()
+            HoldingFormSheet(mode: mode) { addHoldingTarget = nil }
+                .environmentObject(stockService).environmentObject(storageService)
         }
         .sheet(item: $editHolding) { target in
             HoldingFormSheet(mode: .edit(portfolioId: target.portfolioId, holding: target.holding)) { editHolding = nil }
@@ -261,7 +272,7 @@ struct PortfolioWindowView: View {
                             navigate(to: .portfolio(portfolio.id))
                         }
                         .contextMenu {
-                            Button { addHoldingPortfolioId = portfolio.id } label: {
+                            Button { addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) } label: {
                                 Label("Add Holding…", systemImage: "plus")
                             }
                             Button { importStandard() } label: {
@@ -440,7 +451,7 @@ struct PortfolioWindowView: View {
         var s: [[DSMenuAction]] = [[ DSMenuAction(title: "New Portfolio…", icon: "folder.badge.plus") { showNewPortfolio = true } ]]
         if !storageService.portfolios.isEmpty {
             s.append(storageService.portfolios.map { p in
-                DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingPortfolioId = p.id }
+                DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingTarget = AddHoldingTarget(portfolioId: p.id, symbol: nil) }
             })
         }
         return s

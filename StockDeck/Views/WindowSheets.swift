@@ -301,7 +301,8 @@ struct HoldingFormSheet: View {
     private var fixedSymbol: String? {
         switch mode {
         case .addSymbol(let s, _): return s
-        case .add, .edit: return nil
+        case .edit(_, let h): return h.symbol
+        case .add: return nil
         }
     }
     private var symbol: String? { fixedSymbol ?? selectedSymbol }

@@ -37,7 +37,19 @@ extension Tab {
 
 // Environment keys for navigation from child views
 struct AddHoldingAction {
-    let perform: (UUID) -> Void
+    let performHandler: (UUID, String?) -> Void
+
+    init(perform: @escaping (UUID, String?) -> Void) {
+        self.performHandler = perform
+    }
+
+    init(perform: @escaping (UUID) -> Void) {
+        self.performHandler = { id, _ in perform(id) }
+    }
+
+    func perform(_ portfolioId: UUID, _ symbol: String? = nil) {
+        performHandler(portfolioId, symbol)
+    }
 }
 
 struct EditHoldingAction {
