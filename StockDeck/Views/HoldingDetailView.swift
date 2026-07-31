@@ -52,11 +52,13 @@ struct HoldingDetailView: View {
                     Tag(text: "\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))×",
                         color: DS.brand)
                 }
-                Button { editHoldingAction.perform(portfolioId, holding) } label: {
-                    Image(systemName: "pencil").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
+                if isEditableScope {
+                    Button { editHoldingAction.perform(portfolioId, holding) } label: {
+                        Image(systemName: "pencil").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit this holding")
                 }
-                .buttonStyle(.plain)
-                .help("Edit this holding")
                 Button { showAlert = true } label: {
                     Image(systemName: "bell").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
                 }
@@ -117,6 +119,11 @@ struct HoldingDetailView: View {
     }
 
     // MARK: - Purchase Lots
+
+    private var isEditableScope: Bool {
+        if case .portfolio = scope { return true }
+        return false
+    }
 
     private var showsPortfolioColumn: Bool {
         if case .all = scope { return true }
@@ -201,7 +208,9 @@ struct HoldingDetailView: View {
                     Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("P&L").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
-                    Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
+                    if isEditableScope {
+                        Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
+                    }
                 }
                 .padding(.bottom, 8)
                 Divider().overlay(DS.hairline)
@@ -246,30 +255,32 @@ struct HoldingDetailView: View {
                         .foregroundStyle(DS.pnlColor(vh.pnl))
                         .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        HStack(spacing: 6) {
-                            Button {
-                                editHoldingAction.perform(vh.portfolioId, vh.holding)
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(DS.inkSecondary)
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                            .help("Edit lot")
+                        if isEditableScope {
+                            HStack(spacing: 6) {
+                                Button {
+                                    editHoldingAction.perform(vh.portfolioId, vh.holding)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DS.inkSecondary)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help("Edit lot")
 
-                            Button {
-                                storageService.removeHolding(from: vh.portfolioId, holdingId: vh.holding.id)
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(DS.down)
+                                Button {
+                                    storageService.removeHolding(from: vh.portfolioId, holdingId: vh.holding.id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DS.down)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help("Delete lot")
                             }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                            .help("Delete lot")
+                            .frame(width: 50, alignment: .trailing)
                         }
-                        .frame(width: 50, alignment: .trailing)
                     }
                     .padding(.vertical, 8)
                     if vh.id != allHoldingsForSymbol.last?.id {
@@ -277,20 +288,22 @@ struct HoldingDetailView: View {
                     }
                 }
 
-                Divider().overlay(DS.hairline).padding(.top, 4)
-                Button(action: {
-                    addHoldingAction.perform(portfolioId, holding.symbol)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.circle")
-                        Text("Add another lot for \(holding.symbol)")
+                if isEditableScope {
+                    Divider().overlay(DS.hairline).padding(.top, 4)
+                    Button(action: {
+                        addHoldingAction.perform(portfolioId, holding.symbol)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle")
+                            Text("Add another lot for \(holding.symbol)")
+                        }
+                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                        .foregroundStyle(DS.brand)
+                        .padding(.top, 8)
                     }
-                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
-                    .foregroundStyle(DS.brand)
-                    .padding(.top, 8)
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
                 }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
             }
         }
     }
