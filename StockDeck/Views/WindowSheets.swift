@@ -276,6 +276,7 @@ struct HoldingFormSheet: View {
     let mode: Mode
     let onDismiss: () -> Void
 
+    @State private var selectedPortfolioId: UUID?
     @State private var searchText = ""
     @State private var searchResults: [SearchResult] = []
     @State private var searchTask: Task<Void, Never>?
@@ -321,29 +322,46 @@ struct HoldingFormSheet: View {
                 searchField
             }
 
-            if storageService.advancedPositions {
-                FieldBlock("Position") {
-                    SegmentedRangePicker(options: [false, true],
-                                         label: { $0 ? "Short" : "Long" },
-                                         selection: $isShort)
+            FieldBlock("Portfolio") {
+                Picker("Portfolio", selection: Binding(get: {
+                    selectedPortfolioId ?? portfolioId
+                }, set: { newId in
+                    selectedPortfolioId = newId
+                })) {
+                    ForEach(storageService.portfolios) { p in
+                        Text(p.name).tag(p.id)
+                    }
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
-                FieldBlock("Avg price") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
+            if !isEditing {
                 if storageService.advancedPositions {
-                    FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
-                        .frame(width: 90)
+                    FieldBlock("Position") {
+                        SegmentedRangePicker(options: [false, true],
+                                             label: { $0 ? "Short" : "Long" },
+                                             selection: $isShort)
+                    }
                 }
-            }
 
-            FieldBlock("Purchase date") {
-                DSDatePicker(date: $purchaseDate)
-            }
+                HStack(alignment: .top, spacing: 12) {
+                    FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
+                    FieldBlock("Avg price") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
+                    if storageService.advancedPositions {
+                        FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
+                            .frame(width: 90)
+                    }
+                }
 
-            if let info = costBasisInfo {
-                Text(info).font(DS.caption).foregroundStyle(DS.inkTertiary)
+                FieldBlock("Purchase date") {
+                    DSDatePicker(date: $purchaseDate)
+                }
+
+                if let info = costBasisInfo {
+                    Text(info).font(DS.caption).foregroundStyle(DS.inkTertiary)
+                }
             }
 
             PrimaryButton(title: isEditing ? "Save" : "Add", enabled: canSave, action: save)
@@ -427,9 +445,10 @@ struct HoldingFormSheet: View {
     // MARK: Logic
 
     private var canSave: Bool {
-        symbol != nil &&
-        Double(quantityText.replacingOccurrences(of: ",", with: ".")).map { abs($0) > 0 } == true &&
-        Double(avgPriceText.replacingOccurrences(of: ",", with: ".")).map { $0 > 0 } == true
+        if isEditing { return symbol != nil }
+        return symbol != nil &&
+            Double(quantityText.replacingOccurrences(of: ",", with: ".")).map { abs($0) > 0 } == true &&
+            Double(avgPriceText.replacingOccurrences(of: ",", with: ".")).map { $0 > 0 } == true
     }
 
     private var costBasisInfo: String? {
@@ -447,6 +466,7 @@ struct HoldingFormSheet: View {
     }
 
     private func prefill() {
+        selectedPortfolioId = portfolioId
         if let h = editingHolding {
             if selectedSymbol == nil {
                 selectedSymbol = h.symbol
@@ -466,23 +486,26 @@ struct HoldingFormSheet: View {
     }
 
     private func save() {
-        let advanced = storageService.advancedPositions
-        guard let sym = symbol,
-              let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
-              let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
-              price > 0, abs(qty) > 0 else { return }
-        // Keep existing direction/leverage on a plain edit with Advanced off.
-        let short = advanced ? isShort : (editingHolding?.quantity ?? 0) < 0
-        let signedQty = short ? -abs(qty) : abs(qty)
-        let leverage: Double? = {
-            guard advanced else { return editingHolding?.leverage }
-            guard let l = Double(leverageText.replacingOccurrences(of: ",", with: ".")), l > 0, l != 1 else { return nil }
-            return l
-        }()
+        let destPortfolioId = selectedPortfolioId ?? portfolioId
         if let h = editingHolding {
-            storageService.updateHolding(in: portfolioId, holdingId: h.id, symbol: sym, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
+            if destPortfolioId != portfolioId {
+                storageService.moveHolding(holdingId: h.id, from: portfolioId, to: destPortfolioId)
+            }
         } else {
-            storageService.addHolding(to: portfolioId, symbol: sym, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
+            let advanced = storageService.advancedPositions
+            guard let sym = symbol,
+                  let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
+                  let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
+                  price > 0, abs(qty) > 0 else { return }
+            // Keep existing direction/leverage on a plain edit with Advanced off.
+            let short = advanced ? isShort : false
+            let signedQty = short ? -abs(qty) : abs(qty)
+            let leverage: Double? = {
+                guard advanced else { return nil }
+                guard let l = Double(leverageText.replacingOccurrences(of: ",", with: ".")), l > 0, l != 1 else { return nil }
+                return l
+            }()
+            storageService.addHolding(to: destPortfolioId, symbol: sym, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
         }
         Task { await stockService.refreshAll(storageService: storageService) }
         onDismiss()

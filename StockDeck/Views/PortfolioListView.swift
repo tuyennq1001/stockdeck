@@ -759,43 +759,19 @@ struct EditHoldingView: View {
     let holding: Holding
     @Binding var isPresented: (portfolioId: UUID, holding: Holding)?
 
-    @State private var symbolText: String
-    @State private var quantityText: String
-    @State private var avgPriceText: String
-    @State private var leverageText: String
-    @State private var isShort: Bool
-    @State private var purchaseDate: Date
-    @State private var dateText: String = ""
+    @State private var targetPortfolioId: UUID
 
     init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
         self.portfolioId = portfolioId
         self.holding = holding
         self._isPresented = isPresented
-        _symbolText = State(initialValue: holding.symbol)
-        // Quantity is edited as a positive magnitude; the Long/Short picker holds the sign.
-        _quantityText = State(initialValue: String(format: "%.2f", abs(holding.quantity)))
-        _avgPriceText = State(initialValue: String(format: "%.2f", holding.avgPrice))
-        _leverageText = State(initialValue: (holding.leverage.map { $0 != 1 ? String(format: "%g", $0) : "" }) ?? "")
-        _isShort = State(initialValue: holding.quantity < 0)
-        _purchaseDate = State(initialValue: holding.purchaseDate ?? Date())
-        _dateText = State(initialValue: Self.dateInputFormatter.string(from: holding.purchaseDate ?? Date()))
-    }
-
-    private var costBasisInfo: (costInStock: Double, rate: Double, costInPreferred: Double)? {
-        guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
-              let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
-              let quote = stockService.quotes[symbolText.uppercased().trimmingCharacters(in: .whitespaces)] ?? stockService.quotes[holding.symbol],
-              qty != 0, price > 0
-        else { return nil }
-        let costInStock = price * qty
-        let rate = stockService.rate(from: quote.currency, for: purchaseDate)
-        return (costInStock, rate, costInStock * rate)
+        self._targetPortfolioId = State(initialValue: portfolioId)
     }
 
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Edit \(symbolText.isEmpty ? holding.symbol : symbolText.uppercased())")
+                Text("Edit \(holding.symbol)")
                     .font(.inter(13, weight: .bold, relativeTo: .headline))
                 Spacer()
                 Button("Close") { isPresented = nil }
@@ -808,92 +784,37 @@ struct EditHoldingView: View {
                 Text("Symbol")
                     .font(.inter(10, relativeTo: .caption))
                     .foregroundColor(.secondary)
-                TextField("Symbol (e.g. AAPL)", text: $symbolText)
-                    .textFieldStyle(.roundedBorder)
-            }
-            .padding(.horizontal)
-
-            if storageService.advancedPositions {
-                VStack(alignment: .leading) {
-                    Text("Position")
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    Picker("Position", selection: $isShort) {
-                        Text("Long").tag(false)
-                        Text("Short").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-                .padding(.horizontal)
-            }
-
-            HStack(spacing: 12) {
-                VStack(alignment: .leading) {
-                    Text("Quantity")
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    TextField("0", text: $quantityText)
-                        .textFieldStyle(.roundedBorder)
-                }
-                VStack(alignment: .leading) {
-                    Text("Avg price")
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    TextField("0.00", text: $avgPriceText)
-                        .textFieldStyle(.roundedBorder)
-                }
-                if storageService.advancedPositions {
-                    VStack(alignment: .leading) {
-                        Text("Leverage")
-                            .font(.inter(10, relativeTo: .caption))
+                HStack(spacing: 8) {
+                    SymbolLogo(symbol: holding.symbol, size: 24)
+                    Text(holding.symbol)
+                        .font(.inter(13, weight: .semibold, relativeTo: .body))
+                    if let name = stockService.quotes[holding.symbol]?.name, !name.isEmpty {
+                        Text(name)
+                            .font(DS.caption)
                             .foregroundColor(.secondary)
-                        TextField("1\u{00D7}", text: $leverageText)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 56)
+                            .lineLimit(1)
                     }
                 }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
             }
             .padding(.horizontal)
-
-            if storageService.advancedPositions {
-                Text("Pick Long or Short. Leverage multiplies P&L and exposure (empty = 1\u{00D7}).")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
-            }
 
             VStack(alignment: .leading) {
-                Text("Purchase date")
+                Text("Portfolio")
                     .font(.inter(10, relativeTo: .caption))
                     .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    TextField("YYYY-MM-DD", text: $dateText)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: dateText) { _, new in
-                            if let parsed = parseDateString(new) {
-                                purchaseDate = parsed
-                            }
-                        }
-                    DatePicker("", selection: $purchaseDate, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .onChange(of: purchaseDate) { _, new in
-                            dateText = Self.dateInputFormatter.string(from: new)
-                        }
+                Picker("Portfolio", selection: $targetPortfolioId) {
+                    ForEach(storageService.portfolios) { p in
+                        Text(p.name).tag(p.id)
+                    }
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal)
-
-            if let quote = stockService.quotes[symbolText.uppercased().trimmingCharacters(in: .whitespaces)] ?? stockService.quotes[holding.symbol], quote.currency != storageService.preferredCurrency, let info = costBasisInfo {
-                let stockSym = StorageService.currencySymbol(for: quote.currency)
-                let prefSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
-                let dateStr = Self.dateFormatter.string(from: purchaseDate)
-                Text("Cost basis: \(prefSym)\(String(format: "%.2f", info.costInPreferred)) (\(stockSym)\(String(format: "%.2f", info.costInStock)) × \(String(format: "%.4f", info.rate)) on \(dateStr))")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
-            }
 
             Spacer()
 
@@ -901,65 +822,15 @@ struct EditHoldingView: View {
                 save()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(quantityText.isEmpty || avgPriceText.isEmpty || symbolText.trimmingCharacters(in: .whitespaces).isEmpty)
             .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            Task {
-                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: symbolText, quantity: holding.quantity, avgPrice: holding.avgPrice, purchaseDate: purchaseDate))
-            }
-        }
-        .onChange(of: purchaseDate) { _, _ in
-            Task {
-                await stockService.ensureHistoricalRate(for: Holding(id: holding.id, symbol: symbolText, quantity: Double(quantityText.replacingOccurrences(of: ",", with: ".")) ?? 0, avgPrice: Double(avgPriceText.replacingOccurrences(of: ",", with: ".")) ?? 0, purchaseDate: purchaseDate))
-            }
-        }
-    }
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        return f
-    }()
-
-    private static let dateInputFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
-    private func parseDateString(_ str: String) -> Date? {
-        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return nil }
-        let isoFormatter = ISO8601DateFormatter()
-        if let d = isoFormatter.date(from: trimmed) { return d }
-        let formats = ["yyyy-MM-dd", "yyyy/MM/dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MMM-yyyy", "dd-MMM"]
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in formats {
-            df.dateFormat = fmt
-            if let d = df.date(from: trimmed) { return d }
-        }
-        return nil
     }
 
     private func save() {
-        let advanced = storageService.advancedPositions
-        guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
-              let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
-              price > 0, abs(qty) > 0
-        else { return }
-        let short = advanced ? isShort : (holding.quantity < 0)
-        let signedQty = short ? -abs(qty) : abs(qty)
-        let leverage: Double? = {
-            guard advanced else { return holding.leverage }
-            guard let l = Double(leverageText.replacingOccurrences(of: ",", with: ".")),
-                  l > 0, l != 1
-            else { return nil }
-            return l
-        }()
-        storageService.updateHolding(in: portfolioId, holdingId: holding.id, symbol: symbolText, quantity: signedQty, avgPrice: price, purchaseDate: purchaseDate, leverage: leverage)
+        if targetPortfolioId != portfolioId {
+            storageService.moveHolding(holdingId: holding.id, from: portfolioId, to: targetPortfolioId)
+        }
         Task {
             await stockService.refreshAll(storageService: storageService)
         }
