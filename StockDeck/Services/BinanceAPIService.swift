@@ -348,11 +348,13 @@ class BinanceAPIService {
 
         let bodyString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
         guard let signature = hmacHMAC256(message: bodyString, secret: secretKey) else {
+            print("[BinanceAPI] Funding Wallet: HMAC signature failed")
             return []
         }
 
         let fullQuery = "\(bodyString)&signature=\(signature)"
         guard let url = URL(string: "\(baseURL)\(endpoint)?\(fullQuery)") else {
+            print("[BinanceAPI] Funding Wallet: Invalid URL")
             return []
         }
 
@@ -366,7 +368,13 @@ class BinanceAPIService {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResp = response as? HTTPURLResponse {
                 if httpResp.statusCode == 200 {
-                    return (try? JSONDecoder().decode([BinanceFundingAsset].self, from: data)) ?? []
+                    if let decoded = try? JSONDecoder().decode([BinanceFundingAsset].self, from: data) {
+                        print("[BinanceAPI] Funding Wallet: fetched \(decoded.count) assets")
+                        return decoded
+                    } else {
+                        let rawJSON = String(data: data, encoding: .utf8) ?? ""
+                        print("[BinanceAPI] Funding Wallet: decode failed, raw: \(rawJSON.prefix(500))")
+                    }
                 } else {
                     let errMsg = String(data: data, encoding: .utf8) ?? ""
                     print("[BinanceAPI] Funding Wallet HTTP \(httpResp.statusCode): \(errMsg)")
@@ -422,7 +430,10 @@ class BinanceAPIService {
         let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
         let recvWindow = 5000
         let queryString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
-        guard let signature = hmacHMAC256(message: queryString, secret: secretKey) else { return [] }
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey) else {
+            print("[BinanceAPI] Earn: HMAC signature failed")
+            return []
+        }
 
         var results: [BinanceEarnPosition] = []
 
@@ -430,11 +441,20 @@ class BinanceAPIService {
         if let url = URL(string: "\(baseURL)/sapi/v1/simple-earn/flexible/position?\(queryString)&signature=\(signature)") {
             var req = URLRequest(url: url)
             req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
-            if let (data, resp) = try? await URLSession.shared.data(for: req),
-               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
-               let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data),
-               let rows = earnResp.rows {
-                results.append(contentsOf: rows)
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                if let httpResp = resp as? HTTPURLResponse {
+                    if httpResp.statusCode == 200 {
+                        if let rows = decodeEarnPositions(from: data, label: "Flexible Earn") {
+                            results.append(contentsOf: rows)
+                        }
+                    } else {
+                        let errMsg = String(data: data, encoding: .utf8) ?? ""
+                        print("[BinanceAPI] Flexible Earn HTTP \(httpResp.statusCode): \(errMsg)")
+                    }
+                }
+            } catch {
+                print("[BinanceAPI] Flexible Earn fetch error: \(error.localizedDescription)")
             }
         }
 
@@ -442,15 +462,84 @@ class BinanceAPIService {
         if let url = URL(string: "\(baseURL)/sapi/v1/simple-earn/locked/position?\(queryString)&signature=\(signature)") {
             var req = URLRequest(url: url)
             req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
-            if let (data, resp) = try? await URLSession.shared.data(for: req),
-               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
-               let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data),
-               let rows = earnResp.rows {
-                results.append(contentsOf: rows)
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                if let httpResp = resp as? HTTPURLResponse {
+                    if httpResp.statusCode == 200 {
+                        if let rows = decodeEarnPositions(from: data, label: "Locked Earn") {
+                            results.append(contentsOf: rows)
+                        }
+                    } else {
+                        let errMsg = String(data: data, encoding: .utf8) ?? ""
+                        print("[BinanceAPI] Locked Earn HTTP \(httpResp.statusCode): \(errMsg)")
+                    }
+                }
+            } catch {
+                print("[BinanceAPI] Locked Earn fetch error: \(error.localizedDescription)")
             }
         }
 
+        // Locked Staking (legacy endpoint — covers older locked staking positions)
+        if let url = URL(string: "\(baseURL)/sapi/v1/staking/position?\(queryString)&signature=\(signature)") {
+            var req = URLRequest(url: url)
+            req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                if let httpResp = resp as? HTTPURLResponse {
+                    if httpResp.statusCode == 200 {
+                        if let rows = decodeEarnPositions(from: data, label: "Staking") {
+                            results.append(contentsOf: rows)
+                        }
+                    } else {
+                        let errMsg = String(data: data, encoding: .utf8) ?? ""
+                        print("[BinanceAPI] Staking HTTP \(httpResp.statusCode): \(errMsg)")
+                    }
+                }
+            } catch {
+                print("[BinanceAPI] Staking fetch error: \(error.localizedDescription)")
+            }
+        }
+
+        // BNB Vault (part of Simple Earn ecosystem)
+        if let url = URL(string: "\(baseURL)/sapi/v1/simple-earn/account?\(queryString)&signature=\(signature)") {
+            var req = URLRequest(url: url)
+            req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                if let httpResp = resp as? HTTPURLResponse {
+                    if httpResp.statusCode == 200 {
+                        if let rows = decodeEarnPositions(from: data, label: "BNB Vault") {
+                            results.append(contentsOf: rows)
+                        }
+                    } else {
+                        let errMsg = String(data: data, encoding: .utf8) ?? ""
+                        print("[BinanceAPI] BNB Vault HTTP \(httpResp.statusCode): \(errMsg)")
+                    }
+                }
+            } catch {
+                print("[BinanceAPI] BNB Vault fetch error: \(error.localizedDescription)")
+            }
+        }
+
+        print("[BinanceAPI] Earn total: \(results.count) positions across all earn products")
         return results
+    }
+
+    /// Decode earn positions from API response data, trying multiple response shapes.
+    private func decodeEarnPositions(from data: Data, label: String) -> [BinanceEarnPosition]? {
+        // Try standard BinanceEarnResponse with "rows" key
+        if let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data), let rows = earnResp.rows {
+            print("[BinanceAPI] \(label): decoded \(rows.count) rows via BinanceEarnResponse")
+            return rows
+        }
+        // Try direct array of BinanceEarnPosition
+        if let positions = try? JSONDecoder().decode([BinanceEarnPosition].self, from: data) {
+            print("[BinanceAPI] \(label): decoded \(positions.count) positions via direct array")
+            return positions
+        }
+        let rawJSON = String(data: data, encoding: .utf8) ?? "nil"
+        print("[BinanceAPI] \(label): decode failed, response shape unexpected. Raw: \(rawJSON.prefix(500))")
+        return nil
     }
 
     /// Fetch ETH Staking Account (BETH / WBETH) separately from Simple Earn so
