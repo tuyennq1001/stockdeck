@@ -82,6 +82,11 @@ struct BinanceEarnResponse: Decodable {
     let rows: [BinanceEarnPosition]?
 }
 
+struct BinanceEthStakingAccountResponse: Decodable {
+    let holdingBETH: String?
+    let holdingWBETH: String?
+}
+
 struct BinanceFuturesAsset: Decodable {
     let asset: String
     let walletBalance: String?
@@ -377,6 +382,22 @@ class BinanceAPIService {
                let earnResp = try? JSONDecoder().decode(BinanceEarnResponse.self, from: data),
                let rows = earnResp.rows {
                 results.append(contentsOf: rows)
+            }
+        }
+
+        // ETH Staking Account (BETH / WBETH)
+        if let url = URL(string: "\(baseURL)/sapi/v1/eth-staking/account?\(queryString)&signature=\(signature)") {
+            var req = URLRequest(url: url)
+            req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            if let (data, resp) = try? await URLSession.shared.data(for: req),
+               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+               let ethStakingResp = try? JSONDecoder().decode(BinanceEthStakingAccountResponse.self, from: data) {
+                if let beth = ethStakingResp.holdingBETH, (Double(beth) ?? 0) > 0 {
+                    results.append(BinanceEarnPosition(asset: "BETH", totalAmount: beth, amount: nil))
+                }
+                if let wbeth = ethStakingResp.holdingWBETH, (Double(wbeth) ?? 0) > 0 {
+                    results.append(BinanceEarnPosition(asset: "WBETH", totalAmount: wbeth, amount: nil))
+                }
             }
         }
 
