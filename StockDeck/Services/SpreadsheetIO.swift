@@ -123,7 +123,7 @@ enum SpreadsheetIO {
 
     /// Generates .xlsx file data for portfolios.
     static func generatePortfoliosXLSXData(_ portfolios: [Portfolio]) -> Data? {
-        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Price", "Purchase Date", "Leverage"]
+        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Cost", "Purchase Date", "Leverage"]
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         var rows: [[String]] = []
@@ -204,7 +204,7 @@ enum SpreadsheetIO {
               <c r="A1" t="inlineStr"><is><t>Portfolio Name</t></is></c>
               <c r="B1" t="inlineStr"><is><t>Symbol</t></is></c>
               <c r="C1" t="inlineStr"><is><t>Quantity</t></is></c>
-              <c r="D1" t="inlineStr"><is><t>Avg Price</t></is></c>
+              <c r="D1" t="inlineStr"><is><t>Avg Cost</t></is></c>
               <c r="E1" t="inlineStr"><is><t>Purchase Date</t></is></c>
               <c r="F1" t="inlineStr"><is><t>Leverage</t></is></c>
             </row>
@@ -264,7 +264,7 @@ enum SpreadsheetIO {
 
     /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history using standard English headers.
     static func generateJapaneseFundTemplateXLSXData() -> Data? {
-        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Price", "Purchase Date"]
+        let headers = ["Portfolio Name", "Symbol", "Quantity", "Avg Cost", "Purchase Date"]
         let rows: [[String]] = [
             ["NISA Portfolio", "eMAXIS Slim 米国株式(S&P500)", "32432", "30834", "2024-01-30"],
             ["NISA Portfolio", "iFreeNEXT NASDAQ100インデックス", "15884", "31478", "2024-03-11"],

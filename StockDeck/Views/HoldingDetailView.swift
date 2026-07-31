@@ -313,7 +313,7 @@ struct HoldingDetailView: View {
     private var statStrip: some View {
         HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
-            StatTile(label: "Avg price", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Quantity-weighted average purchase price")
+            StatTile(label: "Avg cost", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Quantity-weighted average cost")
             StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Total cost basis across all purchase lots")
             StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
@@ -341,7 +341,7 @@ struct HoldingDetailView: View {
                                 Rectangle().fill(DS.inkTertiary)
                                     .frame(width: 1.5, height: 12)
                                     .offset(x: CGFloat(buyPos) * (geo.size.width - 10) + 4)
-                                    .help("Your average purchase price")
+                                    .help("Your average cost")
                             }
                             Circle()
                                 .fill(.white)

@@ -99,7 +99,7 @@
 "Add stock" = "Aktie hinzufügen";
 "Add holding" = "Position hinzufügen";
 "Value / P&L" = "Wert / P&L";
-"Avg price" = "Durchschnittskurs";
+"Avg cost" = "Durchschnittskurs";
 "Purchase date" = "Kaufdatum";
 "Quantity" = "Menge";
 "Symbol" = "Symbol";
@@ -253,5 +253,5 @@
 "Weight" = "Gewichtung";
 "Worst stock" = "Schlechteste Aktie";
 "you bought here" = "hier gekauft";
-"Your average purchase price" = "Dein durchschnittlicher Kaufpreis";
+"Your average cost" = "Dein durchschnittlicher Kaufpreis";
 "Your first trend appears tomorrow." = "Dein erster Trend erscheint morgen.";

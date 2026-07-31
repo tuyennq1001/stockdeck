@@ -99,7 +99,7 @@
 "Add stock" = "Add stock";
 "Add holding" = "Add holding";
 "Value / P&L" = "Value / P&L";
-"Avg price" = "Avg price";
+"Avg cost" = "Avg cost";
 "Purchase date" = "Purchase date";
 "Quantity" = "Quantity";
 "Symbol" = "Symbol";
@@ -253,5 +253,5 @@
 "Weight" = "Weight";
 "Worst stock" = "Worst stock";
 "you bought here" = "you bought here";
-"Your average purchase price" = "Your average purchase price";
+"Your average cost" = "Your average cost";
 "Your first trend appears tomorrow." = "Your first trend appears tomorrow.";

@@ -493,7 +493,7 @@ struct QuickAddHoldingView: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading) {
-                    Text("Avg price").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
+                    Text("Avg cost").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
                     TextField("0.00", text: $avgPriceText)
                         .textFieldStyle(.roundedBorder)
                 }
