@@ -810,7 +810,8 @@ class StorageService: ObservableObject {
     }
 
     func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
-        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
 
         var currentHoldings = portfolios[pIndex].holdings
 
@@ -846,7 +847,8 @@ class StorageService: ObservableObject {
     }
 
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
-        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
@@ -863,6 +865,7 @@ class StorageService: ObservableObject {
 
     func updateHolding(in portfolioId: UUID, holdingId: UUID, symbol: String? = nil, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly,
               let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
         else { return }
         if let newSymbol = symbol, !newSymbol.trimmingCharacters(in: .whitespaces).isEmpty {

@@ -265,6 +265,31 @@ class StockService: ObservableObject {
                 }
             }
         }
+
+        // Ensure stablecoins always have valid $1.00 USD quotes if Yahoo Finance returns nil/0
+        let stablecoins: [String: String] = [
+            "USDT-USD": "Tether USD",
+            "USDC-USD": "USD Coin",
+            "BUSD-USD": "Binance USD",
+            "DAI-USD": "Dai",
+            "USD-USD": "US Dollar"
+        ]
+        for (sym, name) in stablecoins {
+            if symbols.contains(sym) || symbols.contains(sym.lowercased()) {
+                if self.quotes[sym] == nil || (self.quotes[sym]?.price ?? 0) <= 0 {
+                    let fallbackQuote = StockQuote(
+                        symbol: sym,
+                        name: name,
+                        price: 1.0,
+                        change: 0.0,
+                        changePercent: 0.0,
+                        currency: "USD"
+                    )
+                    self.quotes[sym] = fallbackQuote
+                    self.quotes[sym.uppercased()] = fallbackQuote
+                }
+            }
+        }
     }
 
     // MARK: - v7 Quote API (batch, live extended hours)
@@ -326,6 +351,30 @@ class StockService: ObservableObject {
             for (symbol, type) in parsed.types {
                 StorageService.shared.setType(type, for: symbol)
                 StorageService.shared.setType(type, for: symbol.uppercased())
+            }
+
+            let stablecoins: [String: String] = [
+                "USDT-USD": "Tether USD",
+                "USDC-USD": "USD Coin",
+                "BUSD-USD": "Binance USD",
+                "DAI-USD": "Dai",
+                "USD-USD": "US Dollar"
+            ]
+            for (sym, name) in stablecoins {
+                if symbols.contains(sym) || symbols.contains(sym.lowercased()) {
+                    if quotes[sym] == nil || (quotes[sym]?.price ?? 0) <= 0 {
+                        let fallbackQuote = StockQuote(
+                            symbol: sym,
+                            name: name,
+                            price: 1.0,
+                            change: 0.0,
+                            changePercent: 0.0,
+                            currency: "USD"
+                        )
+                        quotes[sym] = fallbackQuote
+                        quotes[sym.uppercased()] = fallbackQuote
+                    }
+                }
             }
 
             return true

@@ -52,7 +52,8 @@ struct HoldingDetailView: View {
                     Tag(text: "\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))×",
                         color: DS.brand)
                 }
-                if isEditableScope {
+                let isPortReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
+                if !isPortReadOnly {
                     Button { editHoldingAction.perform(portfolioId, holding) } label: {
                         Image(systemName: "pencil").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
                     }
@@ -119,11 +120,6 @@ struct HoldingDetailView: View {
     }
 
     // MARK: - Purchase Lots
-
-    private var isEditableScope: Bool {
-        if case .portfolio = scope { return true }
-        return false
-    }
 
     private var showsPortfolioColumn: Bool {
         if case .all = scope { return true }
@@ -208,9 +204,7 @@ struct HoldingDetailView: View {
                     Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("P&L").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
-                    if isEditableScope {
-                        Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
-                    }
+                    Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
                 }
                 .padding(.bottom, 8)
                 Divider().overlay(DS.hairline)
@@ -236,18 +230,18 @@ struct HoldingDetailView: View {
                             .foregroundStyle(DS.ink)
                             .frame(width: 60, alignment: .trailing)
 
-                        Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                        Text(StorageService.formatCompactAmount(vh.holding.avgPrice, symbol: priceSymbol))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        Text(StorageService.formatAmount(vh.value, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                        Text(StorageService.formatCompactAmount(vh.value, symbol: priceSymbol))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(StorageService.formatAmount(vh.pnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
+                            Text(StorageService.formatCompactAmount(vh.pnl, symbol: priceSymbol, signed: true))
                                 .font(DS.figure)
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
                                 .font(DS.micro)
@@ -255,7 +249,8 @@ struct HoldingDetailView: View {
                         .foregroundStyle(DS.pnlColor(vh.pnl))
                         .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        if isEditableScope {
+                        let isLotReadOnly = storageService.portfolios.first(where: { $0.id == vh.portfolioId })?.isReadOnly ?? false
+                        if !isLotReadOnly {
                             HStack(spacing: 6) {
                                 Button {
                                     editHoldingAction.perform(vh.portfolioId, vh.holding)
@@ -288,22 +283,20 @@ struct HoldingDetailView: View {
                     }
                 }
 
-                if isEditableScope {
-                    Divider().overlay(DS.hairline).padding(.top, 4)
-                    Button(action: {
-                        addHoldingAction.perform(portfolioId, holding.symbol)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle")
-                            Text("Add another lot for \(holding.symbol)")
-                        }
-                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
-                        .foregroundStyle(DS.brand)
-                        .padding(.top, 8)
+                Divider().overlay(DS.hairline).padding(.top, 4)
+                Button(action: {
+                    addHoldingAction.perform(portfolioId)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle")
+                        Text("Add another lot for \(holding.symbol)")
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
+                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    .foregroundStyle(DS.brand)
+                    .padding(.top, 8)
                 }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
         }
     }
@@ -313,11 +306,11 @@ struct HoldingDetailView: View {
     private var statStrip: some View {
         HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
-            StatTile(label: "Avg price", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Quantity-weighted average purchase price")
-            StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Total cost basis across all purchase lots")
-            StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Current market value across all purchase lots")
+            StatTile(label: "Avg price", value: StorageService.formatCompactAmount(weightedAveragePrice, symbol: priceSymbol), help: "Quantity-weighted average purchase price")
+            StatTile(label: "Cost", value: StorageService.formatCompactAmount(aggregatedCost, symbol: priceSymbol), help: "Total cost basis across all purchase lots")
+            StatTile(label: "Value", value: StorageService.formatCompactAmount(aggregatedValue, symbol: priceSymbol), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
-                     value: StorageService.formatAmount(aggregatedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true),
+                     value: StorageService.formatCompactAmount(aggregatedPnl, symbol: priceSymbol, signed: true),
                      caption: String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
                      captionTint: DS.pnlColor(aggregatedPnl), valueTint: DS.pnlColor(aggregatedPnl))
             StatTile(label: "Weight", value: String(format: "%.1f%%", aggregatedWeight), help: "Share of the selected portfolio scope")
