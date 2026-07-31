@@ -456,27 +456,40 @@ class StockService: ObservableObject {
             guard let url = URL(string: urlString) else { continue }
             do {
                 let (data, response) = try await session.data(from: url)
-                guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else { continue }
-                do {
+                guard let httpResp = response as? HTTPURLResponse else { continue }
+                if httpResp.statusCode == 200 {
                     let tickers = try JSONDecoder().decode([BinanceTicker24hr].self, from: data)
                     for t in tickers {
                         tickerMap[t.symbol.uppercased()] = t
                     }
-                } catch {
-                    // Some symbols may not exist on Binance (e.g. FDUSDUSDT). The API
-                    // returns HTTP 400 for ANY invalid symbol, so fall back per-symbol
-                    // requests when a chunk contains a delisted/unknown pair.
-                    for single in chunk {
-                        let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
-                        if let (sData, sResp) = try? await session.data(from: singleURL),
-                           let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
-                           let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
-                            tickerMap[t.symbol.uppercased()] = t
-                        }
+                    continue
+                }
+
+                // Binance returns HTTP 400 for the whole batch when any pair is
+                // invalid (for example an unsupported tokenized-stock symbol).
+                // Retry each pair independently so one bad asset cannot suppress
+                // valid BTC/ETH/SOL quotes in the same request.
+                print("[StockService] Binance ticker batch HTTP \(httpResp.statusCode); retrying symbols individually")
+                for single in chunk {
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    if let (sData, sResp) = try? await session.data(from: singleURL),
+                       let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
+                       let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
+                        tickerMap[t.symbol.uppercased()] = t
                     }
                 }
             } catch {
-                print("[StockService] Failed to fetch Binance crypto tickers chunk: \(error)")
+                // A successful batch can still contain an unexpected response
+                // shape; retrying individually keeps valid pairs available.
+                print("[StockService] Failed to fetch Binance crypto tickers chunk: \(error); retrying symbols individually")
+                for single in chunk {
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    if let (sData, sResp) = try? await session.data(from: singleURL),
+                       let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
+                       let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
+                        tickerMap[t.symbol.uppercased()] = t
+                    }
+                }
             }
         }
 
