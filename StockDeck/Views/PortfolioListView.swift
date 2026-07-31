@@ -738,6 +738,10 @@ struct HoldingRow: View {
         qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
     }
 
+    private var isReadOnly: Bool {
+        storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Ticker + Qty@Avg
@@ -823,7 +827,7 @@ struct HoldingRow: View {
             }
         }
         .padding(.vertical, 2)
-        .contextMenu {
+        .contextMenu(isReadOnly ? nil : ContextMenu {
             Button {
                 editHoldingAction.perform(portfolioId, holding)
             } label: {
@@ -834,7 +838,7 @@ struct HoldingRow: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-        }
+        })
     }
 }
 
@@ -1207,22 +1211,25 @@ struct GroupedHoldingRow: View {
                                     .frame(width: 70, alignment: .trailing)
                             }
 
-                            HStack(spacing: 6) {
-                                Button { editHoldingAction.perform(portfolioId, h) } label: {
-                                    Image(systemName: "pencil").font(.system(size: 10))
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Edit lot")
+                            let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
+                            if !isReadOnly {
+                                HStack(spacing: 6) {
+                                    Button { editHoldingAction.perform(portfolioId, h) } label: {
+                                        Image(systemName: "pencil").font(.system(size: 10))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
+                                    .help("Edit lot")
 
-                                Button { confirmDeleteHolding = (h, portfolioId) } label: {
-                                    Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
+                                    Button { confirmDeleteHolding = (h, portfolioId) } label: {
+                                        Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
+                                    .help("Delete lot")
                                 }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Delete lot")
+                                .padding(.leading, 8)
                             }
-                            .padding(.leading, 8)
                         }
                         .padding(.vertical, 3)
                         .padding(.horizontal, 8)
