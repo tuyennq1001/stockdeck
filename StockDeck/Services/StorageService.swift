@@ -751,7 +751,8 @@ class StorageService: ObservableObject {
         let knownCrypto: Set<String> = [
             "BTC", "ETH", "SOL", "USDT", "USDC", "BNB", "XRP", "ADA", "DOGE", "AVAX",
             "DOT", "LINK", "MATIC", "SHIB", "LTC", "UNI", "NEAR", "APT", "SUI", "ATOM",
-            "BUSD", "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO"
+            "BUSD", "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO",
+            "BETH", "WBETH"
         ]
         let upper = symbol.uppercased()
         let clean = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
