@@ -95,9 +95,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem?.isVisible = true
 
         if let button = statusItem?.button {
             button.image = menuBarImage
+            if button.image == nil {
+                button.title = " SD"
+            }
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -410,8 +414,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Icon only
         if displayMode == "icon" {
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
-            statusItem?.button?.title = ""
-            statusItem?.button?.image = menuBarImage
+            let button = statusItem?.button
+            let image = menuBarImage
+            button?.image = image
+            button?.title = image == nil ? " SD" : ""
+            statusItem?.isVisible = true
             return
         }
 
