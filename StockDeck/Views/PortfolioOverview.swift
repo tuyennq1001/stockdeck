@@ -567,19 +567,24 @@ struct PortfolioOverview: View {
     /// only when viewing a single portfolio.
     @ViewBuilder private var portfolioMenu: some View {
         if case .portfolio(let id) = scope, let p = portfolios.first {
-            DSMenu(sections: [
+            let actions: [[DSMenuAction]] = p.isReadOnly ? [
+                [ DSMenuAction(title: "Rename…", icon: "pencil") { portfolioActions.rename(id, p.name) },
+                  DSMenuAction(title: "Notifications…", icon: "bell") { portfolioActions.notifications(id, p.name) } ],
+                [ DSMenuAction(title: "Delete Portfolio", icon: "trash", destructive: true) { portfolioActions.delete(id) } ],
+            ] : [
                 [ DSMenuAction(title: "Add Holding…", icon: "plus") { portfolioActions.addHolding(id) },
                   DSMenuAction(title: "Rename…", icon: "pencil") { portfolioActions.rename(id, p.name) },
                   DSMenuAction(title: "Notifications…", icon: "bell") { portfolioActions.notifications(id, p.name) } ],
                 [ DSMenuAction(title: "Delete Portfolio", icon: "trash", destructive: true) { portfolioActions.delete(id) } ],
-            ]) {
+            ]
+            DSMenu(sections: actions) {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(DS.inkSecondary)
                     .frame(width: 26, height: 26)
                     .background(Circle().fill(DS.cardAlt))
             }
-            .help("Portfolio actions — add holding, rename, notifications, delete")
+            .help("Portfolio actions — rename, notifications, delete")
         }
     }
 
@@ -1315,7 +1320,8 @@ struct PortfolioOverview: View {
                                 .buttonStyle(.plain)
                                 .help("View \(sym) details")
                                 .contextMenu {
-                                    if group.count == 1 {
+                                    let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
+                                    if group.count == 1 && !isPortReadOnly {
                                         Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
                                         Button(role: .destructive) {
                                             storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
@@ -1356,8 +1362,16 @@ struct PortfolioOverview: View {
     /// Visible "+ Add holding" affordance. Adds directly to the focused portfolio;
     /// on "All Portfolios" it picks the one portfolio, or offers a menu to choose.
     @ViewBuilder private var addHoldingButton: some View {
-        switch scope {
-        case .portfolio(let id):
+        let isReadOnly: Bool = {
+            switch scope {
+            case .portfolio(let id):
+                return storageService.portfolios.first(where: { $0.id == id })?.isReadOnly ?? false
+            case .all:
+                return storageService.portfolios.allSatisfy { $0.isReadOnly }
+            }
+        }()
+
+        if !isReadOnly {
             let label = HStack(spacing: 4) {
                 Image(systemName: "plus").font(.system(size: 10, weight: .bold))
                 Text("Add holding").font(.inter(11, weight: .semibold, relativeTo: .caption))
@@ -1366,11 +1380,28 @@ struct PortfolioOverview: View {
             .padding(.horizontal, 11).padding(.vertical, 5)
             .background(Capsule().fill(DS.brand))
 
-            Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Add a holding to this portfolio")
-        case .all:
-            EmptyView()
+            switch scope {
+            case .portfolio(let id):
+                Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("Add a holding to this portfolio")
+            case .all:
+                let editablePortfolios = storageService.portfolios.filter { !$0.isReadOnly }
+                if editablePortfolios.count == 1, let id = editablePortfolios.first?.id {
+                    Button { addHoldingAction.perform(id) } label: { label }.buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .help("Add a holding")
+                } else if !editablePortfolios.isEmpty {
+                    Menu {
+                        ForEach(editablePortfolios) { p in
+                            Button(p.name) { addHoldingAction.perform(p.id) }
+                        }
+                    } label: { label }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .pointingHandCursor()
+                    .help("Add a holding — choose which portfolio")
+                }
+            }
         }
     }
 
