@@ -53,6 +53,65 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(balance.totalQuantity, 0.6, accuracy: 1e-9)
     }
 
+    func testBinanceAssetBalanceIncludesFreezeAndWithdrawing() throws {
+        let balance = BinanceAssetBalance(asset: "BTC", free: "0.5", locked: "0.1", freeze: "0.2", withdrawing: "0.05")
+        XCTAssertEqual(balance.totalQuantity, 0.85, accuracy: 1e-9)
+    }
+
+    func testBinanceMarginNetEquitySubtractsBorrowedAndInterest() throws {
+        let asset = BinanceMarginAsset(asset: "BTC", free: "1.0", locked: "0.5", borrowed: "0.3", interest: "0.05")
+        // net equity = free + locked - borrowed - interest = 1.0 + 0.5 - 0.3 - 0.05 = 1.15
+        XCTAssertEqual(asset.totalQuantity, 1.15, accuracy: 1e-9)
+
+        // Negative net equity is possible when borrowed > available collateral
+        let underwater = BinanceMarginAsset(asset: "BTC", free: "0.1", locked: "0.0", borrowed: "0.5", interest: "0.02")
+        XCTAssertEqual(underwater.totalQuantity, -0.42, accuracy: 1e-9)
+    }
+
+    func testBinanceFuturesIncludesUnrealizedProfit() throws {
+        let asset = BinanceFuturesAsset(asset: "USDT", walletBalance: "100.0", unrealizedProfit: "25.5")
+        XCTAssertEqual(asset.totalQuantity, 125.5, accuracy: 1e-9)
+
+        let loss = BinanceFuturesAsset(asset: "USDT", walletBalance: "100.0", unrealizedProfit: "-40.0")
+        XCTAssertEqual(loss.totalQuantity, 60.0, accuracy: 1e-9)
+    }
+
+    func testBinanceStablecoinUSDPeggedList() throws {
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("FDUSD"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("TUSD"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("DAI"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("USDP"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("PAXG"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("BUSD"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("USDT"))
+        XCTAssertTrue(BinanceStablecoin.isUSDPegged("USDC"))
+        XCTAssertFalse(BinanceStablecoin.isUSDPegged("PEPE"))
+        XCTAssertFalse(BinanceStablecoin.isUSDPegged("BTC"))
+    }
+
+    func testIsStandardCryptoSymbolExpandedList() throws {
+        for symbol in ["PEPE-USD", "WIF-USD", "BONK-USD", "FLOKI-USD", "DOGS-USD", "PNUT-USD",
+                       "ARB-USD", "OP-USD", "STRK-USD", "POL-USD", "METIS-USD",
+                       "FET-USD", "RENDER-USD", "TAO-USD", "INJ-USD", "WLD-USD",
+                       "ORDI-USD", "SATS-USD", "JUP-USD", "ENA-USD", "ONDO-USD",
+                       "PYTH-USD", "AAVE-USD", "MKR-USD", "CRV-USD", "RUNE-USD",
+                       "TIA-USD", "SEI-USD",
+                       "FDUSD-USD", "TUSD-USD", "DAI-USD", "USDP-USD", "PAXG-USD"] {
+            XCTAssertTrue(StorageService.isStandardCryptoSymbol(symbol), "\(symbol) should be standard crypto")
+        }
+        XCTAssertFalse(StorageService.isStandardCryptoSymbol("AAPL"))
+        XCTAssertFalse(StorageService.isStandardCryptoSymbol("MSFT-USD"))
+    }
+
+    func testNormalizeBinanceHoldingSymbolExpandedStablecoins() throws {
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("FDUSD-USD"), "FDUSD-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("TUSD-USD"), "TUSD-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("DAI-USD"), "DAI-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("USDP-USD"), "USDP-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("PAXG-USD"), "PAXG-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("PEPE-USD"), "PEPE-USD")
+    }
+
     func testBinanceEarnLDPrefixStripping() throws {
         let rawBalances = [
             BinanceAssetBalance(asset: "LDBTC", free: "0.5", locked: "0.0"),

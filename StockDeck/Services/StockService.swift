@@ -1,5 +1,15 @@
 import Foundation
 
+extension Array {
+    /// Splits the array into chunks of at most `size` elements.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
+
 @MainActor
 class StockService: ObservableObject {
     static let shared = StockService()
@@ -282,6 +292,10 @@ class StockService: ObservableObject {
             "USDC-USD": "USD Coin",
             "BUSD-USD": "Binance USD",
             "DAI-USD": "Dai",
+            "TUSD-USD": "TrueUSD",
+            "FDUSD-USD": "First Digital USD",
+            "USDP-USD": "Pax Dollar",
+            "PAXG-USD": "PAX Gold",
             "USD-USD": "US Dollar"
         ]
         for (sym, name) in stablecoins {
@@ -368,6 +382,10 @@ class StockService: ObservableObject {
                 "USDC-USD": "USD Coin",
                 "BUSD-USD": "Binance USD",
                 "DAI-USD": "Dai",
+                "TUSD-USD": "TrueUSD",
+                "FDUSD-USD": "First Digital USD",
+                "USDP-USD": "Pax Dollar",
+                "PAXG-USD": "PAX Gold",
                 "USD-USD": "US Dollar"
             ]
             for (sym, name) in stablecoins {
@@ -400,38 +418,107 @@ class StockService: ObservableObject {
         let priceChangePercent: String
     }
 
-    /// Fetches live 24hr ticker quotes directly from Binance Public API (`https://api.binance.com/api/v3/ticker/24hr`)
-    /// for crypto symbols, stablecoins, and liquid staking tokens (WBETH, BETH).
+    /// Fetches live 24hr ticker quotes directly from Binance Public API
+    /// (`https://api.binance.com/api/v3/ticker/24hr?symbols=[...]`) for crypto
+    /// symbols, stablecoins, and liquid staking tokens (WBETH, BETH). Requests
+    /// only the exact symbols the user holds instead of the full ~2,000-symbol
+    /// market snapshot, so the API weight stays tiny (≈4 vs 40) and we avoid
+    /// Binance's 2400 weight/min rate limit.
     func fetchBinanceCryptoQuotes(symbols: [String]) async {
         guard !symbols.isEmpty else { return }
 
-        let urlString = "https://api.binance.com/api/v3/ticker/24hr"
-        guard let url = URL(string: urlString) else { return }
+        // Resolve each requested symbol to the concrete Binance pairs we need.
+        // Adding ETHUSDT + BETHETH (when BETH/WBETH is held) lets us derive a
+        // USD price for the staking tokens even though no direct BETHUSDT exists.
+        var pairSymbols: Set<String> = []
+        for sym in symbols {
+            var cleanBase = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if cleanBase.hasSuffix("-USD") {
+                cleanBase = String(cleanBase.dropLast(4))
+            }
+            if BinanceStablecoin.isUSDPegged(cleanBase) {
+                continue // handled locally with a 1.0 peg, no API call needed
+            }
+            pairSymbols.insert("\(cleanBase)USDT")
+            if cleanBase == "BETH" || cleanBase == "WBETH" {
+                pairSymbols.insert("ETHUSDT")
+                pairSymbols.insert("BETHETH")
+            }
+        }
 
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else { return }
-            let tickers = try JSONDecoder().decode([BinanceTicker24hr].self, from: data)
+        // Binance accepts up to ~100 symbols per request; keep within that limit.
+        let chunks = Array(pairSymbols).chunked(into: 90)
+        var tickerMap: [String: BinanceTicker24hr] = [:]
 
-            var tickerMap: [String: BinanceTicker24hr] = [:]
-            for t in tickers {
-                tickerMap[t.symbol.uppercased()] = t
+        for chunk in chunks {
+            let listed = chunk.joined(separator: "\",\"")
+            let urlString = "https://api.binance.com/api/v3/ticker/24hr?symbols=[\"\(listed)\"]"
+            guard let url = URL(string: urlString) else { continue }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else { continue }
+                do {
+                    let tickers = try JSONDecoder().decode([BinanceTicker24hr].self, from: data)
+                    for t in tickers {
+                        tickerMap[t.symbol.uppercased()] = t
+                    }
+                } catch {
+                    // Some symbols may not exist on Binance (e.g. FDUSDUSDT). The API
+                    // returns HTTP 400 for ANY invalid symbol, so fall back per-symbol
+                    // requests when a chunk contains a delisted/unknown pair.
+                    for single in chunk {
+                        let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                        if let (sData, sResp) = try? await session.data(from: singleURL),
+                           let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
+                           let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
+                            tickerMap[t.symbol.uppercased()] = t
+                        }
+                    }
+                }
+            } catch {
+                print("[StockService] Failed to fetch Binance crypto tickers chunk: \(error)")
+            }
+        }
+
+        for sym in symbols {
+            var cleanBase = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if cleanBase.hasSuffix("-USD") {
+                cleanBase = String(cleanBase.dropLast(4))
             }
 
-            for sym in symbols {
-                var cleanBase = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                if cleanBase.hasSuffix("-USD") {
-                    cleanBase = String(cleanBase.dropLast(4))
-                }
+            // Handle Stablecoins & USD-pegged tokens locally at $1.00
+            if BinanceStablecoin.isUSDPegged(cleanBase) {
+                let quote = StockQuote(
+                    symbol: sym,
+                    name: cleanBase,
+                    price: 1.0,
+                    change: 0.0,
+                    changePercent: 0.0,
+                    currency: "USD"
+                )
+                self.quotes[sym] = quote
+                self.quotes[sym.uppercased()] = quote
+                self.quotes[cleanBase] = quote
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                continue
+            }
 
-                // Handle Stablecoins
-                if cleanBase == "USDT" || cleanBase == "USD" || cleanBase == "BUSD" || cleanBase == "USDC" || cleanBase == "DAI" {
+            // Match pair on Binance (e.g. ETH -> ETHUSDT, WBETH -> WBETHUSDT)
+            let matchedTicker: BinanceTicker24hr? = tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"]
+
+            // Fallback for BETH / WBETH if BETHUSDT isn't direct
+            if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {
+                if let ethQuote = tickerMap["ETHUSDT"], let ethPrice = Double(ethQuote.lastPrice) {
+                    let bEthMultiplier = Double(tickerMap["BETHETH"]?.lastPrice ?? "1.0") ?? 1.0
+                    let derivedPrice = ethPrice * bEthMultiplier
+                    let change = (Double(ethQuote.priceChange) ?? 0) * bEthMultiplier
+                    let changePercent = Double(ethQuote.priceChangePercent) ?? 0
                     let quote = StockQuote(
                         symbol: sym,
                         name: cleanBase,
-                        price: 1.0,
-                        change: 0.0,
-                        changePercent: 0.0,
+                        price: derivedPrice,
+                        change: change,
+                        changePercent: changePercent,
                         currency: "USD"
                     )
                     self.quotes[sym] = quote
@@ -440,54 +527,26 @@ class StockService: ObservableObject {
                     StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
                     continue
                 }
-
-                // Match pair on Binance (e.g. ETH -> ETHUSDT, WBETH -> WBETHUSDT or WBETHETH)
-                let matchedTicker: BinanceTicker24hr? = tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"]
-                
-                // Fallback for BETH / WBETH if BETHUSDT isn't direct
-                if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {
-                    if let ethQuote = tickerMap["ETHUSDT"], let ethPrice = Double(ethQuote.lastPrice) {
-                        let bEthMultiplier = Double(tickerMap["BETHETH"]?.lastPrice ?? "1.0") ?? 1.0
-                        let derivedPrice = ethPrice * bEthMultiplier
-                        let change = (Double(ethQuote.priceChange) ?? 0) * bEthMultiplier
-                        let changePercent = Double(ethQuote.priceChangePercent) ?? 0
-                        let quote = StockQuote(
-                            symbol: sym,
-                            name: cleanBase,
-                            price: derivedPrice,
-                            change: change,
-                            changePercent: changePercent,
-                            currency: "USD"
-                        )
-                        self.quotes[sym] = quote
-                        self.quotes[sym.uppercased()] = quote
-                        self.quotes[cleanBase] = quote
-                        StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
-                        continue
-                    }
-                }
-
-                if let ticker = matchedTicker,
-                   let price = Double(ticker.lastPrice), price > 0 {
-                    let change = Double(ticker.priceChange) ?? 0
-                    let changePct = Double(ticker.priceChangePercent) ?? 0
-
-                    let quote = StockQuote(
-                        symbol: sym,
-                        name: cleanBase,
-                        price: price,
-                        change: change,
-                        changePercent: changePct,
-                        currency: "USD"
-                    )
-                    self.quotes[sym] = quote
-                    self.quotes[sym.uppercased()] = quote
-                    self.quotes[cleanBase] = quote
-                    StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
-                }
             }
-        } catch {
-            print("[StockService] Failed to fetch Binance crypto tickers: \(error)")
+
+            if let ticker = matchedTicker,
+               let price = Double(ticker.lastPrice), price > 0 {
+                let change = Double(ticker.priceChange) ?? 0
+                let changePct = Double(ticker.priceChangePercent) ?? 0
+
+                let quote = StockQuote(
+                    symbol: sym,
+                    name: cleanBase,
+                    price: price,
+                    change: change,
+                    changePercent: changePct,
+                    currency: "USD"
+                )
+                self.quotes[sym] = quote
+                self.quotes[sym.uppercased()] = quote
+                self.quotes[cleanBase] = quote
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+            }
         }
     }
 

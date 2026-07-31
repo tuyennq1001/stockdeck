@@ -28,11 +28,23 @@ struct BinanceAssetBalance: Decodable {
     let asset: String
     let free: String?
     let locked: String?
+    let freeze: String?
+    let withdrawing: String?
+
+    init(asset: String, free: String? = nil, locked: String? = nil, freeze: String? = nil, withdrawing: String? = nil) {
+        self.asset = asset
+        self.free = free
+        self.locked = locked
+        self.freeze = freeze
+        self.withdrawing = withdrawing
+    }
 
     var totalQuantity: Double {
         let freeVal = Double(free ?? "0") ?? 0
         let lockedVal = Double(locked ?? "0") ?? 0
-        return freeVal + lockedVal
+        let freezeVal = Double(freeze ?? "0") ?? 0
+        let withdrawingVal = Double(withdrawing ?? "0") ?? 0
+        return freeVal + lockedVal + freezeVal + withdrawingVal
     }
 }
 
@@ -90,9 +102,19 @@ struct BinanceEthStakingAccountResponse: Decodable {
 struct BinanceFuturesAsset: Decodable {
     let asset: String
     let walletBalance: String?
+    let unrealizedProfit: String?
 
+    init(asset: String, walletBalance: String? = nil, unrealizedProfit: String? = nil) {
+        self.asset = asset
+        self.walletBalance = walletBalance
+        self.unrealizedProfit = unrealizedProfit
+    }
+
+    /// Net equity = wallet balance (collateral) + unrealized P&L from open positions.
     var totalQuantity: Double {
-        return Double(walletBalance ?? "0") ?? 0
+        let walletVal = Double(walletBalance ?? "0") ?? 0
+        let unrealizedVal = Double(unrealizedProfit ?? "0") ?? 0
+        return walletVal + unrealizedVal
     }
 }
 
@@ -104,11 +126,25 @@ struct BinanceMarginAsset: Decodable {
     let asset: String
     let free: String?
     let locked: String?
+    let borrowed: String?
+    let interest: String?
 
+    init(asset: String, free: String? = nil, locked: String? = nil, borrowed: String? = nil, interest: String? = nil) {
+        self.asset = asset
+        self.free = free
+        self.locked = locked
+        self.borrowed = borrowed
+        self.interest = interest
+    }
+
+    /// Net equity = free + locked - borrowed - interest, so a leveraged margin
+    /// position does not inflate the user's real net asset value.
     var totalQuantity: Double {
         let f = Double(free ?? "0") ?? 0
         let l = Double(locked ?? "0") ?? 0
-        return f + l
+        let b = Double(borrowed ?? "0") ?? 0
+        let i = Double(interest ?? "0") ?? 0
+        return f + l - b - i
     }
 }
 
@@ -123,6 +159,18 @@ struct BinanceAccountResponse: Decodable {
 struct BinanceAPIErrorResponse: Decodable {
     let code: Int
     let msg: String
+}
+
+/// Stablecoins pegged 1:1 to USD that Binance serves directly (or legacy delisted
+/// tokens still redeemable at $1). Used for quote fallbacks and holding mapping.
+enum BinanceStablecoin {
+    static let usdPegged: Set<String> = [
+        "USDT", "USD", "BUSD", "USDC", "DAI", "TUSD", "FDUSD", "USDP", "PAXG"
+    ]
+
+    static func isUSDPegged(_ asset: String) -> Bool {
+        usdPegged.contains(asset.uppercased())
+    }
 }
 
 class BinanceAPIService {
@@ -207,7 +255,7 @@ class BinanceAPIService {
 
         var aggregatedBalances: [String: Double] = [:]
 
-        // 1. Process Spot balances
+        // 1. Process Spot balances (free + locked + freeze + withdrawing)
         for asset in account.balances {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -231,7 +279,7 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 4. Process USD-M Futures Balances
+        // 4. Process USD-M Futures Balances (wallet balance + unrealized P&L)
         for asset in futuresAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -239,7 +287,7 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 5. Process Margin Balances
+        // 5. Process Margin Balances (net equity = free + locked - borrowed - interest)
         for asset in marginAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -247,19 +295,35 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 6. Process getUserAsset balances (fallback for any remaining user wallets)
+        // 6. ETH Staking is fetched separately so BETH/WBETH from the staking
+        //    account can be de-duplicated against Flexible/Locked Earn entries.
+        //    If the same wrapped token appears in both (e.g. WBETH staked in
+        //    Simple Earn), taking the max avoids double-counting the same asset.
+        let stakingPositions = await fetchEthStakingBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        for position in stakingPositions {
+            let qty = position.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            let clean = cleanAssetName(position.asset)
+            let current = aggregatedBalances[clean] ?? 0
+            aggregatedBalances[clean] = max(current, qty)
+        }
+
+        // 7. getUserAsset is an aggregate endpoint covering all user wallets.
+        //    Use it as the authoritative source: when it reports MORE of an asset
+        //    than the detailed wallet fetches combined (because a partial failure
+        //    returned incomplete spot/funding data), take the higher figure.
         for asset in userAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
             let clean = cleanAssetName(asset.asset)
-            if aggregatedBalances[clean] == nil {
-                aggregatedBalances[clean] = qty
-            }
+            let current = aggregatedBalances[clean] ?? 0
+            aggregatedBalances[clean] = max(current, qty)
         }
 
         return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
+            guard qty >= 1e-8 else { return nil }
             let symbol: String
-            if assetName == "USDT" || assetName == "USD" || assetName == "BUSD" || assetName == "USDC" {
+            if BinanceStablecoin.isUSDPegged(assetName) {
                 symbol = "\(assetName)-USD"
             } else if assetName.contains("-") {
                 symbol = assetName
@@ -352,7 +416,8 @@ class BinanceAPIService {
         return []
     }
 
-    /// Fetch Simple Earn Flexible & Locked Positions
+    /// Fetch Simple Earn Flexible & Locked Positions (excludes ETH Staking,
+    /// which is fetched separately for de-duplication).
     func fetchEarnBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceEarnPosition] {
         let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
         let recvWindow = 5000
@@ -385,7 +450,18 @@ class BinanceAPIService {
             }
         }
 
-        // ETH Staking Account (BETH / WBETH)
+        return results
+    }
+
+    /// Fetch ETH Staking Account (BETH / WBETH) separately from Simple Earn so
+    /// overlapping wrapped-token balances can be de-duplicated downstream.
+    func fetchEthStakingBalances(apiKey: String, secretKey: String, timestamp: Int64? = nil) async -> [BinanceEarnPosition] {
+        let ts = timestamp ?? (Int64(Date().timeIntervalSince1970 * 1000) + timeOffset)
+        let recvWindow = 5000
+        let queryString = "recvWindow=\(recvWindow)&timestamp=\(ts)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey) else { return [] }
+
+        var results: [BinanceEarnPosition] = []
         if let url = URL(string: "\(baseURL)/sapi/v1/eth-staking/account?\(queryString)&signature=\(signature)") {
             var req = URLRequest(url: url)
             req.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
@@ -400,7 +476,6 @@ class BinanceAPIService {
                 }
             }
         }
-
         return results
     }
 
