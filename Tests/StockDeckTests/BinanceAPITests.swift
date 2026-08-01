@@ -112,28 +112,33 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("PEPE-USD"), "PEPE-USD")
     }
 
-    func testBinanceEarnLDPrefixStripping() throws {
-        let rawBalances = [
-            BinanceAssetBalance(asset: "LDBTC", free: "0.5", locked: "0.0"),
-            BinanceAssetBalance(asset: "BTC", free: "0.1", locked: "0.0"),
-            BinanceAssetBalance(asset: "LDSOL", free: "10.0", locked: "0.0"),
-            BinanceAssetBalance(asset: "LDUSDC", free: "100.0", locked: "0.0")
+    func testBinanceEarnLDWrappersAreNotDoubleCounted() throws {
+        let spot = [
+            BinanceAssetBalance(asset: "LDBTC", free: "0.11475751"),
+            BinanceAssetBalance(asset: "USDT", free: "1049.66"),
+            BinanceAssetBalance(asset: "LDUSDT", free: "926.63194103")
+        ]
+        let earn = [
+            BinanceEarnPosition(asset: "BTC", totalAmount: "0.11509176", amount: nil),
+            BinanceEarnPosition(asset: "USDT", totalAmount: "1050.08780379", amount: nil)
         ]
 
-        var aggregatedBalances: [String: Double] = [:]
-        for asset in rawBalances {
-            let qty = asset.totalQuantity
-            guard qty >= 1e-8 else { continue }
-            var cleanAsset = asset.asset.uppercased()
-            if cleanAsset.hasPrefix("LD") && cleanAsset.count > 2 {
-                cleanAsset = String(cleanAsset.dropFirst(2))
-            }
-            aggregatedBalances[cleanAsset, default: 0.0] += qty
-        }
+        let balances = BinanceAPIService.mergeSpotAndEarnBalances(spot: spot, earn: earn)
 
-        XCTAssertEqual(aggregatedBalances["BTC"] ?? 0, 0.6, accuracy: 1e-9)
-        XCTAssertEqual(aggregatedBalances["SOL"] ?? 0, 10.0, accuracy: 1e-9)
-        XCTAssertEqual(aggregatedBalances["USDC"] ?? 0, 100.0, accuracy: 1e-9)
+        XCTAssertEqual(balances["BTC"] ?? 0, 0.11509176, accuracy: 1e-9)
+        XCTAssertEqual(balances["USDT"] ?? 0, 2099.74780379, accuracy: 1e-9)
+    }
+
+    func testBinanceLDWrapperFallsBackWhenEarnEndpointOmitsAsset() throws {
+        let spot = [
+            BinanceAssetBalance(asset: "LDADA", free: "5.25"),
+            BinanceAssetBalance(asset: "LDO", free: "3.0")
+        ]
+
+        let balances = BinanceAPIService.mergeSpotAndEarnBalances(spot: spot, earn: [])
+
+        XCTAssertEqual(balances["ADA"] ?? 0, 5.25, accuracy: 1e-9)
+        XCTAssertEqual(balances["LDO"] ?? 0, 3.0, accuracy: 1e-9)
     }
 
     func testNormalizeBinanceHoldingSymbol() throws {

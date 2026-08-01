@@ -221,10 +221,50 @@ class BinanceAPIService {
 
     private func cleanAssetName(_ name: String) -> String {
         var cleanAsset = name.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if cleanAsset.hasPrefix("LD") && cleanAsset.count > 2 {
+        if cleanAsset.hasPrefix("LD") && cleanAsset.count > 3 {
             cleanAsset = String(cleanAsset.dropFirst(2))
         }
         return cleanAsset
+    }
+
+    /// Reconciles Spot and Simple Earn without counting legacy `LD...` wrapper
+    /// balances twice. Binance exposes the same Earn position both as (for
+    /// example) `LDBTC` in `/api/v3/account` and `BTC` in Simple Earn. Prefer
+    /// the richer Earn value; retain the LD quantity only as an API-failure
+    /// fallback when no matching Earn row was returned.
+    static func mergeSpotAndEarnBalances(
+        spot: [BinanceAssetBalance],
+        earn: [BinanceEarnPosition]
+    ) -> [String: Double] {
+        var earnBalances: [String: Double] = [:]
+        for asset in earn {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            var name = asset.asset.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if name.hasPrefix("LD"), name.count > 3 {
+                name = String(name.dropFirst(2))
+            }
+            earnBalances[name, default: 0] += qty
+        }
+
+        var balances: [String: Double] = [:]
+        for asset in spot {
+            let qty = asset.totalQuantity
+            guard qty >= 1e-8 else { continue }
+            let rawName = asset.asset.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if rawName.hasPrefix("LD"), rawName.count > 3 {
+                let baseName = String(rawName.dropFirst(2))
+                guard earnBalances[baseName] == nil else { continue }
+                balances[baseName, default: 0] += qty
+            } else {
+                balances[rawName, default: 0] += qty
+            }
+        }
+
+        for (asset, qty) in earnBalances {
+            balances[asset, default: 0] += qty
+        }
+        return balances
     }
 
     /// Binance Stocks Trading uses the underlying US equity symbol (for
@@ -486,15 +526,12 @@ class BinanceAPIService {
             throw BinanceAPIError.decodingError
         }
 
-        var aggregatedBalances: [String: Double] = [:]
-
-        // 1. Process Spot balances (free + locked + freeze + withdrawing)
-        for asset in account.balances {
-            let qty = asset.totalQuantity
-            guard qty >= 1e-8 else { continue }
-            let clean = cleanAssetName(asset.asset)
-            aggregatedBalances[clean, default: 0.0] += qty
-        }
+        // 1. Reconcile Spot and Simple Earn. Legacy LD-prefixed Spot wrappers
+        // mirror Earn positions and must not be added a second time.
+        var aggregatedBalances = Self.mergeSpotAndEarnBalances(
+            spot: account.balances,
+            earn: earnAssets
+        )
 
         // 2. Process Funding Wallet balances (P2P purchases)
         for asset in fundingAssets {
@@ -504,15 +541,7 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 3. Process Simple Earn Flexible & Locked Positions
-        for asset in earnAssets {
-            let qty = asset.totalQuantity
-            guard qty >= 1e-8 else { continue }
-            let clean = cleanAssetName(asset.asset)
-            aggregatedBalances[clean, default: 0.0] += qty
-        }
-
-        // 4. Process USD-M Futures Balances (wallet balance + unrealized P&L)
+        // 3. Process USD-M Futures Balances (wallet balance + unrealized P&L)
         for asset in futuresAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -520,7 +549,7 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 5. Process Margin Balances (net equity = free + locked - borrowed - interest)
+        // 4. Process Margin Balances (net equity = free + locked - borrowed - interest)
         for asset in marginAssets {
             let qty = asset.totalQuantity
             guard qty >= 1e-8 else { continue }
@@ -528,7 +557,7 @@ class BinanceAPIService {
             aggregatedBalances[clean, default: 0.0] += qty
         }
 
-        // 6. ETH Staking is fetched separately so BETH/WBETH from the staking
+        // 5. ETH Staking is fetched separately so BETH/WBETH from the staking
         //    account can be de-duplicated against Flexible/Locked Earn entries.
         //    If the same wrapped token appears in both (e.g. WBETH staked in
         //    Simple Earn), taking the max avoids double-counting the same asset.
@@ -541,7 +570,7 @@ class BinanceAPIService {
             aggregatedBalances[clean] = max(current, qty)
         }
 
-        // 7. getUserAsset is an aggregate endpoint covering all user wallets.
+        // 6. getUserAsset is an aggregate endpoint covering all user wallets.
         //    Use it as the authoritative source: when it reports MORE of an asset
         //    than the detailed wallet fetches combined (because a partial failure
         //    returned incomplete spot/funding data), take the higher figure.
