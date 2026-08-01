@@ -37,9 +37,18 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 ## 6. Quy trình Git Branching & Automation (Feature Branch & PR Workflow)
 - **Tự động tạo Feature / Fix Branch**: Mỗi khi người dùng giao nhiệm vụ sửa bug hoặc phát triển tính năng mới, **tự động tạo nhánh riêng biệt** (`feature/<tên-tính-năng>` hoặc `fix/<tên-lỗi>`) từ `main` trước khi viết code.
 - **Kiểm thử & Commit**: Sau khi viết code xong và bộ kiểm thử (`swift test`) PASS 100%, tự động commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
+- **Commit message ngắn gọn**: Tiêu đề commit/PR **bắt buộc ≤ 72 ký tự**. Dùng body PR để mô tả chi tiết, không nhồi nhét vào title.
 - **Push, Tạo PR & Rebuild app ngay trên Nhánh Feature**:
   - Push nhánh lên GitHub (`git push origin <branch>`).
   - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết và gửi link PR cho người dùng.
   - **Chạy `./dev.sh` ngay trên nhánh feature** để rebuild ứng dụng mới cho người dùng kiểm tra & trải nghiệm trực tiếp.
 - **Xác nhận Merge (Sau khi người dùng đồng ý)**:
   - **Chờ người dùng xác nhận "OK" / Duyệt**: Sau khi người dùng đồng ý, tiến hành merge PR vào `main` (`gh pr merge --merge --delete-branch`), chuyển về `main` và xoá nhánh local.
+
+---
+
+## 7. Quy tắc CLI & Script (Tránh Treo/Timeout)
+- **Không viết Python/Python3 inline script dài trong `-c`**: Nếu script Python vượt quá ~5 dòng, **bắt buộc ghi ra file `.py` tạm** (dùng `write_to_file` hoặc heredoc `cat > /tmp/script.py << 'EOF'`), chạy file đó, rồi xóa file tạm sau khi chạy xong. Tuyệt đối không nhồi toàn bộ script vào `python3 -c "..."`.
+- **Không dùng heredoc trong `execute_command` nếu nội dung chứa ký tự đặc biệt**: Nếu cần, ghi file riêng rồi chạy.
+- **Giới hạn độ dài command**: Mỗi câu lệnh CLI không vượt quá ~2000 ký tự. Nếu dài hơn, tách thành script file.
+- **Commit/PR title**: Tối đa 72 ký tự. Mô tả chi tiết để trong body.
