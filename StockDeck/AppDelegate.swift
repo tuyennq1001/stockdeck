@@ -95,6 +95,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Give Control Center one stable identity across rebuilds. Without an
+        // explicit autosave name macOS 26 can retain a new tracked menu-bar
+        // item for every development bundle incarnation, then hide the current
+        // item because an older registration was disabled or removed.
+        statusItem?.autosaveName = "StockDeck.MainStatusItem.v2"
         statusItem?.isVisible = true
 
         if let button = statusItem?.button {
