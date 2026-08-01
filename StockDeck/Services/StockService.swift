@@ -65,6 +65,20 @@ class StockService: ObservableObject {
     }
 
     /// Full refresh: quotes (REST) + exchange rates. Use only at startup or when WSS is down.
+    /// Phase 1: load only watchlist symbols so the menu bar shows immediately.
+    /// Skips exchange rates (uses cached rates from the previous session).
+    func refreshCritical(storageService: StorageService) async {
+        let watchlistSymbols = storageService.watchlists.flatMap(\.symbols)
+        guard !watchlistSymbols.isEmpty else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        let symbols = Array(Set(watchlistSymbols))
+        await fetchQuotes(symbols: symbols)
+    }
+
+    /// Phase 2: load all remaining symbols + exchange rates, after the menu bar
+    /// is already visible.
     func refreshAll(storageService: StorageService) async {
         let allSymbols = Self.collectSymbols(storageService: storageService)
         guard !allSymbols.isEmpty else { return }
@@ -989,6 +1003,94 @@ class StockService: ObservableObject {
         }
     }
 
+    // MARK: - Binance Exchange Info Cache
+
+    private struct BinanceSymbolInfo: Decodable {
+        let symbol: String
+        let baseAsset: String
+        let quoteAsset: String
+        let status: String
+    }
+
+    private struct BinanceExchangeInfoResponse: Decodable {
+        let symbols: [BinanceSymbolInfo]
+    }
+
+    private var cachedBinanceSymbols: [BinanceSymbolInfo]?
+    private var binanceSymbolsFetchedAt: Date?
+
+    /// Fetches Binance exchangeInfo (all trading pairs) and caches for 6 hours.
+    /// Response is ~2MB so we call once and filter client-side on every search.
+    private func fetchBinanceExchangeInfo() async -> [BinanceSymbolInfo] {
+        if let cached = cachedBinanceSymbols, let at = binanceSymbolsFetchedAt,
+           Date().timeIntervalSince(at) < 21600 {
+            return cached
+        }
+        guard let url = URL(string: "https://api.binance.com/api/v3/exchangeInfo") else {
+            return cachedBinanceSymbols ?? []
+        }
+        do {
+            let (data, _) = try await session.data(from: url)
+            let response = try JSONDecoder().decode(BinanceExchangeInfoResponse.self, from: data)
+            let active = response.symbols.filter { $0.status == "TRADING" }
+            cachedBinanceSymbols = active
+            binanceSymbolsFetchedAt = Date()
+            return active
+        } catch {
+            return cachedBinanceSymbols ?? []
+        }
+    }
+
+    /// Searches Binance trading pairs whose baseAsset matches the query.
+    /// Picks the best quote asset per base: USDT > USDC > FDUSD > BTC > ETH > first available.
+    private func fetchBinanceSearch(query: String) async -> [SearchResult] {
+        let allSymbols = await fetchBinanceExchangeInfo()
+        let upperQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard upperQuery.count >= 2 else { return [] }
+
+        // Group by baseAsset, find matching base assets
+        var baseMap: [String: [BinanceSymbolInfo]] = [:]
+        for s in allSymbols {
+            baseMap[s.baseAsset, default: []].append(s)
+        }
+
+        // Quote priority for picking the best pair per base asset
+        let quotePriority: [String: Int] = ["USDT": 0, "USDC": 1, "FDUSD": 2, "BTC": 3, "ETH": 4]
+
+        var results: [SearchResult] = []
+        for (base, pairs) in baseMap where base.contains(upperQuery) {
+            // Filter stablecoins (they are separate assets with their own entries)
+            let isStablecoin = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG"].contains(base)
+            let type = isStablecoin ? "CRYPTOCURRENCY" : "CRYPTOCURRENCY"
+
+            // Pick best quote pair
+            let bestPair = pairs.min { a, b in
+                let pa = quotePriority[a.quoteAsset] ?? 9
+                let pb = quotePriority[b.quoteAsset] ?? 9
+                return pa < pb
+            }
+
+            let displaySymbol = bestPair.flatMap { _ in "\(base)-USD" } ?? base
+            results.append(SearchResult(
+                symbol: displaySymbol,
+                name: base,
+                exchange: "Binance",
+                type: type
+            ))
+        }
+        return results
+    }
+
+    /// Returns a canonical key for deduplication: "CRYPTO:BTC", "STOCK:AAPL", etc.
+    private static func canonicalKey(symbol: String, type: String) -> String {
+        let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let base = clean.hasSuffix("-USD") ? String(clean.dropLast(4)) : clean
+        if type.uppercased() == "CRYPTOCURRENCY" || base == clean && !clean.contains("-") {
+            return "CRYPTO:\(base)"
+        }
+        return "STOCK:\(clean)"
+    }
+
     func search(query: String) async -> [SearchResult] {
         guard !query.isEmpty else { return [] }
 
@@ -1006,17 +1108,62 @@ class StockService: ObservableObject {
             fundResults.append(SearchResult(symbol: upperQuery, name: "投資信託 (\(upperQuery))", exchange: "JP_FUND", type: "MUTUALFUND"))
         }
 
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
-            return fundResults
+        // Run Yahoo and Binance search in parallel
+        async let yahooTask = fetchYahooSearch(query: query)
+        async let binanceTask = fetchBinanceSearch(query: upperQuery)
+
+        let (yahooResults, binanceResults) = await (yahooTask, binanceTask)
+
+        // Merge: canonical key dedup. Yahoo wins for metadata (name/exchange),
+        // but we record that Binance also has this asset so the UI can show both sources.
+        var merged: [String: SearchResult] = [:]
+
+        // Yahoo first (higher priority for name/exchange/type)
+        for r in yahooResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            merged[key] = r // Yahoo wins for metadata
         }
 
+        // Binance: add only if canonical key not already present
+        for r in binanceResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if merged[key] == nil {
+                merged[key] = r
+            }
+            // If already present from Yahoo, we keep Yahoo's metadata (name, exchange).
+            // The quote source (Binance vs Yahoo) is handled by fetchQuotes, not search.
+        }
+
+        // Sort: Yahoo results first, then Binance-unique
+        var final: [SearchResult] = []
+        for r in yahooResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if let m = merged.removeValue(forKey: key) {
+                final.append(m)
+            }
+        }
+        // Remaining are Binance-unique
+        for r in binanceResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if let m = merged[key] {
+                final.append(m)
+            }
+        }
+
+        return fundResults + final
+    }
+
+    private func fetchYahooSearch(query: String) async -> [SearchResult] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
+            return []
+        }
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooSearchResponse.self, from: data)
-            return fundResults + response.quotes
+            return response.quotes
         } catch {
-            return fundResults
+            return []
         }
     }
 

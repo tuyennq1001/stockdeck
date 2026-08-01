@@ -112,13 +112,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Compare-and-clear: only clear if a newer refresh hasn't superseded
             // us, so a cancelled Task's defer can't unblock a live refresh.
             defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
+
+            // Phase 1: WebSocket first (realtime ticks), then critical watchlist
+            // quotes so the menu bar shows a value immediately.
+            startWebSocket()
+            guard !Task.isCancelled else { return }
+            await stockService.refreshCritical(storageService: storageService)
+            guard !Task.isCancelled else { return }
+            updateMenuBarTitle()
+
+            // Phase 2: full portfolio quotes + exchange rates, non-blocking
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
             alertMonitor.check(quotes: stockService.quotes)
             portfolioMonitor.check()
             recordSnapshots()
-            startWebSocket()
         }
 
         // REST polling at low frequency for exchange rates and as WSS fallback
@@ -155,7 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         symbolsObserver = storageService.$portfolios
             .combineLatest(storageService.$watchlists)
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
                 guard let self else { return }
                 let symbols = Array(self.collectSymbols())
