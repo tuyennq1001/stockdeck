@@ -58,7 +58,7 @@ struct ImportPreviewSheet: View {
                         Picker("Target Portfolio", selection: $selectedPortfolioId) {
                             Text("+ Create New Portfolio…").tag("NEW")
                             Divider()
-                            ForEach(storageService.portfolios) { p in
+                            ForEach(storageService.portfolios.filter { !$0.isReadOnly }) { p in
                                 Text(p.name).tag(p.id.uuidString)
                             }
                         }
@@ -139,7 +139,7 @@ struct ImportPreviewSheet: View {
             }
         }
         .onAppear {
-            if let first = storageService.portfolios.first {
+            if let first = storageService.portfolios.first(where: { !$0.isReadOnly }) {
                 selectedPortfolioId = first.id.uuidString
             } else {
                 selectedPortfolioId = "NEW"

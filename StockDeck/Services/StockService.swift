@@ -1,5 +1,15 @@
 import Foundation
 
+extension Array {
+    /// Splits the array into chunks of at most `size` elements.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
+        }
+    }
+}
+
 @MainActor
 class StockService: ObservableObject {
     static let shared = StockService()
@@ -65,6 +75,20 @@ class StockService: ObservableObject {
     }
 
     /// Full refresh: quotes (REST) + exchange rates. Use only at startup or when WSS is down.
+    /// Phase 1: load only watchlist symbols so the menu bar shows immediately.
+    /// Skips exchange rates (uses cached rates from the previous session).
+    func refreshCritical(storageService: StorageService) async {
+        let watchlistSymbols = storageService.watchlists.flatMap(\.symbols)
+        guard !watchlistSymbols.isEmpty else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        let symbols = Array(Set(watchlistSymbols))
+        await fetchQuotes(symbols: symbols)
+    }
+
+    /// Phase 2: load all remaining symbols + exchange rates, after the menu bar
+    /// is already visible.
     func refreshAll(storageService: StorageService) async {
         let allSymbols = Self.collectSymbols(storageService: storageService)
         guard !allSymbols.isEmpty else { return }
@@ -250,19 +274,130 @@ class StockService: ObservableObject {
             }
         }
 
-        guard !regularSymbols.isEmpty else { return }
+        let equitySymbols = regularSymbols.filter { Self.isBinanceEquitySymbol($0) }
+        let cryptoSymbols = regularSymbols.filter { sym in
+            let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
+            return !equitySymbols.contains(sym) && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD"))
+        }
+        let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) && !equitySymbols.contains($0) }
 
-        // Try v7 batch quote first (single HTTP call, live extended hours)
-        if await fetchQuotesV7(symbols: regularSymbols) {
+        if !cryptoSymbols.isEmpty {
+            await fetchBinanceCryptoQuotes(symbols: cryptoSymbols)
+        }
+
+        if !equitySymbols.isEmpty {
+            await fetchBinanceEquityQuotes(symbols: equitySymbols)
+        }
+
+        guard !stockSymbols.isEmpty else { return }
+
+        // Try v7 batch quote first for regular stock/ETF symbols
+        if await fetchQuotesV7(symbols: stockSymbols) {
             return
         }
 
-        // Fallback: fetch each symbol via v8 chart API
+        // Fallback: fetch each stock symbol via v8 chart API
         await withTaskGroup(of: Void.self) { group in
-            for symbol in regularSymbols {
+            for symbol in stockSymbols {
                 group.addTask { [weak self] in
                     await self?.fetchSingleQuote(symbol: symbol)
                 }
+            }
+        }
+
+        // Ensure stablecoins always have valid $1.00 USD quotes if Yahoo Finance returns nil/0
+        let stablecoins: [String: String] = [
+            "USDT-USD": "Tether USD",
+            "USDC-USD": "USD Coin",
+            "BUSD-USD": "Binance USD",
+            "DAI-USD": "Dai",
+            "TUSD-USD": "TrueUSD",
+            "FDUSD-USD": "First Digital USD",
+            "USDP-USD": "Pax Dollar",
+            "PAXG-USD": "PAX Gold",
+            "USD-USD": "US Dollar"
+        ]
+        for (sym, name) in stablecoins {
+            if symbols.contains(sym) || symbols.contains(sym.lowercased()) {
+                if self.quotes[sym] == nil || (self.quotes[sym]?.price ?? 0) <= 0 {
+                    let fallbackQuote = StockQuote(
+                        symbol: sym,
+                        name: name,
+                        price: 1.0,
+                        change: 0.0,
+                        changePercent: 0.0,
+                        currency: "USD"
+                    )
+                    self.quotes[sym] = fallbackQuote
+                    self.quotes[sym.uppercased()] = fallbackQuote
+                }
+            }
+        }
+    }
+
+    private static func isBinanceEquitySymbol(_ symbol: String) -> Bool {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+        return base.hasPrefix("EQ_") && base.count > 3
+    }
+
+    /// Fetch Binance US-equity quotes through Stocks Trading API. Binance
+    /// exposes the balance as EQ_<ticker>, while the quote endpoint expects
+    /// the underlying ticker (for example EQ_GOOGL -> GOOGL).
+    private func fetchBinanceEquityQuotes(symbols: [String]) async {
+        guard let credentials = StorageService.shared.firstBinanceCredentials() else { return }
+
+        await withTaskGroup(of: (String, BinanceEquityQuote?).self) { group in
+            for symbol in symbols {
+                let upper = symbol.uppercased()
+                let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+                let underlying = String(base.dropFirst(3))
+                group.addTask {
+                    let quote = await BinanceAPIService.shared.fetchEquityQuote(
+                        apiKey: credentials.apiKey,
+                        symbol: underlying
+                    )
+                    return (symbol, quote)
+                }
+            }
+
+            for await (symbol, equityQuote) in group {
+                guard let equityQuote, let binanceMidpoint = equityQuote.midpoint else { continue }
+                let upper = symbol.uppercased()
+                let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+                let underlying = String(base.dropFirst(3))
+
+                // The Binance equity REST quote provides bid/ask but no prior
+                // close. Use the underlying stock's regular-session quote for
+                // price and daily change, keeping Binance midpoint as fallback.
+                if !(await self.fetchQuotesV7(symbols: [underlying])) {
+                    await self.fetchSingleQuote(symbol: underlying)
+                }
+                let regularQuote = self.quotes[underlying]
+                let quote = StockQuote(
+                    symbol: symbol,
+                    name: regularQuote?.name ?? underlying,
+                    price: regularQuote?.price ?? binanceMidpoint,
+                    change: regularQuote?.change ?? 0,
+                    changePercent: regularQuote?.changePercent ?? 0,
+                    regularMarketPreviousClose: regularQuote?.regularMarketPreviousClose,
+                    currency: regularQuote?.currency ?? "USD",
+                    marketState: regularQuote?.marketState ?? "REGULAR",
+                    dayHigh: regularQuote?.dayHigh,
+                    dayLow: regularQuote?.dayLow,
+                    fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,
+                    fiftyTwoWeekLow: regularQuote?.fiftyTwoWeekLow,
+                    preMarketPrice: regularQuote?.preMarketPrice,
+                    preMarketChange: regularQuote?.preMarketChange,
+                    preMarketChangePercent: regularQuote?.preMarketChangePercent,
+                    postMarketPrice: regularQuote?.postMarketPrice,
+                    postMarketChange: regularQuote?.postMarketChange,
+                    postMarketChangePercent: regularQuote?.postMarketChangePercent
+                )
+                self.quotes[symbol] = quote
+                self.quotes[upper] = quote
+                self.quotes[base] = quote
+                StorageService.shared.setType("STOCK", for: symbol)
             }
         }
     }
@@ -328,9 +463,189 @@ class StockService: ObservableObject {
                 StorageService.shared.setType(type, for: symbol.uppercased())
             }
 
+            let stablecoins: [String: String] = [
+                "USDT-USD": "Tether USD",
+                "USDC-USD": "USD Coin",
+                "BUSD-USD": "Binance USD",
+                "DAI-USD": "Dai",
+                "TUSD-USD": "TrueUSD",
+                "FDUSD-USD": "First Digital USD",
+                "USDP-USD": "Pax Dollar",
+                "PAXG-USD": "PAX Gold",
+                "USD-USD": "US Dollar"
+            ]
+            for (sym, name) in stablecoins {
+                if symbols.contains(sym) || symbols.contains(sym.lowercased()) {
+                    if quotes[sym] == nil || (quotes[sym]?.price ?? 0) <= 0 {
+                        let fallbackQuote = StockQuote(
+                            symbol: sym,
+                            name: name,
+                            price: 1.0,
+                            change: 0.0,
+                            changePercent: 0.0,
+                            currency: "USD"
+                        )
+                        quotes[sym] = fallbackQuote
+                        quotes[sym.uppercased()] = fallbackQuote
+                    }
+                }
+            }
+
             return true
         } catch {
             return false
+        }
+    }
+
+    struct BinanceTicker24hr: Decodable {
+        let symbol: String
+        let lastPrice: String
+        let priceChange: String
+        let priceChangePercent: String
+    }
+
+    /// Fetches live 24hr ticker quotes directly from Binance Public API
+    /// (`https://api.binance.com/api/v3/ticker/24hr?symbols=[...]`) for crypto
+    /// symbols, stablecoins, and liquid staking tokens (WBETH, BETH). Requests
+    /// only the exact symbols the user holds instead of the full ~2,000-symbol
+    /// market snapshot, so the API weight stays tiny (≈4 vs 40) and we avoid
+    /// Binance's 2400 weight/min rate limit.
+    func fetchBinanceCryptoQuotes(symbols: [String]) async {
+        guard !symbols.isEmpty else { return }
+
+        // Resolve each requested symbol to the concrete Binance pairs we need.
+        // Adding ETHUSDT + BETHETH (when BETH/WBETH is held) lets us derive a
+        // USD price for the staking tokens even though no direct BETHUSDT exists.
+        var pairSymbols: Set<String> = []
+        for sym in symbols {
+            var cleanBase = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if cleanBase.hasSuffix("-USD") {
+                cleanBase = String(cleanBase.dropLast(4))
+            }
+            if BinanceStablecoin.isUSDPegged(cleanBase) {
+                continue // handled locally with a 1.0 peg, no API call needed
+            }
+            pairSymbols.insert("\(cleanBase)USDT")
+            if cleanBase == "BETH" || cleanBase == "WBETH" {
+                pairSymbols.insert("ETHUSDT")
+                pairSymbols.insert("BETHETH")
+            }
+        }
+
+        // Binance accepts up to ~100 symbols per request; keep within that limit.
+        let chunks = Array(pairSymbols).chunked(into: 90)
+        var tickerMap: [String: BinanceTicker24hr] = [:]
+
+        for chunk in chunks {
+            let listed = chunk.joined(separator: "\",\"")
+            let urlString = "https://api.binance.com/api/v3/ticker/24hr?symbols=[\"\(listed)\"]"
+            guard let url = URL(string: urlString) else { continue }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let httpResp = response as? HTTPURLResponse else { continue }
+                if httpResp.statusCode == 200 {
+                    let tickers = try JSONDecoder().decode([BinanceTicker24hr].self, from: data)
+                    for t in tickers {
+                        tickerMap[t.symbol.uppercased()] = t
+                    }
+                    continue
+                }
+
+                // Binance returns HTTP 400 for the whole batch when any pair is
+                // invalid (for example an unsupported tokenized-stock symbol).
+                // Retry each pair independently so one bad asset cannot suppress
+                // valid BTC/ETH/SOL quotes in the same request.
+                print("[StockService] Binance ticker batch HTTP \(httpResp.statusCode); retrying symbols individually")
+                for single in chunk {
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    if let (sData, sResp) = try? await session.data(from: singleURL),
+                       let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
+                       let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
+                        tickerMap[t.symbol.uppercased()] = t
+                    }
+                }
+            } catch {
+                // A successful batch can still contain an unexpected response
+                // shape; retrying individually keeps valid pairs available.
+                print("[StockService] Failed to fetch Binance crypto tickers chunk: \(error); retrying symbols individually")
+                for single in chunk {
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    if let (sData, sResp) = try? await session.data(from: singleURL),
+                       let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
+                       let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
+                        tickerMap[t.symbol.uppercased()] = t
+                    }
+                }
+            }
+        }
+
+        for sym in symbols {
+            var cleanBase = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if cleanBase.hasSuffix("-USD") {
+                cleanBase = String(cleanBase.dropLast(4))
+            }
+
+            // Handle Stablecoins & USD-pegged tokens locally at $1.00
+            if BinanceStablecoin.isUSDPegged(cleanBase) {
+                let quote = StockQuote(
+                    symbol: sym,
+                    name: cleanBase,
+                    price: 1.0,
+                    change: 0.0,
+                    changePercent: 0.0,
+                    currency: "USD"
+                )
+                self.quotes[sym] = quote
+                self.quotes[sym.uppercased()] = quote
+                self.quotes[cleanBase] = quote
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                continue
+            }
+
+            // Match pair on Binance (e.g. ETH -> ETHUSDT, WBETH -> WBETHUSDT)
+            let matchedTicker: BinanceTicker24hr? = tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"]
+
+            // Fallback for BETH / WBETH if BETHUSDT isn't direct
+            if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {
+                if let ethQuote = tickerMap["ETHUSDT"], let ethPrice = Double(ethQuote.lastPrice) {
+                    let bEthMultiplier = Double(tickerMap["BETHETH"]?.lastPrice ?? "1.0") ?? 1.0
+                    let derivedPrice = ethPrice * bEthMultiplier
+                    let change = (Double(ethQuote.priceChange) ?? 0) * bEthMultiplier
+                    let changePercent = Double(ethQuote.priceChangePercent) ?? 0
+                    let quote = StockQuote(
+                        symbol: sym,
+                        name: cleanBase,
+                        price: derivedPrice,
+                        change: change,
+                        changePercent: changePercent,
+                        currency: "USD"
+                    )
+                    self.quotes[sym] = quote
+                    self.quotes[sym.uppercased()] = quote
+                    self.quotes[cleanBase] = quote
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                    continue
+                }
+            }
+
+            if let ticker = matchedTicker,
+               let price = Double(ticker.lastPrice), price > 0 {
+                let change = Double(ticker.priceChange) ?? 0
+                let changePct = Double(ticker.priceChangePercent) ?? 0
+
+                let quote = StockQuote(
+                    symbol: sym,
+                    name: cleanBase,
+                    price: price,
+                    change: change,
+                    changePercent: changePct,
+                    currency: "USD"
+                )
+                self.quotes[sym] = quote
+                self.quotes[sym.uppercased()] = quote
+                self.quotes[cleanBase] = quote
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+            }
         }
     }
 
@@ -989,6 +1304,94 @@ class StockService: ObservableObject {
         }
     }
 
+    // MARK: - Binance Exchange Info Cache
+
+    private struct BinanceSymbolInfo: Decodable {
+        let symbol: String
+        let baseAsset: String
+        let quoteAsset: String
+        let status: String
+    }
+
+    private struct BinanceExchangeInfoResponse: Decodable {
+        let symbols: [BinanceSymbolInfo]
+    }
+
+    private var cachedBinanceSymbols: [BinanceSymbolInfo]?
+    private var binanceSymbolsFetchedAt: Date?
+
+    /// Fetches Binance exchangeInfo (all trading pairs) and caches for 6 hours.
+    /// Response is ~2MB so we call once and filter client-side on every search.
+    private func fetchBinanceExchangeInfo() async -> [BinanceSymbolInfo] {
+        if let cached = cachedBinanceSymbols, let at = binanceSymbolsFetchedAt,
+           Date().timeIntervalSince(at) < 21600 {
+            return cached
+        }
+        guard let url = URL(string: "https://api.binance.com/api/v3/exchangeInfo") else {
+            return cachedBinanceSymbols ?? []
+        }
+        do {
+            let (data, _) = try await session.data(from: url)
+            let response = try JSONDecoder().decode(BinanceExchangeInfoResponse.self, from: data)
+            let active = response.symbols.filter { $0.status == "TRADING" }
+            cachedBinanceSymbols = active
+            binanceSymbolsFetchedAt = Date()
+            return active
+        } catch {
+            return cachedBinanceSymbols ?? []
+        }
+    }
+
+    /// Searches Binance trading pairs whose baseAsset matches the query.
+    /// Picks the best quote asset per base: USDT > USDC > FDUSD > BTC > ETH > first available.
+    private func fetchBinanceSearch(query: String) async -> [SearchResult] {
+        let allSymbols = await fetchBinanceExchangeInfo()
+        let upperQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard upperQuery.count >= 2 else { return [] }
+
+        // Group by baseAsset, find matching base assets
+        var baseMap: [String: [BinanceSymbolInfo]] = [:]
+        for s in allSymbols {
+            baseMap[s.baseAsset, default: []].append(s)
+        }
+
+        // Quote priority for picking the best pair per base asset
+        let quotePriority: [String: Int] = ["USDT": 0, "USDC": 1, "FDUSD": 2, "BTC": 3, "ETH": 4]
+
+        var results: [SearchResult] = []
+        for (base, pairs) in baseMap where base.contains(upperQuery) {
+            // Filter stablecoins (they are separate assets with their own entries)
+            let isStablecoin = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG"].contains(base)
+            let type = isStablecoin ? "CRYPTOCURRENCY" : "CRYPTOCURRENCY"
+
+            // Pick best quote pair
+            let bestPair = pairs.min { a, b in
+                let pa = quotePriority[a.quoteAsset] ?? 9
+                let pb = quotePriority[b.quoteAsset] ?? 9
+                return pa < pb
+            }
+
+            let displaySymbol = bestPair.flatMap { _ in "\(base)-USD" } ?? base
+            results.append(SearchResult(
+                symbol: displaySymbol,
+                name: base,
+                exchange: "Binance",
+                type: type
+            ))
+        }
+        return results
+    }
+
+    /// Returns a canonical key for deduplication: "CRYPTO:BTC", "STOCK:AAPL", etc.
+    private static func canonicalKey(symbol: String, type: String) -> String {
+        let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let base = clean.hasSuffix("-USD") ? String(clean.dropLast(4)) : clean
+        if type.uppercased() == "CRYPTOCURRENCY" || base == clean && !clean.contains("-") {
+            return "CRYPTO:\(base)"
+        }
+        return "STOCK:\(clean)"
+    }
+
     func search(query: String) async -> [SearchResult] {
         guard !query.isEmpty else { return [] }
 
@@ -1006,17 +1409,62 @@ class StockService: ObservableObject {
             fundResults.append(SearchResult(symbol: upperQuery, name: "投資信託 (\(upperQuery))", exchange: "JP_FUND", type: "MUTUALFUND"))
         }
 
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
-            return fundResults
+        // Run Yahoo and Binance search in parallel
+        async let yahooTask = fetchYahooSearch(query: query)
+        async let binanceTask = fetchBinanceSearch(query: upperQuery)
+
+        let (yahooResults, binanceResults) = await (yahooTask, binanceTask)
+
+        // Merge: canonical key dedup. Yahoo wins for metadata (name/exchange),
+        // but we record that Binance also has this asset so the UI can show both sources.
+        var merged: [String: SearchResult] = [:]
+
+        // Yahoo first (higher priority for name/exchange/type)
+        for r in yahooResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            merged[key] = r // Yahoo wins for metadata
         }
 
+        // Binance: add only if canonical key not already present
+        for r in binanceResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if merged[key] == nil {
+                merged[key] = r
+            }
+            // If already present from Yahoo, we keep Yahoo's metadata (name, exchange).
+            // The quote source (Binance vs Yahoo) is handled by fetchQuotes, not search.
+        }
+
+        // Sort: Yahoo results first, then Binance-unique
+        var final: [SearchResult] = []
+        for r in yahooResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if let m = merged.removeValue(forKey: key) {
+                final.append(m)
+            }
+        }
+        // Remaining are Binance-unique
+        for r in binanceResults {
+            let key = Self.canonicalKey(symbol: r.symbol, type: r.type)
+            if let m = merged[key] {
+                final.append(m)
+            }
+        }
+
+        return fundResults + final
+    }
+
+    private func fetchYahooSearch(query: String) async -> [SearchResult] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
+            return []
+        }
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooSearchResponse.self, from: data)
-            return fundResults + response.quotes
+            return response.quotes
         } catch {
-            return fundResults
+            return []
         }
     }
 

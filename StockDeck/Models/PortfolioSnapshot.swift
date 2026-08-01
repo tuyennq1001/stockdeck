@@ -55,6 +55,12 @@ enum PortfolioValuation {
 
     /// Aggregate market value and cost basis in the preferred currency, reusing
     /// the signed, leverage-aware math on `Holding`.
+    ///
+    /// When a holding has no known cost basis (e.g. a watchlist-only symbol that
+    /// has a live quote but the user never entered a purchase price), both value
+    /// and cost are treated as 0 so the holding contributes zero P&L — a "NaN
+    /// cost" symbol doesn't fabricate a phantom gain/loss equal to its market
+    /// price.
     static func totals(_ inputs: [Input]) -> (value: Double, cost: Double) {
         var value = 0.0
         var cost = 0.0
@@ -63,8 +69,13 @@ enum PortfolioValuation {
             let scale = isFund ? 10000.0 : 1.0
             let lev = i.holding.effectiveLeverage
             let qty = i.holding.quantity
-            let val = (i.price / scale) * qty * lev * i.rate
-            let cst = (i.holding.avgPrice / scale) * qty * lev * i.costRate
+            let hasCost = i.holding.hasKnownCostBasis
+            let val = (i.price.isFinite && hasCost)
+                ? (i.price / scale) * qty * lev * i.rate
+                : 0
+            let cst = hasCost
+                ? (i.holding.avgPrice / scale) * qty * lev * i.costRate
+                : 0
             value += val
             cost += cst
         }
@@ -72,15 +83,15 @@ enum PortfolioValuation {
     }
 
     /// Unified resolver for holding inputs across all surfaces (menu bar, sidebar, overview).
-    /// Fallback quote with holding avgPrice and detected currency is used if no live quote exists,
-    /// ensuring holdings are never silently omitted from totals.
+    /// A missing live quote remains unpriced; it is not replaced with the
+    /// purchase price, because doing so fabricates both value and P&L.
     @MainActor
     static func resolveInputs(for portfolios: [Portfolio], stockService: StockService, storageService: StorageService) -> [Input] {
         portfolios.flatMap { $0.holdings }.map { holding in
             let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                 symbol: holding.symbol,
                 name: holding.symbol,
-                price: holding.avgPrice,
+                price: .nan,
                 change: 0,
                 changePercent: 0,
                 currency: stockService.detectedCurrency(for: holding.symbol)
