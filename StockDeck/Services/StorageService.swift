@@ -546,6 +546,7 @@ class StorageService: ObservableObject {
 
     private let fileURL: URL
     private var isLoading = false
+    private var decodeFailure = false
     private var saveTask: Task<Void, Never>?
 
     init(fileURL: URL? = nil) {
@@ -1012,7 +1013,7 @@ class StorageService: ObservableObject {
     }
 
     private func scheduleSave() {
-        guard !isLoading else { return }
+        guard !isLoading, !decodeFailure else { return }
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -1022,6 +1023,13 @@ class StorageService: ObservableObject {
     }
 
     private func performSave() {
+        // Backup the existing file before overwriting, so a crash or bug can't
+        // destroy all user data without a recovery path.
+        let bakURL = fileURL.appendingPathExtension("bak")
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            try? FileManager.default.removeItem(at: bakURL)
+            try? FileManager.default.copyItem(at: fileURL, to: bakURL)
+        }
         let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
@@ -1138,7 +1146,18 @@ class StorageService: ObservableObject {
             FontRegistration.familyName = fontFamily
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
         } catch {
-            // First launch or corrupted file — defaults are used
+            // The file exists but couldn't be decoded (schema change, corruption, etc.).
+            // Rename it so the original data is preserved for recovery, and set a flag
+            // that blocks any automatic save from overwriting the renamed backup.
+            decodeFailure = true
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let ts = formatter.string(from: Date())
+            let corruptedURL = fileURL
+                .deletingPathExtension()
+                .appendingPathExtension("corrupted-\(ts).json")
+            try? FileManager.default.moveItem(at: fileURL, to: corruptedURL)
+            print("[StorageService] Corrupted data.json moved to \(corruptedURL.lastPathComponent). The app will start with defaults and will NOT auto-save until you make an explicit change.")
         }
     }
 }
