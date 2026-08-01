@@ -246,8 +246,10 @@ struct PortfolioOverview: View {
                 let scale = isJpFund ? 10000.0 : 1.0
                 let lev = holding.effectiveLeverage
                 let qty = holding.quantity
-                let value = (price / scale) * qty * lev * rate
-                let cost = (holding.avgPrice / scale) * qty * lev * costRate
+                let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
+                let cost = holding.hasKnownCostBasis
+                    ? (holding.avgPrice / scale) * qty * lev * costRate
+                    : 0
 
                 totalVal += value
                 totalCst += cost
@@ -271,7 +273,11 @@ struct PortfolioOverview: View {
 
         valuedHoldings.sort { abs($0.value) > abs($1.value) }
 
-        let pnl = totalVal - totalCst
+        let pnl = valuedHoldings.reduce(0) { result, item in
+            let currency = stockService.detectedCurrency(for: item.holding.symbol)
+            return result + item.holding.pnl(currentPrice: item.quote.price)
+                * stockService.rate(from: currency)
+        }
         let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
         let todayTotals = TodayPerformance.totals(todayInputs)
 

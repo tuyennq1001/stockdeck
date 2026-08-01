@@ -639,8 +639,10 @@ struct PortfolioWindowView: View {
         PortfolioValuation.totals(valued(portfolios)).cost
     }
     private func aggregatePnlPercent(for portfolios: [Portfolio]) -> Double {
-        let t = PortfolioValuation.totals(valued(portfolios))
-        return abs(t.cost) >= 0.01 ? ((t.value - t.cost) / abs(t.cost)) * 100 : 0
+        let inputs = valued(portfolios)
+        let pnl = inputs.reduce(0) { $0 + $1.holding.pnl(currentPrice: $1.price) * $1.rate }
+        let cost = PortfolioValuation.totals(inputs).cost
+        return abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : 0
     }
 
     /// Sidebar trailing figure — nil (hidden) until at least one holding is

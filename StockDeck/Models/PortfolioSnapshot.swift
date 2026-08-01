@@ -63,8 +63,12 @@ enum PortfolioValuation {
             let scale = isFund ? 10000.0 : 1.0
             let lev = i.holding.effectiveLeverage
             let qty = i.holding.quantity
-            let val = (i.price / scale) * qty * lev * i.rate
-            let cst = (i.holding.avgPrice / scale) * qty * lev * i.costRate
+            let val = i.price.isFinite
+                ? (i.price / scale) * qty * lev * i.rate
+                : 0
+            let cst = i.holding.hasKnownCostBasis
+                ? (i.holding.avgPrice / scale) * qty * lev * i.costRate
+                : 0
             value += val
             cost += cst
         }
@@ -72,15 +76,15 @@ enum PortfolioValuation {
     }
 
     /// Unified resolver for holding inputs across all surfaces (menu bar, sidebar, overview).
-    /// Fallback quote with holding avgPrice and detected currency is used if no live quote exists,
-    /// ensuring holdings are never silently omitted from totals.
+    /// A missing live quote remains unpriced; it is not replaced with the
+    /// purchase price, because doing so fabricates both value and P&L.
     @MainActor
     static func resolveInputs(for portfolios: [Portfolio], stockService: StockService, storageService: StorageService) -> [Input] {
         portfolios.flatMap { $0.holdings }.map { holding in
             let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                 symbol: holding.symbol,
                 name: holding.symbol,
-                price: holding.avgPrice,
+                price: .nan,
                 change: 0,
                 changePercent: 0,
                 currency: stockService.detectedCurrency(for: holding.symbol)

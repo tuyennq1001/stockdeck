@@ -590,7 +590,7 @@ class BinanceAPIService {
                 quantity: qty,
                 avgPrice: equityCosts[assetName]?.averagePrice
                     ?? spotCosts[assetName]?.averagePrice
-                    ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : 0.0),
+                    ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : .nan),
                 purchaseDate: equityCosts[assetName]?.purchaseDate
                     ?? spotCosts[assetName]?.purchaseDate
             )

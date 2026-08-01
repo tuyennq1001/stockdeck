@@ -365,7 +365,9 @@ struct PortfolioListView: View {
                     order += 1
                 }
                 qty[sym, default: 0] += h.quantity
-                qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
+                if h.hasKnownCostBasis {
+                    qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
+                }
 
                 let quote = stockService.quotes[h.symbol] ?? stockService.quotes[sym] ?? StockQuote(
                     symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
@@ -379,11 +381,13 @@ struct PortfolioListView: View {
                 let lev = h.effectiveLeverage
                 let q = h.quantity
                 let val = (quote.price / scale) * q * lev * rate
-                let cst = (h.avgPrice / scale) * q * lev * costRate
+                let cst = h.hasKnownCostBasis
+                    ? (h.avgPrice / scale) * q * lev * costRate
+                    : 0
                 totalVal[sym, default: 0] += val
                 totalCost[sym, default: 0] += cst
 
-                let nativeCst = h.costBasisLocal
+                let nativeCst = h.hasKnownCostBasis ? h.costBasisLocal : 0
                 let nativeVal = h.marketValue(currentPrice: quote.price)
                 nativeCostMap[sym, default: 0] += nativeCst
                 nativeValMap[sym, default: 0] += nativeVal
@@ -392,7 +396,8 @@ struct PortfolioListView: View {
         return qty.compactMap { symbol, q -> GlobalPosition? in
             guard abs(q) >= 1e-9 else { return nil }
             let quote = stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()]
-            let avg = qtyPrice[symbol, default: 0] / q
+            let weightedPrice = qtyPrice[symbol, default: 0]
+            let avg = abs(weightedPrice) > 0 ? weightedPrice / q : .nan
             let price = quote?.price ?? avg
             let val = totalVal[symbol, default: 0]
 
@@ -500,7 +505,10 @@ struct PortfolioSection: View {
     }
 
     var totalPnl: Double {
-        totalValue - totalCost
+        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
+        return inputs.reduce(0) { result, input in
+            result + input.holding.pnl(currentPrice: input.price) * input.rate
+        }
     }
 
     var totalCost: Double {
@@ -1011,7 +1019,7 @@ struct GroupedHoldingRow: View {
                     let displayPrice = quote.price
                     let nativeVal = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: displayPrice) }
                     let nativeCost = holdings.reduce(0) { $0 + $1.costBasisLocal }
-                    let totalPnl = nativeVal - nativeCost
+                    let totalPnl = holdings.reduce(0) { $0 + $1.pnl(currentPrice: displayPrice) }
                     let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
                     let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 

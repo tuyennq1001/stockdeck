@@ -404,6 +404,7 @@ class StorageService: ObservableObject {
     /// decimal separator, e.g. "1,234.56" (en) / "1.234,56" (it). Falls back to a
     /// non-grouped representation if the formatter ever fails.
     nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent) -> String {
+        guard value.isFinite else { return "NaN" }
         // Grouping is inserted manually (every 3 digits from the right) so every value
         // > 1,000 is separated regardless of the locale's CLDR rule (e.g. it/es only group
         // from 10,000 by default), and without needing macOS 15's `minimumGroupingDigits`.
