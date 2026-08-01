@@ -276,23 +276,24 @@ enum SpreadsheetIO {
 
     /// Generates a sample Watchlist Excel (.xlsx) file data.
     static func generateWatchlistSampleXLSXData() -> Data? {
-        let headers = ["Watchlist Name", "Symbol", "Notes"]
+        let headers = ["Watchlist Name", "Symbol"]
         let rows: [[String]] = [
-            ["Tech Watchlist", "AAPL", "Apple Inc."],
-            ["Tech Watchlist", "NVDA", "NVIDIA Corporation"],
-            ["Tech Watchlist", "MSFT", "Microsoft Corporation"],
-            ["Global Indices", "^GSPC", "S&P 500"],
-            ["Japanese Funds", "eMAXIS Slim 米国株式(S&P500)", "03311187"]
+            ["Tech Watchlist", "AAPL"],
+            ["Tech Watchlist", "NVDA"],
+            ["Tech Watchlist", "MSFT"],
+            ["Global Indices", "^GSPC"],
+            ["Japanese Stocks", "201A"],
+            ["Japanese Stocks", "6689"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
 
-    /// Parses a file (CSV or XLSX) into a list of (watchlistName, symbols).
-    static func parseWatchlistFile(from fileURL: URL) -> (name: String, symbols: [String])? {
+    /// Parses a file (CSV or XLSX) into multiple watchlists grouped by name.
+    /// Returns a list of (watchlistName, symbols), maintaining encounter order.
+    static func parseWatchlistsFile(from fileURL: URL) -> [(name: String, symbols: [String])]? {
         let ext = fileURL.pathExtension.lowercased()
         let fileName = fileURL.deletingPathExtension().lastPathComponent
-        var symbols: [String] = []
-        var wlName = fileName.isEmpty ? "Imported Watchlist" : fileName
+        let fallbackName = fileName.isEmpty ? "Imported Watchlist" : fileName
 
         var rows: [[String]] = []
 
@@ -328,23 +329,63 @@ enum SpreadsheetIO {
             }
         }
 
+        // Group symbols by watchlist name, maintaining encounter order
+        var order: [String] = []
+        var groups: [String: [String]] = [:]
+
         for idx in startIdx..<rows.count {
             let row = rows[idx]
             guard symbolCol < row.count else { continue }
-            let sym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !sym.isEmpty && sym.lowercased() != "symbol" {
-                symbols.append(sym)
-                if nameCol >= 0 && nameCol < row.count {
-                    let candidateName = row[nameCol].trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !candidateName.isEmpty && candidateName.lowercased() != "watchlist name" {
-                        wlName = candidateName
-                    }
+            let rawSym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
+            if rawSym.isEmpty || rawSym.lowercased() == "symbol" { continue }
+
+            let sym = normalizeWatchlistSymbol(rawSym)
+
+            var wlName = fallbackName
+            if nameCol >= 0 && nameCol < row.count {
+                let candidateName = row[nameCol].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !candidateName.isEmpty && candidateName.lowercased() != "watchlist name" {
+                    wlName = candidateName
                 }
             }
+
+            if groups[wlName] == nil {
+                groups[wlName] = []
+                order.append(wlName)
+            }
+            groups[wlName]?.append(sym)
         }
 
-        guard !symbols.isEmpty else { return nil }
-        return (wlName, symbols)
+        let result = order.compactMap { name -> (String, [String])? in
+            guard let symbols = groups[name], !symbols.isEmpty else { return nil }
+            return (name, symbols)
+        }
+
+        return result.isEmpty ? nil : result
+    }
+
+    /// Normalizes a raw symbol string for watchlist import.
+    /// - JP numeric codes (e.g. "201A", "6689") get ".T" suffix
+    /// - Mutual fund names are resolved to their fund codes
+    /// - US/other tickers are uppercased
+    private static func normalizeWatchlistSymbol(_ raw: String) -> String {
+        // Try resolving as a Japanese fund name first
+        if let fundCode = resolveJapaneseFundCode(from: raw) {
+            return fundCode
+        }
+
+        let upper = raw.uppercased()
+
+        // JP stock codes: 4-char alphanumeric with at least one digit (e.g. 201A, 6689, 7203)
+        let jpStockPattern = try? NSRegularExpression(pattern: "^[0-9]{1,4}[A-Z]?$")
+        let range = NSRange(location: 0, length: upper.utf16.count)
+        if let match = jpStockPattern?.firstMatch(in: upper, range: range),
+           raw.contains(where: { $0.isNumber }),
+           upper.count <= 5 {
+            return upper + ".T"
+        }
+
+        return upper
     }
 
     /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).

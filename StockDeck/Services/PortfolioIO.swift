@@ -219,7 +219,9 @@ enum PortfolioIO {
         }
     }
 
-    /// Presents an NSOpenPanel to pick a Watchlist file (CSV/XLSX/TXT) and imports symbols into a Watchlist.
+    /// Presents an NSOpenPanel to pick a Watchlist file (CSV/XLSX/TXT) and imports symbols into Watchlists.
+    /// Supports multiple watchlists in one file (grouped by Watchlist Name column).
+    /// If a watchlist with the same name already exists, merges symbols into it.
     static func pickAndParseWatchlist(storageService: StorageService, restoreActivationPolicy: Bool = true, onAlert: ((String) -> Void)? = nil) {
         let panel = NSOpenPanel()
         var types: [UTType] = [.commaSeparatedText, .plainText, .data]
@@ -242,10 +244,23 @@ enum PortfolioIO {
             }
             guard response == .OK, let url = panel.url else { return }
             Task { @MainActor in
-                if let (wlName, symbols) = SpreadsheetIO.parseWatchlistFile(from: url) {
-                    let created = storageService.createWatchlist(name: wlName)
-                    storageService.addMultipleToWatchlist(Set(symbols), targetWatchlistId: created.id)
-                    onAlert?("Imported \(symbols.count) symbols to watchlist “\(wlName)”.")
+                if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
+                    var messages: [String] = []
+                    for (wlName, symbols) in parsed {
+                        let deduped = Set(symbols)
+                        if let existing = storageService.watchlists.first(where: {
+                            $0.name.trimmingCharacters(in: .whitespaces).lowercased()
+                            == wlName.trimmingCharacters(in: .whitespaces).lowercased()
+                        }) {
+                            storageService.addMultipleToWatchlist(deduped, targetWatchlistId: existing.id)
+                            messages.append("\(deduped.count) symbols merged into existing “\(wlName)”")
+                        } else {
+                            let created = storageService.createWatchlist(name: wlName)
+                            storageService.addMultipleToWatchlist(deduped, targetWatchlistId: created.id)
+                            messages.append("\(deduped.count) symbols to new “\(wlName)”")
+                        }
+                    }
+                    onAlert?("Imported \(parsed.count) watchlist(s): " + messages.joined(separator: "; ") + ".")
                 } else {
                     onAlert?("Could not parse watchlist file or no valid symbols found.")
                 }
