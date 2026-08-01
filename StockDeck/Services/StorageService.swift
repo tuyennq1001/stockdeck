@@ -404,6 +404,7 @@ class StorageService: ObservableObject {
     /// decimal separator, e.g. "1,234.56" (en) / "1.234,56" (it). Falls back to a
     /// non-grouped representation if the formatter ever fails.
     nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent) -> String {
+        guard value.isFinite else { return "NaN" }
         // Grouping is inserted manually (every 3 digits from the right) so every value
         // > 1,000 is separated regardless of the locale's CLDR rule (e.g. it/es only group
         // from 10,000 by default), and without needing macOS 15's `minimumGroupingDigits`.
@@ -704,6 +705,13 @@ class StorageService: ObservableObject {
     }
 
     func deletePortfolio(at offsets: IndexSet) {
+        for index in offsets {
+            let p = portfolios[index]
+            if case .binance(let keyId) = p.sourceType {
+                _ = KeychainService.delete(key: "\(keyId)_apiKey")
+                _ = KeychainService.delete(key: "\(keyId)_secretKey")
+            }
+        }
         let removedIds = offsets.map { portfolios[$0].id.uuidString }
         portfolios.remove(atOffsets: offsets)
         removedIds.forEach {
@@ -713,19 +721,124 @@ class StorageService: ObservableObject {
     }
 
     func deletePortfolio(id: UUID) {
+        if let p = portfolios.first(where: { $0.id == id }), case .binance(let keyId) = p.sourceType {
+            _ = KeychainService.delete(key: "\(keyId)_apiKey")
+            _ = KeychainService.delete(key: "\(keyId)_secretKey")
+        }
         portfolios.removeAll { $0.id == id }
         portfolioNotifications[id.uuidString] = nil
         portfolioSnapshots[id.uuidString] = nil
     }
 
+    nonisolated static func normalizeBinanceHoldingSymbol(_ symbol: String) -> String {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        var base = upper
+        if upper.hasSuffix("-USD") {
+            base = String(upper.dropLast(4))
+        }
+        if base.hasPrefix("LD") && base.count > 2 {
+            base = String(base.dropFirst(2))
+        }
+        if BinanceStablecoin.isUSDPegged(base) {
+            return "\(base)-USD"
+        } else if base.contains("-") {
+            return base
+        } else {
+            return "\(base)-USD"
+        }
+    }
+
+    /// Whether a base symbol (e.g. "PEPE", "FDUSD") is a known cryptocurrency
+    /// traded on Binance. Symbols that are NOT in this set fall through to Yahoo
+    /// Finance, which is less reliable for crypto and can fail for newer tokens.
+    nonisolated static func isStandardCryptoSymbol(_ symbol: String) -> Bool {
+        let knownCrypto: Set<String> = [
+            // Major / Layer 1
+            "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX",
+            "DOT", "LINK", "MATIC", "POL", "SHIB", "LTC", "UNI", "NEAR", "APT", "SUI", "ATOM",
+            "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO", "TON",
+            "INJ", "SEI", "TIA", "RUNE", "AAVE", "MKR", "CRV", "ENA", "ONDO", "JUP", "PYTH",
+            "FET", "RENDER", "TAO", "WLD", "STRK", "METIS",
+            "ARB", "OP", "SUI",
+            // Meme coins
+            "PEPE", "WIF", "BONK", "FLOKI", "DOGS", "PNUT", "ORDI", "SATS",
+            // Stablecoins & USD-pegged (BUSD is legacy but still mapped 1.0)
+            "USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG", "USD",
+            // Binance liquid staking / ETH staking wrappers
+            "BETH", "WBETH"
+        ]
+        let upper = symbol.uppercased()
+        let clean = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+        return knownCrypto.contains(clean)
+    }
+
+    @discardableResult
+    func createBinancePortfolio(name: String, apiKey: String, secretKey: String) async throws -> Portfolio {
+        let portfolioId = UUID()
+        let keychainId = portfolioId.uuidString
+
+        _ = KeychainService.saveString(apiKey, forKey: "\(keychainId)_apiKey")
+        _ = KeychainService.saveString(secretKey, forKey: "\(keychainId)_secretKey")
+
+        let initialHoldings = try await BinanceAPIService.shared.fetchAccountBalances(apiKey: apiKey, secretKey: secretKey)
+
+        let portfolio = Portfolio(
+            id: portfolioId,
+            name: name,
+            holdings: initialHoldings,
+            sourceType: .binance(keychainId: keychainId),
+            lastSyncedAt: Date()
+        )
+
+        portfolios.append(portfolio)
+        Task { @MainActor in
+            await StockService.shared.refreshAll(storageService: self)
+        }
+        return portfolio
+    }
+
+    func syncBinancePortfolio(id: UUID) async throws {
+        guard let index = portfolios.firstIndex(where: { $0.id == id }) else { return }
+        let p = portfolios[index]
+        guard case .binance(let keychainId) = p.sourceType else { return }
+
+        guard let apiKey = KeychainService.loadString(forKey: "\(keychainId)_apiKey"),
+              let secretKey = KeychainService.loadString(forKey: "\(keychainId)_secretKey") else {
+            throw BinanceAPIError.invalidCredentials
+        }
+
+        let holdings = try await BinanceAPIService.shared.fetchAccountBalances(apiKey: apiKey, secretKey: secretKey)
+
+        portfolios[index].holdings = holdings
+        portfolios[index].lastSyncedAt = Date()
+        Task { @MainActor in
+            await StockService.shared.refreshAll(storageService: self)
+        }
+    }
+
+    /// Returns credentials for the first configured Binance read-only portfolio.
+    /// Market quotes are public account-scoped data, while the API key is still
+    /// required by Binance's Stocks Trading market-data endpoint.
+    func firstBinanceCredentials() -> (apiKey: String, secretKey: String)? {
+        for portfolio in portfolios {
+            guard case .binance(let keychainId) = portfolio.sourceType,
+                  let apiKey = KeychainService.loadString(forKey: "\(keychainId)_apiKey"),
+                  let secretKey = KeychainService.loadString(forKey: "\(keychainId)_secretKey") else { continue }
+            return (apiKey, secretKey)
+        }
+        return nil
+    }
+
     func addHolding(to portfolioId: UUID, symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
-        guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let index = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
     }
 
     func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
-        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
 
         var currentHoldings = portfolios[pIndex].holdings
 
@@ -761,7 +874,8 @@ class StorageService: ObservableObject {
     }
 
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
-        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }) else { return }
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
@@ -778,6 +892,7 @@ class StorageService: ObservableObject {
 
     func updateHolding(in portfolioId: UUID, holdingId: UUID, symbol: String? = nil, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
         guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly,
               let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
         else { return }
         if let newSymbol = symbol, !newSymbol.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -957,9 +1072,38 @@ class StorageService: ObservableObject {
             } else {
                 let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
                 watchlists = [def]
-                selectedWatchlistId = def.id
             }
-            portfolios = decoded.portfolios
+            portfolios = decoded.portfolios.map { p in
+                var updated = p
+                if updated.isReadOnly {
+                    var aggregated: [String: Holding] = [:]
+                    for h in updated.holdings {
+                        let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
+                        if var existing = aggregated[normSym] {
+                            existing.quantity += h.quantity
+                            aggregated[normSym] = existing
+                        } else {
+                            var newH = h
+                            newH.symbol = normSym
+                            aggregated[normSym] = newH
+                        }
+                    }
+                    updated.holdings = Array(aggregated.values)
+                } else {
+                    // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
+                    updated.holdings = updated.holdings.map { h in
+                        var newH = h
+                        if newH.symbol.hasSuffix("-USD") {
+                            let base = String(newH.symbol.dropLast(4))
+                            if !StorageService.isStandardCryptoSymbol(base) {
+                                newH.symbol = base
+                            }
+                        }
+                        return newH
+                    }
+                }
+                return updated
+            }
             preferredCurrency = decoded.preferredCurrency ?? "EUR"
             stockPriceCurrency = decoded.stockPriceCurrency ?? ""
             showExtendedHours = decoded.showExtendedHours ?? true

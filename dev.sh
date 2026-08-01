@@ -11,14 +11,9 @@ DEV_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$
 DEV_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
 echo "Building..."
-xcodebuild -scheme StockDeck -configuration Release \
-    -destination 'platform=macOS' \
-    -derivedDataPath .build/xcode \
-    ARCHS="$(uname -m)" \
-    ONLY_ACTIVE_ARCH=YES \
-    build 2>&1 | tail -3
+swift build -c release 2>&1 | tail -3
 
-PRODUCTS=".build/xcode/Build/Products/Release"
+PRODUCTS=".build/$(uname -m)-apple-macosx/release"
 
 echo "Assembling DEV app bundle..."
 rm -rf "$APP"
