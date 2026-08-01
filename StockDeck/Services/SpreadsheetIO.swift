@@ -748,25 +748,27 @@ enum SpreadsheetIO {
         guard !rows.isEmpty else { return nil }
 
         var headerIdx = -1
-        var fundCol = -1, tradeCol = -1, qtyCol = -1, priceCol = -1, accountCol = -1, dateCol = -1
+        var fundCol = -1, codeCol = -1, tradeCol = -1, qtyCol = -1, priceCol = -1, accountCol = -1, dateCol = -1
 
         for (idx, r) in rows.enumerated() {
             for (cIdx, cell) in r.enumerated() {
                 let lowerCell = cell.lowercased()
                 if lowerCell.contains("ファンド") || lowerCell.contains("銘柄") || lowerCell == "symbol" || lowerCell.contains("fund") { fundCol = cIdx }
+                // Separate code/ticker column (priority over fund name column for JP/US stocks)
+                if lowerCell.contains("ティッカ") || lowerCell.contains("ticker") || lowerCell.contains("コード") { codeCol = cIdx }
                 if lowerCell.contains("取引") || lowerCell.contains("売買") || lowerCell.contains("trade") || lowerCell.contains("type") { tradeCol = cIdx }
                 if lowerCell.contains("数量") || lowerCell.contains("quantity") || lowerCell.contains("qty") || lowerCell.contains("units") { qtyCol = cIdx }
                 if lowerCell.contains("単価") || lowerCell.contains("avg price") || lowerCell.contains("unit price") || lowerCell.contains("price") { priceCol = cIdx }
                 if lowerCell.contains("口座") || lowerCell.contains("portfolio") || lowerCell.contains("account") { accountCol = cIdx }
                 if lowerCell.contains("約定日") || lowerCell.contains("日付") || lowerCell.contains("purchase date") || lowerCell.contains("date") { dateCol = cIdx }
             }
-            if fundCol != -1 && (qtyCol != -1 || priceCol != -1) {
+            if (fundCol != -1 || codeCol != -1) && (qtyCol != -1 || priceCol != -1) {
                 headerIdx = idx
                 break
             }
         }
 
-        guard headerIdx != -1 && fundCol != -1 else { return nil }
+        guard headerIdx != -1 && (fundCol != -1 || codeCol != -1) else { return nil }
 
         struct TradeRecord {
             let account: String
@@ -782,14 +784,30 @@ enum SpreadsheetIO {
 
         for i in (headerIdx + 1)..<rows.count {
             let r = rows[i]
-            guard r.count > fundCol else { continue }
+            // Use codeCol first (JP/US stocks), fall back to fundCol (mutual funds)
+            let idCol = codeCol != -1 ? codeCol : fundCol
+            guard r.count > idCol else { continue }
 
-            let rawFundName = r[fundCol].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !rawFundName.isEmpty else { continue }
+            let rawId = r[idCol].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawId.isEmpty else { continue }
 
-            let cleanFundName = rawFundName.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            let code = resolveJapaneseFundCode(from: rawFundName)
-            let symbol = code ?? cleanFundName
+            let symbol: String
+            let cleanFundName: String
+
+            if codeCol != -1 {
+                // Broker stock format (JP stock or US stock)
+                // JP numeric codes get .T suffix; US tickers are uppercase as-is
+                let isNumericJPCode = rawId.allSatisfy({ $0.isNumber || ("A"..."Z").contains($0) })
+                    && rawId.count <= 5
+                    && rawId.contains(where: { $0.isNumber })
+                symbol = isNumericJPCode ? (rawId + ".T") : rawId.uppercased()
+                cleanFundName = (fundCol != -1 && r.count > fundCol) ? r[fundCol].trimmingCharacters(in: .whitespacesAndNewlines) : rawId
+            } else {
+                // Mutual fund format: resolve fund name to fund code
+                cleanFundName = rawId.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                let code = resolveJapaneseFundCode(from: rawId)
+                symbol = code ?? cleanFundName
+            }
 
             let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol].lowercased() : "買付"
             let isBuy = tradeType.contains("買") || tradeType.contains("積立") || tradeType.contains("buy") || tradeType.contains("purchase") || tradeType.isEmpty || tradeType == "買付"
