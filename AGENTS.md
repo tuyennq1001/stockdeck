@@ -51,4 +51,4 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 - **Không viết Python/Python3 inline script dài trong `-c`**: Nếu script Python vượt quá ~5 dòng, **bắt buộc ghi ra file `.py` tạm** (dùng `write_to_file` hoặc heredoc `cat > /tmp/script.py << 'EOF'`), chạy file đó, rồi xóa file tạm sau khi chạy xong. Tuyệt đối không nhồi toàn bộ script vào `python3 -c "..."`.
 - **Không dùng heredoc trong `execute_command` nếu nội dung chứa ký tự đặc biệt**: Nếu cần, ghi file riêng rồi chạy.
 - **Giới hạn độ dài command**: Mỗi câu lệnh CLI không vượt quá ~2000 ký tự. Nếu dài hơn, tách thành script file.
-- **Commit/PR title**: Tối đa 72 ký tự. Mô tả chi tiết để trong body.
+- **Commit/PR title**: Tối đa 72 ký tự. Body mô tả phải **ngắn gọn ≤5 dòng**. Nếu cần mô tả dài, ghi ra file riêng rồi dẫn link.
