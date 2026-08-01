@@ -596,7 +596,10 @@ struct PortfolioOverview: View {
 
     /// Y domain with a little headroom so the line never touches the card edges.
     private func valueDomain(_ points: [ValuePoint]) -> ClosedRange<Double> {
-        let vals = points.map(\.value)
+        // Keep malformed imported data out of Swift Charts. In particular,
+        // Binance positions without a cost basis can otherwise produce NaN
+        // backfill values and Swift Charts traps while constructing its scale.
+        let vals = points.map(\.value).filter(\.isFinite)
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
