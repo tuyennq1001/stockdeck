@@ -44,7 +44,7 @@ struct ImportExportWideView: View {
                         ImportActionRow(
                             icon: "briefcase.fill",
                             title: "Import Standard Portfolio",
-                            subtitle: "Import holdings from CSV or Excel (.xlsx) file with Portfolio Name, Symbol, Quantity, Avg Price, Purchase Date",
+                            subtitle: "Import holdings from CSV or Excel (.xlsx) file with Portfolio Name, Symbol, Quantity, Avg Cost, Purchase Date",
                             buttonTitle: "Import Portfolio…",
                             action: onImportStandard
                         )

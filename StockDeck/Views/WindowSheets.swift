@@ -348,7 +348,7 @@ struct HoldingFormSheet: View {
 
                 HStack(alignment: .top, spacing: 12) {
                     FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
-                    FieldBlock("Avg price") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
+                    FieldBlock("Avg cost") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
                     if storageService.advancedPositions {
                         FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
                             .frame(width: 90)

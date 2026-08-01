@@ -131,7 +131,7 @@ struct AddHoldingView: View {
                         .focused($quantityFocused)
                 }
                 VStack(alignment: .leading) {
-                    Text("Avg price")
+                    Text("Avg cost")
                         .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
                     TextField("0.00", text: $avgPriceText)
