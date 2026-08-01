@@ -38,6 +38,10 @@ struct HoldingDetailView: View {
         }
     }
 
+    private var isPortReadOnly: Bool {
+        storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
+    }
+
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -52,7 +56,6 @@ struct HoldingDetailView: View {
                     Tag(text: "\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))×",
                         color: DS.brand)
                 }
-                let isPortReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
                 if !isPortReadOnly {
                     Button { editHoldingAction.perform(portfolioId, holding) } label: {
                         Image(systemName: "pencil").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
@@ -283,20 +286,22 @@ struct HoldingDetailView: View {
                     }
                 }
 
-                Divider().overlay(DS.hairline).padding(.top, 4)
-                Button(action: {
-                    addHoldingAction.perform(portfolioId)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.circle")
-                        Text("Add another lot for \(holding.symbol)")
+                if !isPortReadOnly {
+                    Divider().overlay(DS.hairline).padding(.top, 4)
+                    Button(action: {
+                        addHoldingAction.perform(portfolioId)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle")
+                            Text("Add another lot for \(holding.symbol)")
+                        }
+                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                        .foregroundStyle(DS.brand)
+                        .padding(.top, 8)
                     }
-                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
-                    .foregroundStyle(DS.brand)
-                    .padding(.top, 8)
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
                 }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
             }
         }
     }

@@ -970,6 +970,7 @@ struct GroupedHoldingRow: View {
     }
 
     var body: some View {
+        let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
@@ -1115,20 +1116,22 @@ struct GroupedHoldingRow: View {
                         .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt.opacity(0.5)))
                     }
 
-                    // Add another lot for this symbol
-                    Button(action: {
-                        addHoldingAction.perform(portfolioId)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle")
-                            Text("Add another lot for \(symbol)")
+                    if !isReadOnly {
+                        // Add another lot for this symbol
+                        Button(action: {
+                            addHoldingAction.perform(portfolioId)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle")
+                                Text("Add another lot for \(symbol)")
+                            }
+                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(DS.brand)
+                            .padding(.vertical, 4)
                         }
-                        .font(.inter(9, weight: .semibold, relativeTo: .caption2))
-                        .foregroundColor(DS.brand)
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
                 }
                 .padding(.leading, 8)
                 .padding(.bottom, 4)
