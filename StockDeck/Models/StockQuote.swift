@@ -211,15 +211,79 @@ struct StockQuote: Identifiable, Codable {
     }
 }
 
+enum PortfolioSourceType: Codable, Equatable {
+    case manual
+    case binance(keychainId: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case keychainId
+    }
+
+    enum Types: String, Codable {
+        case manual
+        case binance
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(Types.self, forKey: .type)
+        switch type {
+        case .manual:
+            self = .manual
+        case .binance:
+            let id = try container.decode(String.self, forKey: .keychainId)
+            self = .binance(keychainId: id)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .manual:
+            try container.encode(Types.manual, forKey: .type)
+        case .binance(let keychainId):
+            try container.encode(Types.binance, forKey: .type)
+            try container.encode(keychainId, forKey: .keychainId)
+        }
+    }
+}
+
 struct Portfolio: Identifiable, Codable {
     var id: UUID
     var name: String
     var holdings: [Holding]
+    var sourceType: PortfolioSourceType
+    var lastSyncedAt: Date?
 
-    init(id: UUID = UUID(), name: String, holdings: [Holding] = []) {
+    var isReadOnly: Bool {
+        switch sourceType {
+        case .manual:
+            return false
+        case .binance:
+            return true
+        }
+    }
+
+    init(id: UUID = UUID(), name: String, holdings: [Holding] = [], sourceType: PortfolioSourceType = .manual, lastSyncedAt: Date? = nil) {
         self.id = id
         self.name = name
         self.holdings = holdings
+        self.sourceType = sourceType
+        self.lastSyncedAt = lastSyncedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, holdings, sourceType, lastSyncedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        holdings = try container.decode([Holding].self, forKey: .holdings)
+        sourceType = try container.decodeIfPresent(PortfolioSourceType.self, forKey: .sourceType) ?? .manual
+        lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
     }
 }
 
@@ -234,6 +298,7 @@ enum HoldingLotAggregation {
     static func weightedAveragePrice(_ holdings: [Holding]) -> Double {
         let totalAbsoluteQuantity = holdings.reduce(0) { $0 + abs($1.quantity) }
         guard totalAbsoluteQuantity >= 1e-9 else { return 0 }
+        guard holdings.allSatisfy({ $0.hasKnownCostBasis }) else { return .nan }
         let weightedCost = holdings.reduce(0) {
             $0 + abs($1.quantity) * $1.avgPrice
         }
@@ -242,6 +307,10 @@ enum HoldingLotAggregation {
 }
 
 struct Holding: Identifiable, Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, symbol, quantity, avgPrice, purchaseDate, leverage
+    }
+
     var id: UUID
     var symbol: String
     /// Number of shares. Negative means a short position (gated behind the
@@ -263,6 +332,37 @@ struct Holding: Identifiable, Codable {
         self.leverage = leverage
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        quantity = try container.decode(Double.self, forKey: .quantity)
+        if let numericPrice = try? container.decode(Double.self, forKey: .avgPrice) {
+            avgPrice = numericPrice
+        } else if let encodedPrice = try? container.decode(String.self, forKey: .avgPrice), encodedPrice == "NaN" {
+            avgPrice = .nan
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .avgPrice, in: container,
+                                                   debugDescription: "avgPrice must be a number or NaN")
+        }
+        purchaseDate = try container.decodeIfPresent(Date.self, forKey: .purchaseDate)
+        leverage = try container.decodeIfPresent(Double.self, forKey: .leverage)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(symbol, forKey: .symbol)
+        try container.encode(quantity, forKey: .quantity)
+        if avgPrice.isFinite {
+            try container.encode(avgPrice, forKey: .avgPrice)
+        } else {
+            try container.encode("NaN", forKey: .avgPrice)
+        }
+        try container.encodeIfPresent(purchaseDate, forKey: .purchaseDate)
+        try container.encodeIfPresent(leverage, forKey: .leverage)
+    }
+
     /// Leverage multiplier, defaulting to 1x when unset or invalid.
     var effectiveLeverage: Double {
         guard let l = leverage, l > 0 else { return 1 }
@@ -271,6 +371,10 @@ struct Holding: Identifiable, Codable {
 
     /// True for a short position (negative quantity).
     var isShort: Bool { quantity < 0 }
+
+    /// True when the purchase price is known. NaN is the exchange-sync
+    /// sentinel for a cost basis that cannot be reconstructed from the API.
+    var hasKnownCostBasis: Bool { avgPrice.isFinite && avgPrice > 0 }
 
     /// True if symbol represents a Japanese mutual fund (投資信託) where prices are per 10,000 口.
     var isJapaneseFund: Bool {
@@ -301,22 +405,25 @@ struct Holding: Identifiable, Codable {
     /// Cost basis in the stock's own currency, signed and leverage-adjusted.
     /// Negative for shorts. Multiply by an FX rate for the preferred currency.
     var costBasisLocal: Double {
+        guard avgPrice.isFinite else { return .nan }
         let scale = isJapaneseFund ? 10000.0 : 1.0
         return (avgPrice / scale) * quantity * effectiveLeverage
     }
 
     func pnl(currentPrice: Double) -> Double {
+        guard hasKnownCostBasis, currentPrice.isFinite else { return 0 }
         let scale = isJapaneseFund ? 10000.0 : 1.0
         return ((currentPrice - avgPrice) / scale) * quantity * effectiveLeverage
     }
 
     func pnlPercent(currentPrice: Double) -> Double {
-        guard avgPrice > 0 else { return 0 }
+        guard hasKnownCostBasis, currentPrice.isFinite else { return 0 }
         let direction: Double = quantity < 0 ? -1 : 1
         return ((currentPrice - avgPrice) / avgPrice) * 100 * direction
     }
 
     func marketValue(currentPrice: Double) -> Double {
+        guard currentPrice.isFinite else { return 0 }
         let scale = isJapaneseFund ? 10000.0 : 1.0
         return (currentPrice / scale) * quantity * effectiveLeverage
     }

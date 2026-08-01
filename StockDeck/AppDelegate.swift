@@ -74,6 +74,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// REST polling: quotes + exchange rates as WSS fallback
     private static let restPollingInterval: TimeInterval = 60
+    /// How often to auto-sync Binance-linked portfolios (every 10 minutes, 24/7
+    /// so crypto balances stay fresh without a manual "Sync Binance Now" tap).
+    private static let binanceAutoSyncInterval: TimeInterval = 600
+    private var lastBinanceAutoSync: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FontRegistration.registerFonts()
@@ -91,9 +95,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem?.isVisible = true
 
         if let button = statusItem?.button {
             button.image = menuBarImage
+            if button.image == nil {
+                button.title = " SD"
+            }
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -112,6 +120,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Compare-and-clear: only clear if a newer refresh hasn't superseded
             // us, so a cancelled Task's defer can't unblock a live refresh.
             defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
+            await self.autoSyncBinancePortfolios()
+            guard !Task.isCancelled else { return }
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
@@ -289,9 +299,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.alertMonitor.check(quotes: self.stockService.quotes)
                 self.portfolioMonitor.check()
                 self.recordSnapshots()
+                // Auto-sync Binance portfolios every 10 minutes so non-WSS crypto
+                // balances (funding, margin, futures, earn) stay fresh.
+                await self.autoSyncBinancePortfolios()
                 // Supervisor: revive the WebSocket if it silently died, otherwise
                 // just keep its subscriptions current.
                 self.webSocketService.ensureConnected(symbols: Array(self.collectSymbols()))
+            }
+        }
+    }
+
+    /// Periodically re-fetches Binance holdings so a portfolio edited on the
+    /// Binance app (buy/sell/stake) is reflected in StockDeck without a manual
+    /// "Sync Binance Now" tap. Throttled to once per `binanceAutoSyncInterval`.
+    private func autoSyncBinancePortfolios() async {
+        let now = Date()
+        if let last = lastBinanceAutoSync,
+           now.timeIntervalSince(last) < Self.binanceAutoSyncInterval {
+            return
+        }
+        let binancePortfolios = storageService.portfolios.filter { $0.isReadOnly }
+        guard !binancePortfolios.isEmpty else { return }
+        lastBinanceAutoSync = now
+
+        for portfolio in binancePortfolios {
+            do {
+                try await storageService.syncBinancePortfolio(id: portfolio.id)
+            } catch {
+                print("[StockDeck] Binance auto-sync failed for \(portfolio.name): \(error.localizedDescription)")
             }
         }
     }
@@ -318,6 +353,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let start = Date()
             refreshStartedAt = start
             defer { if refreshStartedAt == start { refreshStartedAt = nil } }
+            await autoSyncBinancePortfolios()
+            guard !Task.isCancelled else { return }
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
@@ -381,8 +418,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Icon only
         if displayMode == "icon" {
             statusItem?.button?.attributedTitle = NSAttributedString(string: "")
-            statusItem?.button?.title = ""
-            statusItem?.button?.image = menuBarImage
+            let button = statusItem?.button
+            let image = menuBarImage
+            button?.image = image
+            button?.title = image == nil ? " SD" : ""
+            statusItem?.isVisible = true
             return
         }
 

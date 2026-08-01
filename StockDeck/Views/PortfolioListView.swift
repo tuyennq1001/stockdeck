@@ -5,6 +5,7 @@ struct PortfolioListView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @State private var showNewPortfolio = false
+    @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
     @State private var searchText = ""
     @State private var importAlert: String?
@@ -185,11 +186,22 @@ struct PortfolioListView: View {
 
                 Divider()
 
-                HStack {
+                HStack(spacing: 12) {
                     Button(action: { showNewPortfolio = true }) {
                         HStack {
                             Image(systemName: "plus.circle.fill")
                             Text("New portfolio")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
+                    Button(action: { showBinanceSheet = true }) {
+                        HStack {
+                            Image(systemName: "circle.hexagongrid.fill")
+                                .foregroundColor(.yellow)
+                            Text("Connect Binance")
                         }
                         .font(.inter(10, relativeTo: .caption))
                     }
@@ -201,6 +213,9 @@ struct PortfolioListView: View {
                 .padding(8)
             }
         }
+        }
+        .sheet(isPresented: $showBinanceSheet) {
+            AddBinancePortfolioSheet(storageService: storageService)
         }
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
@@ -350,7 +365,9 @@ struct PortfolioListView: View {
                     order += 1
                 }
                 qty[sym, default: 0] += h.quantity
-                qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
+                if h.hasKnownCostBasis {
+                    qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
+                }
 
                 let quote = stockService.quotes[h.symbol] ?? stockService.quotes[sym] ?? StockQuote(
                     symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
@@ -364,11 +381,13 @@ struct PortfolioListView: View {
                 let lev = h.effectiveLeverage
                 let q = h.quantity
                 let val = (quote.price / scale) * q * lev * rate
-                let cst = (h.avgPrice / scale) * q * lev * costRate
+                let cst = h.hasKnownCostBasis
+                    ? (h.avgPrice / scale) * q * lev * costRate
+                    : 0
                 totalVal[sym, default: 0] += val
                 totalCost[sym, default: 0] += cst
 
-                let nativeCst = h.costBasisLocal
+                let nativeCst = h.hasKnownCostBasis ? h.costBasisLocal : 0
                 let nativeVal = h.marketValue(currentPrice: quote.price)
                 nativeCostMap[sym, default: 0] += nativeCst
                 nativeValMap[sym, default: 0] += nativeVal
@@ -377,7 +396,8 @@ struct PortfolioListView: View {
         return qty.compactMap { symbol, q -> GlobalPosition? in
             guard abs(q) >= 1e-9 else { return nil }
             let quote = stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()]
-            let avg = qtyPrice[symbol, default: 0] / q
+            let weightedPrice = qtyPrice[symbol, default: 0]
+            let avg = abs(weightedPrice) > 0 ? weightedPrice / q : .nan
             let price = quote?.price ?? avg
             let val = totalVal[symbol, default: 0]
 
@@ -452,6 +472,24 @@ struct PortfolioSection: View {
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var showNotifications = false
+    @State private var isSyncingBinance = false
+    @State private var syncError: String? = nil
+
+    private func syncBinance() {
+        isSyncingBinance = true
+        Task {
+            do {
+                try await storageService.syncBinancePortfolio(id: portfolio.id)
+            } catch {
+                await MainActor.run {
+                    syncError = error.localizedDescription
+                }
+            }
+            await MainActor.run {
+                isSyncingBinance = false
+            }
+        }
+    }
 
     private func exportSingle() {
         PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
@@ -467,7 +505,10 @@ struct PortfolioSection: View {
     }
 
     var totalPnl: Double {
-        totalValue - totalCost
+        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
+        return inputs.reduce(0) { result, input in
+            result + input.holding.pnl(currentPrice: input.price) * input.rate
+        }
     }
 
     var totalCost: Double {
@@ -539,29 +580,55 @@ struct PortfolioSection: View {
                 }
             }
 
-            // Add holding / Batch import buttons
-            HStack(spacing: 12) {
-                Button(action: { addHoldingAction.perform(portfolio.id) }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "plus")
-                        Text("Add holding")
+            // Add holding / Batch import / Binance Sync buttons
+            if portfolio.isReadOnly {
+                HStack(spacing: 12) {
+                    Button(action: syncBinance) {
+                        HStack(spacing: 4) {
+                            if isSyncingBinance {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Sync Binance Now")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.accentColor)
                     }
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.accentColor)
-                }
-                .buttonStyle(.borderless)
-                .pointingHandCursor()
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+                    .disabled(isSyncingBinance)
 
-                Button(action: { onBatchImport?(portfolio.id) }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.and.arrow.down")
-                        Text("Batch import…")
+                    if let lastSync = portfolio.lastSyncedAt {
+                        Text("Last synced: \(lastSync.formatted(.dateTime.hour().minute().second()))")
+                            .font(.inter(9, relativeTo: .caption))
+                            .foregroundColor(.secondary)
                     }
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
                 }
-                .buttonStyle(.borderless)
-                .pointingHandCursor()
+            } else {
+                HStack(spacing: 12) {
+                    Button(action: { addHoldingAction.perform(portfolio.id) }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus")
+                            Text("Add holding")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
+                    Button(action: { onBatchImport?(portfolio.id) }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("Batch import…")
+                        }
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+                }
             }
         } header: {
             if isRenaming {
@@ -576,21 +643,44 @@ struct PortfolioSection: View {
                         .disabled(renameText.isEmpty)
                 }
             } else {
-                HStack {
+                HStack(spacing: 6) {
                     Text(portfolio.name)
                         .font(.inter(13, weight: .bold, relativeTo: .headline))
+
+                    if portfolio.isReadOnly {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9))
+                            Text("Binance")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow.opacity(0.2))
+                        .foregroundColor(.orange)
+                        .cornerRadius(4)
+                    }
+
                     Spacer()
                     Menu {
+                        if portfolio.isReadOnly {
+                            Button(action: syncBinance) {
+                                Label("Sync Binance Now", systemImage: "arrow.clockwise")
+                            }
+                            Divider()
+                        }
                         Button {
                             renameText = portfolio.name
                             isRenaming = true
                         } label: {
                             Label("Rename Portfolio", systemImage: "pencil")
                         }
-                        Button {
-                            onBatchImport?(portfolio.id)
-                        } label: {
-                            Label("Batch Import…", systemImage: "square.and.arrow.down")
+                        if !portfolio.isReadOnly {
+                            Button {
+                                onBatchImport?(portfolio.id)
+                            } label: {
+                                Label("Batch Import…", systemImage: "square.and.arrow.down")
+                            }
                         }
                         Button {
                             showNotifications = true
@@ -624,6 +714,11 @@ struct PortfolioSection: View {
                     .environmentObject(storageService)
                     .frame(width: 340)
                 }
+                .alert("Binance Sync Error", isPresented: Binding(get: { syncError != nil }, set: { if !$0 { syncError = nil } })) {
+                    Button("OK", role: .cancel) { syncError = nil }
+                } message: {
+                    Text(syncError ?? "")
+                }
             }
         }
     }
@@ -649,6 +744,10 @@ struct HoldingRow: View {
 
     private func formatQty(_ qty: Double) -> String {
         qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
+    }
+
+    private var isReadOnly: Bool {
+        storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
     }
 
     var body: some View {
@@ -736,7 +835,7 @@ struct HoldingRow: View {
             }
         }
         .padding(.vertical, 2)
-        .contextMenu {
+        .contextMenu(isReadOnly ? nil : ContextMenu {
             Button {
                 editHoldingAction.perform(portfolioId, holding)
             } label: {
@@ -747,7 +846,7 @@ struct HoldingRow: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-        }
+        })
     }
 }
 
@@ -871,6 +970,7 @@ struct GroupedHoldingRow: View {
     }
 
     var body: some View {
+        let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
@@ -920,7 +1020,7 @@ struct GroupedHoldingRow: View {
                     let displayPrice = quote.price
                     let nativeVal = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: displayPrice) }
                     let nativeCost = holdings.reduce(0) { $0 + $1.costBasisLocal }
-                    let totalPnl = nativeVal - nativeCost
+                    let totalPnl = holdings.reduce(0) { $0 + $1.pnl(currentPrice: displayPrice) }
                     let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
                     let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
@@ -991,42 +1091,47 @@ struct GroupedHoldingRow: View {
                                     .frame(width: 70, alignment: .trailing)
                             }
 
-                            HStack(spacing: 6) {
-                                Button { editHoldingAction.perform(portfolioId, h) } label: {
-                                    Image(systemName: "pencil").font(.system(size: 10))
-                                }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Edit lot")
+                            let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
+                            if !isReadOnly {
+                                HStack(spacing: 6) {
+                                    Button { editHoldingAction.perform(portfolioId, h) } label: {
+                                        Image(systemName: "pencil").font(.system(size: 10))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
+                                    .help("Edit lot")
 
-                                Button { confirmDeleteHolding = (h, portfolioId) } label: {
-                                    Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
+                                    Button { confirmDeleteHolding = (h, portfolioId) } label: {
+                                        Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .pointingHandCursor()
+                                    .help("Delete lot")
                                 }
-                                .buttonStyle(.plain)
-                                .pointingHandCursor()
-                                .help("Delete lot")
+                                .padding(.leading, 8)
                             }
-                            .padding(.leading, 8)
                         }
                         .padding(.vertical, 3)
                         .padding(.horizontal, 8)
                         .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt.opacity(0.5)))
                     }
 
-                    // Add another lot for this symbol
-                    Button(action: {
-                        addHoldingAction.perform(portfolioId)
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle")
-                            Text("Add another lot for \(symbol)")
+                    if !isReadOnly {
+                        // Add another lot for this symbol
+                        Button(action: {
+                            addHoldingAction.perform(portfolioId)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle")
+                                Text("Add another lot for \(symbol)")
+                            }
+                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(DS.brand)
+                            .padding(.vertical, 4)
                         }
-                        .font(.inter(9, weight: .semibold, relativeTo: .caption2))
-                        .foregroundColor(DS.brand)
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
                 }
                 .padding(.leading, 8)
                 .padding(.bottom, 4)
