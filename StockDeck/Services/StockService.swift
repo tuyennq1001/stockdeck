@@ -348,18 +348,37 @@ class StockService: ObservableObject {
             }
 
             for await (symbol, equityQuote) in group {
-                guard let equityQuote, let price = equityQuote.midpoint else { continue }
+                guard let equityQuote, let binanceMidpoint = equityQuote.midpoint else { continue }
                 let upper = symbol.uppercased()
                 let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
                 let underlying = String(base.dropFirst(3))
+
+                // The Binance equity REST quote provides bid/ask but no prior
+                // close. Use the underlying stock's regular-session quote for
+                // price and daily change, keeping Binance midpoint as fallback.
+                if !(await self.fetchQuotesV7(symbols: [underlying])) {
+                    await self.fetchSingleQuote(symbol: underlying)
+                }
+                let regularQuote = self.quotes[underlying]
                 let quote = StockQuote(
                     symbol: symbol,
-                    name: underlying,
-                    price: price,
-                    change: 0,
-                    changePercent: 0,
-                    currency: "USD",
-                    marketState: "REGULAR"
+                    name: regularQuote?.name ?? underlying,
+                    price: regularQuote?.price ?? binanceMidpoint,
+                    change: regularQuote?.change ?? 0,
+                    changePercent: regularQuote?.changePercent ?? 0,
+                    regularMarketPreviousClose: regularQuote?.regularMarketPreviousClose,
+                    currency: regularQuote?.currency ?? "USD",
+                    marketState: regularQuote?.marketState ?? "REGULAR",
+                    dayHigh: regularQuote?.dayHigh,
+                    dayLow: regularQuote?.dayLow,
+                    fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,
+                    fiftyTwoWeekLow: regularQuote?.fiftyTwoWeekLow,
+                    preMarketPrice: regularQuote?.preMarketPrice,
+                    preMarketChange: regularQuote?.preMarketChange,
+                    preMarketChangePercent: regularQuote?.preMarketChangePercent,
+                    postMarketPrice: regularQuote?.postMarketPrice,
+                    postMarketChange: regularQuote?.postMarketChange,
+                    postMarketChangePercent: regularQuote?.postMarketChangePercent
                 )
                 self.quotes[symbol] = quote
                 self.quotes[upper] = quote

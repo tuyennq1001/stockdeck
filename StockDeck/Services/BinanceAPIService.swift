@@ -192,6 +192,16 @@ struct BinanceEquityCostBasis {
     let purchaseDate: Date?
 }
 
+private struct BinanceSpotTrade: Decodable {
+    let price: String
+    let qty: String
+    let quoteQty: String
+    let commission: String
+    let commissionAsset: String
+    let isBuyer: Bool
+    let time: Int64
+}
+
 /// Stablecoins pegged 1:1 to USD that Binance serves directly (or legacy delisted
 /// tokens still redeemable at $1). Used for quote fallbacks and holding mapping.
 enum BinanceStablecoin {
@@ -250,7 +260,7 @@ class BinanceAPIService {
         timestamp: Int64
     ) async -> BinanceEquityCostBasis? {
         let recvWindow = 5000
-        let queryString = "symbol=\(symbol)&startTime=0&endTime=\(timestamp)&page=1&size=1000&recvWindow=\(recvWindow)&timestamp=\(timestamp)"
+        let queryString = "symbol=\(symbol)&startTime=0&endTime=\(timestamp)&page=1&size=100&recvWindow=\(recvWindow)&timestamp=\(timestamp)"
         guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
               let url = URL(string: "\(baseURL)/sapi/v1/equity/order/history?\(queryString)&signature=\(signature)") else {
             return nil
@@ -306,6 +316,95 @@ class BinanceAPIService {
                         apiKey: apiKey,
                         secretKey: secretKey,
                         symbol: symbol,
+                        timestamp: timestamp
+                    )
+                    return (asset.name, basis)
+                }
+            }
+
+            var result: [String: BinanceEquityCostBasis] = [:]
+            for await (assetName, basis) in group {
+                if let basis { result[assetName] = basis }
+            }
+            return result
+        }
+    }
+
+    /// Derives a cost basis from Spot fills only when the trade ledger covers
+    /// the current balance. This deliberately refuses to extrapolate a small
+    /// known purchase over coins deposited or acquired outside Spot.
+    private func fetchSpotCostBasis(
+        apiKey: String,
+        secretKey: String,
+        asset: String,
+        currentQuantity: Double,
+        timestamp: Int64
+    ) async -> BinanceEquityCostBasis? {
+        let quoteAssets = ["USDT", "USDC"]
+        var allTrades: [BinanceSpotTrade] = []
+
+        for quoteAsset in quoteAssets {
+            let pair = "\(asset)\(quoteAsset)"
+            let queryString = "symbol=\(pair)&limit=1000&recvWindow=5000&timestamp=\(timestamp)"
+            guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
+                  let url = URL(string: "\(baseURL)/api/v3/myTrades?\(queryString)&signature=\(signature)") else { continue }
+
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+            guard let (data, response) = try? await URLSession.shared.data(for: request),
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let trades = try? JSONDecoder().decode([BinanceSpotTrade].self, from: data) else { continue }
+            allTrades.append(contentsOf: trades)
+        }
+
+        var quantity = 0.0
+        var cost = 0.0
+        var firstBuyDate: Date?
+
+        for trade in allTrades.sorted(by: { $0.time < $1.time }) {
+            guard let qty = Double(trade.qty), qty > 0,
+                  let quoteQty = Double(trade.quoteQty), quoteQty >= 0 else { continue }
+
+            if trade.isBuyer {
+                let baseCommission = trade.commissionAsset.uppercased() == asset
+                    ? (Double(trade.commission) ?? 0)
+                    : 0
+                let quoteCommission = quoteAssets.contains(trade.commissionAsset.uppercased())
+                    ? (Double(trade.commission) ?? 0)
+                    : 0
+                quantity += max(0, qty - baseCommission)
+                cost += quoteQty + quoteCommission
+                if firstBuyDate == nil {
+                    firstBuyDate = Date(timeIntervalSince1970: TimeInterval(trade.time) / 1000)
+                }
+            } else if quantity > 0 {
+                let removed = min(quantity, qty)
+                cost -= (cost / quantity) * removed
+                quantity -= removed
+            }
+        }
+
+        guard quantity > 0, cost > 0, currentQuantity > 0 else { return nil }
+        let coverage = quantity / currentQuantity
+        guard coverage >= 0.95 && coverage <= 1.05 else { return nil }
+        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate)
+    }
+
+    private func fetchSpotCostBases(
+        apiKey: String,
+        secretKey: String,
+        assets: [(name: String, quantity: Double)],
+        timestamp: Int64
+    ) async -> [String: BinanceEquityCostBasis] {
+        await withTaskGroup(of: (String, BinanceEquityCostBasis?).self, returning: [String: BinanceEquityCostBasis].self) { group in
+            for asset in assets {
+                group.addTask {
+                    let basis = await self.fetchSpotCostBasis(
+                        apiKey: apiKey,
+                        secretKey: secretKey,
+                        asset: asset.name,
+                        currentQuantity: asset.quantity,
                         timestamp: timestamp
                     )
                     return (asset.name, basis)
@@ -463,6 +562,16 @@ class BinanceAPIService {
             assets: equityAssets,
             timestamp: timestamp
         )
+        let spotAssets: [(name: String, quantity: Double)] = aggregatedBalances.compactMap { name, qty in
+            guard !name.hasPrefix("EQ_"), !BinanceStablecoin.isUSDPegged(name) else { return nil }
+            return (name: name, quantity: qty)
+        }
+        let spotCosts = await fetchSpotCostBases(
+            apiKey: apiKey,
+            secretKey: secretKey,
+            assets: spotAssets,
+            timestamp: timestamp
+        )
 
         return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
             guard qty >= 1e-8 else { return nil }
@@ -479,8 +588,11 @@ class BinanceAPIService {
                 id: UUID(),
                 symbol: symbol,
                 quantity: qty,
-                avgPrice: equityCosts[assetName]?.averagePrice ?? 0.0,
+                avgPrice: equityCosts[assetName]?.averagePrice
+                    ?? spotCosts[assetName]?.averagePrice
+                    ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : 0.0),
                 purchaseDate: equityCosts[assetName]?.purchaseDate
+                    ?? spotCosts[assetName]?.purchaseDate
             )
         }
     }

@@ -120,6 +120,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Compare-and-clear: only clear if a newer refresh hasn't superseded
             // us, so a cancelled Task's defer can't unblock a live refresh.
             defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
+            await self.autoSyncBinancePortfolios()
+            guard !Task.isCancelled else { return }
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
@@ -351,6 +353,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let start = Date()
             refreshStartedAt = start
             defer { if refreshStartedAt == start { refreshStartedAt = nil } }
+            await autoSyncBinancePortfolios()
+            guard !Task.isCancelled else { return }
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
