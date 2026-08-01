@@ -61,7 +61,13 @@ enum PortfolioBackfill {
         var symbolHistory: [String: [(date: Date, price: Double)]] = [:]
         for h in holdings {
             if let points = historyBySymbol[h.symbol], !points.isEmpty {
-                symbolHistory[h.symbol] = points.map { ($0.date, $0.close) }.sorted(by: { $0.date < $1.date })
+                // A malformed imported quote must never reach Swift Charts as
+                // NaN/Inf. Binance positions can legitimately have no cost
+                // basis, so their persisted avgPrice may be non-finite.
+                symbolHistory[h.symbol] = points
+                    .filter { $0.close.isFinite }
+                    .map { ($0.date, $0.close) }
+                    .sorted(by: { $0.date < $1.date })
             }
         }
 
@@ -73,7 +79,7 @@ enum PortfolioBackfill {
             if let firstP = symbolHistory[h.symbol]?.first {
                 lastPrice[h.symbol] = firstP.price / scale
             } else {
-                lastPrice[h.symbol] = h.avgPrice / scale
+                lastPrice[h.symbol] = h.avgPrice.isFinite ? h.avgPrice / scale : 0
             }
             historyIndex[h.symbol] = 0
         }
@@ -96,11 +102,14 @@ enum PortfolioBackfill {
             var total = 0.0
             for h in holdings {
                 let scale = (h.isJapaneseFund || StockService.codeToFundNameMap[h.symbol] != nil) ? 10000.0 : 1.0
-                let pricePerUnit = lastPrice[h.symbol] ?? (h.avgPrice / scale)
-                let rate = rateBySymbol[h.symbol] ?? 1.0
-                total += pricePerUnit * h.quantity * h.effectiveLeverage * rate
+                let pricePerUnit = lastPrice[h.symbol] ?? (h.avgPrice.isFinite ? h.avgPrice / scale : 0)
+                let rate = rateBySymbol[h.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+                let quantity = h.quantity.isFinite ? h.quantity : 0
+                let leverage = h.effectiveLeverage.isFinite ? h.effectiveLeverage : 1
+                let contribution = pricePerUnit * quantity * leverage * rate
+                if contribution.isFinite { total += contribution }
             }
-            result.append(ValuePoint(date: date, value: total))
+            if total.isFinite { result.append(ValuePoint(date: date, value: total)) }
         }
 
         let finalSeries = result.count > 200 ? {
