@@ -365,7 +365,8 @@ enum SpreadsheetIO {
     }
 
     /// Normalizes a raw symbol string for watchlist import.
-    /// - JP numeric codes (e.g. "201A", "6689") get ".T" suffix
+    /// - JP stock codes ending with a letter (e.g. "201A") get ".T" suffix
+    /// - Pure numeric codes (e.g. "9988" HK, "6689" JP) are kept as-is — no way to distinguish
     /// - Mutual fund names are resolved to their fund codes
     /// - US/other tickers are uppercased
     private static func normalizeWatchlistSymbol(_ raw: String) -> String {
@@ -376,12 +377,12 @@ enum SpreadsheetIO {
 
         let upper = raw.uppercased()
 
-        // JP stock codes: 4-char alphanumeric with at least one digit (e.g. 201A, 6689, 7203)
-        let jpStockPattern = try? NSRegularExpression(pattern: "^[0-9]{1,4}[A-Z]?$")
-        let range = NSRange(location: 0, length: upper.utf16.count)
-        if let match = jpStockPattern?.firstMatch(in: upper, range: range),
-           raw.contains(where: { $0.isNumber }),
-           upper.count <= 5 {
+        // JP stock codes with letter suffix: e.g. 201A, 133A. Only these can be reliably detected.
+        // Pure numeric codes (6689, 9988) are ambiguous (JP vs HK) — leave as-is.
+        if upper.count <= 5,
+           upper.contains(where: { $0.isNumber }),
+           let last = upper.last,
+           last.isLetter {
             return upper + ".T"
         }
 
