@@ -429,7 +429,7 @@ enum SpreadsheetIO {
         case "UK", "L", "GB": return ".L"
         case "DE": return ".DE"
         case "FR", "PA": return ".PA"
-        case "CRYPTO": return "-USD"
+        case "CRYPTO": return nil
         default: return ".\(market.uppercased().trimmingCharacters(in: .whitespaces))"
         }
     }
