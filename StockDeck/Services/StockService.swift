@@ -277,7 +277,8 @@ class StockService: ObservableObject {
         let equitySymbols = regularSymbols.filter { Self.isBinanceEquitySymbol($0) }
         let cryptoSymbols = regularSymbols.filter { sym in
             let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
-            return !equitySymbols.contains(sym) && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD"))
+            return !equitySymbols.contains(sym)
+                && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD") || StorageService.isBinanceNativePair(sym))
         }
         let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) && !equitySymbols.contains($0) }
 
@@ -504,6 +505,27 @@ class StockService: ObservableObject {
         let priceChangePercent: String
     }
 
+    /// Returns the inverted Binance pair for a cross pair that only exists the
+    /// other way around. e.g. "BTCETH" → "ETHBTC" (Binance lists ETH/BTC, not
+    /// BTC/ETH). Returns nil for quote assets that shouldn't be inverted (USDT,
+    /// USDC — those always have a direct pair as <BASE>USDT).
+    private static func invertedBinancePair(_ symbol: String) -> String? {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let quoteAssets: Set<String> = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD", "BTC", "ETH", "BNB"]
+        for q in quoteAssets where upper.hasSuffix(q) && upper.count > q.count {
+            let base = String(upper.dropLast(q.count))
+            if base.count >= 2 && (StorageService.isStandardCryptoSymbol(base) || base.allSatisfy({ $0.isLetter })) {
+                // Only invert crypto↔crypto cross pairs (e.g. BTCETH → ETHBTC).
+                // USD-quoted pairs always exist directly as <BASE>USDT.
+                if ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD"].contains(q) {
+                    return nil
+                }
+                return q + base
+            }
+        }
+        return nil
+    }
+
     /// Fetches live 24hr ticker quotes directly from Binance Public API
     /// (`https://api.binance.com/api/v3/ticker/24hr?symbols=[...]`) for crypto
     /// symbols, stablecoins, and liquid staking tokens (WBETH, BETH). Requests
@@ -514,6 +536,8 @@ class StockService: ObservableObject {
         guard !symbols.isEmpty else { return }
 
         // Resolve each requested symbol to the concrete Binance pairs we need.
+        // Symbols that are already native Binance pairs (BTCUSDT, BTCETH) are used
+        // directly; Yahoo-style symbols (BTC-USD) map to <BASE>USDT.
         // Adding ETHUSDT + BETHETH (when BETH/WBETH is held) lets us derive a
         // USD price for the staking tokens even though no direct BETHUSDT exists.
         var pairSymbols: Set<String> = []
@@ -525,7 +549,16 @@ class StockService: ObservableObject {
             if BinanceStablecoin.isUSDPegged(cleanBase) {
                 continue // handled locally with a 1.0 peg, no API call needed
             }
-            pairSymbols.insert("\(cleanBase)USDT")
+            if StorageService.isBinanceNativePair(cleanBase) {
+                pairSymbols.insert(cleanBase)
+                // Cross pairs like BTCETH only exist inverted on Binance (ETHBTC).
+                // Fetch that too so we can derive the price by inverting.
+                if let inverted = Self.invertedBinancePair(cleanBase) {
+                    pairSymbols.insert(inverted)
+                }
+            } else {
+                pairSymbols.insert("\(cleanBase)USDT")
+            }
             if cleanBase == "BETH" || cleanBase == "WBETH" {
                 pairSymbols.insert("ETHUSDT")
                 pairSymbols.insert("BETHETH")
@@ -602,8 +635,16 @@ class StockService: ObservableObject {
                 continue
             }
 
-            // Match pair on Binance (e.g. ETH -> ETHUSDT, WBETH -> WBETHUSDT)
-            let matchedTicker: BinanceTicker24hr? = tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"]
+            // Match pair on Binance. Native pairs (BTCUSDT, BTCETH) are looked up
+            // directly; base symbols (ETH, WBETH) fall back to <BASE>USDT or <BASE>BTC.
+            // If a native pair like BTCETH doesn't exist, fall back to the inverted
+            // pair (ETHBTC) and invert the price.
+            let isNative = StorageService.isBinanceNativePair(cleanBase)
+            let inverted = isNative ? Self.invertedBinancePair(cleanBase) : nil
+            let matchedTicker: BinanceTicker24hr? = isNative
+                ? (tickerMap[cleanBase] ?? (inverted.flatMap { tickerMap[$0] }))
+                : (tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"])
+            let isInvertedQuote = isNative && tickerMap[cleanBase] == nil && (inverted.flatMap { tickerMap[$0] }) != nil
 
             // Fallback for BETH / WBETH if BETHUSDT isn't direct
             if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {
@@ -629,9 +670,22 @@ class StockService: ObservableObject {
             }
 
             if let ticker = matchedTicker,
-               let price = Double(ticker.lastPrice), price > 0 {
-                let change = Double(ticker.priceChange) ?? 0
-                let changePct = Double(ticker.priceChangePercent) ?? 0
+               let rawPrice = Double(ticker.lastPrice), rawPrice > 0 {
+                // When the pair is inverted (e.g. BTCETH from ETHBTC),
+                // 1 ETH = X BTC → 1 BTC = 1/X ETH.
+                let price = isInvertedQuote ? (1.0 / rawPrice) : rawPrice
+                let change: Double
+                let changePct: Double
+                if isInvertedQuote {
+                    let rawChg = Double(ticker.priceChange) ?? 0
+                    let previous = rawPrice - rawChg
+                    let invertedPrev = previous > 0 ? (1.0 / previous) : 0
+                    change = price - invertedPrev
+                    changePct = invertedPrev > 0 ? (change / invertedPrev) * 100 : 0
+                } else {
+                    change = Double(ticker.priceChange) ?? 0
+                    changePct = Double(ticker.priceChangePercent) ?? 0
+                }
 
                 let quote = StockQuote(
                     symbol: sym,
@@ -1165,6 +1219,12 @@ class StockService: ObservableObject {
         if upper.hasSuffix(".VN") || upper.hasSuffix(".US") || upper.hasSuffix(".HK") || upper.hasSuffix(".L") {
             return false
         }
+        // Exclude Binance native pairs & known crypto (BTCETH, BTCUSDT, HYPEUSDT...)
+        // — otherwise the 5-12 alphanumeric TOUSHIN heuristic misclassifies them
+        // as Japanese mutual funds and they never get a real quote.
+        if StorageService.isBinanceNativePair(upper) || StorageService.isStandardCryptoSymbol(upper) {
+            return false
+        }
         let jpSet = CharacterSet(charactersIn: "\u{3000}"..."\u{30FF}").union(CharacterSet(charactersIn: "\u{4E00}"..."\u{9FFF}"))
         if symbol.unicodeScalars.contains(where: { jpSet.contains($0) }) {
             return true
@@ -1342,8 +1402,9 @@ class StockService: ObservableObject {
         }
     }
 
-    /// Searches Binance trading pairs whose baseAsset matches the query.
-    /// Picks the best quote asset per base: USDT > USDC > FDUSD > BTC > ETH > first available.
+    /// Searches Binance trading pairs. Matches both the base asset (e.g. "BTC",
+    /// "HYPE" → returns BTC-USD / HYPE-USD) AND full native pair symbols
+    /// (e.g. "BTCUSDT", "HYPEUSDT" → returns the native pair directly).
     private func fetchBinanceSearch(query: String) async -> [SearchResult] {
         let allSymbols = await fetchBinanceExchangeInfo()
         let upperQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -1359,8 +1420,10 @@ class StockService: ObservableObject {
         let quotePriority: [String: Int] = ["USDT": 0, "USDC": 1, "FDUSD": 2, "BTC": 3, "ETH": 4]
 
         var results: [SearchResult] = []
+        var seenBase = Set<String>()
+
+        // Pass 1: match base asset (HYPE → HYPE-USD)
         for (base, pairs) in baseMap where base.contains(upperQuery) {
-            // Filter stablecoins (they are separate assets with their own entries)
             let isStablecoin = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG"].contains(base)
             let type = isStablecoin ? "CRYPTOCURRENCY" : "CRYPTOCURRENCY"
 
@@ -1378,7 +1441,44 @@ class StockService: ObservableObject {
                 exchange: "Binance",
                 type: type
             ))
+            seenBase.insert(base)
         }
+
+        // Pass 2: match full pair symbols (BTCUSDT, HYPEUSDT) — return native pair.
+        // Only show native pairs when the query look like a pair (≥4 chars), so
+        // single-char queries like "B" don't dump all pairs.
+        var nativeCount = 0
+        let maxNativeResults = 20
+        if upperQuery.count >= 4 {
+            for s in allSymbols where s.symbol.contains(upperQuery) {
+                // Skip if this base already surfaced via pass 1.
+                if seenBase.contains(s.baseAsset) { continue }
+                results.append(SearchResult(
+                    symbol: s.symbol,
+                    name: s.baseAsset,
+                    exchange: "Binance",
+                    type: "CRYPTOCURRENCY"
+                ))
+                nativeCount += 1
+                if nativeCount >= maxNativeResults { break }
+            }
+        }
+
+        // Pass 3: inverted cross pairs. Binance lists ETH/BTC (ETHBTC), not
+        // BTC/ETH. If the query is a cross pair that only exists inverted
+        // (e.g. BTCETH → ETHBTC), surface it so the user can still add it —
+        // the quote engine inverts the price back automatically.
+        if let inverted = Self.invertedBinancePair(upperQuery),
+           allSymbols.contains(where: { $0.symbol == inverted }),
+           !results.contains(where: { $0.symbol.uppercased() == upperQuery }) {
+            results.append(SearchResult(
+                symbol: upperQuery,
+                name: upperQuery,
+                exchange: "Binance",
+                type: "CRYPTOCURRENCY"
+            ))
+        }
+
         return results
     }
 
@@ -1405,7 +1505,12 @@ class StockService: ObservableObject {
             }
         }
 
-        if isJapaneseMutualFund(cleanQuery) && !fundResults.contains(where: { $0.symbol == upperQuery }) {
+        // Only suggest as a mutual fund if the query genuinely looks like one
+        // (code in our fund map or Japanese characters) — not for generic
+        // 5-12 char alphanumeric strings like "BTCETH", "HYPEUSDT".
+        if isJapaneseMutualFund(cleanQuery),
+           !fundResults.contains(where: { $0.symbol == upperQuery }),
+           (Self.codeToFundNameMap[upperQuery] != nil || Self.containsJapaneseCharacters(cleanQuery)) {
             fundResults.append(SearchResult(symbol: upperQuery, name: "投資信託 (\(upperQuery))", exchange: "JP_FUND", type: "MUTUALFUND"))
         }
 

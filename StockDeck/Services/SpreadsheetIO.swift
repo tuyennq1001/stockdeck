@@ -57,9 +57,9 @@ enum SpreadsheetIO {
             for (cIdx, val) in row.enumerated() {
                 let colLetter = columnLetter(cIdx + 1)
                 let escaped = escapeXML(val)
-                if let num = Double(val), !val.contains("-") && val != num.description {
-                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
-                } else if let num = Double(val) {
+                // Only numeric if round-trip String(Double(val)) matches original.
+                // Prevents "7203" → "7203.0" which breaks JP stock re-import.
+                if let num = Double(val), String(num) == val {
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
                 } else {
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\" t=\"inlineStr\"><is><t>\(escaped)</t></is></c>\n"
@@ -276,23 +276,32 @@ enum SpreadsheetIO {
 
     /// Generates a sample Watchlist Excel (.xlsx) file data.
     static func generateWatchlistSampleXLSXData() -> Data? {
-        let headers = ["Watchlist Name", "Symbol", "Notes"]
+        let headers = ["Watchlist Name", "Symbol", "Market"]
         let rows: [[String]] = [
-            ["Tech Watchlist", "AAPL", "Apple Inc."],
-            ["Tech Watchlist", "NVDA", "NVIDIA Corporation"],
-            ["Tech Watchlist", "MSFT", "Microsoft Corporation"],
-            ["Global Indices", "^GSPC", "S&P 500"],
-            ["Japanese Funds", "eMAXIS Slim 米国株式(S&P500)", "03311187"]
+            ["Tech Watchlist", "AAPL", "US"],
+            ["Tech Watchlist", "NVDA", "US"],
+            ["Tech Watchlist", "MSFT", "US"],
+            ["Global Indices", "^GSPC", "US"],
+            ["Vietnamese Stocks", "VGT", "VN"],
+            ["Vietnamese Stocks", "VNM", "VN"],
+            ["Japanese Stocks", "201A", "JP"],
+            ["Japanese Stocks", "7203", "JP"],
+            ["Japanese Stocks", "6861", "JP"],
+            ["Hong Kong", "9988", "HK"],
+            ["London", "HSBA", "UK"],
+            ["Crypto", "BTC", "CRYPTO"],
+            ["Crypto", "ETH", "CRYPTO"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
 
-    /// Parses a file (CSV or XLSX) into a list of (watchlistName, symbols).
-    static func parseWatchlistFile(from fileURL: URL) -> (name: String, symbols: [String])? {
+    /// Parses a file (CSV or XLSX) into multiple watchlists grouped by name.
+    /// Supports optional "Market" column (3rd column) to explicitly specify exchange.
+    /// Returns a list of (watchlistName, symbols), maintaining encounter order.
+    static func parseWatchlistsFile(from fileURL: URL) -> [(name: String, symbols: [String])]? {
         let ext = fileURL.pathExtension.lowercased()
         let fileName = fileURL.deletingPathExtension().lastPathComponent
-        var symbols: [String] = []
-        var wlName = fileName.isEmpty ? "Imported Watchlist" : fileName
+        let fallbackName = fileName.isEmpty ? "Imported Watchlist" : fileName
 
         var rows: [[String]] = []
 
@@ -316,6 +325,7 @@ enum SpreadsheetIO {
         var startIdx = 0
         var symbolCol = 0
         var nameCol = -1
+        var marketCol = -1
 
         for (cIdx, col) in rows[0].enumerated() {
             let lower = col.lowercased()
@@ -323,28 +333,105 @@ enum SpreadsheetIO {
                 symbolCol = cIdx
                 startIdx = 1
             }
-            if lower.contains("watchlist") || (lower.contains("name") && !lower.contains("symbol")) {
+            if lower.contains("watchlist") || (lower.contains("name") && !lower.contains("symbol") && !lower.contains("market")) {
                 nameCol = cIdx
             }
+            if lower == "market" || lower.contains("exchange") || lower.contains("sàn") {
+                marketCol = cIdx
+            }
         }
+
+        // Group symbols by watchlist name, maintaining encounter order
+        var order: [String] = []
+        var groups: [String: [String]] = [:]
 
         for idx in startIdx..<rows.count {
             let row = rows[idx]
             guard symbolCol < row.count else { continue }
-            let sym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !sym.isEmpty && sym.lowercased() != "symbol" {
-                symbols.append(sym)
-                if nameCol >= 0 && nameCol < row.count {
-                    let candidateName = row[nameCol].trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !candidateName.isEmpty && candidateName.lowercased() != "watchlist name" {
-                        wlName = candidateName
-                    }
+            let rawSym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
+            if rawSym.isEmpty || rawSym.lowercased() == "symbol" { continue }
+
+            // Read Market column if present; if column exists but value is empty → skip row
+            var market: String? = nil
+            if marketCol >= 0 {
+                guard marketCol < row.count else { continue }
+                let m = row[marketCol].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !m.isEmpty, m.lowercased() != "market" else { continue }
+                market = m
+            }
+
+            let sym = normalizeWatchlistSymbol(rawSym, market: market)
+
+            var wlName = fallbackName
+            if nameCol >= 0 && nameCol < row.count {
+                let candidateName = row[nameCol].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !candidateName.isEmpty && candidateName.lowercased() != "watchlist name" {
+                    wlName = candidateName
                 }
             }
+
+            if groups[wlName] == nil {
+                groups[wlName] = []
+                order.append(wlName)
+            }
+            groups[wlName]?.append(sym)
         }
 
-        guard !symbols.isEmpty else { return nil }
-        return (wlName, symbols)
+        let result = order.compactMap { name -> (String, [String])? in
+            guard let symbols = groups[name], !symbols.isEmpty else { return nil }
+            return (name, symbols)
+        }
+
+        return result.isEmpty ? nil : result
+    }
+
+    /// Normalizes a raw symbol string for watchlist import.
+    /// - If `market` is provided, appends the correct suffix (US → no suffix, JP → .T, VN → .VN, HK → .HK, UK/GB/L → .L)
+    /// - If `market` is nil (legacy files without Market column), auto-detects:
+    ///   - Fund names → fund codes
+    ///   - JP codes with letter suffix (201A) → .T
+    ///   - Pure numeric codes left as-is (ambiguous: 6689 could be JP or HK)
+    /// - US/other tickers are uppercased
+    private static func normalizeWatchlistSymbol(_ raw: String, market: String? = nil) -> String {
+        // Try resolving as a Japanese fund name first
+        if let fundCode = resolveJapaneseFundCode(from: raw) {
+            return fundCode
+        }
+
+        let upper = raw.uppercased()
+
+        // If market is explicitly provided, use it to determine suffix
+        if let mkt = market {
+            let suffix = marketSuffix(for: mkt)
+            return suffix == nil ? upper : upper + suffix!
+        }
+
+        // Legacy auto-detection (no Market column)
+        // JP stock codes with letter suffix: e.g. 201A, 133A
+        if upper.count <= 5,
+           upper.contains(where: { $0.isNumber }),
+           let last = upper.last,
+           last.isLetter {
+            return upper + ".T"
+        }
+
+        return upper
+    }
+
+    /// Maps a market code to its Yahoo Finance suffix.
+    /// Returns nil for markets that don't need a suffix.
+    private static func marketSuffix(for market: String) -> String? {
+        switch market.uppercased().trimmingCharacters(in: .whitespaces) {
+        case "US": return nil
+        case "JP": return ".T"
+        case "VN": return ".VN"
+        case "HK": return ".HK"
+        case "UK", "L", "GB": return ".L"
+        case "DE": return ".DE"
+        case "FR", "PA": return ".PA"
+        case "CRYPTO": return nil
+        default: return ".\(market.uppercased().trimmingCharacters(in: .whitespaces))"
+        }
     }
 
     /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).

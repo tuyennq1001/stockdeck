@@ -17,6 +17,25 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var isFieldFocused: Bool
+    @State private var filter: WatchlistSearchSheet.AssetFilter = .all
+    @State private var hoveredSymbol: String? = nil
+
+    private var filteredResults: [SearchResult] {
+        switch filter {
+        case .all: return results
+        case .stocks: return results.filter { r in
+            let t = r.type.uppercased()
+            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK"
+        }
+        case .funds: return results.filter { r in
+            let t = r.type.uppercased()
+            return t == "MUTUALFUND" || t == "MONEYMARKET" || t == "BOND"
+        }
+        case .crypto: return results.filter { r in
+            r.type.uppercased() == "CRYPTOCURRENCY"
+        }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,28 +73,40 @@ struct SearchView: View {
                         guard !Task.isCancelled else { return }
                         results = searchResults
                         isSearching = false
-                        // Fetch prices for search results
-                        let symbols = searchResults.map(\.symbol)
-                        if !symbols.isEmpty {
-                            await stockService.fetchQuotes(symbols: symbols)
-                        }
                     }
                 }
 
+            // Filter tabs
+            HStack(spacing: 4) {
+                ForEach(WatchlistSearchSheet.AssetFilter.allCases, id: \.self) { f in
+                    Button(f.label) { filter = f }
+                        .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                        .foregroundStyle(filter == f ? DS.ink : DS.inkTertiary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(filter == f ? DS.cardAlt : Color.clear)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .padding(.horizontal, 12).padding(.top, 6)
+
             Divider()
-                .padding(.top, 8)
+                .padding(.top, 6)
 
             if isSearching {
                 Spacer()
                 ProgressView("Searching...")
                 Spacer()
-            } else if results.isEmpty && query.count >= 2 {
+            } else if filteredResults.isEmpty && query.count >= 2 {
                 Spacer()
                 Text("No results")
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
-                List(results) { result in
+                List(filteredResults) { result in
                     Button(action: { addResult(result) }) {
                         HStack(spacing: 8) {
                             SymbolLogo(symbol: result.symbol, size: 28)
@@ -90,22 +121,11 @@ struct SearchView: View {
                             }
                             Spacer()
 
-                            if let quote = stockService.quotes[result.symbol] {
-                                Text("\(quote.price.formatted(.number.precision(.fractionLength(2)))) \(quote.currency)")
-                                    .font(.inter(13, relativeTo: .body).monospacedDigit())
-                                    .foregroundColor(.primary)
+                            if !result.exchange.isEmpty {
+                                Text(WatchlistSearchSheet.friendlyExchange(result.exchange))
+                                    .font(.inter(9, relativeTo: .caption2))
+                                    .foregroundColor(.secondary)
                             }
-
-                            Text(result.type.uppercased())
-                                .font(.inter(8, weight: .medium, relativeTo: .caption2))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 2).fill(.secondary))
-
-                            Text(result.exchange)
-                                .font(.inter(9, relativeTo: .caption2))
-                                .foregroundColor(.secondary)
 
                             if isAlreadyAdded(result.symbol) {
                                 Image(systemName: "checkmark.circle.fill")
@@ -117,13 +137,22 @@ struct SearchView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .listRowBackground(
+                        Color(nsColor: NSColor(calibratedWhite: 0.5, alpha: 0.0))
+                    )
                     .onHover { inside in
                         if inside {
                             NSCursor.pointingHand.push()
                         } else {
                             NSCursor.pop()
                         }
+                        hoveredSymbol = inside ? result.id : nil
                     }
+                    .listRowBackground(
+                        hoveredSymbol == result.id
+                            ? DS.brand.opacity(0.06)
+                            : Color.clear
+                    )
                 }
                 .listStyle(.plain)
             }
@@ -140,8 +169,6 @@ struct SearchView: View {
         switch mode {
         case .watchlist:
             storageService.addToWatchlist(result.symbol)
-            // Issue #8: cache the asset class right away (search already carries it),
-            // so index detection / grouping work before the first quote arrives.
             if !result.type.isEmpty { storageService.setType(result.type, for: result.symbol) }
             if queryLooksLikeISIN {
                 storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: result.symbol)
@@ -151,7 +178,6 @@ struct SearchView: View {
                 await stockService.fetchQuotes(symbols: [result.symbol])
             }
         case .holding:
-            // For holdings, we dismiss and the AddHoldingView handles it
             break
         }
     }
