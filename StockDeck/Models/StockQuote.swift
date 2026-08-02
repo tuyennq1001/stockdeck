@@ -298,7 +298,7 @@ enum HoldingLotAggregation {
     static func weightedAveragePrice(_ holdings: [Holding]) -> Double {
         let totalAbsoluteQuantity = holdings.reduce(0) { $0 + abs($1.quantity) }
         guard totalAbsoluteQuantity >= 1e-9 else { return 0 }
-        guard holdings.allSatisfy({ $0.hasKnownCostBasis }) else { return .nan }
+        guard holdings.allSatisfy({ $0.hasKnownCostBasis }) else { return 0 }
         let weightedCost = holdings.reduce(0) {
             $0 + abs($1.quantity) * $1.avgPrice
         }
@@ -405,7 +405,7 @@ struct Holding: Identifiable, Codable {
     /// Cost basis in the stock's own currency, signed and leverage-adjusted.
     /// Negative for shorts. Multiply by an FX rate for the preferred currency.
     var costBasisLocal: Double {
-        guard avgPrice.isFinite else { return .nan }
+        guard avgPrice.isFinite else { return 0 }
         let scale = isJapaneseFund ? 10000.0 : 1.0
         return (avgPrice / scale) * quantity * effectiveLeverage
     }

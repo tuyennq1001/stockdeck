@@ -6,7 +6,7 @@ final class HoldingCostBasisTests: XCTestCase {
         let holding = Holding(symbol: "BTC-USD", quantity: 1, avgPrice: .nan)
 
         XCTAssertFalse(holding.hasKnownCostBasis)
-        XCTAssertTrue(holding.costBasisLocal.isNaN)
+        XCTAssertEqual(holding.costBasisLocal, 0)
         XCTAssertEqual(holding.pnl(currentPrice: 63_000), 0)
         XCTAssertEqual(holding.pnlPercent(currentPrice: 63_000), 0)
     }

@@ -501,29 +501,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         switch displayMode {
         case "todayPnl":
-            title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))"
-            color = todayGain >= 0 ? upColor : downColor
+            if totalCost < 0.01 {
+                title = " —"
+                color = .secondaryLabelColor
+            } else {
+                title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))"
+                color = todayGain >= 0 ? upColor : downColor
+            }
 
         case "todayPnlFull":
-            let todayPctSign = todayPct >= 0 ? "+" : ""
-            let todayPctPart = storageService.menuBarHidePercent ? "" : " (\(todayPctSign)\(String(format: "%.\(storageService.percentDecimals)f", todayPct))%)"
-            title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))\(todayPctPart)"
-            color = todayGain >= 0 ? upColor : downColor
+            if totalCost < 0.01 {
+                title = " —"
+                color = .secondaryLabelColor
+            } else {
+                let todayPctSign = todayPct >= 0 ? "+" : ""
+                let todayPctPart = storageService.menuBarHidePercent ? "" : " (\(todayPctSign)\(String(format: "%.\(storageService.percentDecimals)f", todayPct))%)"
+                title = " Today \(StorageService.formatAmount(todayGain, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))\(todayPctPart)"
+                color = todayGain >= 0 ? upColor : downColor
+            }
 
         case "totalValue":
             title = " \(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))"
             color = totalPnl >= 0 ? upColor : downColor
 
         case "pnlPercent":
-            let sign = totalPnlPct >= 0 ? "+" : ""
-            title = " P&L \(sign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%"
-            color = totalPnlPct >= 0 ? upColor : downColor
+            if totalCost < 0.01 {
+                title = " —"
+                color = .secondaryLabelColor
+            } else {
+                let sign = totalPnlPct >= 0 ? "+" : ""
+                title = " P&L \(sign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%"
+                color = totalPnlPct >= 0 ? upColor : downColor
+            }
 
         case "pnlFull":
-            let pctSign = totalPnlPct >= 0 ? "+" : ""
-            let pctPart = storageService.menuBarHidePercent ? "" : " (\(pctSign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%)"
-            title = " \(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))\(pctPart)"
-            color = totalPnl >= 0 ? upColor : downColor
+            if totalCost < 0.01 {
+                title = " —"
+                color = .secondaryLabelColor
+            } else {
+                let pctSign = totalPnlPct >= 0 ? "+" : ""
+                let pctPart = storageService.menuBarHidePercent ? "" : " (\(pctSign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%)"
+                title = " \(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))\(pctPart)"
+                color = totalPnl >= 0 ? upColor : downColor
+            }
 
         case "bestStock":
             if let best = bestStock {
