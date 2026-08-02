@@ -123,9 +123,9 @@ struct PortfolioListView: View {
                             .frame(width: 72, alignment: .trailing)
                         Text("Price")
                             .frame(width: 72, alignment: .trailing)
-                        Text("%")
+                        Text("Today %")
                             .frame(width: 60, alignment: .trailing)
-                        Text("P&L")
+                        Text("Ext")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .font(.inter(10, weight: .medium, relativeTo: .caption))
@@ -1216,26 +1216,15 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 72, alignment: .trailing)
 
-            // Col 4: % (2 lines: % change on top, % ext on bottom, formatted like P&L)
-            VStack(alignment: .trailing, spacing: 1) {
+            // Col 4: Today % (regular-session % change)
+            Group {
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                         .lineLimit(1)
-
-                    if storageService.showExtendedHours, let extPct = quote.extendedChangePercent {
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.medium)
-                            .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                            .lineLimit(1)
-                    } else {
-                        Text("—")
-                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                            .foregroundColor(.secondary)
-                    }
+                        .minimumScaleFactor(0.85)
                 } else {
                     Text("—")
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
@@ -1244,24 +1233,20 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 60, alignment: .trailing)
 
-            // Col 5: P&L (2 lines: Amount on top compact format, Percent on bottom)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactAmount(
-                    globalPos.pnl,
-                    symbol: globalPos.priceSymbol,
-                    signed: true
-                ))
-                .font(.inter(13, relativeTo: .body).monospacedDigit())
-                .fontWeight(.medium)
-                .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                    .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
+            // Col 5: Ext (extended-hours % if available)
+            Group {
+                if let quote, let extPct = quote.extendedChangePercent {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                } else {
+                    Text("—")
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }

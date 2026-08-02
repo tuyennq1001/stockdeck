@@ -1068,6 +1068,7 @@ struct PortfolioOverview: View {
                                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("Value", column: .value)
                                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+                            Text("Today P&L").frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("P&L", column: .pnl)
                                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
                             sortHeader("Weight", column: .weight)
@@ -1311,6 +1312,15 @@ private struct PositionSummaryRow: View {
         }
     }
 
+    /// Today's regular-session P&L per symbol (native currency, change × quantity × leverage).
+    private var totalNativeTodayPnl: Double {
+        holdings.reduce(0) { sum, h in
+            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let scale = (q.isJapaneseFund || stockService.isJapaneseMutualFund(h.holding.symbol) || h.holding.isJapaneseFund) ? 10000.0 : 1.0
+            return sum + (q.change / scale) * h.holding.quantity * h.holding.effectiveLeverage
+        }
+    }
+
     private var totalNativePnlPercent: Double {
         abs(totalNativeCost) >= 0.01 ? (totalNativePnl / abs(totalNativeCost)) * 100 : 0
     }
@@ -1425,10 +1435,16 @@ private struct PositionSummaryRow: View {
             }
 
             // Cost basis column (Native Currency)
-            Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
-                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                .font(DS.figure).foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
+            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+                Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+                    .font(DS.figure).foregroundStyle(DS.ink)
+                    .contentTransition(.numericText())
+            } else {
+                Text("—")
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
+            }
 
             // Market Value column (Native Currency)
             Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
@@ -1436,16 +1452,28 @@ private struct PositionSummaryRow: View {
                 .font(DS.figure).foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
 
+            // Today P&L column (Native Currency) — regular-session day change
+            Text(StorageService.formatAmount(totalNativeTodayPnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+                .font(DS.figure).foregroundStyle(DS.pnlColor(totalNativeTodayPnl))
+                .contentTransition(.numericText())
+
             // P&L column (Native Currency)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
-                    .font(DS.figure)
-                    .contentTransition(.numericText())
-                Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
-                    .font(DS.micro)
+            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
+                        .font(DS.figure)
+                        .contentTransition(.numericText())
+                    Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
+                        .font(DS.micro)
+                }
+                .foregroundStyle(DS.pnlColor(totalNativePnl))
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+            } else {
+                Text("—")
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
             }
-            .foregroundStyle(DS.pnlColor(totalNativePnl))
-            .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 
             // Weight column
             HStack(spacing: 7) {
