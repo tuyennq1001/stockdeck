@@ -54,6 +54,15 @@ struct PortfolioWindowView: View {
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
+    @State private var activeOverviewVM: PortfolioViewModel?
+
+    /// Shared valuation cache from the active PortfolioOverview ViewModel.
+    /// The sidebar TotalFooter reads this instead of recalculating independently.
+    private struct SidebarValuation {
+        var value: Double
+        var cost: Double
+    }
+    @State private var sidebarValuation: SidebarValuation = .init(value: 0, cost: 0)
 
     struct AddHoldingTarget: Identifiable {
         let id = UUID()
@@ -509,9 +518,17 @@ struct PortfolioWindowView: View {
                 onExportWatchlists: { exportWatchlists(storageService.watchlists) }
             )
         case .portfoliosAll:
-            NavigationStack(path: $portfolioPath) { PortfolioOverview(scope: .all) }
+            NavigationStack(path: $portfolioPath) {
+                let vm = PortfolioViewModel(scope: .all, stockService: stockService, storageService: storageService)
+                PortfolioOverview(viewModel: vm)
+                    .onAppear { activeOverviewVM = vm }
+            }
         case .portfolio(let id):
-            NavigationStack(path: $portfolioPath) { PortfolioOverview(scope: .portfolio(id)) }
+            NavigationStack(path: $portfolioPath) {
+                let vm = PortfolioViewModel(scope: .portfolio(id), stockService: stockService, storageService: storageService)
+                PortfolioOverview(viewModel: vm)
+                    .onAppear { activeOverviewVM = vm }
+            }
         }
     }
 

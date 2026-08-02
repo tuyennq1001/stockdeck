@@ -84,7 +84,8 @@ struct PortfolioOverview: View {
     @Environment(\.editHoldingAction) private var editHoldingAction
     @Environment(\.addHoldingAction) private var addHoldingAction
     @Environment(\.portfolioActions) private var portfolioActions
-    let scope: PortfolioWindowView.Scope
+
+    let viewModel: PortfolioViewModel
 
     /// Hero chart range — a pure UI filter over the value series.
     enum ChartRange: String, CaseIterable {
@@ -150,10 +151,16 @@ struct PortfolioOverview: View {
     @State private var hoverPoint: ValuePoint?
     @State private var positionsCardWidth: CGFloat = 0
 
+    init(viewModel: PortfolioViewModel) {
+        self.viewModel = viewModel
+    }
+
+    var scope: PortfolioWindowView.Scope { viewModel.scope }
+
     private var insertionOrderedSymbols: [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for p in portfolios {
+        for p in viewModel.portfolios {
             for h in p.holdings {
                 let sym = h.symbol.uppercased()
                 if !seen.contains(sym) {
@@ -195,115 +202,22 @@ struct PortfolioOverview: View {
         }
     }
 
-    private var portfolios: [Portfolio] {
-        switch scope {
-        case .all: return storageService.portfolios
-        case .portfolio(let id): return storageService.portfolios.filter { $0.id == id }
-        }
-    }
+    // MARK: - Convenience accessors (all from viewModel, no recomputation)
 
-    private var title: String {
-        switch scope {
-        case .all: return "Portfolio"
-        case .portfolio(let id): return storageService.portfolios.first { $0.id == id }?.name ?? "Portfolio"
-        }
-    }
-
-    private var currencySymbol: String { StorageService.currencySymbol(for: storageService.preferredCurrency) }
-    private var decimals: Int { storageService.percentDecimals }
-
-    private struct ValuationBundle {
-        let holdings: [ValuedHolding]
-        let totalValue: Double
-        let totalCost: Double
-        let totalPnl: Double
-        let totalPnlPercent: Double
-        let dayChangeValue: Double
-        let dayChangePercent: Double
-    }
-
-    private var valuationBundle: ValuationBundle {
-        var valuedHoldings: [ValuedHolding] = []
-        var totalVal: Double = 0
-        var totalCst: Double = 0
-        var todayInputs: [TodayPerformance.Input] = []
-
-        for portfolio in portfolios {
-            for holding in portfolio.holdings {
-                let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
-                    symbol: holding.symbol,
-                    name: holding.symbol,
-                    price: holding.avgPrice,
-                    change: 0,
-                    changePercent: 0,
-                    currency: stockService.detectedCurrency(for: holding.symbol)
-                )
-                let price = quote.price
-                let currency = stockService.detectedCurrency(for: holding.symbol)
-                let rate = stockService.rate(from: currency)
-                let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
-                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
-                let scale = isJpFund ? 10000.0 : 1.0
-                let lev = holding.effectiveLeverage
-                let qty = holding.quantity
-                let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
-                let cost = holding.hasKnownCostBasis
-                    ? (holding.avgPrice / scale) * qty * lev * costRate
-                    : 0
-
-                totalVal += value
-                totalCst += cost
-
-                valuedHoldings.append(ValuedHolding(
-                    id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
-                    value: value, cost: cost, dayChangePercent: quote.changePercent,
-                    type: storageService.type(for: holding.symbol)
-                ))
-
-                if let liveQuote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] {
-                    todayInputs.append(TodayPerformance.Input(
-                        holding: holding,
-                        regularPrice: liveQuote.price,
-                        previousClose: liveQuote.previousClose,
-                        rate: rate
-                    ))
-                }
-            }
-        }
-
-        valuedHoldings.sort { abs($0.value) > abs($1.value) }
-
-        let pnl = valuedHoldings.reduce(0) { result, item in
-            let currency = stockService.detectedCurrency(for: item.holding.symbol)
-            return result + item.holding.pnl(currentPrice: item.quote.price)
-                * stockService.rate(from: currency)
-        }
-        let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
-        let todayTotals = TodayPerformance.totals(todayInputs)
-
-        return ValuationBundle(
-            holdings: valuedHoldings,
-            totalValue: totalVal,
-            totalCost: totalCst,
-            totalPnl: pnl,
-            totalPnlPercent: pnlPct,
-            dayChangeValue: todayTotals.gain,
-            dayChangePercent: todayTotals.percent
-        )
-    }
-
-    private var holdings: [ValuedHolding] { valuationBundle.holdings }
-    private var totalValue: Double { valuationBundle.totalValue }
-    private var totalCost: Double { valuationBundle.totalCost }
-    private var totalPnl: Double { valuationBundle.totalPnl }
-    private var totalPnlPercent: Double { valuationBundle.totalPnlPercent }
-    private var dayChangeValue: Double { valuationBundle.dayChangeValue }
-    private var dayChangePercent: Double { valuationBundle.dayChangePercent }
-
-    private var earliestPurchaseDate: Date? {
-        let dates = holdings.compactMap(\.holding.purchaseDate)
-        return dates.min()
-    }
+    private var holdings: [ValuedHolding] { viewModel.sortedValuedHoldings }
+    private var totalValue: Double { viewModel.totalValue }
+    private var totalCost: Double { viewModel.totalCost }
+    private var totalPnl: Double { viewModel.totalPnl }
+    private var totalPnlPercent: Double { viewModel.totalPnlPercent }
+    private var dayChangeValue: Double { viewModel.dayChangeValue }
+    private var dayChangePercent: Double { viewModel.dayChangePercent }
+    private var currencySymbol: String { viewModel.currencySymbol }
+    private var decimals: Int { viewModel.decimals }
+    private var portfolios: [Portfolio] { viewModel.portfolios }
+    private var title: String { viewModel.title }
+    private var scopeKey: String { viewModel.scopeKey }
+    private var symbols: [String] { viewModel.symbols }
+    private var earliestPurchaseDate: Date? { viewModel.earliestPurchaseDate }
 
     /// Snapshot series for the scope, merged by day when aggregating portfolios.
     private var series: [PortfolioSnapshot] {
@@ -351,15 +265,7 @@ struct PortfolioOverview: View {
     /// Builds an estimated value curve from a given per-symbol price history
     /// (daily / hourly / 5-min) × current positions, in the preferred currency.
     private func valueSeries(from histBySymbol: [String: [PricePoint]]) -> [ValuePoint] {
-        let hs = portfolios.flatMap { $0.holdings }
-        var rate: [String: Double] = [:]
-        var hist: [String: [PricePoint]] = [:]
-        for h in hs {
-            let curr = stockService.detectedCurrency(for: h.symbol)
-            rate[h.symbol] = stockService.rate(from: curr)
-            if let ph = histBySymbol[h.symbol] { hist[h.symbol] = ph }
-        }
-        return PortfolioBackfill.series(holdings: hs, historyBySymbol: hist, rateBySymbol: rate)
+        viewModel.valueSeries(from: histBySymbol)
     }
 
     /// Daily estimate (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
@@ -386,9 +292,6 @@ struct PortfolioOverview: View {
     }
 
     /// The curve actually drawn and used for period change calculations.
-    /// Uses intraday 5-min series for 7D, and daily price-history market curve for 1M+.
-    /// This ensures period changes reflect true market performance consistently across
-    /// the top pill and the Performance & Benchmark matrix without distortion from cash/holding additions.
     private var displaySeries: (points: [ValuePoint], isEstimated: Bool) {
         if chartRange == .week {
             return (valueSeries(from: stockService.intradayWeek), true)
@@ -397,13 +300,16 @@ struct PortfolioOverview: View {
         }
     }
 
-    private var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })) }
+    /// Evaluates benchmark matrix once per app session (not updating real-time).
+    /// Uses ViewModel's session-cached result.
+    private var cachedPerformance: (portfolio: [PerformancePeriod: Double?], spx: [PerformancePeriod: Double?]) {
+        viewModel.cachedPerformance ?? ([:], [:])
+    }
 
-    private var scopeKey: String {
-        switch scope {
-        case .all: return "all"
-        case .portfolio(let id): return id.uuidString
-        }
+    private var moneyWeightedComparison: InvestmentEffectiveness.Result {
+        viewModel.moneyWeightedResult ?? InvestmentEffectiveness.Result(
+            portfolioXIRR: nil, benchmarkXIRR: nil, excludedHoldingsCount: 0, isYoungerThan30Days: false
+        )
     }
 
     var body: some View {
@@ -445,6 +351,7 @@ struct PortfolioOverview: View {
             storageService.setChartRange(newRange.rawValue, for: scopeKey)
         }
         .onChange(of: scopeKey) { _, newKey in
+            viewModel.scopeChanged()
             if let savedRaw = storageService.chartRange(for: newKey),
                let range = ChartRange(rawValue: savedRaw) {
                 chartRange = range
@@ -492,9 +399,6 @@ struct PortfolioOverview: View {
     // MARK: - Hero (chart as the ground of the card)
 
     private var heroCard: some View {
-        // Compute the (expensive) value series ONCE per render — it was being
-        // recomputed 5× (badge, picker, chart points, chart dash), which showed
-        // up as lag when switching portfolios (each switch rebuilds this view).
         let perf = cachedPerformance
         let ds = displaySeries
         let useRealAllTime = chartRange == .all
@@ -524,14 +428,11 @@ struct PortfolioOverview: View {
             pillText = String(format: "%+.\(decimals)f%% %@", periodPercent, periodLabel)
         }
         
-        // Header sits ABOVE the chart (not over it) so the curve can never rise
-        // behind the value/pill text.
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
                     SectionLabel("\(title) value")
                     Spacer()
-                    // No picker over an empty chart — it appears with the data.
                     if !ds.points.isEmpty { rangePicker }
                 }
                 Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
@@ -541,8 +442,6 @@ struct PortfolioOverview: View {
                     .animation(.spring(response: 0.5, dampingFraction: 0.9), value: totalValue)
                 HStack(spacing: 10) {
                     ChangePill(value: periodValue, text: pillText)
-                    // The all-time figure alongside — hidden on the All range,
-                    // where the pill already shows exactly this (no duplicate).
                     if !useRealAllTime {
                         Text(String(format: "%@ (%+.\(decimals)f%%) all-time",
                                     StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
@@ -569,8 +468,6 @@ struct PortfolioOverview: View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
     }
 
-    /// The same actions as the sidebar right-click, as a header "⋯" menu — shown
-    /// only when viewing a single portfolio.
     @ViewBuilder private var portfolioMenu: some View {
         if case .portfolio(let id) = scope, let p = portfolios.first {
             let actions: [[DSMenuAction]] = p.isReadOnly ? [
@@ -594,18 +491,13 @@ struct PortfolioOverview: View {
         }
     }
 
-    /// Y domain with a little headroom so the line never touches the card edges.
     private func valueDomain(_ points: [ValuePoint]) -> ClosedRange<Double> {
-        // Keep malformed imported data out of Swift Charts. In particular,
-        // Binance positions without a cost basis can otherwise produce NaN
-        // backfill values and Swift Charts traps while constructing its scale.
         let vals = points.map(\.value).filter(\.isFinite)
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
     }
 
-    /// X-axis tick label formatted for the selected period.
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
@@ -615,7 +507,6 @@ struct PortfolioOverview: View {
         }
     }
 
-    /// Smooth hover crosshair drawn as an overlay (not chart marks).
     @ViewBuilder private func valueCrosshair(_ proxy: ChartProxy, points: [ValuePoint], tint: Color) -> some View {
         GeometryReader { geo in
             if let plotAnchor = proxy.plotFrame {
@@ -625,7 +516,6 @@ struct PortfolioOverview: View {
                         .onContinuousHover { phase in
                             switch phase {
                             case .active(let loc):
-                                // Clamp inside the plot so edges still resolve a value.
                                 let localX = min(max(loc.x - plot.minX, 0), plot.width)
                                 if let d: Date = proxy.value(atX: localX) {
                                     hoverPoint = nearestByDate(points, to: d, date: \.date)
@@ -659,8 +549,6 @@ struct PortfolioOverview: View {
     @ViewBuilder private func heroChart(_ ds: (points: [ValuePoint], isEstimated: Bool)) -> some View {
         let points = ds.points
         if points.count >= 2 {
-            // Consistent color across periods: emerald when the period is up,
-            // terracotta when down. Estimated state is shown by the dash only.
             let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
             let tint = periodUp ? DS.up : DS.down
             Chart {
@@ -700,10 +588,7 @@ struct PortfolioOverview: View {
             }
             .chartLegend(.hidden)
             .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
-            // Morph marks in place when async data lands (avoids a hard "pop" as
-            // intraday/history loads after a range switch).
             .animation(.easeInOut(duration: 0.4), value: points)
-            // Range switch replaces the chart; crossfade it rather than cut.
             .id(chartRange)
             .transition(.opacity.animation(.easeInOut(duration: 0.4)))
         } else {
@@ -775,60 +660,6 @@ struct PortfolioOverview: View {
             case .y5: return cal.date(byAdding: .year, value: -5, to: now) ?? now
             case .y10: return cal.date(byAdding: .year, value: -10, to: now) ?? now
             }
-        }
-    }
-
-    private var portfolioInceptionDate: Date? {
-        if let purchaseDate = earliestPurchaseDate {
-            return Calendar.current.startOfDay(for: purchaseDate)
-        }
-        if let snapDate = series.first?.date {
-            return Calendar.current.startOfDay(for: snapDate)
-        }
-        return nil
-    }
-
-    private func portfolioPerformance(for period: PerformancePeriod, points: [ValuePoint]) -> Double? {
-        guard points.count >= 2, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
-        let cutoff = period.cutoffDate()
-        let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
-
-        // Only enforce strict inception cutoff for long-term periods (5Y, 10Y) if portfolio inception is known
-        if (period == .y5 || period == .y10), let inception = portfolioInceptionDate {
-            guard inception <= graceCutoff else { return nil }
-        }
-
-        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.value) > 1e-9 else { return nil }
-        return ((lastVal - startPoint.value) / abs(startPoint.value)) * 100
-    }
-
-    private func spxPerformance(for period: PerformancePeriod) -> Double? {
-        let points = stockService.priceHistoryMax["^GSPC"] ?? stockService.priceHistory["^GSPC"] ?? []
-        guard points.count >= 2, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
-        let cutoff = period.cutoffDate()
-        let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
-        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }), abs(startPoint.close) > 1e-9 else { return nil }
-        return ((lastPrice - startPoint.close) / abs(startPoint.close)) * 100
-    }
-
-    /// Evaluates benchmark matrix once per app session (not updating real-time).
-    private var cachedPerformance: (portfolio: [PerformancePeriod: Double?], spx: [PerformancePeriod: Double?]) {
-        let holdingsFingerprint = portfolios.flatMap { $0.holdings }.map { "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage)" }.joined(separator: ";")
-        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
-        return PerformanceBenchmarkCache.performance(for: fullKey) {
-            let hs = portfolios.flatMap { $0.holdings }
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol] ?? stockService.priceHistory[h.symbol] ?? []
-            }
-            let maxPoints = valueSeries(from: histBySymbol)
-            var pDict: [PerformancePeriod: Double?] = [:]
-            var sDict: [PerformancePeriod: Double?] = [:]
-            for period in PerformancePeriod.allCases {
-                pDict[period] = portfolioPerformance(for: period, points: maxPoints)
-                sDict[period] = spxPerformance(for: period)
-            }
-            return (pDict, sDict)
         }
     }
 
@@ -912,21 +743,6 @@ struct PortfolioOverview: View {
                     }
                 }
             }
-        }
-    }
-
-    private var moneyWeightedComparison: InvestmentEffectiveness.Result {
-        let hs = portfolios.flatMap { $0.holdings }
-        let holdingsFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
-        }.joined(separator: ";")
-        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
-        return MoneyWeightedReturnCache.result(for: fullKey) {
-            InvestmentEffectiveness.evaluate(
-                holdings: hs,
-                stockService: stockService,
-                storageService: storageService
-            )
         }
     }
 
@@ -1270,17 +1086,7 @@ struct PortfolioOverview: View {
                                 return insertionOrderedSymbols.filter { groupedValued[$0] != nil }
                             }
                             return groupedValued.keys.sorted { sym1, sym2 in
-                                guard let g1 = groupedValued[sym1], let g2 = groupedValued[sym2] else { return false }
                                 let isAsc = sortAscending
-
-                                func compareOptional(_ lhs: Double?, _ rhs: Double?) -> Bool {
-                                    switch (lhs, rhs) {
-                                    case let (l?, r?): return isAsc ? l < r : l > r
-                                    case (_?, nil): return true
-                                    case (nil, _?): return false
-                                    case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
-                                    }
-                                }
 
                                 switch sortColumn {
                                 case .manual:
@@ -1288,23 +1094,29 @@ struct PortfolioOverview: View {
                                 case .symbol:
                                     return isAsc ? sym1 < sym2 : sym1 > sym2
                                 case .price:
-                                    let p1 = g1.first?.quote.changePercent ?? 0
-                                    let p2 = g2.first?.quote.changePercent ?? 0
+                                    let p1 = groupedValued[sym1]?.first?.quote.changePercent ?? 0
+                                    let p2 = groupedValued[sym2]?.first?.quote.changePercent ?? 0
                                     return isAsc ? p1 < p2 : p1 > p2
                                 case .extended:
-                                    return compareOptional(g1.first?.quote.extendedChangePercent,
-                                                           g2.first?.quote.extendedChangePercent)
+                                    let e1 = groupedValued[sym1]?.first?.quote.extendedChangePercent
+                                    let e2 = groupedValued[sym2]?.first?.quote.extendedChangePercent
+                                    switch (e1, e2) {
+                                    case let (l?, r?): return isAsc ? l < r : l > r
+                                    case (_?, nil): return true
+                                    case (nil, _?): return false
+                                    case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                                    }
                                 case .cost:
-                                    let c1 = g1.reduce(0) { $0 + $1.cost }
-                                    let c2 = g2.reduce(0) { $0 + $1.cost }
+                                    let c1 = viewModel.symbolAggregates[sym1]?.nativeCost ?? groupedValued[sym1]?.reduce(0) { $0 + $1.cost } ?? 0
+                                    let c2 = viewModel.symbolAggregates[sym2]?.nativeCost ?? groupedValued[sym2]?.reduce(0) { $0 + $1.cost } ?? 0
                                     return isAsc ? c1 < c2 : c1 > c2
                                 case .value, .weight:
-                                    let v1 = g1.reduce(0) { $0 + $1.value }
-                                    let v2 = g2.reduce(0) { $0 + $1.value }
+                                    let v1 = viewModel.symbolAggregates[sym1]?.value ?? groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0
+                                    let v2 = viewModel.symbolAggregates[sym2]?.value ?? groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0
                                     return isAsc ? v1 < v2 : v1 > v2
                                 case .pnl:
-                                    let pnl1 = g1.reduce(0) { $0 + ($1.value - $1.cost) }
-                                    let pnl2 = g2.reduce(0) { $0 + ($1.value - $1.cost) }
+                                    let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
+                                    let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
                                     return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
                                 }
                             }
@@ -1312,19 +1124,22 @@ struct PortfolioOverview: View {
 
                         ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
                             if let group = groupedValued[sym], let first = group.first {
-                                let groupVal = group.reduce(0) { $0 + $1.value }
+                                let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
                                 let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
 
                                 NavigationLink(value: first.id) {
-                                    PositionSummaryRow(position: index + 1,
-                                                       symbol: sym,
-                                                       holdings: group,
-                                                       currencySymbol: currencySymbol,
-                                                       weight: weight,
-                                                       topWeight: topWeight,
-                                                       decimals: decimals,
-                                                       valueDecimals: storageService.valueDecimals,
-                                                       showExtendedHours: storageService.showExtendedHours)
+                                    PositionSummaryRow(
+                                        position: index + 1,
+                                        symbol: sym,
+                                        holdings: group,
+                                        currencySymbol: currencySymbol,
+                                        weight: weight,
+                                        topWeight: topWeight,
+                                        decimals: decimals,
+                                        valueDecimals: storageService.valueDecimals,
+                                        showExtendedHours: storageService.showExtendedHours,
+                                        aggregate: viewModel.symbolAggregates[sym]
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .help("View \(sym) details")
@@ -1368,8 +1183,6 @@ struct PortfolioOverview: View {
         .premiumCard()
     }
 
-    /// Visible "+ Add holding" affordance. Adds directly to the focused portfolio;
-    /// on "All Portfolios" it picks the one portfolio, or offers a menu to choose.
     @ViewBuilder private var addHoldingButton: some View {
         let isReadOnly: Bool = {
             switch scope {
@@ -1452,6 +1265,8 @@ private struct PositionSummaryRow: View {
     let decimals: Int
     let valueDecimals: Int
     let showExtendedHours: Bool
+    /// Pre-computed per-symbol aggregate from ViewModel (nil fallback for legacy).
+    let aggregate: PortfolioViewModel.SymbolAggregate?
 
     @State private var hovered = false
 
@@ -1466,12 +1281,19 @@ private struct PositionSummaryRow: View {
         return StorageService.currencySymbol(for: curr)
     }
 
+    /// Use pre-computed aggregate when available, fall back to per-row computation.
     private var totalNativeCost: Double {
-        holdings.reduce(0) { $0 + $1.holding.costBasisLocal }
+        if let agg = aggregate, agg.nativeCost != 0 {
+            return agg.nativeCost
+        }
+        return holdings.reduce(0) { $0 + $1.holding.costBasisLocal }
     }
 
     private var totalNativeValue: Double {
-        holdings.reduce(0) { sum, h in
+        if let agg = aggregate, agg.nativeValue != 0 {
+            return agg.nativeValue
+        }
+        return holdings.reduce(0) { sum, h in
             let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
             let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.marketValue(currentPrice: price)
@@ -1479,7 +1301,10 @@ private struct PositionSummaryRow: View {
     }
 
     private var totalNativePnl: Double {
-        holdings.reduce(0) { sum, h in
+        if let agg = aggregate {
+            return agg.nativePnl
+        }
+        return holdings.reduce(0) { sum, h in
             let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
             let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.pnl(currentPrice: price)
