@@ -36,12 +36,15 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 
 ## 6. Quy trình Git Branching & Automation (Feature Branch & PR Workflow)
 - **Tự động tạo Feature / Fix Branch**: Mỗi khi người dùng giao nhiệm vụ sửa bug hoặc phát triển tính năng mới, **tự động tạo nhánh riêng biệt** (`feature/<tên-tính-năng>` hoặc `fix/<tên-lỗi>`) từ `main` trước khi viết code.
-- **Kiểm thử & Commit**: Sau khi viết code xong và bộ kiểm thử (`swift test`) PASS 100%, tự động commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
-- **Commit message ngắn gọn**: Tiêu đề commit/PR **bắt buộc ≤ 72 ký tự**. Dùng body PR để mô tả chi tiết, không nhồi nhét vào title.
-- **Push, Tạo PR & Rebuild app ngay trên Nhánh Feature**:
-  - Push nhánh lên GitHub (`git push origin <branch>`).
-  - Sử dụng GitHub CLI (`gh pr create`) để tự động tạo Pull Request với bảng mô tả chi tiết và gửi link PR cho người dùng.
-  - **Chạy `./dev.sh` ngay trên nhánh feature** để rebuild ứng dụng mới cho người dùng kiểm tra & trải nghiệm trực tiếp.
+- **Kiểm thử → Build → Xác nhận → Commit**: Sau khi viết code xong:
+  1. Chạy `swift test` — PHẢI PASS 100% trước khi tiếp tục.
+  2. Chạy `./dev.sh` (hoặc `swift build`) để rebuild app — PHẢI build thành công.
+  3. **Chờ người dùng xác nhận** app chạy đúng trải nghiệm.
+  4. Sau khi user OK mới commit code với mô tả rõ ràng (`feat(...)`, `fix(...)`).
+- **Commit message ngắn gọn**: Tiêu đề commit/PR **bắt buộc ≤ 72 ký tự**. Body mô tả phải **ngắn gọn ≤5 dòng**. Nếu cần mô tả dài, ghi ra file riêng rồi dẫn link.
+- **Push CHỈ KHI người dùng yêu cầu**: Mặc định KHÔNG push lên GitHub. Khi user bảo "push" mới thực hiện `git push origin <branch>`.
+- **Tạo PR sau khi push**: Sử dụng GitHub CLI (`gh pr create`) với body ngắn gọn sau khi đã push và được user yêu cầu.
+- **Rebuild trên nhánh Feature**: Chạy `./dev.sh` trên nhánh feature để user kiểm tra & trải nghiệm trực tiếp.
 - **Xác nhận Merge (Sau khi người dùng đồng ý)**:
   - **Chờ người dùng xác nhận "OK" / Duyệt**: Sau khi người dùng đồng ý, tiến hành merge PR vào `main` (`gh pr merge --merge --delete-branch`), chuyển về `main` và xoá nhánh local.
 

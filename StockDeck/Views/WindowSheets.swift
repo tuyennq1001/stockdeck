@@ -674,6 +674,37 @@ struct WatchlistSearchSheet: View {
     @State private var results: [SearchResult] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var filter: AssetFilter = .all
+    @State private var hoveredSymbol: String? = nil
+
+    enum AssetFilter: String, CaseIterable {
+        case all, stocks, funds, crypto
+        var label: String {
+            switch self {
+            case .all: "All"
+            case .stocks: "Stocks"
+            case .funds: "Funds"
+            case .crypto: "Crypto"
+            }
+        }
+    }
+
+    private var filteredResults: [SearchResult] {
+        switch filter {
+        case .all: return results
+        case .stocks: return results.filter { r in
+            let t = r.type.uppercased()
+            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK"
+        }
+        case .funds: return results.filter { r in
+            let t = r.type.uppercased()
+            return t == "MUTUALFUND" || t == "MONEYMARKET" || t == "BOND"
+        }
+        case .crypto: return results.filter { r in
+            r.type.uppercased() == "CRYPTOCURRENCY"
+        }
+        }
+    }
 
     private var looksLikeISIN: Bool {
         let q = query.trimmingCharacters(in: .whitespaces)
@@ -681,7 +712,7 @@ struct WatchlistSearchSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Add to watchlist").font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
                 Spacer()
@@ -692,19 +723,40 @@ struct WatchlistSearchSheet: View {
             DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)", text: $query)
                 .onChange(of: query) { _, new in runSearch(new) }
 
+            // Filter tabs
+            HStack(spacing: 4) {
+                ForEach(AssetFilter.allCases, id: \.self) { f in
+                    Button(f.label) { filter = f }
+                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                        .foregroundStyle(filter == f ? DS.ink : DS.inkTertiary)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(filter == f ? DS.cardAlt : Color.clear)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+
             if isSearching {
                 HStack { Spacer(); DSSpinner(size: 20); Spacer() }.frame(height: 120)
-            } else if results.isEmpty && query.count >= 2 {
+            } else if filteredResults.isEmpty && query.count >= 2 {
                 Text("No results").font(DS.caption).foregroundStyle(DS.inkSecondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else {
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(results) { r in
+                        ForEach(filteredResults) { r in
                             Button { add(r) } label: { resultRow(r) }
                                 .buttonStyle(.plain)
                                 .pointingHandCursor()
-                            if r.id != results.last?.id {
+                                .onHover { inside in hoveredSymbol = inside ? r.id : nil }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(hoveredSymbol == r.id ? DS.brand.opacity(0.06) : Color.clear)
+                                )
+                            if r.id != filteredResults.last?.id {
                                 Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                             }
                         }
@@ -715,7 +767,7 @@ struct WatchlistSearchSheet: View {
         }
         .padding(24)
         .frame(width: 480)
-        .frame(minHeight: 260)
+        .frame(minHeight: 300)
         .background(DS.ground)
     }
 
@@ -727,11 +779,12 @@ struct WatchlistSearchSheet: View {
                 Text(r.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
             }
             Spacer()
-            if let q = stockService.quotes[r.symbol] {
-                Text("\(q.price.formatted(.number.precision(.fractionLength(2)))) \(q.currency)")
-                    .font(DS.figure).foregroundStyle(DS.inkSecondary)
+            if !r.exchange.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "building.columns").font(.system(size: 9)).foregroundStyle(DS.inkTertiary)
+                    Text(Self.friendlyExchange(r.exchange)).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                }
             }
-            if !r.type.isEmpty { Tag(text: r.type.uppercased(), color: DS.inkTertiary) }
             if storageService.watchlist.contains(r.symbol) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(DS.up).font(.system(size: 12))
             }
@@ -750,9 +803,83 @@ struct WatchlistSearchSheet: View {
             let res = await stockService.search(query: q)
             guard !Task.isCancelled else { return }
             results = res; isSearching = false
-            let symbols = res.map(\.symbol)
-            if !symbols.isEmpty { await stockService.fetchQuotes(symbols: symbols) }
         }
+    }
+
+    /// Maps raw exchange codes (NMS, NYQ, CCC, SHZ...) to human-readable names.
+    /// Unknown codes are shown as "Exchange: XXX" for clarity.
+    static func friendlyExchange(_ raw: String) -> String {
+        // fmt - space-preserved
+        let map: [String: String] = [
+            // US
+            "NMS": "NASDAQ", "NYQ": "NYSE", "NCM": "NASDAQ CM",
+            "ASE": "NYSE American", "BTS": "BATS",
+            "PCX": "NYSE Arca", "BAT": "BATS", "CBS": "CBOE",
+            "YHD": "OTC", "OTC": "OTC", "PNK": "OTC Pink",
+            "OQB": "OTCQB", "OQX": "OTCQX", "PSX": "NASDAQ PSX",
+            "NSM": "NASDAQ", "NSDQ": "NASDAQ", "BATS": "BATS",
+            "IEX": "IEX",
+            // Canada
+            "TOR": "Toronto", "TSX": "Toronto", "TSV": "TSX Venture",
+            "VAN": "TSX Venture", "CNQ": "CSE", "NEO": "NEO",
+            // Mexico
+            "MEX": "Mexico", "BMV": "Mexico",
+            // UK
+            "LSE": "London", "LON": "London", "IOB": "London IOB",
+            "AIM": "AIM London",
+            // Europe
+            "FRA": "Frankfurt", "GER": "Xetra", "ETR": "Xetra",
+            "STU": "Stuttgart", "BER": "Berlin", "MUN": "Munich",
+            "DUS": "Dusseldorf", "HAM": "Hamburg", "HAN": "Hannover",
+            "PAR": "Paris", "AMS": "Amsterdam", "BRU": "Brussels",
+            "LIS": "Lisbon", "MIL": "Milan", "MCE": "Madrid",
+            "SWX": "Zurich", "VIE": "Vienna", "WAR": "Warsaw",
+            "OSL": "Oslo", "STO": "Stockholm", "CPH": "Copenhagen",
+            "HEL": "Helsinki", "ICE": "Iceland", "RSE": "Riga",
+            "TAL": "Tallinn", "VSE": "Vilnius", "BUD": "Budapest",
+            "PRA": "Prague", "ATH": "Athens", "IST": "Istanbul",
+            "LUX": "Luxembourg", "MLT": "Malta",
+            // Nordics
+            "OMX": "OMX Nordic", "NGM": "Nordic Growth",
+            "FNB": "First North",
+            // Japan
+            "TKS": "Tokyo", "TSE": "Tokyo", "OSA": "Osaka",
+            "JPX": "JPX", "JASDAQ": "JASDAQ", "NGO": "Nagoya",
+            "SAP": "Sapporo", "FUK": "Fukuoka", "JP_FUND": "JP Fund",
+            // China / HK / Taiwan
+            "HKG": "Hong Kong", "SHA": "Shanghai", "SHE": "Shenzhen",
+            "CCC": "China Connect", "SHZ": "Shenzhen Connect",
+            "TWO": "Taiwan", "TPE": "Taiwan",
+            // Other Asia
+            "KRX": "Korea", "KOSDAQ": "KOSDAQ", "KSC": "Korea",
+            "BOM": "Bombay", "NSE": "NSE India", "NSI": "NSE India",
+            "SES": "Singapore", "SGX": "Singapore",
+            "KLS": "Malaysia", "JKT": "Jakarta", "SET": "Thailand",
+            "PSE": "Philippines", "HOSE": "Vietnam", "HNX": "Hanoi",
+            "AST": "Australia", "ASX": "Australia",
+            "NZS": "New Zealand",
+            // Middle East
+            "TLV": "Tel Aviv", "DFM": "Dubai", "ADX": "Abu Dhabi",
+            "TADAWUL": "Tadawul", "QE": "Qatar", "KWT": "Kuwait",
+            // Africa
+            "JSE": "Johannesburg", "EGX": "Egypt", "CASA": "Casablanca",
+            "NSEKE": "Nairobi",
+            // South America
+            "BUE": "Buenos Aires", "BOV": "Sao Paulo",
+            "SGO": "Santiago", "BVC": "Colombia", "LIMA": "Lima",
+            // Crypto
+            "BINANCE": "Binance", "Binance": "Binance", "BIN": "Binance",
+            "CRYPTO": "Crypto", "COINBASE": "Coinbase",
+            // Indices / Other
+            "INDEX": "Index", "CCY": "Currency",
+        ]
+        let upper = raw.uppercased().trimmingCharacters(in: .whitespaces)
+        if let friendly = map[upper] { return friendly }
+        // For unknown short codes, show as "Exch: XXX" so users know it's an exchange
+        if upper.count <= 5 && upper.allSatisfy({ $0.isLetter || $0 == "_" }) {
+            return "Exch: \(upper)"
+        }
+        return raw
     }
 
     private func add(_ r: SearchResult) {
