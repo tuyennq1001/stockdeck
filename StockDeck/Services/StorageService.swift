@@ -404,7 +404,9 @@ class StorageService: ObservableObject {
     /// decimal separator, e.g. "1,234.56" (en) / "1.234,56" (it). Falls back to a
     /// non-grouped representation if the formatter ever fails.
     nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent) -> String {
-        guard value.isFinite else { return "NaN" }
+        // When a numeric value is not finite, show a dash so UI cells display
+        // "-" instead of "NaN" for missing/unknown data (e.g. unknown cost).
+        guard value.isFinite else { return "-" }
         // Grouping is inserted manually (every 3 digits from the right) so every value
         // > 1,000 is separated regardless of the locale's CLDR rule (e.g. it/es only group
         // from 10,000 by default), and without needing macOS 15's `minimumGroupingDigits`.
@@ -436,6 +438,9 @@ class StorageService: ObservableObject {
     /// "€1,234.56", "+€820.00", "-€540.00". The sign (when shown) precedes the symbol.
     nonisolated static func formatAmount(_ value: Double, symbol: String, decimals: Int = 2, signed: Bool = false,
                              locale: Locale = .autoupdatingCurrent) -> String {
+        // When the numeric value is not finite (NaN/Inf), show a dash so the UI
+        // doesn't display "NaN" for P&L or cost when a holding has unknown cost.
+        guard value.isFinite else { return "-" }
         let sign = signed ? (value >= 0 ? "+" : "-") : (value < 0 ? "-" : "")
         let magnitude = formatNumber(abs(value), decimals: decimals, locale: locale)
         return "\(sign)\(symbol)\(magnitude)"
