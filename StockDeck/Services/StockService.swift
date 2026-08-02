@@ -277,7 +277,8 @@ class StockService: ObservableObject {
         let equitySymbols = regularSymbols.filter { Self.isBinanceEquitySymbol($0) }
         let cryptoSymbols = regularSymbols.filter { sym in
             let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
-            return !equitySymbols.contains(sym) && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD"))
+            return !equitySymbols.contains(sym)
+                && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD") || StorageService.isBinanceNativePair(sym))
         }
         let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) && !equitySymbols.contains($0) }
 
@@ -514,6 +515,8 @@ class StockService: ObservableObject {
         guard !symbols.isEmpty else { return }
 
         // Resolve each requested symbol to the concrete Binance pairs we need.
+        // Symbols that are already native Binance pairs (BTCUSDT, BTCETH) are used
+        // directly; Yahoo-style symbols (BTC-USD) map to <BASE>USDT.
         // Adding ETHUSDT + BETHETH (when BETH/WBETH is held) lets us derive a
         // USD price for the staking tokens even though no direct BETHUSDT exists.
         var pairSymbols: Set<String> = []
@@ -525,7 +528,11 @@ class StockService: ObservableObject {
             if BinanceStablecoin.isUSDPegged(cleanBase) {
                 continue // handled locally with a 1.0 peg, no API call needed
             }
-            pairSymbols.insert("\(cleanBase)USDT")
+            if StorageService.isBinanceNativePair(cleanBase) {
+                pairSymbols.insert(cleanBase)
+            } else {
+                pairSymbols.insert("\(cleanBase)USDT")
+            }
             if cleanBase == "BETH" || cleanBase == "WBETH" {
                 pairSymbols.insert("ETHUSDT")
                 pairSymbols.insert("BETHETH")
@@ -602,8 +609,12 @@ class StockService: ObservableObject {
                 continue
             }
 
-            // Match pair on Binance (e.g. ETH -> ETHUSDT, WBETH -> WBETHUSDT)
-            let matchedTicker: BinanceTicker24hr? = tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"]
+            // Match pair on Binance. Native pairs (BTCUSDT, BTCETH) are looked up
+            // directly; base symbols (ETH, WBETH) fall back to <BASE>USDT or <BASE>BTC.
+            let isNative = StorageService.isBinanceNativePair(cleanBase)
+            let matchedTicker: BinanceTicker24hr? = isNative
+                ? tickerMap[cleanBase]
+                : (tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"])
 
             // Fallback for BETH / WBETH if BETHUSDT isn't direct
             if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {

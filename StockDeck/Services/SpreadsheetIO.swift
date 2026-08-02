@@ -289,8 +289,8 @@ enum SpreadsheetIO {
             ["Japanese Stocks", "6861", "JP"],
             ["Hong Kong", "9988", "HK"],
             ["London", "HSBA", "UK"],
-            ["Crypto", "BTC-USD", "CRYPTO"],
-            ["Crypto", "ETH-USD", "CRYPTO"]
+            ["Crypto", "BTC", "CRYPTO"],
+            ["Crypto", "ETH", "CRYPTO"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }

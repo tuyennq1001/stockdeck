@@ -752,6 +752,21 @@ class StorageService: ObservableObject {
     /// Whether a base symbol (e.g. "PEPE", "FDUSD") is a known cryptocurrency
     /// traded on Binance. Symbols that are NOT in this set fall through to Yahoo
     /// Finance, which is less reliable for crypto and can fail for newer tokens.
+    /// Whether a symbol is already a native Binance pair (e.g. "BTCUSDT",
+    /// "BTCUSDC", "BTCETH"). Detects by checking the trailing quote asset.
+    nonisolated static func isBinanceNativePair(_ symbol: String) -> Bool {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let quoteAssets: Set<String> = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD", "BTC", "ETH", "BNB"]
+        guard !BinanceStablecoin.isUSDPegged(upper) else { return false }
+        for q in quoteAssets where upper.hasSuffix(q) && upper.count > q.count {
+            let base = String(upper.dropLast(q.count))
+            if base.count >= 2 && (isStandardCryptoSymbol(base) || base.allSatisfy({ $0.isLetter })) {
+                return true
+            }
+        }
+        return false
+    }
+
     nonisolated static func isStandardCryptoSymbol(_ symbol: String) -> Bool {
         let knownCrypto: Set<String> = [
             // Major / Layer 1
