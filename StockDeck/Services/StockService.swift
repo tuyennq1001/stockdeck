@@ -1353,8 +1353,9 @@ class StockService: ObservableObject {
         }
     }
 
-    /// Searches Binance trading pairs whose baseAsset matches the query.
-    /// Picks the best quote asset per base: USDT > USDC > FDUSD > BTC > ETH > first available.
+    /// Searches Binance trading pairs. Matches both the base asset (e.g. "BTC",
+    /// "HYPE" → returns BTC-USD / HYPE-USD) AND full native pair symbols
+    /// (e.g. "BTCUSDT", "HYPEUSDT" → returns the native pair directly).
     private func fetchBinanceSearch(query: String) async -> [SearchResult] {
         let allSymbols = await fetchBinanceExchangeInfo()
         let upperQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -1370,8 +1371,10 @@ class StockService: ObservableObject {
         let quotePriority: [String: Int] = ["USDT": 0, "USDC": 1, "FDUSD": 2, "BTC": 3, "ETH": 4]
 
         var results: [SearchResult] = []
+        var seenBase = Set<String>()
+
+        // Pass 1: match base asset (HYPE → HYPE-USD)
         for (base, pairs) in baseMap where base.contains(upperQuery) {
-            // Filter stablecoins (they are separate assets with their own entries)
             let isStablecoin = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USDP", "PAXG"].contains(base)
             let type = isStablecoin ? "CRYPTOCURRENCY" : "CRYPTOCURRENCY"
 
@@ -1389,7 +1392,29 @@ class StockService: ObservableObject {
                 exchange: "Binance",
                 type: type
             ))
+            seenBase.insert(base)
         }
+
+        // Pass 2: match full pair symbols (BTCUSDT, HYPEUSDT) — return native pair.
+        // Only show native pairs when the query look like a pair (≥6 chars), so
+        // short base queries like "BTC" don't dump hundreds of pair variants.
+        var nativeCount = 0
+        let maxNativeResults = 20
+        if upperQuery.count >= 6 {
+            for s in allSymbols where s.symbol.contains(upperQuery) {
+                // Skip if this base already surfaced via pass 1.
+                if seenBase.contains(s.baseAsset) { continue }
+                results.append(SearchResult(
+                    symbol: s.symbol,
+                    name: s.baseAsset,
+                    exchange: "Binance",
+                    type: "CRYPTOCURRENCY"
+                ))
+                nativeCount += 1
+                if nativeCount >= maxNativeResults { break }
+            }
+        }
+
         return results
     }
 
