@@ -283,9 +283,14 @@ enum SpreadsheetIO {
             ["Tech Watchlist", "MSFT", "US"],
             ["Global Indices", "^GSPC", "US"],
             ["Vietnamese Stocks", "VGT", "VN"],
+            ["Vietnamese Stocks", "VNM", "VN"],
             ["Japanese Stocks", "201A", "JP"],
             ["Japanese Stocks", "7203", "JP"],
-            ["Hong Kong", "9988", "HK"]
+            ["Japanese Stocks", "6861", "JP"],
+            ["Hong Kong", "9988", "HK"],
+            ["London", "HSBA", "UK"],
+            ["Crypto", "BTC-USD", "CRYPTO"],
+            ["Crypto", "ETH-USD", "CRYPTO"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
@@ -414,7 +419,7 @@ enum SpreadsheetIO {
     }
 
     /// Maps a market code to its Yahoo Finance suffix.
-    /// Returns nil for US (no suffix needed).
+    /// Returns nil for markets that don't need a suffix.
     private static func marketSuffix(for market: String) -> String? {
         switch market.uppercased().trimmingCharacters(in: .whitespaces) {
         case "US": return nil
@@ -424,6 +429,7 @@ enum SpreadsheetIO {
         case "UK", "L", "GB": return ".L"
         case "DE": return ".DE"
         case "FR", "PA": return ".PA"
+        case "CRYPTO": return "-USD"
         default: return ".\(market.uppercased().trimmingCharacters(in: .whitespaces))"
         }
     }
