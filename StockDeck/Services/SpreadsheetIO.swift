@@ -57,9 +57,9 @@ enum SpreadsheetIO {
             for (cIdx, val) in row.enumerated() {
                 let colLetter = columnLetter(cIdx + 1)
                 let escaped = escapeXML(val)
-                if let num = Double(val), !val.contains("-") && val != num.description {
-                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
-                } else if let num = Double(val) {
+                // Only numeric if round-trip String(Double(val)) matches original.
+                // Prevents "7203" → "7203.0" which breaks JP stock re-import.
+                if let num = Double(val), String(num) == val {
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
                 } else {
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\" t=\"inlineStr\"><is><t>\(escaped)</t></is></c>\n"
