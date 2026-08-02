@@ -276,19 +276,22 @@ enum SpreadsheetIO {
 
     /// Generates a sample Watchlist Excel (.xlsx) file data.
     static func generateWatchlistSampleXLSXData() -> Data? {
-        let headers = ["Watchlist Name", "Symbol"]
+        let headers = ["Watchlist Name", "Symbol", "Market"]
         let rows: [[String]] = [
-            ["Tech Watchlist", "AAPL"],
-            ["Tech Watchlist", "NVDA"],
-            ["Tech Watchlist", "MSFT"],
-            ["Global Indices", "^GSPC"],
-            ["Japanese Stocks", "201A"],
-            ["Japanese Stocks", "6689"]
+            ["Tech Watchlist", "AAPL", "US"],
+            ["Tech Watchlist", "NVDA", "US"],
+            ["Tech Watchlist", "MSFT", "US"],
+            ["Global Indices", "^GSPC", "US"],
+            ["Vietnamese Stocks", "VGT", "VN"],
+            ["Japanese Stocks", "201A", "JP"],
+            ["Japanese Stocks", "7203", "JP"],
+            ["Hong Kong", "9988", "HK"]
         ]
         return generateXLSXData(headers: headers, rows: rows)
     }
 
     /// Parses a file (CSV or XLSX) into multiple watchlists grouped by name.
+    /// Supports optional "Market" column (3rd column) to explicitly specify exchange.
     /// Returns a list of (watchlistName, symbols), maintaining encounter order.
     static func parseWatchlistsFile(from fileURL: URL) -> [(name: String, symbols: [String])]? {
         let ext = fileURL.pathExtension.lowercased()
@@ -317,6 +320,7 @@ enum SpreadsheetIO {
         var startIdx = 0
         var symbolCol = 0
         var nameCol = -1
+        var marketCol = -1
 
         for (cIdx, col) in rows[0].enumerated() {
             let lower = col.lowercased()
@@ -324,8 +328,11 @@ enum SpreadsheetIO {
                 symbolCol = cIdx
                 startIdx = 1
             }
-            if lower.contains("watchlist") || (lower.contains("name") && !lower.contains("symbol")) {
+            if lower.contains("watchlist") || (lower.contains("name") && !lower.contains("symbol") && !lower.contains("market")) {
                 nameCol = cIdx
+            }
+            if lower == "market" || lower.contains("exchange") || lower.contains("sàn") {
+                marketCol = cIdx
             }
         }
 
@@ -339,7 +346,16 @@ enum SpreadsheetIO {
             let rawSym = row[symbolCol].trimmingCharacters(in: .whitespacesAndNewlines)
             if rawSym.isEmpty || rawSym.lowercased() == "symbol" { continue }
 
-            let sym = normalizeWatchlistSymbol(rawSym)
+            // Read Market column if present; if column exists but value is empty → skip row
+            var market: String? = nil
+            if marketCol >= 0 {
+                guard marketCol < row.count else { continue }
+                let m = row[marketCol].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !m.isEmpty, m.lowercased() != "market" else { continue }
+                market = m
+            }
+
+            let sym = normalizeWatchlistSymbol(rawSym, market: market)
 
             var wlName = fallbackName
             if nameCol >= 0 && nameCol < row.count {
@@ -365,11 +381,13 @@ enum SpreadsheetIO {
     }
 
     /// Normalizes a raw symbol string for watchlist import.
-    /// - JP stock codes ending with a letter (e.g. "201A") get ".T" suffix
-    /// - Pure numeric codes (e.g. "9988" HK, "6689" JP) are kept as-is — no way to distinguish
-    /// - Mutual fund names are resolved to their fund codes
+    /// - If `market` is provided, appends the correct suffix (US → no suffix, JP → .T, VN → .VN, HK → .HK, UK/GB/L → .L)
+    /// - If `market` is nil (legacy files without Market column), auto-detects:
+    ///   - Fund names → fund codes
+    ///   - JP codes with letter suffix (201A) → .T
+    ///   - Pure numeric codes left as-is (ambiguous: 6689 could be JP or HK)
     /// - US/other tickers are uppercased
-    private static func normalizeWatchlistSymbol(_ raw: String) -> String {
+    private static func normalizeWatchlistSymbol(_ raw: String, market: String? = nil) -> String {
         // Try resolving as a Japanese fund name first
         if let fundCode = resolveJapaneseFundCode(from: raw) {
             return fundCode
@@ -377,8 +395,14 @@ enum SpreadsheetIO {
 
         let upper = raw.uppercased()
 
-        // JP stock codes with letter suffix: e.g. 201A, 133A. Only these can be reliably detected.
-        // Pure numeric codes (6689, 9988) are ambiguous (JP vs HK) — leave as-is.
+        // If market is explicitly provided, use it to determine suffix
+        if let mkt = market {
+            let suffix = marketSuffix(for: mkt)
+            return suffix == nil ? upper : upper + suffix!
+        }
+
+        // Legacy auto-detection (no Market column)
+        // JP stock codes with letter suffix: e.g. 201A, 133A
         if upper.count <= 5,
            upper.contains(where: { $0.isNumber }),
            let last = upper.last,
@@ -387,6 +411,21 @@ enum SpreadsheetIO {
         }
 
         return upper
+    }
+
+    /// Maps a market code to its Yahoo Finance suffix.
+    /// Returns nil for US (no suffix needed).
+    private static func marketSuffix(for market: String) -> String? {
+        switch market.uppercased().trimmingCharacters(in: .whitespaces) {
+        case "US": return nil
+        case "JP": return ".T"
+        case "VN": return ".VN"
+        case "HK": return ".HK"
+        case "UK", "L", "GB": return ".L"
+        case "DE": return ".DE"
+        case "FR", "PA": return ".PA"
+        default: return ".\(market.uppercased().trimmingCharacters(in: .whitespaces))"
+        }
     }
 
     /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).
