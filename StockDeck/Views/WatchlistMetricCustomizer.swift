@@ -33,8 +33,6 @@ struct WatchlistMetricCustomizer: View {
     @State private var selectedPreset: MetricPreset = .custom
     @State private var draggingMetric: WatchlistMetric?
 
-    private let maxMetrics = 12
-
     init(initialMetrics: [WatchlistMetric], onApply: @escaping ([WatchlistMetric]) -> Void) {
         self.initialMetrics = initialMetrics
         self.onApply = onApply
@@ -46,20 +44,9 @@ struct WatchlistMetricCustomizer: View {
             // Header
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text("Choose up to")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(DS.ink)
-                        Text("\(metrics.count)/\(maxMetrics)")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
-                            .foregroundStyle(metrics.count >= maxMetrics ? DS.down : DS.ink)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(DS.cardAlt))
-                        Text("metrics")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(DS.ink)
-                    }
+                    Text("Customize Columns")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(DS.ink)
                     Text("Add, delete and sort metrics just how you need it")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(DS.inkSecondary)
@@ -273,7 +260,7 @@ struct WatchlistMetricCustomizer: View {
                         withAnimation(.spring(response: 0.2)) {
                             if isSelected {
                                 metrics.removeAll { $0 == metric }
-                            } else if metrics.count < maxMetrics {
+                            } else {
                                 metrics.append(metric)
                             }
                             selectedPreset = .custom
@@ -302,7 +289,6 @@ struct WatchlistMetricCustomizer: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(!isSelected && metrics.count >= maxMetrics)
                     .pointingHandCursor()
                 }
             }

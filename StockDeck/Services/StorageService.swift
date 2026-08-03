@@ -54,10 +54,9 @@ class StorageService: ObservableObject {
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
         objectWillChange.send()
-        let normalized = Array(metrics.prefix(12))
         var updated = watchlists
         for index in updated.indices {
-            updated[index].metrics = normalized
+            updated[index].metrics = metrics
         }
         watchlists = updated
     }
