@@ -14,11 +14,11 @@ enum MetricPreset: String, CaseIterable, Identifiable {
         case .custom:
             return WatchlistMetric.defaultSelection
         case .defaultPreset:
-            return [.today, .oneMonth, .threeMonths, .chart7d]
+            return [.price, .today, .oneMonth, .threeMonths, .chart7d]
         case .overview:
-            return [.today, .oneMonth, .oneYear, .ath, .chart7d]
+            return [.price, .today, .oneMonth, .oneYear, .ath, .chart7d]
         case .technical:
-            return [.today, .ytd, .ath, .fromAth, .atl, .fromAtl, .chart30d]
+            return [.price, .ext, .today, .ytd, .ath, .fromAth, .atl, .fromAtl, .chart30d]
         }
     }
 }

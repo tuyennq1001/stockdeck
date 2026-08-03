@@ -48,6 +48,8 @@ struct WatchlistWideView: View {
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
+            case .price, .ext:
+                return nil
             case .today:
                 return changePercent
             case .oneMonth:
@@ -507,11 +509,10 @@ struct WatchlistWideView: View {
     }
 
     private var tableWidth: CGFloat {
-        let base = 24 + WCol.symbol + WCol.price
-        let extended = storageService.showExtendedHours ? WCol.ext : 0
+        let base = 24 + WCol.symbol
         let metricWidth = selectedMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let columns = 3 + selectedMetrics.count + (storageService.showExtendedHours ? 1 : 0)
-        return base + extended + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
+        let columns = 2 + selectedMetrics.count
+        return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
     }
 
     private var tableToolbar: some View {
@@ -662,11 +663,6 @@ struct WatchlistWideView: View {
                 headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
             } else {
                 headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
-                headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
-                if storageService.showExtendedHours {
-                    headerCell("Ext", .extChangePercent, width: WCol.ext, align: .trailing,
-                               help: "Sort by the current pre/post-market % move")
-                }
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
                 }
@@ -862,7 +858,11 @@ private enum WCol {
     static let spacing: CGFloat = 12
 
     static func width(for metric: WatchlistMetric) -> CGFloat {
-        metric.isChart ? 76 : (metric.category == .price ? 92 : period)
+        switch metric {
+        case .price: return price
+        case .ext: return ext
+        default: return metric.isChart ? 76 : (metric.category == .price ? 92 : period)
+        }
     }
 }
 
@@ -950,6 +950,22 @@ private struct WatchRowView<Menu: View>: View {
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
             switch metric {
+            case .price:
+                if row.loaded {
+                    pairedCell(price: row.price, pct: nil,
+                               label: nil, emphasised: !extendedSession)
+                } else {
+                    DSSpinner(size: 12)
+                }
+            case .ext:
+                if showExtended {
+                    if let ext = row.extPrice {
+                        pairedCell(price: ext, pct: row.extChangePercent,
+                                   label: row.extLabel, emphasised: extendedSession)
+                    } else {
+                        Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+                    }
+                }
             case .today:
                 periodCell(row.changePercent)
             case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
@@ -1021,30 +1037,6 @@ private struct WatchRowView<Menu: View>: View {
                 .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
 
                 if !compact {
-                    // Regular price + today's % move.
-                    Group {
-                        if row.loaded {
-                            pairedCell(price: row.price, pct: nil,
-                                       label: nil, emphasised: !extendedSession)
-                        } else {
-                            DSSpinner(size: 12)
-                        }
-                    }
-                    .frame(width: WCol.price, alignment: .trailing)
-
-                    // After-hours price.
-                    if showExtended {
-                        Group {
-                            if let ext = row.extPrice {
-                                pairedCell(price: ext, pct: row.extChangePercent,
-                                           label: row.extLabel, emphasised: extendedSession)
-                            } else {
-                                Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
-                            }
-                        }
-                        .frame(width: WCol.ext, alignment: .trailing)
-                    }
-
                     ForEach(metrics) { metric in
                         metricCell(metric)
                     }
