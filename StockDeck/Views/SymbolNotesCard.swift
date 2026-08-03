@@ -410,7 +410,8 @@ struct SymbolNotesCard: View {
                             NoteRowView(note: note, isEditing: editingNoteId == note.id,
                                         editTitle: $editTitle, editText: $editText,
                                         previewEdit: $previewEdit, editModel: editModel,
-                                        onEdit: { startEditing(note) }, onDelete: { deleteTarget = note }, onImage: { showImagePicker = true })
+                                        onEdit: { startEditing(note) }, onDelete: { deleteTarget = note },
+                                        onCancel: { editingNoteId = nil }, onImage: { showImagePicker = true })
                             if note.id != notes.last?.id { Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 4) }
                         }
                     }
@@ -450,7 +451,7 @@ private struct NoteRowView: View {
     @Binding var editTitle: String; @Binding var editText: String
     @Binding var previewEdit: Bool
     @ObservedObject var editModel: EditorModel
-    let onEdit: () -> Void; let onDelete: () -> Void; let onImage: () -> Void
+    let onEdit: () -> Void; let onDelete: () -> Void; let onCancel: () -> Void; let onImage: () -> Void
 
     @EnvironmentObject var storageService: StorageService
 
@@ -542,5 +543,6 @@ private struct NoteRowView: View {
 
     private func cancelEdit() {
         editTitle = note.title; editText = note.content; previewEdit = false
+        onCancel()
     }
 }
