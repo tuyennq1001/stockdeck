@@ -1186,6 +1186,11 @@ class StockService: ObservableObject {
         SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
     ]
 
+    static let popularJapaneseIndices: [SearchResult] = [
+        SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
+        SearchResult(symbol: "^TOPX", name: "TOPIX", exchange: "JPX", type: "INDEX")
+    ]
+
     nonisolated static func containsJapaneseCharacters(_ str: String) -> Bool {
         for scalar in str.unicodeScalars {
             if (0x3040...0x309F).contains(scalar.value) ||
@@ -1502,6 +1507,12 @@ class StockService: ObservableObject {
         for fund in Self.popularJapaneseFunds {
             if fund.symbol.contains(upperQuery) || fund.name.localizedCaseInsensitiveContains(cleanQuery) {
                 fundResults.append(fund)
+            }
+        }
+
+        for index in Self.popularJapaneseIndices {
+            if index.symbol.contains(upperQuery) || index.name.localizedCaseInsensitiveContains(cleanQuery) {
+                fundResults.append(index)
             }
         }
 
