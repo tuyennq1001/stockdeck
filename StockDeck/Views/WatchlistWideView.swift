@@ -31,6 +31,7 @@ struct WatchlistWideView: View {
         let symbol: String
         let name: String
         let currency: String
+        let isIndex: Bool            // indices have no currency unit
         let price: Double            // regular market price
         let extPrice: Double?        // pre/post-market price, if any
         let extChangePercent: Double? // pre/post-market % move vs regular close
@@ -105,10 +106,12 @@ struct WatchlistWideView: View {
             let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now) ?? now
             let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
             let regularPrice = q?.price ?? 0
+            let indexFlag = q.map { StorageService.isIndex(symbol: $0.symbol, type: storageService.type(for: $0.symbol)) } ?? StorageService.isIndex(symbol: symbol, type: storageService.type(for: symbol))
             return WatchRow(
                 id: symbol, order: index, symbol: symbol,
                 name: q?.name ?? "",
-                currency: (storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? "",
+                currency: indexFlag ? "" : ((storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? ""),
+                isIndex: indexFlag,
                 price: (q?.price ?? 0) * rate,
                 extPrice: ext,
                 extChangePercent: ext != nil ? q?.extendedChangePercent : nil,
@@ -322,7 +325,8 @@ struct WatchlistWideView: View {
     @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
         if let pos = quote.fiftyTwoWeekPosition,
            let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
-            let priceSymbol = StorageService.currencySymbol(for: quote.currency)
+            let idxFlag = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+            let priceSymbol = idxFlag ? "" : StorageService.currencySymbol(for: quote.currency)
             Card(title: "52-week range") {
                 VStack(spacing: 10) {
                     GeometryReader { geo in

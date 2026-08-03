@@ -21,7 +21,8 @@ struct HoldingDetailView: View {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
     private var priceSymbol: String {
-        StorageService.currencySymbol(for: quote.currency)
+        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+        return isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
     }
     private var scopedPortfolios: [Portfolio] {
         switch scope {

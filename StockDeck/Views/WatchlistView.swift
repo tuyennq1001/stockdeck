@@ -557,7 +557,8 @@ struct QuoteRow: View {
     }
 
     private var currSymbol: String {
-        StorageService.currencySymbol(for: displayCurrency)
+        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: StorageService.shared.type(for: quote.symbol))
+        return isIndex ? "" : StorageService.currencySymbol(for: displayCurrency)
     }
 
     var body: some View {
