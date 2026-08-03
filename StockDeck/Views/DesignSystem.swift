@@ -965,14 +965,14 @@ struct DSAlertModifier: ViewModifier {
                                         .font(.inter(12.5, weight: .medium, relativeTo: .body)).foregroundStyle(DS.inkSecondary)
                                         .padding(.horizontal, 14).padding(.vertical, 7)
                                         .background(Capsule().fill(DS.cardAlt))
-                                }.buttonStyle(.plain)
+                                }.buttonStyle(.plain).keyboardShortcut(.escape, modifiers: []).pointingHandCursor()
                             }
-                            Button { isPresented = false; onConfirm() } label: {
+                            Button { onConfirm(); isPresented = false } label: {
                                 Text(LocalizedStringKey(confirmTitle))
                                     .font(.inter(12.5, weight: .semibold, relativeTo: .body)).foregroundStyle(.white)
                                     .padding(.horizontal, 16).padding(.vertical, 7)
                                     .background(Capsule().fill(destructive ? DS.down : DS.brand))
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(.plain).pointingHandCursor()
                         }
                         .padding(.top, 4)
                     }

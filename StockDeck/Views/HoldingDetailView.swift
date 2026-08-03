@@ -76,6 +76,7 @@ struct HoldingDetailView: View {
                     purchaseLotsCard
                     fiftyTwoWeekCard.frame(maxWidth: .infinity)
                     if !relatedNews.isEmpty { newsCard }
+                    SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                 }
                 .pageColumn()
                 .padding(.top, 4)

@@ -243,6 +243,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// User-authored notes per symbol, shared across watchlist and portfolio.
+    @Published var symbolNotes: [String: [SymbolNote]] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// Recurring portfolio notifications, keyed by portfolio id (uuidString).
     @Published var portfolioNotifications: [String: [PortfolioNotification]] = [:] {
         didSet { scheduleSave() }
@@ -314,6 +319,32 @@ class StorageService: ObservableObject {
 
     func alerts(for symbol: String) -> [PriceAlert] {
         alerts.filter { $0.symbol == symbol }
+    }
+
+    // MARK: - Symbol notes
+
+    /// Returns notes for a symbol, newest first.
+    func notes(for symbol: String) -> [SymbolNote] {
+        symbolNotes[symbol] ?? []
+    }
+
+    func addNote(to symbol: String, title: String = "", content: String) {
+        let note = SymbolNote(title: title, content: content)
+        symbolNotes[symbol, default: []].insert(note, at: 0)
+    }
+
+    func updateNote(id: UUID, for symbol: String, title: String? = nil, content: String? = nil) {
+        guard let idx = symbolNotes[symbol]?.firstIndex(where: { $0.id == id }) else { return }
+        if let title = title { symbolNotes[symbol]?[idx].title = title }
+        if let content = content { symbolNotes[symbol]?[idx].content = content }
+        symbolNotes[symbol]?[idx].updatedAt = Date()
+    }
+
+    func deleteNote(id: UUID, from symbol: String) {
+        symbolNotes[symbol]?.removeAll { $0.id == id }
+        if symbolNotes[symbol]?.isEmpty == true {
+            symbolNotes[symbol] = nil
+        }
     }
 
     // MARK: - Portfolio notifications
@@ -948,6 +979,7 @@ class StorageService: ObservableObject {
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
         showNewsTab = true
+        symbolNotes = [:]
         lastSelectedTab = "Watchlist"
     }
 
@@ -1007,6 +1039,7 @@ class StorageService: ObservableObject {
         var fontSizeLevel: Int?
         var fontFamily: String?
         var alerts: [PriceAlert]?
+        var symbolNotes: [String: [SymbolNote]]?
         var showCompanyName: Bool?
         var showDayRange: Bool?
         var show52WeekBar: Bool?
@@ -1050,7 +1083,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1138,6 +1171,7 @@ class StorageService: ObservableObject {
             menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
             isinMap = decoded.isinMap ?? [:]
             alerts = decoded.alerts ?? []
+            symbolNotes = decoded.symbolNotes ?? [:]
             portfolioNotifications = decoded.portfolioNotifications ?? [:]
             portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
             portfolioChartRanges = decoded.portfolioChartRanges ?? [:]

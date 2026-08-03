@@ -311,6 +311,7 @@ struct WatchlistWideView: View {
                     PriceChartCard(symbol: symbol, quote: quote)
                     fiftyTwoWeekCard(quote)
                     factsCard(quote)
+                    SymbolNotesCard(storageService: storageService, symbol: symbol)
                 }
                 .padding(16)
             }
