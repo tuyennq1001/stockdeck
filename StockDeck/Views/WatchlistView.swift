@@ -538,15 +538,6 @@ struct QuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
 
-    private var displayCurrency: String {
-        quote.currency
-    }
-
-    private var currSymbol: String {
-        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: StorageService.shared.type(for: quote.symbol))
-        return isIndex ? "" : StorageService.currencySymbol(for: displayCurrency)
-    }
-
     var body: some View {
         HStack(spacing: 0) {
 
@@ -571,7 +562,7 @@ struct QuoteRow: View {
             // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
             let displayPrice = quote.price
             VStack(alignment: .trailing, spacing: 0) {
-                Text(StorageService.formatCompactAmount(displayPrice, symbol: currSymbol, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+                Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
