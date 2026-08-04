@@ -57,7 +57,10 @@ struct PriceChartCard: View {
     @State private var chartStyle: ChartStyle = .line
     @State private var hoverPoint: PricePoint?
 
-    private var priceSymbol: String { StorageService.currencySymbol(for: quote.currency) }
+    private var priceSymbol: String {
+        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+        return isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
+    }
 
     private var displayedPriceInfo: (price: Double, diff: Double, diffPct: Double, label: String) {
         let basePrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)

@@ -119,7 +119,7 @@ struct PortfolioListView: View {
                     HStack(spacing: 0) {
                         Text("Symbol")
                             .frame(width: 80, alignment: .leading)
-                        Text("Avg Cost")
+                        Text("Avg Price")
                             .frame(width: 72, alignment: .trailing)
                         Text("Price")
                             .frame(width: 72, alignment: .trailing)
@@ -535,7 +535,7 @@ struct PortfolioSection: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("P&L")
+                    Text("Total P&L")
                         .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
                     HStack(spacing: 2) {
@@ -777,7 +777,7 @@ struct HoldingRow: View {
                                 .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
                         }
                     }
-                    Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: 2))")
+                    Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
                         .font(.inter(10, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -789,12 +789,11 @@ struct HoldingRow: View {
             if let quote {
                 let assetCurr = stockService.detectedCurrency(for: holding.symbol)
                 let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                let priceSymbol = StorageService.currencySymbol(for: quoteCurr)
                 let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
 
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
-                    Text("\(priceSymbol)\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
+                    Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
@@ -818,7 +817,7 @@ struct HoldingRow: View {
                 let pnlPct = abs(nativeCost) >= 0.01 ? (pnl / abs(nativeCost)) * 100 : 0
                 let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
-                let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
+                let dec = storageService.amountDecimals
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
@@ -992,7 +991,7 @@ struct GroupedHoldingRow: View {
                                 .padding(.vertical, 1)
                                 .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
                         }
-                        Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: 2)) avg")
+                        Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
                             .font(.inter(10, relativeTo: .caption).monospacedDigit())
                             .foregroundColor(.secondary)
                             .lineLimit(1)
@@ -1005,12 +1004,10 @@ struct GroupedHoldingRow: View {
                     let assetCurr = stockService.detectedCurrency(for: symbol)
                     let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
                     let pRate = stockService.priceRate(from: quoteCurr)
-                    let priceCurr = storageService.stockPriceCurrency
-                    let priceSymbol = StorageService.currencySymbol(for: priceCurr.isEmpty ? quoteCurr : priceCurr)
 
                     // Col 2: Price (regular closing price formatted as integer)
                     HStack(spacing: 3) {
-                        Text("\(priceSymbol)\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
+                        Text("\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                     }
@@ -1024,7 +1021,7 @@ struct GroupedHoldingRow: View {
                     let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
                     let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
-                    let dec = storageService.valueDecimals >= 0 ? storageService.valueDecimals : 0
+                    let dec = storageService.amountDecimals
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
@@ -1058,7 +1055,7 @@ struct GroupedHoldingRow: View {
                                     .font(.system(size: 8))
                                     .foregroundColor(.secondary)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(formatQty(h.quantity)) @ \(StorageService.formatNumber(h.avgPrice, decimals: 2))")
+                                    Text("\(formatQty(h.quantity)) @ \(StorageService.formatNumber(h.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: h.symbol, price: h.avgPrice)))")
                                         .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                         .fontWeight(.semibold)
                                     if let date = h.purchaseDate {
@@ -1150,19 +1147,9 @@ struct PortfolioQuoteRow: View {
         stockService.quotes[globalPos.symbol]
     }
 
-    private var displayCurrency: String {
-        let pref = storageService.stockPriceCurrency
-        guard let q = quote else { return pref }
-        return pref.isEmpty ? q.currency : pref
-    }
-
     private var priceRate: Double {
         guard let q = quote else { return 1.0 }
         return stockService.priceRate(from: q.currency)
-    }
-
-    private var currSymbol: String {
-        StorageService.currencySymbol(for: displayCurrency)
     }
 
     var body: some View {
@@ -1189,10 +1176,10 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 80, alignment: .leading)
 
-            // Col 2: Avg Cost (compact amount for large numbers/currencies)
-            Text(StorageService.formatCompactAmount(
+            // Col 2: Avg Price (compact number for large numbers/currencies)
+            Text(StorageService.formatCompactNumber(
                 globalPos.avgPrice,
-                symbol: globalPos.priceSymbol
+                decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
             ))
             .font(.inter(13, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
@@ -1201,10 +1188,10 @@ struct PortfolioQuoteRow: View {
             .minimumScaleFactor(0.85)
             .frame(width: 72, alignment: .trailing)
 
-            // Col 3: Price (regular closing price, compact amount for large numbers/currencies)
+            // Col 3: Price (regular closing price, compact number for large numbers/currencies)
             HStack(spacing: 2) {
                 if let quote {
-                    Text(StorageService.formatCompactAmount(quote.price * priceRate, symbol: currSymbol))
+                    Text(StorageService.formatCompactNumber(quote.price * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(.primary)

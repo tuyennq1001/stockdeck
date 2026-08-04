@@ -757,6 +757,7 @@ class StockService: ObservableObject {
                 dayLow: q.regularMarketDayLow,
                 fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: q.fiftyTwoWeekLow,
+                marketCap: q.marketCap,
                 preMarketPrice: q.preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1136,6 +1137,16 @@ class StockService: ObservableObject {
 
             let curr = !ticker.currency.isEmpty ? ticker.currency : ((existing?.currency.isEmpty == false) ? existing!.currency : detectedCurrency(for: symbol))
 
+            // Precompute extended-hours values to reduce type-checker complexity
+            let prePrice = marketState == "PRE" ? tickPrice : existing?.preMarketPrice
+            let preChg = marketState == "PRE" ? tickChange : existing?.preMarketChange
+            let prePct = marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent
+            let postPrice = marketState == "POST" ? tickPrice : existing?.postMarketPrice
+            let postChg = marketState == "POST" ? tickChange : existing?.postMarketChange
+            let postPct = marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
+
+            let marketCap = existing?.marketCap
+
             let quote = StockQuote(
                 symbol: symbol,
                 name: existing?.name ?? ticker.shortName,
@@ -1149,12 +1160,13 @@ class StockService: ObservableObject {
                 dayLow: existing?.dayLow,
                 fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
-                preMarketPrice: marketState == "PRE" ? tickPrice : existing?.preMarketPrice,
-                preMarketChange: marketState == "PRE" ? tickChange : existing?.preMarketChange,
-                preMarketChangePercent: marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent,
-                postMarketPrice: marketState == "POST" ? tickPrice : existing?.postMarketPrice,
-                postMarketChange: marketState == "POST" ? tickChange : existing?.postMarketChange,
-                postMarketChangePercent: marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
+                marketCap: marketCap,
+                preMarketPrice: prePrice,
+                preMarketChange: preChg,
+                preMarketChangePercent: prePct,
+                postMarketPrice: postPrice,
+                postMarketChange: postChg,
+                postMarketChangePercent: postPct
             )
 
             updated[symbol] = quote
@@ -1184,6 +1196,11 @@ class StockService: ObservableObject {
         SearchResult(symbol: "03311181", name: "eMAXIS Slim 全世界株式(オール・カントリー)", exchange: "JP_FUND", type: "MUTUALFUND"),
         SearchResult(symbol: "9I31123A", name: "楽天・プラス・オールカントリー・インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
         SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
+    ]
+
+    static let popularJapaneseIndices: [SearchResult] = [
+        SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
+        SearchResult(symbol: "^TOPX", name: "TOPIX", exchange: "JPX", type: "INDEX")
     ]
 
     nonisolated static func containsJapaneseCharacters(_ str: String) -> Bool {
@@ -1505,6 +1522,12 @@ class StockService: ObservableObject {
             }
         }
 
+        for index in Self.popularJapaneseIndices {
+            if index.symbol.contains(upperQuery) || index.name.localizedCaseInsensitiveContains(cleanQuery) {
+                fundResults.append(index)
+            }
+        }
+
         // Only suggest as a mutual fund if the query genuinely looks like one
         // (code in our fund map or Japanese characters) — not for generic
         // 5-12 char alphanumeric strings like "BTCETH", "HYPEUSDT".
@@ -1741,6 +1764,7 @@ private struct YahooV7Response: Codable {
         let fiftyTwoWeekLow: Double?
         let preMarketPrice: Double?
         let postMarketPrice: Double?
+        let marketCap: Double?
         let quoteType: String?
     }
 

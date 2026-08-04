@@ -387,9 +387,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let quote = stockService.quotes[symbol] else {
             return (" \(symbol)", .secondaryLabelColor)
         }
-        // #8.3: indices have no currency, so don't prefix a currency symbol.
-        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
-        let sym = isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
         // #8.2: prefer the readable name when the user opted in and it's available.
         let label = (storageService.tickerShowName && !quote.name.isEmpty) ? quote.name : quote.symbol
         let sign = quote.changePercent >= 0 ? "+" : ""
@@ -399,7 +396,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let pctPart = storageService.menuBarHidePercent
             ? ""
             : " \(sign)\(String(format: "%.\(storageService.percentDecimals)f", quote.changePercent))%"
-        let title = " \(label) \(sym)\(price)\(pctPart)"
+        let title = " \(label) \(price)\(pctPart)"
         return (title, quote.changePercent >= 0 ? upColor : downColor)
     }
 

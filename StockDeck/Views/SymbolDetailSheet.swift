@@ -55,17 +55,23 @@ struct SymbolDetailSheet: View {
                 }
 
                 if let quote {
-                    PriceChartCard(symbol: symbol, quote: quote)
-                    HStack(alignment: .top, spacing: DS.gap) {
-                        fiftyTwoWeekCard(quote).frame(maxWidth: .infinity)
-                        factsCard(quote).frame(maxWidth: .infinity)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: DS.gap) {
+                            PriceChartCard(symbol: symbol, quote: quote)
+                            HStack(alignment: .top, spacing: DS.gap) {
+                                if storageService.show52WeekBar { fiftyTwoWeekCard(quote).frame(maxWidth: .infinity) }
+                                factsCard(quote).frame(maxWidth: .infinity)
+                            }
+                            SymbolNotesCard(storageService: storageService, symbol: symbol)
+                        }
+                        .padding(.bottom, 24)
                     }
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
             }
             .padding(24)
-            .frame(width: 680)
+            .frame(width: 680, height: 700)
             .background(DS.ground)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 16, y: 8)

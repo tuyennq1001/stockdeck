@@ -31,6 +31,7 @@ struct WatchlistWideView: View {
         let symbol: String
         let name: String
         let currency: String
+        let isIndex: Bool            // indices have no currency unit
         let price: Double            // regular market price
         let extPrice: Double?        // pre/post-market price, if any
         let extChangePercent: Double? // pre/post-market % move vs regular close
@@ -44,9 +45,12 @@ struct WatchlistWideView: View {
         let allTimeHistory: [PricePoint]
         let loaded: Bool
         let quote: StockQuote?
+        let marketCap: Double?         // market cap in target currency for fair cross-currency sorting
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
+            case .price, .ext:
+                return nil
             case .today:
                 return changePercent
             case .oneMonth:
@@ -73,6 +77,8 @@ struct WatchlistWideView: View {
                 return allTimeHistory.map(\.effectiveHigh).max()
             case .atl:
                 return allTimeHistory.map(\.effectiveLow).min()
+            case .marketCap:
+                return marketCap
             case .fromAth:
                 guard let ath = allTimeHistory.map(\.effectiveHigh).max(), ath > 0 else { return nil }
                 return (price - ath) / ath * 100
@@ -92,6 +98,7 @@ struct WatchlistWideView: View {
     @State private var selectedSymbols: Set<String> = []
     @State private var activeDetailSymbol: String? = nil
     @State private var lastClickedSymbol: String? = nil
+    @State private var hScrollOffset: CGFloat = 0
 
     private var rows: [WatchRow] {
         storageService.watchlist.enumerated().map { index, symbol in
@@ -105,10 +112,12 @@ struct WatchlistWideView: View {
             let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now) ?? now
             let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
             let regularPrice = q?.price ?? 0
+            let indexFlag = q.map { StorageService.isIndex(symbol: $0.symbol, type: storageService.type(for: $0.symbol)) } ?? StorageService.isIndex(symbol: symbol, type: storageService.type(for: symbol))
             return WatchRow(
                 id: symbol, order: index, symbol: symbol,
                 name: q?.name ?? "",
-                currency: (storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? "",
+                currency: indexFlag ? "" : ((storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? ""),
+                isIndex: indexFlag,
                 price: (q?.price ?? 0) * rate,
                 extPrice: ext,
                 extChangePercent: ext != nil ? q?.extendedChangePercent : nil,
@@ -126,7 +135,8 @@ struct WatchlistWideView: View {
                 ),
                 history: history,
                 allTimeHistory: stockService.priceHistoryMax[symbol] ?? [],
-                loaded: q != nil, quote: q
+                loaded: q != nil, quote: q,
+                marketCap: q?.marketCap.map { $0 * (q.map { stockService.rate(from: $0.currency) } ?? 1) }
             )
         }
     }
@@ -309,8 +319,9 @@ struct WatchlistWideView: View {
             ScrollView {
                 VStack(spacing: DS.gap) {
                     PriceChartCard(symbol: symbol, quote: quote)
-                    fiftyTwoWeekCard(quote)
+                    if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
+                    SymbolNotesCard(storageService: storageService, symbol: symbol)
                 }
                 .padding(16)
             }
@@ -321,7 +332,8 @@ struct WatchlistWideView: View {
     @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
         if let pos = quote.fiftyTwoWeekPosition,
            let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
-            let priceSymbol = StorageService.currencySymbol(for: quote.currency)
+            let idxFlag = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+            let priceSymbol = idxFlag ? "" : StorageService.currencySymbol(for: quote.currency)
             Card(title: "52-week range") {
                 VStack(spacing: 10) {
                     GeometryReader { geo in
@@ -488,25 +500,38 @@ struct WatchlistWideView: View {
 
     private var table: some View {
         VStack(spacing: 0) {
-            if !isCompact {
-                tableToolbar
-                Divider().overlay(DS.hairline)
-            }
-            ScrollView(.horizontal, showsIndicators: !isCompact) {
+            tableToolbar
+            Divider().overlay(DS.hairline)
+            if isCompact {
                 tableContents
-                    .frame(width: isCompact ? 190 : tableWidth)
-                    .frame(maxHeight: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    ZStack(alignment: .topLeading) {
+                        tableContents
+                            .frame(width: tableWidth)
+                        // Track horizontal scroll offset from scroll content frame
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: HScrollOffsetKey.self,
+                                value: -geo.frame(in: .named("hscroll")).minX
+                            )
+                        }
+                    }
+                }
+                .coordinateSpace(name: "hscroll")
+                .onPreferenceChange(HScrollOffsetKey.self) { offset in
+                    hScrollOffset = offset
+                }
             }
         }
         .frame(maxHeight: .infinity)
     }
 
     private var tableWidth: CGFloat {
-        let base = 24 + WCol.symbol + WCol.price
-        let extended = storageService.showExtendedHours ? WCol.ext : 0
+        let base = 24 + WCol.symbol
         let metricWidth = selectedMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let columns = 3 + selectedMetrics.count + (storageService.showExtendedHours ? 1 : 0)
-        return base + extended + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
+        let columns = 2 + selectedMetrics.count
+        return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
     }
 
     private var tableToolbar: some View {
@@ -515,40 +540,42 @@ struct WatchlistWideView: View {
                 .font(DS.caption)
                 .foregroundStyle(DS.inkSecondary)
 
-            Spacer()
+            if !isCompact {
+                Spacer()
 
-            Button {
-                PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
-                    Text("Export").font(DS.caption)
+                Button {
+                    PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
+                        Text("Export").font(DS.caption)
+                    }
+                    .foregroundStyle(DS.inkSecondary)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                 }
-                .foregroundStyle(DS.inkSecondary)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            RefreshButton(isLoading: stockService.isLoading) {
-                Task { await stockService.refreshAll(storageService: storageService) }
-            }
-
-            Button { showMetricCustomizer = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
-                    Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                RefreshButton(isLoading: stockService.isLoading) {
+                    Task { await stockService.refreshAll(storageService: storageService) }
                 }
-                .foregroundStyle(DS.brand)
-                .padding(.horizontal, 11).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("Customize watchlist columns")
 
-            addButton
+                Button { showMetricCustomizer = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
+                        Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 11).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Customize watchlist columns")
+
+                addButton
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -572,6 +599,7 @@ struct WatchlistWideView: View {
                                      metrics: selectedMetrics,
                                      isSelected: selectedSymbols.contains(row.symbol),
                                      compact: isCompact,
+                                     hScrollOffset: hScrollOffset,
                                      onOpen: {
                                          handleRowClick(row.symbol)
                                      },
@@ -598,22 +626,6 @@ struct WatchlistWideView: View {
                     if !visibleRows.isEmpty {
                         Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                     }
-                    Button(action: { showSearch = true }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(DS.brand)
-                            Text("Add stock")
-                                .font(.inter(12, weight: .semibold, relativeTo: .body))
-                                .foregroundStyle(DS.brand)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
                 }
             }
         }
@@ -652,16 +664,19 @@ struct WatchlistWideView: View {
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
-            Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
-            if isCompact {
-                headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
-            } else {
-                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
-                headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
-                if storageService.showExtendedHours {
-                    headerCell("Ext", .extChangePercent, width: WCol.ext, align: .trailing,
-                               help: "Sort by the current pre/post-market % move")
+            Group {
+                Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
+                if isCompact {
+                    headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
+                } else {
+                    headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
                 }
+            }
+            .padding(.vertical, 10)
+            .background(DS.card)
+            .offset(x: hScrollOffset)
+            .zIndex(1)
+            if !isCompact {
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
                 }
@@ -682,7 +697,7 @@ struct WatchlistWideView: View {
                     var updated = selectedMetrics
                     if updated.contains(metric) {
                         updated.removeAll { $0 == metric }
-                    } else if updated.count < 12 {
+                    } else {
                         updated.append(metric)
                     }
                     storageService.setWatchlistMetrics(updated)
@@ -857,7 +872,11 @@ private enum WCol {
     static let spacing: CGFloat = 12
 
     static func width(for metric: WatchlistMetric) -> CGFloat {
-        metric.isChart ? 76 : (metric.category == .price ? 92 : period)
+        switch metric {
+        case .price: return price
+        case .ext: return ext
+        default: return metric.isChart ? 76 : (metric.category == .price ? 92 : period)
+        }
     }
 }
 
@@ -872,6 +891,7 @@ private struct WatchRowView<Menu: View>: View {
     let metrics: [WatchlistMetric]
     let isSelected: Bool
     var compact: Bool = false
+    var hScrollOffset: CGFloat = 0
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> Menu
     @State private var hover = false
@@ -887,7 +907,7 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private func pairedCell(price: Double, pct: Double?, label: String?, emphasised: Bool) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
-            Text("\(StorageService.currencySymbol(for: row.currency))\(StorageService.formatNumber(price, decimals: priceDec(price)))")
+            Text("\(StorageService.formatNumber(price, decimals: priceDec(price)))")
                 .font(DS.figure)
                 .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
                 .contentTransition(.numericText())
@@ -945,6 +965,22 @@ private struct WatchRowView<Menu: View>: View {
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
             switch metric {
+            case .price:
+                if row.loaded {
+                    pairedCell(price: row.price, pct: nil,
+                               label: nil, emphasised: !extendedSession)
+                } else {
+                    DSSpinner(size: 12)
+                }
+            case .ext:
+                if showExtended {
+                    if let ext = row.extPrice {
+                        pairedCell(price: ext, pct: row.extChangePercent,
+                                   label: row.extLabel, emphasised: extendedSession)
+                    } else {
+                        Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+                    }
+                }
             case .today:
                 periodCell(row.changePercent)
             case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
@@ -957,6 +993,8 @@ private struct WatchRowView<Menu: View>: View {
                 periodCell(percentFrom(row.price, reference: allTimeHigh))
             case .fromAtl:
                 periodCell(percentFrom(row.price, reference: allTimeLow))
+            case .marketCap:
+                marketCapCell
             case .chart24h:
                 Sparkline(symbol: row.symbol, days: 1)
             case .chart7d:
@@ -973,9 +1011,21 @@ private struct WatchRowView<Menu: View>: View {
     }
 
     @ViewBuilder
+    private var marketCapCell: some View {
+        if let mc = row.quote?.marketCap, mc > 0 {
+            Text(StorageService.formatMarketCap(mc, currency: row.currency))
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    @ViewBuilder
     private func priceMetric(_ value: Double?) -> some View {
         if let value {
-            Text("\(StorageService.currencySymbol(for: row.currency))\(StorageService.formatNumber(value, decimals: priceDec(value)))")
+            Text("\(StorageService.formatNumber(value, decimals: priceDec(value)))")
                 .font(DS.figure.monospacedDigit()).foregroundStyle(DS.ink)
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
@@ -990,64 +1040,52 @@ private struct WatchRowView<Menu: View>: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                Text("\(position)")
-                    .font(DS.micro.monospacedDigit())
-                    .foregroundStyle(DS.inkTertiary)
-                    .frame(width: 24, alignment: .leading)
+                // Frozen columns: position + symbol, with opaque white background & zIndex
+                Group {
+                    Text("\(position)")
+                        .font(DS.micro.monospacedDigit())
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(width: 24, alignment: .leading)
 
-                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
-                let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
-                let subTitleText = isJpFund ? "" : row.name
-                HStack(spacing: 9) {
-                    SymbolLogo(symbol: row.symbol, size: 28)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(titleText)
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(1)
-                        if !subTitleText.isEmpty {
-                            Text(subTitleText)
-                                .font(DS.micro)
-                                .foregroundStyle(DS.inkTertiary)
+                    let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
+                    let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
+                    let subTitleText = isJpFund ? "" : row.name
+                    HStack(spacing: 9) {
+                        SymbolLogo(symbol: row.symbol, size: 28)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(titleText)
+                                .font(DS.figure)
+                                .foregroundStyle(DS.ink)
                                 .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
-
-                if !compact {
-                    // Regular price + today's % move.
-                    Group {
-                        if row.loaded {
-                            pairedCell(price: row.price, pct: nil,
-                                       label: nil, emphasised: !extendedSession)
-                        } else {
-                            DSSpinner(size: 12)
-                        }
-                    }
-                    .frame(width: WCol.price, alignment: .trailing)
-
-                    // After-hours price.
-                    if showExtended {
-                        Group {
-                            if let ext = row.extPrice {
-                                pairedCell(price: ext, pct: row.extChangePercent,
-                                           label: row.extLabel, emphasised: extendedSession)
-                            } else {
-                                Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+                            if !subTitleText.isEmpty {
+                                Text(subTitleText)
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+                                    .lineLimit(1)
                             }
                         }
-                        .frame(width: WCol.ext, alignment: .trailing)
                     }
+                    .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .frame(minHeight: 44)
+                .background(
+                    Group {
+                        if isSelected { DS.brand.opacity(0.12) }
+                        else if hover { DS.cardAlt.opacity(0.6) }
+                        else { DS.card }
+                    }
+                )
+                .offset(x: hScrollOffset)
+                .zIndex(1)
 
+                if !compact {
                     ForEach(metrics) { metric in
                         metricCell(metric)
                     }
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .frame(minHeight: 44)
-            .background(isSelected ? DS.brand.opacity(0.12) : (hover ? DS.cardAlt.opacity(0.6) : .clear))
+            .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1055,6 +1093,12 @@ private struct WatchRowView<Menu: View>: View {
         .onHover { hover = $0 }
         .contextMenu { menu() }
     }
+}
+
+/// Tracks horizontal scroll offset from the "hscroll" coordinate space.
+private struct HScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct WatchlistDropDelegate: DropDelegate {

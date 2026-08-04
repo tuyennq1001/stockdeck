@@ -55,3 +55,10 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 - **Không dùng heredoc trong `execute_command` nếu nội dung chứa ký tự đặc biệt**: Nếu cần, ghi file riêng rồi chạy.
 - **Giới hạn độ dài command**: Mỗi câu lệnh CLI không vượt quá ~2000 ký tự. Nếu dài hơn, tách thành script file.
 - **Commit/PR title**: Tối đa 72 ký tự. Body mô tả phải **ngắn gọn ≤5 dòng**. Nếu cần mô tả dài, ghi ra file riêng rồi dẫn link.
+
+---
+
+## 8. Quy tắc Build (Build Rules)
+- **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build.
+- **Không pipe build output qua `grep` hoặc filter blocking khác**: Hiển thị toàn bộ output build để không bỏ sót lỗi. `grep` có thể treo nếu pattern không khớp.
+- **Nếu cần kiểm tra nhanh lỗi biên dịch**: Dùng `swift build 2>&1 | head -100` (có giới hạn dòng, không treo) hoặc `./dev.sh 2>&1 | tail -20`.

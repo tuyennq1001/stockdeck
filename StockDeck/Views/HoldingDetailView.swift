@@ -21,7 +21,8 @@ struct HoldingDetailView: View {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
     private var priceSymbol: String {
-        StorageService.currencySymbol(for: quote.currency)
+        let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+        return isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
     }
     private var scopedPortfolios: [Portfolio] {
         switch scope {
@@ -74,8 +75,9 @@ struct HoldingDetailView: View {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                     statStrip
                     purchaseLotsCard
-                    fiftyTwoWeekCard.frame(maxWidth: .infinity)
+                    if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
                     if !relatedNews.isEmpty { newsCard }
+                    SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                 }
                 .pageColumn()
                 .padding(.top, 4)

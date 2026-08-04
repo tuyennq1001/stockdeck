@@ -135,21 +135,7 @@ struct WatchlistView: View {
                     storageService.reorderWatchlist(fromOffsets: indices, toOffset: newOffset, currentProjections: currentList)
                 }
 
-                Button(action: { showSearch = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.inter(12, weight: .bold, relativeTo: .body))
-                            .foregroundColor(DS.brand)
-                        Text("Add stock")
-                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
-                            .foregroundColor(DS.brand)
-                        Spacer()
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
+
             }
             .listStyle(.plain)
 
@@ -552,14 +538,6 @@ struct QuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
 
-    private var displayCurrency: String {
-        quote.currency
-    }
-
-    private var currSymbol: String {
-        StorageService.currencySymbol(for: displayCurrency)
-    }
-
     var body: some View {
         HStack(spacing: 0) {
 
@@ -584,11 +562,11 @@ struct QuoteRow: View {
             // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
             let displayPrice = quote.price
             VStack(alignment: .trailing, spacing: 0) {
-                Text(StorageService.formatCompactAmount(displayPrice, symbol: currSymbol))
+                Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                 if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    Text("\(StorageService.formatCompactNumber(low)) – \(StorageService.formatCompactNumber(high))")
+                    Text("\(StorageService.formatCompactNumber(low, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low))) – \(StorageService.formatCompactNumber(high, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: high)))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                 }

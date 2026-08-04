@@ -54,12 +54,29 @@ class StorageService: ObservableObject {
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
         objectWillChange.send()
-        let normalized = Array(metrics.prefix(12))
         var updated = watchlists
         for index in updated.indices {
-            updated[index].metrics = normalized
+            updated[index].metrics = metrics
         }
         watchlists = updated
+    }
+
+    // MARK: - Portfolio columns customization
+
+    /// Optional columns in the portfolio positions table. Rank (#) and Symbol
+    /// stay fixed; this list controls the investment metrics that follow them.
+    /// Nil keeps older installs on the default layout.
+    @Published var portfolioColumns: [PortfolioColumnMetric]? = nil {
+        didSet { scheduleSave() }
+    }
+
+    var resolvedPortfolioColumns: [PortfolioColumnMetric] {
+        portfolioColumns ?? PortfolioColumnMetric.defaultSelection
+    }
+
+    func setPortfolioColumns(_ columns: [PortfolioColumnMetric]) {
+        objectWillChange.send()
+        portfolioColumns = columns
     }
 
     @Published var portfolios: [Portfolio] = [] {
@@ -243,6 +260,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// User-authored notes per symbol, shared across watchlist and portfolio.
+    @Published var symbolNotes: [String: [SymbolNote]] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// Recurring portfolio notifications, keyed by portfolio id (uuidString).
     @Published var portfolioNotifications: [String: [PortfolioNotification]] = [:] {
         didSet { scheduleSave() }
@@ -314,6 +336,32 @@ class StorageService: ObservableObject {
 
     func alerts(for symbol: String) -> [PriceAlert] {
         alerts.filter { $0.symbol == symbol }
+    }
+
+    // MARK: - Symbol notes
+
+    /// Returns notes for a symbol, newest first.
+    func notes(for symbol: String) -> [SymbolNote] {
+        symbolNotes[symbol] ?? []
+    }
+
+    func addNote(to symbol: String, title: String = "", content: String) {
+        let note = SymbolNote(title: title, content: content)
+        symbolNotes[symbol, default: []].insert(note, at: 0)
+    }
+
+    func updateNote(id: UUID, for symbol: String, title: String? = nil, content: String? = nil) {
+        guard let idx = symbolNotes[symbol]?.firstIndex(where: { $0.id == id }) else { return }
+        if let title = title { symbolNotes[symbol]?[idx].title = title }
+        if let content = content { symbolNotes[symbol]?[idx].content = content }
+        symbolNotes[symbol]?[idx].updatedAt = Date()
+    }
+
+    func deleteNote(id: UUID, from symbol: String) {
+        symbolNotes[symbol]?.removeAll { $0.id == id }
+        if symbolNotes[symbol]?.isEmpty == true {
+            symbolNotes[symbol] = nil
+        }
     }
 
     // MARK: - Portfolio notifications
@@ -519,7 +567,10 @@ class StorageService: ObservableObject {
         }
     }
 
-    static func formatCompactNumber(_ value: Double) -> String {
+    /// Formats a number compactly with K/M suffixes when ≥ 10,000.
+    /// When the value is below the compact threshold and `decimals` is provided,
+    /// that decimal count is used so small numbers still respect the user's setting.
+    static func formatCompactNumber(_ value: Double, decimals: Int? = nil) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : ""
         if absVal >= 1_000_000 {
@@ -529,11 +580,14 @@ class StorageService: ObservableObject {
             let k = absVal / 1_000
             return "\(sign)\(String(format: k >= 100 ? "%.0fK" : "%.1fK", k))"
         } else {
-            return formatNumber(value, decimals: 0)
+            return formatNumber(value, decimals: decimals ?? 0)
         }
     }
 
-    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false) -> String {
+    /// Formats an amount compactly with K/M suffixes when ≥ 10,000.
+    /// When the value is below the compact threshold and `decimals` is provided,
+    /// that decimal count is used so small numbers still respect the user's setting.
+    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
         if absVal >= 1_000_000 {
@@ -545,7 +599,24 @@ class StorageService: ObservableObject {
             let formatted = String(format: k >= 100 ? "%.0fK" : "%.1fK", k)
             return "\(sign)\(symbol)\(formatted)"
         } else {
-            return formatAmount(value, symbol: symbol, decimals: 0, signed: signed)
+            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed)
+        }
+    }
+
+    /// Formats market capitalization in compact T/B/M scale with currency symbol.
+    /// e.g. Apple → "$3.50T", Toyota → "¥45.2B", small cap → "$850M"
+    static func formatMarketCap(_ value: Double, currency: String) -> String {
+        let absVal = abs(value)
+        let currSymbol = currencySymbol(for: currency)
+        if absVal >= 1_000_000_000_000 {
+            let t = absVal / 1_000_000_000_000
+            return "\(currSymbol)\(String(format: t >= 100 ? "%.1fT" : "%.2fT", t))"
+        } else if absVal >= 1_000_000_000 {
+            let b = absVal / 1_000_000_000
+            return "\(currSymbol)\(String(format: b >= 100 ? "%.1fB" : "%.2fB", b))"
+        } else {
+            let m = absVal / 1_000_000
+            return "\(currSymbol)\(String(format: m >= 100 ? "%.0fM" : "%.1fM", m))"
         }
     }
 
@@ -948,6 +1019,7 @@ class StorageService: ObservableObject {
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
         showNewsTab = true
+        symbolNotes = [:]
         lastSelectedTab = "Watchlist"
     }
 
@@ -998,6 +1070,7 @@ class StorageService: ObservableObject {
         var watchlist: [String]
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
+        var portfolioColumns: [PortfolioColumnMetric]?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -1007,6 +1080,7 @@ class StorageService: ObservableObject {
         var fontSizeLevel: Int?
         var fontFamily: String?
         var alerts: [PriceAlert]?
+        var symbolNotes: [String: [SymbolNote]]?
         var showCompanyName: Bool?
         var showDayRange: Bool?
         var show52WeekBar: Bool?
@@ -1050,7 +1124,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1138,6 +1212,7 @@ class StorageService: ObservableObject {
             menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
             isinMap = decoded.isinMap ?? [:]
             alerts = decoded.alerts ?? []
+            symbolNotes = decoded.symbolNotes ?? [:]
             portfolioNotifications = decoded.portfolioNotifications ?? [:]
             portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
             portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
@@ -1163,6 +1238,7 @@ class StorageService: ObservableObject {
             fontFamily = decoded.fontFamily ?? "Inter Variable"
             appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
             showNewsTab = decoded.showNewsTab ?? true
+            portfolioColumns = decoded.portfolioColumns
             FontRegistration.familyName = fontFamily
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
         } catch {
