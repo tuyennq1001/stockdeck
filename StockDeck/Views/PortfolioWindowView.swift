@@ -656,10 +656,11 @@ struct PortfolioWindowView: View {
         PortfolioValuation.totals(valued(portfolios)).cost
     }
     private func aggregatePnlPercent(for portfolios: [Portfolio]) -> Double {
-        let inputs = valued(portfolios)
-        let pnl = inputs.reduce(0) { $0 + $1.holding.pnl(currentPrice: $1.price) * $1.rate }
-        let cost = PortfolioValuation.totals(inputs).cost
-        return abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : 0
+        // Unify with every other surface: P&L = value − cost, where cost uses the
+        // historical FX rate at purchase (same as the menu bar, popover, and overview).
+        let totals = PortfolioValuation.totals(valued(portfolios))
+        let pnl = totals.value - totals.cost
+        return abs(totals.cost) >= 0.01 ? (pnl / abs(totals.cost)) * 100 : 0
     }
 
     /// Sidebar trailing figure — nil (hidden) until at least one holding is
@@ -724,7 +725,7 @@ private struct TotalFooter: View {
         let pct: Double? = abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : nil
         VStack(alignment: .leading, spacing: 3) {
             Divider().overlay(DS.hairline)
-            SectionLabel("Total portfolio").padding(.top, 10)
+            SectionLabel("Total value").padding(.top, 10)
             Text(StorageService.formatAmount(value, symbol: symbol, decimals: decimals))
                 .font(.inter(17, weight: .bold, relativeTo: .title3).monospacedDigit())
                 .foregroundStyle(DS.ink)
