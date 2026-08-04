@@ -75,7 +75,7 @@ struct HoldingDetailView: View {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                     statStrip
                     purchaseLotsCard
-                    fiftyTwoWeekCard.frame(maxWidth: .infinity)
+                    if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
                     if !relatedNews.isEmpty { newsCard }
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                 }

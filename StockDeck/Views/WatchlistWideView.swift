@@ -319,7 +319,7 @@ struct WatchlistWideView: View {
             ScrollView {
                 VStack(spacing: DS.gap) {
                     PriceChartCard(symbol: symbol, quote: quote)
-                    fiftyTwoWeekCard(quote)
+                    if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
                 }

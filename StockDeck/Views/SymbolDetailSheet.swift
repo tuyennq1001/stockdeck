@@ -59,7 +59,7 @@ struct SymbolDetailSheet: View {
                         VStack(alignment: .leading, spacing: DS.gap) {
                             PriceChartCard(symbol: symbol, quote: quote)
                             HStack(alignment: .top, spacing: DS.gap) {
-                                fiftyTwoWeekCard(quote).frame(maxWidth: .infinity)
+                                if storageService.show52WeekBar { fiftyTwoWeekCard(quote).frame(maxWidth: .infinity) }
                                 factsCard(quote).frame(maxWidth: .infinity)
                             }
                             SymbolNotesCard(storageService: storageService, symbol: symbol)

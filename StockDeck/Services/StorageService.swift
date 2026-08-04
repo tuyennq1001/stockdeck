@@ -549,7 +549,10 @@ class StorageService: ObservableObject {
         }
     }
 
-    static func formatCompactNumber(_ value: Double) -> String {
+    /// Formats a number compactly with K/M suffixes when ≥ 10,000.
+    /// When the value is below the compact threshold and `decimals` is provided,
+    /// that decimal count is used so small numbers still respect the user's setting.
+    static func formatCompactNumber(_ value: Double, decimals: Int? = nil) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : ""
         if absVal >= 1_000_000 {
@@ -559,11 +562,14 @@ class StorageService: ObservableObject {
             let k = absVal / 1_000
             return "\(sign)\(String(format: k >= 100 ? "%.0fK" : "%.1fK", k))"
         } else {
-            return formatNumber(value, decimals: 0)
+            return formatNumber(value, decimals: decimals ?? 0)
         }
     }
 
-    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false) -> String {
+    /// Formats an amount compactly with K/M suffixes when ≥ 10,000.
+    /// When the value is below the compact threshold and `decimals` is provided,
+    /// that decimal count is used so small numbers still respect the user's setting.
+    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
         if absVal >= 1_000_000 {
@@ -575,7 +581,7 @@ class StorageService: ObservableObject {
             let formatted = String(format: k >= 100 ? "%.0fK" : "%.1fK", k)
             return "\(sign)\(symbol)\(formatted)"
         } else {
-            return formatAmount(value, symbol: symbol, decimals: 0, signed: signed)
+            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed)
         }
     }
 
