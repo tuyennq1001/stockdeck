@@ -1011,7 +1011,7 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private var marketCapCell: some View {
         if let mc = row.quote?.marketCap, mc > 0 {
-            Text(StorageService.formatCompactAmount(mc, symbol: ""))
+            Text(StorageService.formatMarketCap(mc, currency: row.currency))
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
