@@ -19,6 +19,9 @@ struct StockQuote: Identifiable, Codable {
     let fiftyTwoWeekHigh: Double?
     let fiftyTwoWeekLow: Double?
 
+    // Market capitalization
+    let marketCap: Double?
+
     let preMarketPrice: Double?
     let preMarketChange: Double?
     let preMarketChangePercent: Double?
@@ -41,6 +44,7 @@ struct StockQuote: Identifiable, Codable {
         dayLow: Double? = nil,
         fiftyTwoWeekHigh: Double? = nil,
         fiftyTwoWeekLow: Double? = nil,
+        marketCap: Double? = nil,
         preMarketPrice: Double? = nil,
         preMarketChange: Double? = nil,
         preMarketChangePercent: Double? = nil,
@@ -60,6 +64,7 @@ struct StockQuote: Identifiable, Codable {
         self.dayLow = dayLow
         self.fiftyTwoWeekHigh = fiftyTwoWeekHigh
         self.fiftyTwoWeekLow = fiftyTwoWeekLow
+        self.marketCap = marketCap
         self.preMarketPrice = preMarketPrice
         self.preMarketChange = preMarketChange
         self.preMarketChangePercent = preMarketChangePercent

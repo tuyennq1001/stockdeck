@@ -579,6 +579,23 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Formats market capitalization in compact T/B/M scale with currency symbol.
+    /// e.g. Apple → "$3.50T", Toyota → "¥45.2B", small cap → "$850M"
+    static func formatMarketCap(_ value: Double, currency: String) -> String {
+        let absVal = abs(value)
+        let currSymbol = currencySymbol(for: currency)
+        if absVal >= 1_000_000_000_000 {
+            let t = absVal / 1_000_000_000_000
+            return "\(currSymbol)\(String(format: t >= 100 ? "%.1fT" : "%.2fT", t))"
+        } else if absVal >= 1_000_000_000 {
+            let b = absVal / 1_000_000_000
+            return "\(currSymbol)\(String(format: b >= 100 ? "%.1fB" : "%.2fB", b))"
+        } else {
+            let m = absVal / 1_000_000
+            return "\(currSymbol)\(String(format: m >= 100 ? "%.0fM" : "%.1fM", m))"
+        }
+    }
+
     private let fileURL: URL
     private var isLoading = false
     private var decodeFailure = false
