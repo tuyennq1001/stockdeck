@@ -907,7 +907,7 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private func pairedCell(price: Double, pct: Double?, label: String?, emphasised: Bool) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
-            Text("\(StorageService.currencySymbol(for: row.currency))\(StorageService.formatNumber(price, decimals: priceDec(price)))")
+            Text("\(StorageService.formatNumber(price, decimals: priceDec(price)))")
                 .font(DS.figure)
                 .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
                 .contentTransition(.numericText())
@@ -1025,7 +1025,7 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private func priceMetric(_ value: Double?) -> some View {
         if let value {
-            Text("\(StorageService.currencySymbol(for: row.currency))\(StorageService.formatNumber(value, decimals: priceDec(value)))")
+            Text("\(StorageService.formatNumber(value, decimals: priceDec(value)))")
                 .font(DS.figure.monospacedDigit()).foregroundStyle(DS.ink)
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)

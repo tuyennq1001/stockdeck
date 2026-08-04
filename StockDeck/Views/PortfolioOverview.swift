@@ -1339,10 +1339,8 @@ private struct PositionSummaryRow: View {
         emphasised: Bool = true
     ) -> some View {
         if let price {
-            let quoteCurr = liveQuote?.currency ?? ""
-            let sym = quoteCurr.isEmpty ? nativeCurrencySymbol : StorageService.currencySymbol(for: quoteCurr)
             VStack(alignment: .trailing, spacing: 2) {
-                Text(StorageService.formatAmount(price, symbol: sym, decimals: priceDec(price)))
+                Text(StorageService.formatNumber(price, decimals: priceDec(price)))
                     .font(DS.figure)
                     .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
                     .contentTransition(.numericText())
