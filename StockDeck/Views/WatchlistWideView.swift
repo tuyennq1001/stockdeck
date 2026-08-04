@@ -136,7 +136,7 @@ struct WatchlistWideView: View {
                 history: history,
                 allTimeHistory: stockService.priceHistoryMax[symbol] ?? [],
                 loaded: q != nil, quote: q,
-                marketCap: q?.marketCap.map { $0 * rate }
+                marketCap: q?.marketCap.map { $0 * (q.map { stockService.rate(from: $0.currency) } ?? 1) }
             )
         }
     }
