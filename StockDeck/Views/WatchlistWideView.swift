@@ -45,6 +45,7 @@ struct WatchlistWideView: View {
         let allTimeHistory: [PricePoint]
         let loaded: Bool
         let quote: StockQuote?
+        let marketCap: Double?         // market cap in target currency for fair cross-currency sorting
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
@@ -77,7 +78,7 @@ struct WatchlistWideView: View {
             case .atl:
                 return allTimeHistory.map(\.effectiveLow).min()
             case .marketCap:
-                return quote?.marketCap
+                return marketCap
             case .fromAth:
                 guard let ath = allTimeHistory.map(\.effectiveHigh).max(), ath > 0 else { return nil }
                 return (price - ath) / ath * 100
@@ -134,7 +135,8 @@ struct WatchlistWideView: View {
                 ),
                 history: history,
                 allTimeHistory: stockService.priceHistoryMax[symbol] ?? [],
-                loaded: q != nil, quote: q
+                loaded: q != nil, quote: q,
+                marketCap: q?.marketCap.map { $0 * rate }
             )
         }
     }
