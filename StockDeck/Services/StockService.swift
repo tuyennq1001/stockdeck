@@ -757,6 +757,7 @@ class StockService: ObservableObject {
                 dayLow: q.regularMarketDayLow,
                 fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: q.fiftyTwoWeekLow,
+                marketCap: q.marketCap,
                 preMarketPrice: q.preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1752,6 +1753,7 @@ private struct YahooV7Response: Codable {
         let fiftyTwoWeekLow: Double?
         let preMarketPrice: Double?
         let postMarketPrice: Double?
+        let marketCap: Double?
         let quoteType: String?
     }
 
