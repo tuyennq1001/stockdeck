@@ -535,7 +535,7 @@ struct PortfolioSection: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("P&L")
+                    Text("Total P&L")
                         .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
                     HStack(spacing: 2) {

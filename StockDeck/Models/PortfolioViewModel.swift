@@ -119,6 +119,9 @@ final class PortfolioViewModel {
         let nativeCost: Double
         let nativeValue: Double
         let nativePnl: Double
+        /// Weighted-average buy price in the asset's native currency (JPY funds
+        /// divided by the 10,000 scale so the number is a per-口 price).
+        let avgPrice: Double
     }
 
     struct ValuationBundle {
@@ -138,7 +141,7 @@ final class PortfolioViewModel {
         var totalVal = 0.0
         var totalCst = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double)] = [:]
+        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double)] = [:]
 
         for portfolio in portfolios {
             for holding in portfolio.holdings {
@@ -173,13 +176,16 @@ final class PortfolioViewModel {
                 let nativePnl = holding.pnl(currentPrice: price)
 
                 let sym = holding.symbol.uppercased()
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0)
                 existing.value += value
                 existing.cost += cost
                 existing.pnl += (value - cost)
                 existing.nativeCost += nativeCst
                 existing.nativeValue += nativeVal
                 existing.nativePnl += nativePnl
+                if hasCost {
+                    existing.nativeQty += abs(qty * lev)
+                }
                 bySymbol[sym] = existing
 
                 // ValuedHolding still stores preferred-currency value/cost for legacy compatibility
@@ -221,6 +227,7 @@ final class PortfolioViewModel {
         var symAggs: [String: SymbolAggregate] = [:]
         for (sym, data) in bySymbol {
             let pnlPctSym = abs(data.cost) >= 0.01 ? (data.pnl / abs(data.cost)) * 100 : 0
+            let avg = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
             symAggs[sym] = SymbolAggregate(
                 value: data.value,
                 cost: data.cost,
@@ -228,7 +235,8 @@ final class PortfolioViewModel {
                 pnlPercent: pnlPctSym,
                 nativeCost: data.nativeCost,
                 nativeValue: data.nativeValue,
-                nativePnl: data.nativePnl
+                nativePnl: data.nativePnl,
+                avgPrice: avg
             )
         }
         symbolAggregates = symAggs

@@ -137,15 +137,18 @@ struct PortfolioOverview: View {
     enum PositionSortColumn: String, CaseIterable {
         case manual
         case symbol
+        case avgPrice
         case price
         case extended
         case cost
         case value
+        case todayPnl
         case pnl
         case weight
     }
     @State private var sortColumn: PositionSortColumn = .weight
     @State private var sortAscending: Bool = false
+    @State private var showColumnCustomizer = false
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
@@ -192,6 +195,48 @@ struct PortfolioOverview: View {
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
+    }
+
+    /// Sort key for a dynamic portfolio column.
+    private func sortColumn(for metric: PortfolioColumnMetric) -> PositionSortColumn {
+        switch metric {
+        case .avgPrice: return .avgPrice
+        case .price: return .price
+        case .ext: return .extended
+        case .cost: return .cost
+        case .value: return .value
+        case .todayPnl: return .todayPnl
+        case .totalPnl: return .pnl
+        case .weight: return .weight
+        }
+    }
+
+    /// Selected portfolio columns (rank # and Symbol stay fixed).
+    private var selectedColumns: [PortfolioColumnMetric] {
+        storageService.resolvedPortfolioColumns
+    }
+
+    @ViewBuilder
+    private func columnHeader(_ metric: PortfolioColumnMetric) -> some View {
+        let column = sortColumn(for: metric)
+        switch metric {
+        case .avgPrice:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+        case .price:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+        case .ext:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+                .help("Sort by the current pre/post-market % move")
+        case .cost, .value, .todayPnl, .totalPnl:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+        case .weight:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
+        }
     }
 
     /// Tooltip date label — time for intraday ranges, date for the rest.
@@ -341,6 +386,11 @@ struct PortfolioOverview: View {
             }
         }
         .navigationTitle(title)
+        .sheet(isPresented: $showColumnCustomizer) {
+            PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { columns in
+                storageService.setPortfolioColumns(columns)
+            }
+        }
         .onAppear {
             if let savedRaw = storageService.chartRange(for: scopeKey),
                let range = ChartRange(rawValue: savedRaw) {
@@ -1037,6 +1087,7 @@ struct PortfolioOverview: View {
             HStack {
                 SectionLabel("Positions")
                 Spacer()
+                columnCustomizerButton
                 addHoldingButton
             }
             if holdings.isEmpty {
@@ -1057,22 +1108,9 @@ struct PortfolioOverview: View {
                             Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
                             sortHeader("Symbol", column: .symbol)
                                 .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
-                            sortHeader("Price", column: .price)
-                                .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
-                            if storageService.showExtendedHours {
-                                sortHeader("Ext", column: .extended)
-                                    .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
-                                    .help("Sort by the current pre/post-market % move")
+                            ForEach(selectedColumns) { metric in
+                                columnHeader(metric)
                             }
-                            sortHeader("Cost", column: .cost)
-                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                            sortHeader("Value", column: .value)
-                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                            Text("Today P&L").frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                            sortHeader("P&L", column: .pnl)
-                                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                            sortHeader("Weight", column: .weight)
-                                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
                             Color.clear.frame(width: PositionColumnWidth.chevron)
                         }
                         .font(DS.label)
@@ -1094,6 +1132,10 @@ struct PortfolioOverview: View {
                                     return false
                                 case .symbol:
                                     return isAsc ? sym1 < sym2 : sym1 > sym2
+                                case .avgPrice:
+                                    let a1 = viewModel.symbolAggregates[sym1]?.avgPrice ?? .nan
+                                    let a2 = viewModel.symbolAggregates[sym2]?.avgPrice ?? .nan
+                                    return isAsc ? a1 < a2 : a1 > a2
                                 case .price:
                                     let p1 = groupedValued[sym1]?.first?.quote.changePercent ?? 0
                                     let p2 = groupedValued[sym2]?.first?.quote.changePercent ?? 0
@@ -1111,14 +1153,22 @@ struct PortfolioOverview: View {
                                     let c1 = viewModel.symbolAggregates[sym1]?.nativeCost ?? groupedValued[sym1]?.reduce(0) { $0 + $1.cost } ?? 0
                                     let c2 = viewModel.symbolAggregates[sym2]?.nativeCost ?? groupedValued[sym2]?.reduce(0) { $0 + $1.cost } ?? 0
                                     return isAsc ? c1 < c2 : c1 > c2
-                                case .value, .weight:
+                                case .value:
                                     let v1 = viewModel.symbolAggregates[sym1]?.value ?? groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0
                                     let v2 = viewModel.symbolAggregates[sym2]?.value ?? groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0
                                     return isAsc ? v1 < v2 : v1 > v2
+                                case .todayPnl:
+                                    let t1 = todayPnl(for: sym1, grouped: groupedValued)
+                                    let t2 = todayPnl(for: sym2, grouped: groupedValued)
+                                    return isAsc ? t1 < t2 : t1 > t2
                                 case .pnl:
                                     let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
                                     let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
                                     return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+                                case .weight:
+                                    let w1 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
+                                    let w2 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
+                                    return isAsc ? w1 < w2 : w1 > w2
                                 }
                             }
                         }()
@@ -1139,7 +1189,8 @@ struct PortfolioOverview: View {
                                         decimals: decimals,
                                         valueDecimals: storageService.valueDecimals,
                                         showExtendedHours: storageService.showExtendedHours,
-                                        aggregate: viewModel.symbolAggregates[sym]
+                                        aggregate: viewModel.symbolAggregates[sym],
+                                        columns: selectedColumns
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -1182,6 +1233,34 @@ struct PortfolioOverview: View {
             }
         }
         .premiumCard()
+    }
+
+    /// "Columns" button that opens the column customizer sheet.
+    private var columnCustomizerButton: some View {
+        Button { showColumnCustomizer = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "slider.horizontal.3").font(.system(size: 10, weight: .bold))
+                Text("Columns").font(.inter(11, weight: .semibold, relativeTo: .caption))
+            }
+            .foregroundStyle(DS.brand)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help("Customize portfolio columns")
+    }
+
+    /// Today's regular-session P&L (native currency) for a symbol group.
+    private func todayPnl(for symbol: String, grouped: [String: [ValuedHolding]]) -> Double {
+        guard let group = grouped[symbol] else { return 0 }
+        return group.reduce(0) { sum, h in
+            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let isJpFund = q.isJapaneseFund || stockService.isJapaneseMutualFund(h.holding.symbol) || h.holding.isJapaneseFund
+            let scale = isJpFund ? 10000.0 : 1.0
+            return sum + (q.change / scale) * h.holding.quantity * h.holding.effectiveLeverage
+        }
     }
 
     @ViewBuilder private var addHoldingButton: some View {
@@ -1268,6 +1347,8 @@ private struct PositionSummaryRow: View {
     let showExtendedHours: Bool
     /// Pre-computed per-symbol aggregate from ViewModel (nil fallback for legacy).
     let aggregate: PortfolioViewModel.SymbolAggregate?
+    /// Visible custom columns (rank # and Symbol are always present).
+    let columns: [PortfolioColumnMetric]
 
     @State private var hovered = false
 
@@ -1371,6 +1452,96 @@ private struct PositionSummaryRow: View {
         }
     }
 
+    /// Renders one dynamic metric column cell for this position row.
+    @ViewBuilder
+    private func metricCell(_ metric: PortfolioColumnMetric) -> some View {
+        let isExtendedSession = showExtendedHours && (liveQuote?.isExtendedHours ?? false)
+        switch metric {
+        case .avgPrice:
+            let avg = aggregate?.avgPrice
+            let avgValid = avg?.isFinite == true && (avg ?? 0) != 0
+            Text(avgValid ? StorageService.formatNumber(avg!, decimals: priceDec(avg!)) : "—")
+                .font(DS.figure)
+                .foregroundStyle(avgValid ? DS.ink : DS.inkTertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+
+        case .price:
+            priceCell(
+                price: liveQuote?.price,
+                percent: liveQuote?.changePercent,
+                emphasised: !isExtendedSession
+            )
+            .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+
+        case .ext:
+            if showExtendedHours {
+                let extQuote = liveQuote
+                let extPrice = extQuote.flatMap { $0.isExtendedHours ? $0.effectivePrice : nil }
+                priceCell(price: extPrice,
+                          percent: extPrice == nil ? nil : extQuote?.extendedChangePercent,
+                          sessionLabel: extPrice == nil ? nil : extQuote?.marketStateLabel,
+                          emphasised: extPrice != nil)
+                    .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+            }
+
+        case .cost:
+            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+                Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
+                    .font(DS.figure).foregroundStyle(DS.ink)
+                    .contentTransition(.numericText())
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+            }
+
+        case .value:
+            Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
+                .font(DS.figure).foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+
+        case .todayPnl:
+            Text(StorageService.formatAmount(totalNativeTodayPnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
+                .font(DS.figure).foregroundStyle(DS.pnlColor(totalNativeTodayPnl))
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+
+        case .totalPnl:
+            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
+                        .font(DS.figure)
+                        .contentTransition(.numericText())
+                    Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
+                        .font(DS.micro)
+                }
+                .foregroundStyle(DS.pnlColor(totalNativePnl))
+                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
+                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+            }
+
+        case .weight:
+            HStack(spacing: 7) {
+                ZStack(alignment: .leading) {
+                    Capsule().fill(DS.cardAlt).frame(width: 56, height: 3)
+                    Capsule().fill(DS.brand.opacity(0.5))
+                        .frame(width: max(2, 56 * weight / max(topWeight, 0.01)), height: 3)
+                }
+                Text(String(format: "%.1f%%", weight))
+                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.inkSecondary)
+            }
+            .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             Text("\(position)")
@@ -1412,79 +1583,10 @@ private struct PositionSummaryRow: View {
             }
             .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
 
-            // Regular price and today's regular-session change.
-            let isExtendedSession = showExtendedHours && (liveQuote?.isExtendedHours ?? false)
-            priceCell(
-                price: liveQuote?.price,
-                percent: liveQuote?.changePercent,
-                emphasised: !isExtendedSession
-            )
-            .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
-
-            // Current extended session: pre-market or after-hours.
-            if showExtendedHours {
-                let extQuote = liveQuote
-                let extPrice = extQuote.flatMap { $0.isExtendedHours ? $0.effectivePrice : nil }
-                priceCell(price: extPrice,
-                          percent: extPrice == nil ? nil : extQuote?.extendedChangePercent,
-                          sessionLabel: extPrice == nil ? nil : extQuote?.marketStateLabel,
-                          emphasised: extPrice != nil)
-                    .frame(minWidth: PositionColumnWidth.sessionMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+            // Dynamic metric columns
+            ForEach(columns) { metric in
+                metricCell(metric)
             }
-
-            // Cost basis column (Native Currency)
-            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
-                Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
-                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                    .font(DS.figure).foregroundStyle(DS.ink)
-                    .contentTransition(.numericText())
-            } else {
-                Text("—")
-                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
-            }
-
-            // Market Value column (Native Currency)
-            Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
-                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                .font(DS.figure).foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
-
-            // Today P&L column (Native Currency) — regular-session day change
-            Text(StorageService.formatAmount(totalNativeTodayPnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
-                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                .font(DS.figure).foregroundStyle(DS.pnlColor(totalNativeTodayPnl))
-                .contentTransition(.numericText())
-
-            // P&L column (Native Currency)
-            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
-                        .font(DS.figure)
-                        .contentTransition(.numericText())
-                    Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
-                        .font(DS.micro)
-                }
-                .foregroundStyle(DS.pnlColor(totalNativePnl))
-                .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-            } else {
-                Text("—")
-                    .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
-                    .font(DS.figure).foregroundStyle(DS.inkTertiary)
-            }
-
-            // Weight column
-            HStack(spacing: 7) {
-                ZStack(alignment: .leading) {
-                    Capsule().fill(DS.cardAlt).frame(width: 56, height: 3)
-                    Capsule().fill(DS.brand.opacity(0.5))
-                        .frame(width: max(2, 56 * weight / max(topWeight, 0.01)), height: 3)
-                }
-                Text(String(format: "%.1f%%", weight))
-                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                    .foregroundStyle(DS.inkSecondary)
-            }
-            .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
 
             // Chevron
             Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
