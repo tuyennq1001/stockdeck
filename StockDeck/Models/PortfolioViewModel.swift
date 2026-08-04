@@ -159,7 +159,7 @@ final class PortfolioViewModel {
                 let lev = holding.effectiveLeverage
                 let qty = holding.quantity
                 let hasCost = holding.hasKnownCostBasis
-                let value = (price.isFinite && hasCost) ? (price / scale) * qty * lev * rate : 0
+                let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
                 let cost = hasCost
                     ? (holding.avgPrice / scale) * qty * lev * costRate
                     : 0
