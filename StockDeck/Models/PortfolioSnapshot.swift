@@ -56,11 +56,12 @@ enum PortfolioValuation {
     /// Aggregate market value and cost basis in the preferred currency, reusing
     /// the signed, leverage-aware math on `Holding`.
     ///
-    /// When a holding has no known cost basis (e.g. a watchlist-only symbol that
-    /// has a live quote but the user never entered a purchase price), both value
-    /// and cost are treated as 0 so the holding contributes zero P&L — a "NaN
-    /// cost" symbol doesn't fabricate a phantom gain/loss equal to its market
-    /// price.
+    /// Market value depends ONLY on a live price: a holding with a quote but no
+    /// known cost basis (e.g. Binance balances where order history is missing,
+    /// or a watchlist-only symbol) still has a real market value and must be
+    /// counted in Total Value. The cost side simply contributes 0, so Total P&L
+    /// (value − cost) reports just the market value for such holdings rather
+    /// than fabricating a basis.
     static func totals(_ inputs: [Input]) -> (value: Double, cost: Double) {
         var value = 0.0
         var cost = 0.0
@@ -70,7 +71,7 @@ enum PortfolioValuation {
             let lev = i.holding.effectiveLeverage
             let qty = i.holding.quantity
             let hasCost = i.holding.hasKnownCostBasis
-            let val = (i.price.isFinite && hasCost)
+            let val = i.price.isFinite
                 ? (i.price / scale) * qty * lev * i.rate
                 : 0
             let cst = hasCost

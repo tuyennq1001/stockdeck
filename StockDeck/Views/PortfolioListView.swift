@@ -505,10 +505,13 @@ struct PortfolioSection: View {
     }
 
     var totalPnl: Double {
+        // Unify with every other surface: P&L = value − cost, where cost uses the
+        // historical FX rate at purchase. The old `holding.pnl() * rate` applied
+        // today's FX rate to the entire P&L, diverging from the menu bar and
+        // overview whenever FX moved since the purchase date.
         let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        return inputs.reduce(0) { result, input in
-            result + input.holding.pnl(currentPrice: input.price) * input.rate
-        }
+        let totals = PortfolioValuation.totals(inputs)
+        return totals.value - totals.cost
     }
 
     var totalCost: Double {

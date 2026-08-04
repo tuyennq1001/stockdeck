@@ -481,7 +481,7 @@ struct PortfolioOverview: View {
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
-                    SectionLabel("\(title) value")
+                    SectionLabel("Total value")
                     Spacer()
                     if !ds.points.isEmpty { rangePicker }
                 }

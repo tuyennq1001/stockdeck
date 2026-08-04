@@ -145,10 +145,14 @@ final class PortfolioViewModel {
 
         for portfolio in portfolios {
             for holding in portfolio.holdings {
+                // Missing live quote → price .nan, identical to
+                // PortfolioValuation.resolveInputs(). An unpriced holding must
+                // contribute 0 to value/P&L here, exactly like the menu bar,
+                // sidebar, and popover — never a phantom value at avgPrice.
                 let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                     symbol: holding.symbol,
                     name: holding.symbol,
-                    price: holding.avgPrice,
+                    price: .nan,
                     change: 0,
                     changePercent: 0,
                     currency: stockService.detectedCurrency(for: holding.symbol)
@@ -162,6 +166,10 @@ final class PortfolioViewModel {
                 let lev = holding.effectiveLeverage
                 let qty = holding.quantity
                 let hasCost = holding.hasKnownCostBasis
+                // Match PortfolioValuation.totals() exactly: market value depends
+                // only on a live price, never on cost basis. A holding with a
+                // quote but no known cost (e.g. Binance balances without order
+                // history) still counts toward Total Value; only its cost is 0.
                 let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
                 let cost = hasCost
                     ? (holding.avgPrice / scale) * qty * lev * costRate
