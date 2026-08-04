@@ -95,6 +95,7 @@ struct WatchlistWideView: View {
     @State private var selectedSymbols: Set<String> = []
     @State private var activeDetailSymbol: String? = nil
     @State private var lastClickedSymbol: String? = nil
+    @State private var hScrollOffset: CGFloat = 0
 
     private var rows: [WatchRow] {
         storageService.watchlist.enumerated().map { index, symbol in
@@ -495,14 +496,28 @@ struct WatchlistWideView: View {
 
     private var table: some View {
         VStack(spacing: 0) {
-            if !isCompact {
-                tableToolbar
-                Divider().overlay(DS.hairline)
-            }
-            ScrollView(.horizontal, showsIndicators: !isCompact) {
+            tableToolbar
+            Divider().overlay(DS.hairline)
+            if isCompact {
                 tableContents
-                    .frame(width: isCompact ? 190 : tableWidth)
-                    .frame(maxHeight: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    ZStack(alignment: .topLeading) {
+                        tableContents
+                            .frame(width: tableWidth)
+                        // Track horizontal scroll offset from scroll content frame
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: HScrollOffsetKey.self,
+                                value: -geo.frame(in: .named("hscroll")).minX
+                            )
+                        }
+                    }
+                }
+                .coordinateSpace(name: "hscroll")
+                .onPreferenceChange(HScrollOffsetKey.self) { offset in
+                    hScrollOffset = offset
+                }
             }
         }
         .frame(maxHeight: .infinity)
@@ -521,40 +536,42 @@ struct WatchlistWideView: View {
                 .font(DS.caption)
                 .foregroundStyle(DS.inkSecondary)
 
-            Spacer()
+            if !isCompact {
+                Spacer()
 
-            Button {
-                PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
-                    Text("Export").font(DS.caption)
+                Button {
+                    PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
+                        Text("Export").font(DS.caption)
+                    }
+                    .foregroundStyle(DS.inkSecondary)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                 }
-                .foregroundStyle(DS.inkSecondary)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            RefreshButton(isLoading: stockService.isLoading) {
-                Task { await stockService.refreshAll(storageService: storageService) }
-            }
-
-            Button { showMetricCustomizer = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
-                    Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                RefreshButton(isLoading: stockService.isLoading) {
+                    Task { await stockService.refreshAll(storageService: storageService) }
                 }
-                .foregroundStyle(DS.brand)
-                .padding(.horizontal, 11).padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("Customize watchlist columns")
 
-            addButton
+                Button { showMetricCustomizer = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
+                        Text("Columns").font(.inter(12, weight: .semibold, relativeTo: .body))
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 11).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.brand.opacity(0.12)))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.brand.opacity(0.25), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Customize watchlist columns")
+
+                addButton
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -578,6 +595,7 @@ struct WatchlistWideView: View {
                                      metrics: selectedMetrics,
                                      isSelected: selectedSymbols.contains(row.symbol),
                                      compact: isCompact,
+                                     hScrollOffset: hScrollOffset,
                                      onOpen: {
                                          handleRowClick(row.symbol)
                                      },
@@ -658,11 +676,19 @@ struct WatchlistWideView: View {
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
-            Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
-            if isCompact {
-                headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
-            } else {
-                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
+            Group {
+                Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
+                if isCompact {
+                    headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
+                } else {
+                    headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
+                }
+            }
+            .padding(.vertical, 10)
+            .background(DS.card)
+            .offset(x: hScrollOffset)
+            .zIndex(1)
+            if !isCompact {
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
                 }
@@ -877,6 +903,7 @@ private struct WatchRowView<Menu: View>: View {
     let metrics: [WatchlistMetric]
     let isSelected: Bool
     var compact: Bool = false
+    var hScrollOffset: CGFloat = 0
     let onOpen: () -> Void
     @ViewBuilder let menu: () -> Menu
     @State private var hover = false
@@ -1011,30 +1038,44 @@ private struct WatchRowView<Menu: View>: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                Text("\(position)")
-                    .font(DS.micro.monospacedDigit())
-                    .foregroundStyle(DS.inkTertiary)
-                    .frame(width: 24, alignment: .leading)
+                // Frozen columns: position + symbol, with opaque white background & zIndex
+                Group {
+                    Text("\(position)")
+                        .font(DS.micro.monospacedDigit())
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(width: 24, alignment: .leading)
 
-                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
-                let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
-                let subTitleText = isJpFund ? "" : row.name
-                HStack(spacing: 9) {
-                    SymbolLogo(symbol: row.symbol, size: 28)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(titleText)
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(1)
-                        if !subTitleText.isEmpty {
-                            Text(subTitleText)
-                                .font(DS.micro)
-                                .foregroundStyle(DS.inkTertiary)
+                    let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
+                    let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
+                    let subTitleText = isJpFund ? "" : row.name
+                    HStack(spacing: 9) {
+                        SymbolLogo(symbol: row.symbol, size: 28)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(titleText)
+                                .font(DS.figure)
+                                .foregroundStyle(DS.ink)
                                 .lineLimit(1)
+                            if !subTitleText.isEmpty {
+                                Text(subTitleText)
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
+                    .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
                 }
-                .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .frame(minHeight: 44)
+                .background(
+                    Group {
+                        if isSelected { DS.brand.opacity(0.12) }
+                        else if hover { DS.cardAlt.opacity(0.6) }
+                        else { DS.card }
+                    }
+                )
+                .offset(x: hScrollOffset)
+                .zIndex(1)
 
                 if !compact {
                     ForEach(metrics) { metric in
@@ -1042,9 +1083,7 @@ private struct WatchRowView<Menu: View>: View {
                     }
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .frame(minHeight: 44)
-            .background(isSelected ? DS.brand.opacity(0.12) : (hover ? DS.cardAlt.opacity(0.6) : .clear))
+            .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1052,6 +1091,12 @@ private struct WatchRowView<Menu: View>: View {
         .onHover { hover = $0 }
         .contextMenu { menu() }
     }
+}
+
+/// Tracks horizontal scroll offset from the "hscroll" coordinate space.
+private struct HScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct WatchlistDropDelegate: DropDelegate {
