@@ -1137,6 +1137,16 @@ class StockService: ObservableObject {
 
             let curr = !ticker.currency.isEmpty ? ticker.currency : ((existing?.currency.isEmpty == false) ? existing!.currency : detectedCurrency(for: symbol))
 
+            // Precompute extended-hours values to reduce type-checker complexity
+            let prePrice = marketState == "PRE" ? tickPrice : existing?.preMarketPrice
+            let preChg = marketState == "PRE" ? tickChange : existing?.preMarketChange
+            let prePct = marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent
+            let postPrice = marketState == "POST" ? tickPrice : existing?.postMarketPrice
+            let postChg = marketState == "POST" ? tickChange : existing?.postMarketChange
+            let postPct = marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
+
+            let marketCap = existing?.marketCap
+
             let quote = StockQuote(
                 symbol: symbol,
                 name: existing?.name ?? ticker.shortName,
@@ -1150,12 +1160,13 @@ class StockService: ObservableObject {
                 dayLow: existing?.dayLow,
                 fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
-                preMarketPrice: marketState == "PRE" ? tickPrice : existing?.preMarketPrice,
-                preMarketChange: marketState == "PRE" ? tickChange : existing?.preMarketChange,
-                preMarketChangePercent: marketState == "PRE" ? tickChangePercent : existing?.preMarketChangePercent,
-                postMarketPrice: marketState == "POST" ? tickPrice : existing?.postMarketPrice,
-                postMarketChange: marketState == "POST" ? tickChange : existing?.postMarketChange,
-                postMarketChangePercent: marketState == "POST" ? tickChangePercent : existing?.postMarketChangePercent
+                marketCap: marketCap,
+                preMarketPrice: prePrice,
+                preMarketChange: preChg,
+                preMarketChangePercent: prePct,
+                postMarketPrice: postPrice,
+                postMarketChange: postChg,
+                postMarketChangePercent: postPct
             )
 
             updated[symbol] = quote
