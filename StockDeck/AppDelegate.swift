@@ -445,8 +445,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let totals = PortfolioValuation.totals(inputs)
             let totalVal = totals.value
             let totalCst = totals.cost
-            let pnl = totalVal - totalCst
-            let pnlPct = totalCst > 0 ? (pnl / totalCst) * 100 : 0
+            let pnl = totals.pnl
+            let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
 
             let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
                 guard let quote = stockService.quotes[holding.symbol] else { return nil }

@@ -154,6 +154,14 @@ struct HoldingDetailView: View {
         allHoldingsForSymbol.map(\.holding)
     }
 
+    /// True when at least one lot has no known cost basis (e.g. Binance balances
+    /// without order history). While market value is still real, the average
+    /// price, cost basis, and P&L are unknowable — we show "—" instead of
+    /// fabricating numbers.
+    private var hasAnyMissingCostBasis: Bool {
+        allHoldingsForSymbol.contains { !$0.holding.hasKnownCostBasis }
+    }
+
     private var totalQuantity: Double {
         HoldingLotAggregation.totalQuantity(aggregatedHoldings)
     }
@@ -170,7 +178,12 @@ struct HoldingDetailView: View {
         allHoldingsForSymbol.reduce(0) { $0 + $1.cost }
     }
 
-    private var aggregatedPnl: Double { aggregatedValue - aggregatedCost }
+    /// P&L only counts lots WITH a known cost basis. A Binance balance without
+    /// order history has cost 0, so `value - cost` would report the entire
+    /// market value as profit.
+    private var aggregatedPnl: Double {
+        allHoldingsForSymbol.reduce(0) { $1.holding.hasKnownCostBasis ? $0 + $1.pnl : $0 }
+    }
 
     private var aggregatedPnlPercent: Double {
         abs(aggregatedCost) >= 0.01 ? (aggregatedPnl / abs(aggregatedCost)) * 100 : 0
@@ -238,23 +251,37 @@ struct HoldingDetailView: View {
                             .foregroundStyle(DS.ink)
                             .frame(width: 60, alignment: .trailing)
 
-                        Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        Group {
+                            if vh.holding.hasKnownCostBasis {
+                                Text(StorageService.formatAmount(vh.holding.avgPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                            } else {
+                                Text("—")
+                            }
+                        }
+                        .font(DS.figure)
+                        .foregroundStyle(DS.ink)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
 
                         Text(StorageService.formatAmount(vh.value, symbol: priceSymbol, decimals: storageService.amountDecimals))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(StorageService.formatAmount(vh.pnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
-                                .font(DS.figure)
-                            Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
-                                .font(DS.micro)
+                        Group {
+                            if vh.holding.hasKnownCostBasis {
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text(StorageService.formatAmount(vh.pnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
+                                        .font(DS.figure)
+                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
+                                        .font(DS.micro)
+                                }
+                                .foregroundStyle(DS.pnlColor(vh.pnl))
+                            } else {
+                                Text("—")
+                                    .font(DS.figure)
+                                    .foregroundStyle(DS.inkTertiary)
+                            }
                         }
-                        .foregroundStyle(DS.pnlColor(vh.pnl))
                         .frame(maxWidth: .infinity, alignment: .trailing)
 
                         if isEditableScope {
@@ -315,12 +342,22 @@ struct HoldingDetailView: View {
     private var statStrip: some View {
         HStack(spacing: 10) {
             StatTile(label: "Position", value: "\(formatQty(totalQuantity)) sh", help: "Shares across all purchase lots shown below")
-            StatTile(label: "Avg cost", value: StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Quantity-weighted average cost")
-            StatTile(label: "Cost", value: StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Total cost basis across all purchase lots")
+            StatTile(label: "Avg price",
+                     value: hasAnyMissingCostBasis || !weightedAveragePrice.isFinite
+                        ? "—"
+                        : StorageService.formatAmount(weightedAveragePrice, symbol: priceSymbol, decimals: storageService.amountDecimals),
+                     help: "Quantity-weighted average price. Shown as — when a lot has no known cost basis.")
+            StatTile(label: "Cost",
+                     value: hasAnyMissingCostBasis
+                        ? "—"
+                        : StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals),
+                     help: "Total cost basis across all purchase lots. Shown as — when a lot has no known cost basis.")
             StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Current market value across all purchase lots")
             StatTile(label: "P&L",
-                     value: StorageService.formatAmount(aggregatedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true),
-                     caption: String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
+                     value: hasAnyMissingCostBasis
+                        ? "—"
+                        : StorageService.formatAmount(aggregatedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true),
+                     caption: hasAnyMissingCostBasis ? nil : String(format: "%+.\(storageService.percentDecimals)f%%", aggregatedPnlPercent),
                      captionTint: DS.pnlColor(aggregatedPnl), valueTint: DS.pnlColor(aggregatedPnl))
             StatTile(label: "Weight", value: String(format: "%.1f%%", aggregatedWeight), help: "Share of the selected portfolio scope")
         }

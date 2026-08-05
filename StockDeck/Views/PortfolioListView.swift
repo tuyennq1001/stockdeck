@@ -52,9 +52,10 @@ struct PortfolioListView: View {
                 if storageService.portfolios.count > 0 {
                     let currSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
                     let activePortfolios = activePortfoliosForSummary
-                    let totalVal = portfolioValue(for: activePortfolios)
-                    let totalCost = portfolioCost(for: activePortfolios)
-                    let pnl = totalVal - totalCost
+                    let totals = portfolioTotals(for: activePortfolios)
+                    let totalVal = totals.value
+                    let totalCost = totals.cost
+                    let pnl = totals.pnl
                     let pnlPct = abs(totalCost) >= 0.01 ? (pnl / abs(totalCost)) * 100 : 0
 
                     let todayInputs = activePortfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
@@ -313,14 +314,21 @@ struct PortfolioListView: View {
         }
     }
 
-    private func portfolioValue(for portfolios: [Portfolio]) -> Double {
+    private func portfolioTotals(for portfolios: [Portfolio]) -> (value: Double, cost: Double, pnl: Double) {
         let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs).value
+        return PortfolioValuation.totals(inputs)
+    }
+
+    private func portfolioValue(for portfolios: [Portfolio]) -> Double {
+        portfolioTotals(for: portfolios).value
     }
 
     private func portfolioCost(for portfolios: [Portfolio]) -> Double {
-        let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs).cost
+        portfolioTotals(for: portfolios).cost
+    }
+
+    private func portfolioPnl(for portfolios: [Portfolio]) -> Double {
+        portfolioTotals(for: portfolios).pnl
     }
 
     private var grandTotalValue: Double {
@@ -506,12 +514,11 @@ struct PortfolioSection: View {
 
     var totalPnl: Double {
         // Unify with every other surface: P&L = value − cost, where cost uses the
-        // historical FX rate at purchase. The old `holding.pnl() * rate` applied
-        // today's FX rate to the entire P&L, diverging from the menu bar and
-        // overview whenever FX moved since the purchase date.
+        // historical FX rate at purchase. Holdings without a known cost basis
+        // (e.g. Binance balances without order history) contribute 0 P&L — we
+        // can't report a gain/loss without the purchase price.
         let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        let totals = PortfolioValuation.totals(inputs)
-        return totals.value - totals.cost
+        return PortfolioValuation.totals(inputs).pnl
     }
 
     var totalCost: Double {

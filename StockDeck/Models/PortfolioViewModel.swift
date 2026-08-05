@@ -187,7 +187,10 @@ final class PortfolioViewModel {
                 var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0)
                 existing.value += value
                 existing.cost += cost
-                existing.pnl += (value - cost)
+                // P&L only for holdings with a known cost basis — a Binance
+                // balance without order history has cost 0, so value − cost would
+                // fabricate the entire market value as profit.
+                existing.pnl += (hasCost && price.isFinite) ? (value - cost) : 0
                 existing.nativeCost += nativeCst
                 existing.nativeValue += nativeVal
                 existing.nativePnl += nativePnl
@@ -217,8 +220,13 @@ final class PortfolioViewModel {
         valued.sort { abs($0.value) > abs($1.value) }
         sortedValuedHoldings = valued
 
-        // P&L computed directly from the values we already have, no second iteration over all holdings.
-        let pnl = totalVal - totalCst
+        // P&L only for holdings with a known cost basis — matches
+        // PortfolioValuation.totals(). A Binance balance without order history
+        // contributes value but 0 P&L.
+        var pnl = 0.0
+        for agg in bySymbol.values {
+            pnl += agg.pnl
+        }
         let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
         let todayTotals = TodayPerformance.totals(todayInputs)
 
