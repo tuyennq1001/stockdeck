@@ -88,7 +88,7 @@ struct AddHoldingView: View {
                         }) {
                             HStack(spacing: 8) {
                                 SymbolLogo(symbol: result.symbol, size: 24)
-                                Text(result.symbol)
+                                Text(StockService.beautifiedSymbol(result.symbol))
                                     .fontWeight(.semibold)
                                 Text(result.name)
                                     .font(.inter(10, relativeTo: .caption))

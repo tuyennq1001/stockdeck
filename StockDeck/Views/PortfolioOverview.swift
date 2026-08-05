@@ -1029,11 +1029,12 @@ struct PortfolioOverview: View {
     @ViewBuilder
     private func moverRow(_ h: ValuedHolding, maxAbs: Double, lastId: UUID?) -> some View {
         let isJpFund = h.quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol)
+        let isDisplayAsset = StockService.isDisplayNameAsset(h.symbol)
         HStack(spacing: 10) {
             SymbolLogo(symbol: h.symbol, size: 24)
             VStack(alignment: .leading, spacing: 1) {
-                if isJpFund {
-                    Text(h.name).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+                if isJpFund || isDisplayAsset {
+                    Text(h.quote.displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
                 } else {
                     Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
                     Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
@@ -1551,8 +1552,9 @@ private struct PositionSummaryRow: View {
 
             // Symbol column
             let isJpFund = (liveQuote?.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
-            let titleText = isJpFund ? (liveQuote?.displayName ?? symbol) : symbol
-            let subTitleText = isJpFund ? "" : (liveQuote?.name ?? "")
+            let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+            let titleText = (isJpFund || isDisplayAsset) ? (liveQuote?.displayName ?? StockService.beautifiedSymbol(symbol)) : symbol
+            let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : (liveQuote?.name ?? ""))
 
             HStack(spacing: 9) {
                 SymbolLogo(symbol: symbol, size: 28)

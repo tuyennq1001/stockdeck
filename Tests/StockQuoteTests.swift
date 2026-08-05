@@ -80,4 +80,75 @@ final class StockQuoteTests: XCTestCase {
     func testPositionNilWhenDegenerate() {
         XCTAssertNil(quote(price: 100, high: 100, low: 100).fiftyTwoWeekPosition)
     }
+
+    // MARK: - Index display names (beautified symbols)
+
+    func testBeautifiedSymbolKnownIndexUsesConventionalName() {
+        XCTAssertEqual(StockService.beautifiedSymbol("^N225"), "Nikkei 225")
+        XCTAssertEqual(StockService.beautifiedSymbol("^GSPC"), "S&P 500")
+        XCTAssertEqual(StockService.beautifiedSymbol("^KS11"), "KOSPI Composite Index")
+        XCTAssertEqual(StockService.beautifiedSymbol("^VNINDEX.VN"), "VN-Index")
+    }
+
+    func testBeautifiedSymbolUnknownIndexStripsCaret() {
+        XCTAssertEqual(StockService.beautifiedSymbol("^FOO"), "FOO")
+    }
+
+    func testBeautifiedSymbolRegularStockUnchanged() {
+        XCTAssertEqual(StockService.beautifiedSymbol("AAPL"), "AAPL")
+        XCTAssertEqual(StockService.beautifiedSymbol("BTC-USD"), "BTC-USD")
+    }
+
+    func testIsIndexSymbol() {
+        XCTAssertTrue(StockService.isIndexSymbol("^N225"))
+        XCTAssertTrue(StockService.isIndexSymbol("^GSPC"))
+        XCTAssertFalse(StockService.isIndexSymbol("AAPL"))
+        XCTAssertFalse(StockService.isIndexSymbol("BTC-USD"))
+    }
+
+    func testIsDisplayNameAsset() {
+        // Indices → yes
+        XCTAssertTrue(StockService.isDisplayNameAsset("^N225"))
+        // FX pairs → yes
+        XCTAssertTrue(StockService.isDisplayNameAsset("EURUSD=X"))
+        // Futures & commodities → yes
+        XCTAssertTrue(StockService.isDisplayNameAsset("GC=F"))
+        // Single stocks / ETFs / crypto → keep the raw ticker
+        XCTAssertFalse(StockService.isDisplayNameAsset("ASML"))
+        XCTAssertFalse(StockService.isDisplayNameAsset("VOO"))
+        XCTAssertFalse(StockService.isDisplayNameAsset("BTC-USD"))
+    }
+
+    func testBeautifiedSymbolFXPair() {
+        XCTAssertEqual(StockService.beautifiedSymbol("EURUSD=X"), "EUR/USD")
+        XCTAssertEqual(StockService.beautifiedSymbol("USDJPY=X"), "USD/JPY")
+    }
+
+    func testBeautifiedSymbolFutureUsesConventionalName() {
+        XCTAssertEqual(StockService.beautifiedSymbol("GC=F"), "Gold Futures")
+        XCTAssertEqual(StockService.beautifiedSymbol("CL=F"), "Crude Oil WTI Futures")
+        XCTAssertEqual(StockService.beautifiedSymbol("ES=F"), "E-mini S&P 500 Futures")
+    }
+
+    func testBeautifiedSymbolSingleStockKeepsRawTicker() {
+        // Rule: single stocks / ETFs keep the raw ticker as the primary label.
+        XCTAssertEqual(StockService.beautifiedSymbol("ASML"), "ASML")
+        XCTAssertEqual(StockService.beautifiedSymbol("VOO"), "VOO")
+    }
+
+    func testIndexQuoteDisplayNameUsesConventionalName() {
+        let n225 = StockQuote(symbol: "^N225", name: "Nikkei 225 (^N225)", price: 39000, change: 100, changePercent: 0.25,
+                              currency: "JPY", marketState: "CLOSED")
+        XCTAssertEqual(n225.displayName, "Nikkei 225")
+
+        let gspc = StockQuote(symbol: "^GSPC", name: "S&P 500", price: 5400, change: 20, changePercent: 0.4,
+                              currency: "USD", marketState: "REGULAR")
+        XCTAssertEqual(gspc.displayName, "S&P 500")
+    }
+
+    func testRegularStockDisplayNameKeepsRawSymbolWithoutYahooName() {
+        let aapl = StockQuote(symbol: "AAPL", name: "", price: 200, change: 1, changePercent: 0.5,
+                              currency: "USD", marketState: "REGULAR")
+        XCTAssertEqual(aapl.displayName, "AAPL")
+    }
 }

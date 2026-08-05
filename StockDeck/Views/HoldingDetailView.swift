@@ -43,8 +43,9 @@ struct HoldingDetailView: View {
 
     var body: some View {
         let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol)
-        let mainTitle = isJpFund ? quote.displayName : holding.symbol
-        let subTitle = isJpFund ? "" : quote.name
+        let isDisplayAsset = StockService.isDisplayNameAsset(holding.symbol)
+        let mainTitle = (isJpFund || isDisplayAsset) ? quote.displayName : holding.symbol
+        let subTitle = isDisplayAsset ? holding.symbol : (isJpFund ? "" : quote.name)
 
         PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol) {
             HStack(spacing: 10) {

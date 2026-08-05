@@ -201,8 +201,15 @@ struct StockQuote: Identifiable, Codable {
         return false
     }
 
-    /// Display name for symbol. For Japanese mutual funds (投資信託), returns the Japanese fund name.
+    /// Display name for symbol. For market indices (^N225, ^GSPC), FX pairs
+    /// ("USDJPY=X"), and futures/commodities ("GC=F") returns the conventional
+    /// readable name. For Japanese mutual funds (投資信託), returns the Japanese
+    /// fund name. Single stocks, ETFs, funds, and crypto keep the raw symbol.
     nonisolated var displayName: String {
+        // Indices, FX pairs, and futures always prefer the conventional display name.
+        if StockService.isDisplayNameAsset(symbol) {
+            return StockService.beautifiedSymbol(symbol)
+        }
         let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if let mapName = StockService.codeToFundNameMap[clean], !mapName.isEmpty {
             return mapName

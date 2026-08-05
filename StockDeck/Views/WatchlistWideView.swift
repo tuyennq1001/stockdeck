@@ -271,8 +271,9 @@ struct WatchlistWideView: View {
             HStack(alignment: .center, spacing: 10) {
                 SymbolLogo(symbol: symbol, size: 36)
                 let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(symbol)
-                let titleText = isJpFund ? quote.displayName : symbol
-                let subTitleText = isJpFund ? "" : quote.name
+                let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+                let titleText = (isJpFund || isDisplayAsset) ? quote.displayName : symbol
+                let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : quote.name)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink).lineLimit(1)
                     if !subTitleText.isEmpty {
@@ -1048,8 +1049,9 @@ private struct WatchRowView<Menu: View>: View {
                         .frame(width: 24, alignment: .leading)
 
                     let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
-                    let titleText = isJpFund ? (row.quote?.displayName ?? StockService.codeToFundNameMap[row.symbol] ?? row.symbol) : row.symbol
-                    let subTitleText = isJpFund ? "" : row.name
+                    let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
+                    let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
+                    let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
                     HStack(spacing: 9) {
                         SymbolLogo(symbol: row.symbol, size: 28)
                         VStack(alignment: .leading, spacing: 1) {

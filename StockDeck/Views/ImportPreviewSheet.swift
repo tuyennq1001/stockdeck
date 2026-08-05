@@ -168,7 +168,7 @@ struct ImportPreviewSheet: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(symbol).font(DS.bodyStrong).foregroundStyle(DS.ink)
+                    Text(StockService.beautifiedSymbol(symbol)).font(DS.bodyStrong).foregroundStyle(DS.ink)
                     if isExisting {
                         Text("Existing")
                             .font(DS.micro)
