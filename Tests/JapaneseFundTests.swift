@@ -12,6 +12,9 @@ final class JapaneseFundTests: XCTestCase {
         XCTAssertTrue(stockService.isJapaneseMutualFund("9I31223A.JP"))
 
         XCTAssertFalse(stockService.isJapaneseMutualFund("AAPL"))
+        XCTAssertFalse(stockService.isJapaneseMutualFund("GOOGL"))
+        XCTAssertFalse(stockService.isJapaneseMutualFund("PLTR"))
+        XCTAssertFalse(stockService.isJapaneseMutualFund("AMZNF"))
         XCTAssertFalse(stockService.isJapaneseMutualFund("7203.T"))
         XCTAssertFalse(stockService.isJapaneseMutualFund("^GSPC"))
         XCTAssertFalse(stockService.isJapaneseMutualFund("BTC-USD"))

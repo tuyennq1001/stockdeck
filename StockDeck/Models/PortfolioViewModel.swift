@@ -183,7 +183,7 @@ final class PortfolioViewModel {
                 let nativeCst = holding.costBasisLocal
                 let nativePnl = holding.pnl(currentPrice: price)
 
-                let sym = holding.symbol.uppercased()
+                let sym = StockService.canonicalSymbol(for: holding.symbol)
                 var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0)
                 existing.value += value
                 existing.cost += cost

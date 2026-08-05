@@ -253,7 +253,12 @@ class StockService: ObservableObject {
         // "^VNINDEX" was the first version we shipped; Yahoo actually serves
         // VN-Index as "^VNINDEX.VN". Mapping here keeps existing watchlist
         // entries working without requiring the user to remove & re-add.
-        let canonicalAliases: [String: String] = ["^VNINDEX": "^VNINDEX.VN"]
+        let canonicalAliases: [String: String] = [
+            "^VNINDEX": "^VNINDEX.VN",
+            "ALPHABET": "GOOGL",
+            "GOOG": "GOOGL",
+            "FB": "META"
+        ]
         let symbols = symbols.map { canonicalAliases[$0.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)] ?? $0 }
 
         let fundSymbols = symbols.filter { self.isJapaneseMutualFund($0) }
@@ -350,6 +355,35 @@ class StockService: ObservableObject {
                 self.quotes[alias.uppercased()] = quote
             }
         }
+    }
+
+    nonisolated private static let symbolAliases: [String: String] = [
+        "ALPHABET": "GOOGL",
+        "GOOG": "GOOGL",
+        "FB": "META"
+    ]
+
+    nonisolated static func canonicalSymbol(for symbol: String) -> String {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var base = upper
+        let hasUSDSuffix = base.hasSuffix("-USD")
+        if hasUSDSuffix {
+            base = String(base.dropLast(4))
+        }
+        let hasEQPrefix = base.hasPrefix("EQ_")
+        if hasEQPrefix && base.count > 3 {
+            base = String(base.dropFirst(3))
+        }
+
+        if let aliased = symbolAliases[base] {
+            return aliased
+        }
+
+        if hasEQPrefix {
+            return base
+        }
+
+        return upper
     }
 
     private static func isBinanceEquitySymbol(_ symbol: String) -> Bool {
@@ -1410,8 +1444,9 @@ class StockService: ObservableObject {
         if clean.hasPrefix("0P") && clean.count >= 8 {
             return true
         }
+        let hasDigits = clean.rangeOfCharacter(from: .decimalDigits) != nil
         let toushinRegex = "^[0-9A-Z]{5,12}$"
-        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+        if hasDigits && clean.range(of: toushinRegex, options: .regularExpression) != nil {
             if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
                 return true
             }

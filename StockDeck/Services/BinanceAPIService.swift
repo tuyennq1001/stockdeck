@@ -604,14 +604,18 @@ class BinanceAPIService {
 
         return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
             guard qty >= 1e-8 else { return nil }
-            let symbol: String
-            if BinanceStablecoin.isUSDPegged(assetName) {
-                symbol = "\(assetName)-USD"
+            let rawSymbol: String
+            if assetName.hasPrefix("EQ_") && assetName.count > 3 {
+                let base = assetName.hasSuffix("-USD") ? String(assetName.dropLast(4)) : assetName
+                rawSymbol = String(base.dropFirst(3))
+            } else if BinanceStablecoin.isUSDPegged(assetName) {
+                rawSymbol = "\(assetName)-USD"
             } else if assetName.contains("-") {
-                symbol = assetName
+                rawSymbol = assetName
             } else {
-                symbol = "\(assetName)-USD"
+                rawSymbol = "\(assetName)-USD"
             }
+            let symbol = StockService.canonicalSymbol(for: rawSymbol)
 
             return Holding(
                 id: UUID(),

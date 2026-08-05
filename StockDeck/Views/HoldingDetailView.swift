@@ -139,7 +139,7 @@ struct HoldingDetailView: View {
 
     private var allHoldingsForSymbol: [ValuedHolding] {
         let matched = scopedPortfolios.flatMap { p in
-            p.holdings.filter { $0.symbol.uppercased() == holding.symbol.uppercased() }.map { h in
+            p.holdings.filter { StockService.canonicalSymbol(for: $0.symbol) == StockService.canonicalSymbol(for: holding.symbol) }.map { h in
                 let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
                 let val = h.marketValue(currentPrice: price)
                 let cst = h.costBasisLocal
