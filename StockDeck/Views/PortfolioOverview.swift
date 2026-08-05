@@ -1120,7 +1120,7 @@ struct PortfolioOverview: View {
                         .padding(.bottom, 12)
                         Divider().overlay(DS.hairline)
 
-                        let groupedValued = Dictionary(grouping: holdings) { $0.symbol.uppercased() }
+                        let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
                         let sortedSymbols: [String] = {
                             if sortColumn == .manual {
                                 return insertionOrderedSymbols.filter { groupedValued[$0] != nil }

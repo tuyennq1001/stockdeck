@@ -192,8 +192,9 @@ struct StockQuote: Identifiable, Codable {
         if clean.hasPrefix("0P") && clean.count >= 8 {
             return true
         }
+        let hasDigits = clean.rangeOfCharacter(from: .decimalDigits) != nil
         let toushinRegex = "^[0-9A-Z]{5,12}$"
-        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+        if hasDigits && clean.range(of: toushinRegex, options: .regularExpression) != nil {
             if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
                 return true
             }
@@ -405,8 +406,9 @@ struct Holding: Identifiable, Codable {
         if clean.hasPrefix("0P") && clean.count >= 8 {
             return true
         }
+        let hasDigits = clean.rangeOfCharacter(from: .decimalDigits) != nil
         let toushinRegex = "^[0-9A-Z]{5,12}$"
-        if clean.range(of: toushinRegex, options: .regularExpression) != nil {
+        if hasDigits && clean.range(of: toushinRegex, options: .regularExpression) != nil {
             if !upper.hasSuffix(".T") && !upper.hasSuffix(".JP") {
                 return true
             }

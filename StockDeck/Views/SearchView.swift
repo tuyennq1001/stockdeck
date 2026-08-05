@@ -76,7 +76,7 @@ struct SearchView: View {
                     }
                 }
 
-            // Filter tabs
+            // Asset Filter tabs
             HStack(spacing: 4) {
                 ForEach(WatchlistSearchSheet.AssetFilter.allCases, id: \.self) { f in
                     Button(f.label) { filter = f }
@@ -170,6 +170,7 @@ struct SearchView: View {
         case .watchlist:
             storageService.addToWatchlist(result.symbol)
             if !result.type.isEmpty { storageService.setType(result.type, for: result.symbol) }
+            if !result.exchange.isEmpty { storageService.setExchange(result.exchange, for: result.symbol) }
             if queryLooksLikeISIN {
                 storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: result.symbol)
             }

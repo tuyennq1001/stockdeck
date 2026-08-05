@@ -1,0 +1,811 @@
+import SwiftUI
+import UniformTypeIdentifiers
+import AppKit
+
+// MARK: - Image store
+
+/// Manages image storage for notes in the app sandbox.
+enum NoteImageStore {
+    private static let directoryName = "note-images"
+
+    static func directory() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = appSupport.appendingPathComponent("StockDeck").appendingPathComponent(directoryName)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static func saveImage(_ data: Data, ext: String) -> String {
+        let filename = "\(UUID().uuidString).\(ext)"
+        let url = directory().appendingPathComponent(filename)
+        try? data.write(to: url)
+        return filename
+    }
+
+    static func imageURL(for filename: String) -> URL {
+        directory().appendingPathComponent(filename)
+    }
+
+    static func deleteImage(filename: String) {
+        try? FileManager.default.removeItem(at: imageURL(for: filename))
+    }
+}
+
+// MARK: - Markdown toolbar
+
+struct MarkdownToolbar: View {
+    let onInsert: (String, String) -> Void
+    let onImage: () -> Void
+
+    private let formats: [(icon: String, label: String, prefix: String, suffix: String)] = [
+        ("bold",           "Bold",            "**", "**"),
+        ("italic",         "Italic",          "*",  "*"),
+        ("strikethrough",  "Strikethrough",   "~~", "~~"),
+        ("text.alignleft", "Heading",         "\n# ", ""),
+        ("list.bullet",    "Bullet list",     "\n- ", ""),
+        ("list.number",    "Numbered list",   "\n1. ", ""),
+        ("chevron.left.forwardslash.chevron.right", "Code", "`", "`"),
+        ("link",           "Link",            "[", "](url)"),
+    ]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(formats, id: \.label) { fmt in
+                    Button {
+                        onInsert(fmt.prefix, fmt.suffix)
+                    } label: {
+                        Image(systemName: fmt.icon)
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(width: 28, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.inkSecondary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.clear)
+                    )
+                    .help(fmt.label)
+                    .pointingHandCursor()
+                }
+
+                Divider().frame(height: 16).overlay(DS.hairline).padding(.horizontal, 2)
+
+                Button(action: onImage) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(width: 28, height: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.inkSecondary)
+                .help("Insert image")
+                .pointingHandCursor()
+            }
+            .padding(.horizontal, 4)
+        }
+        .frame(height: 28)
+    }
+}
+
+// MARK: - Custom Markdown Renderer
+
+/// A custom SwiftUI markdown renderer that properly handles:
+/// - # / ## / ### Headings
+/// - **bold**, *italic*, ~~strikethrough~~, `code`
+/// - - / * Bullet lists
+/// - 1. Numbered lists
+/// - [text](url) Links
+/// - Paragraphs
+/// - Inline image placeholders (images handled separately by MarkdownNoteView)
+struct MarkdownRenderer: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(parsedNodes.enumerated()), id: \.offset) { _, node in
+                renderNode(node)
+            }
+        }
+    }
+
+    // MARK: - AST
+
+    private indirect enum Node {
+        case heading(level: Int, content: [Inline])
+        case paragraph([Inline])
+        case bulletList([[Inline]])
+        case numberedList([[Inline]])
+        case blank
+    }
+
+    private enum Inline {
+        case text(String)
+        case bold(String)
+        case italic(String)
+        case strikethrough(String)
+        case code(String)
+        case link(text: String, url: String)
+    }
+
+    private var parsedNodes: [Node] {
+        let lines = text.components(separatedBy: "\n")
+        var nodes: [Node] = []
+        var i = 0
+
+        while i < lines.count {
+            let line = lines[i]
+
+            // Blank line
+            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                nodes.append(.blank)
+                i += 1
+                continue
+            }
+
+            // Heading: #, ##, ###
+            let headingPattern = try! NSRegularExpression(pattern: #"^(#{1,3})\s+(.*)"#, options: [])
+            let lineRange = NSRange(line.startIndex..., in: line)
+            if let m = headingPattern.firstMatch(in: line, options: [], range: lineRange) {
+                let level = Range(m.range(at: 1), in: line).map { String(line[$0]).count } ?? 1
+                let content = Range(m.range(at: 2), in: line).map { String(line[$0]) } ?? ""
+                nodes.append(.heading(level: level, content: parseInlines(content)))
+                i += 1
+                continue
+            }
+
+            // Bullet list: - item or * item
+            let bulletPattern = try! NSRegularExpression(pattern: #"^[\-\*]\s+(.*)"#, options: [])
+            if let m = bulletPattern.firstMatch(in: line, options: [], range: lineRange) {
+                var items: [[Inline]] = []
+                while i < lines.count {
+                    let l = lines[i]
+                    let lr = NSRange(l.startIndex..., in: l)
+                    if let bm = bulletPattern.firstMatch(in: l, options: [], range: lr),
+                       let content = Range(bm.range(at: 1), in: l) {
+                        items.append(parseInlines(String(l[content])))
+                        i += 1
+                    } else {
+                        break
+                    }
+                }
+                nodes.append(.bulletList(items))
+                continue
+            }
+
+            // Numbered list: 1. item, 2. item, etc.
+            let numberedPattern = try! NSRegularExpression(pattern: #"^\d+\.\s+(.*)"#, options: [])
+            if let m = numberedPattern.firstMatch(in: line, options: [], range: lineRange) {
+                var items: [[Inline]] = []
+                while i < lines.count {
+                    let l = lines[i]
+                    let lr = NSRange(l.startIndex..., in: l)
+                    if let nm = numberedPattern.firstMatch(in: l, options: [], range: lr),
+                       let content = Range(nm.range(at: 1), in: l) {
+                        items.append(parseInlines(String(l[content])))
+                        i += 1
+                    } else {
+                        break
+                    }
+                }
+                nodes.append(.numberedList(items))
+                continue
+            }
+
+            // Regular paragraph
+            nodes.append(.paragraph(parseInlines(line)))
+            i += 1
+        }
+
+        return nodes
+    }
+
+    private func parseInlines(_ text: String) -> [Inline] {
+        var result: [Inline] = []
+        var remaining = text
+
+        // Combined pattern: **bold**, *italic*, ~~strikethrough~~, `code`, [text](url)
+        let pattern = try! NSRegularExpression(pattern: #"""
+            (\*\*(.+?)\*\*)          # **bold**
+            |(\*(.+?)\*)             # *italic*
+            |(~~(.+?)~~)             # ~~strikethrough~~
+            |(`(.+?)`)               # `code`
+            |(\[([^\]]+)\]\(([^\)]+)\)) # [text](url)
+            """#, options: [.allowCommentsAndWhitespace])
+
+        // Simplify: let's just use simpler patterns
+        let combined = try! NSRegularExpression(pattern: #"(\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|`[^`]+`|\[[^\]]+\]\([^\)]+\))"#, options: [])
+
+        let combined2 = try! NSRegularExpression(pattern: #"(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`(.+?)`|\[([^\]]+)\]\(([^\)]+)\))"#, options: [])
+
+        while !remaining.isEmpty {
+            let range = NSRange(remaining.startIndex..., in: remaining)
+            if let match = combined2.firstMatch(in: remaining, options: [], range: range) {
+                // Text before match
+                let beforeRange = Range(NSRange(location: 0, length: match.range.location), in: remaining)
+                if let br = beforeRange, !br.isEmpty {
+                    let before = String(remaining[br])
+                    if !before.isEmpty { result.append(.text(before)) }
+                }
+
+                // Identify which group matched and extract content
+                if let boldRange = Range(match.range(at: 2), in: remaining), match.range(at: 2).location != NSNotFound {
+                    result.append(.bold(String(remaining[boldRange])))
+                } else if let italicRange = Range(match.range(at: 3), in: remaining), match.range(at: 3).location != NSNotFound {
+                    result.append(.italic(String(remaining[italicRange])))
+                } else if let strikeRange = Range(match.range(at: 4), in: remaining), match.range(at: 4).location != NSNotFound {
+                    result.append(.strikethrough(String(remaining[strikeRange])))
+                } else if let codeRange = Range(match.range(at: 5), in: remaining), match.range(at: 5).location != NSNotFound {
+                    result.append(.code(String(remaining[codeRange])))
+                } else if let linkTextRange = Range(match.range(at: 6), in: remaining),
+                          let linkUrlRange = Range(match.range(at: 7), in: remaining),
+                          match.range(at: 6).location != NSNotFound {
+                    result.append(.link(text: String(remaining[linkTextRange]), url: String(remaining[linkUrlRange])))
+                }
+
+                let afterIdx = match.range.location + match.range.length
+                remaining = String(remaining[remaining.index(remaining.startIndex, offsetBy: afterIdx)...])
+            } else {
+                if !remaining.isEmpty { result.append(.text(remaining)) }
+                remaining = ""
+            }
+        }
+
+        return result.isEmpty ? [.text(text)] : result
+    }
+
+    // MARK: - Render
+
+    @ViewBuilder
+    private func renderNode(_ node: Node) -> some View {
+        switch node {
+        case .heading(let level, let content):
+            let size: Font = level == 1 ? DS.title : (level == 2 ? .inter(15, weight: .bold, relativeTo: .title3) : .inter(13, weight: .bold, relativeTo: .body))
+            renderInlines(content, baseFont: size, baseColor: DS.ink)
+                .padding(.top, level == 1 ? 8 : 4)
+                .padding(.bottom, 2)
+
+        case .paragraph(let inlines):
+            renderInlines(inlines, baseFont: DS.body, baseColor: DS.ink)
+                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+        case .bulletList(let items):
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("•")
+                            .font(DS.body)
+                            .foregroundStyle(DS.inkSecondary)
+                            .frame(width: 10, alignment: .leading)
+                        renderInlines(item, baseFont: DS.body, baseColor: DS.ink)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+
+        case .numberedList(let items):
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text("\(index + 1).")
+                            .font(DS.body.monospacedDigit())
+                            .foregroundStyle(DS.inkSecondary)
+                            .frame(width: 20, alignment: .leading)
+                        renderInlines(item, baseFont: DS.body, baseColor: DS.ink)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+
+        case .blank:
+            Color.clear.frame(height: 6)
+        }
+    }
+
+    @ViewBuilder
+    private func renderInlines(_ inlines: [Inline], baseFont: Font, baseColor: Color) -> some View {
+        Text(inlines.reduce(AttributedString()) { partial, inline in
+            var result = partial
+            switch inline {
+            case .text(let s):
+                result.append(attributed(s, font: baseFont, color: baseColor))
+            case .bold(let s):
+                var a = attributed(s, font: baseFont, color: baseColor)
+                a.font = .system(size: FontSize(for: baseFont), weight: .bold)
+                result.append(a)
+            case .italic(let s):
+                var a = attributed(s, font: baseFont, color: baseColor)
+                a.font = .system(size: FontSize(for: baseFont)).italic()
+                result.append(a)
+            case .strikethrough(let s):
+                var a = attributed(s, font: baseFont, color: DS.inkTertiary)
+                a.strikethroughStyle = .single
+                result.append(a)
+            case .code(let s):
+                var a = attributed(s, font: .system(.caption, design: .monospaced), color: DS.brand)
+                a.backgroundColor = DS.brand.opacity(0.10)
+                result.append(a)
+            case .link(let text, let url):
+                var a = attributed(text, font: baseFont, color: DS.brand)
+                a.underlineStyle = .single
+                a.link = URL(string: url)
+                result.append(a)
+            }
+            return result
+        })
+    }
+
+    private func attributed(_ string: String, font: Font, color: Color) -> AttributedString {
+        var a = AttributedString(string)
+        a.font = font
+        a.foregroundColor = color
+        return a
+    }
+
+    /// Approximate font size from a SwiftUI Font. Used to compute bold/italic variants.
+    private func FontSize(for font: Font) -> CGFloat {
+        switch font {
+        case DS.title: return 17
+        case DS.body: return 13
+        case DS.caption: return 11
+        case DS.micro: return 9.5
+        default: return 13
+        }
+    }
+}
+
+// MARK: - Markdown note display
+
+struct MarkdownNoteView: View {
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(parsedBlocks(), id: \.id) { block in
+                switch block {
+                case .text(let md):
+                    MarkdownRenderer(text: md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .image(let filename, let alt):
+                    if let nsImage = NSImage(contentsOf: NoteImageStore.imageURL(for: filename)) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 520, maxHeight: 340)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(DS.hairline, lineWidth: 0.5)
+                                )
+                            if !alt.isEmpty {
+                                Text(alt)
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+                            }
+                        }
+                    } else {
+                        Text("[Missing image: \(alt.isEmpty ? filename : alt)]")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                            .italic()
+                    }
+                }
+            }
+        }
+    }
+
+    private enum Block: Identifiable {
+        case text(String)
+        case image(filename: String, alt: String)
+
+        var id: String {
+            switch self {
+            case .text(let s): return "t:\(s.hashValue)"
+            case .image(let f, _): return "i:\(f)"
+            }
+        }
+    }
+
+    private func parsedBlocks() -> [Block] {
+        var blocks: [Block] = []
+        var remaining = markdown
+
+        let pattern = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(note-image://([^\)]+)\)"#, options: [])
+
+        while !remaining.isEmpty {
+            let range = NSRange(remaining.startIndex..., in: remaining)
+            if let match = pattern.firstMatch(in: remaining, options: [], range: range) {
+                let beforeRange = Range(NSRange(location: 0, length: match.range.location), in: remaining)
+                if let br = beforeRange, !br.isEmpty {
+                    let text = String(remaining[br])
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        blocks.append(.text(text))
+                    }
+                }
+
+                if let altRange = Range(match.range(at: 1), in: remaining),
+                   let fileRange = Range(match.range(at: 2), in: remaining) {
+                    let alt = String(remaining[altRange])
+                    let filename = String(remaining[fileRange])
+                    blocks.append(.image(filename: filename, alt: alt))
+                }
+
+                let afterIdx = match.range.location + match.range.length
+                remaining = String(remaining[remaining.index(remaining.startIndex, offsetBy: afterIdx)...])
+            } else {
+                if !remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    blocks.append(.text(remaining))
+                }
+                remaining = ""
+            }
+        }
+
+        return blocks.isEmpty ? [.text(markdown)] : blocks
+    }
+}
+
+// MARK: - Note card
+
+struct SymbolNotesCard: View {
+    @ObservedObject var storageService: StorageService
+    let symbol: String
+
+    @State private var editorText = ""
+    @State private var isEditingNew = false
+    @State private var previewNew = false
+
+    @State private var editingNoteId: UUID? = nil
+    @State private var editText = ""
+
+    @State private var deleteTarget: SymbolNote? = nil
+    @State private var showImagePicker = false
+
+    private var notes: [SymbolNote] { storageService.notes(for: symbol) }
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    var body: some View {
+        Card(title: "Notes") {
+            VStack(spacing: 10) {
+                if isEditingNew {
+                    VStack(spacing: 8) {
+                        MarkdownToolbar(onInsert: { prefix, suffix in insertFormatting(prefix: prefix, suffix: suffix, into: $editorText) },
+                                        onImage: { showImagePicker = true })
+
+                        if previewNew {
+                            MarkdownNoteView(markdown: editorText)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(DS.cardAlt)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(DS.hairline, lineWidth: 1)
+                                )
+                        } else {
+                            TextEditor(text: $editorText)
+                                .font(DS.body)
+                                .foregroundStyle(DS.ink)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 80)
+                                .padding(8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(DS.cardAlt)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .strokeBorder(DS.hairline, lineWidth: 1)
+                                )
+                                .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+                                    handleDrop(providers: providers, into: $editorText)
+                                    return true
+                                }
+                        }
+
+                        HStack(spacing: 6) {
+                            Button("Save") { saveNewNote() }
+                                .buttonStyle(.plain)
+                                .font(.inter(12, weight: .semibold, relativeTo: .body))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 6)
+                                .background(Capsule().fill(editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? DS.inkTertiary.opacity(0.3) : DS.brand))
+                                .disabled(editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            Button(previewNew ? "Edit" : "Preview") {
+                                previewNew.toggle()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.inter(12, weight: .medium, relativeTo: .body))
+                            .foregroundStyle(DS.brand)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(DS.brand.opacity(0.12)))
+
+                            Spacer()
+
+                            Button("Cancel") { isEditingNew = false; editorText = ""; previewNew = false }
+                                .buttonStyle(.plain)
+                                .font(.inter(12, weight: .medium, relativeTo: .body))
+                                .foregroundStyle(DS.inkSecondary)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Capsule().fill(DS.cardAlt))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    Button {
+                        isEditingNew = true
+                        editorText = ""
+                        previewNew = false
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle").font(.system(size: 12, weight: .medium))
+                            Text("Write a note…").font(DS.body)
+                        }
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+
+                if notes.isEmpty && !isEditingNew {
+                    Text("No notes yet")
+                        .font(DS.caption)
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(notes) { note in
+                            NoteRowView(
+                                note: note,
+                                isEditing: editingNoteId == note.id,
+                                editText: $editText,
+                                onEdit: { startEditing(note) },
+                                onSave: { saveEdit(note) },
+                                onCancel: { cancelEdit() },
+                                onDelete: { deleteTarget = note },
+                                onImage: { showImagePicker = true }
+                            )
+
+                            if note.id != notes.last?.id {
+                                Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 4)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .dsAlert(Binding<Bool>(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }),
+                 title: "Delete note", message: "This note will be permanently removed.", confirmTitle: "Delete", cancelTitle: "Cancel", destructive: true) {
+            if let target = deleteTarget {
+                storageService.deleteNote(id: target.id, from: symbol)
+                deleteTarget = nil
+            }
+        }
+        .fileImporter(isPresented: $showImagePicker, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result, let data = try? Data(contentsOf: url) {
+                let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension
+                let filename = NoteImageStore.saveImage(data, ext: ext)
+                let md = "\n![image](note-image://\(filename))\n"
+                if editingNoteId != nil {
+                    editText.append(md)
+                } else if isEditingNew {
+                    editorText.append(md)
+                }
+            }
+        }
+    }
+
+    private func saveNewNote() {
+        let trimmed = editorText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        storageService.addNote(to: symbol, content: trimmed)
+        editorText = ""
+        isEditingNew = false
+        previewNew = false
+    }
+
+    private func startEditing(_ note: SymbolNote) {
+        editingNoteId = note.id
+        editText = note.content
+    }
+
+    private func saveEdit(_ note: SymbolNote) {
+        let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            cancelEdit()
+            return
+        }
+        storageService.updateNote(id: note.id, for: symbol, content: trimmed)
+        editingNoteId = nil
+    }
+
+    private func cancelEdit() {
+        editingNoteId = nil
+    }
+
+    private func insertFormatting(prefix: String, suffix: String, into text: Binding<String>) {
+        let insertion = prefix + "text" + suffix
+        text.wrappedValue.append(text.wrappedValue.isEmpty ? insertion : "\n" + insertion)
+    }
+
+    private func handleDrop(providers: [NSItemProvider], into text: Binding<String>) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    guard let data = data else { return }
+                    let filename = NoteImageStore.saveImage(data, ext: "png")
+                    DispatchQueue.main.async {
+                        text.wrappedValue.append("\n![image](note-image://\(filename))\n")
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    guard let urlData = item as? Data,
+                          let url = URL(dataRepresentation: urlData, relativeTo: nil),
+                          let imageData = try? Data(contentsOf: url) else { return }
+                    let ext = url.pathExtension.isEmpty ? "png" : url.pathExtension
+                    let filename = NoteImageStore.saveImage(imageData, ext: ext)
+                    DispatchQueue.main.async {
+                        text.wrappedValue.append("\n![image](note-image://\(filename))\n")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Note row
+
+private struct NoteRowView: View {
+    let note: SymbolNote
+    let isEditing: Bool
+    @Binding var editText: String
+    let onEdit: () -> Void
+    let onSave: () -> Void
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+    let onImage: () -> Void
+
+    @State private var showPreview = false
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if isEditing {
+                VStack(spacing: 8) {
+                    MarkdownToolbar(onInsert: { prefix, suffix in
+                        editText.append(editText.isEmpty ? "\(prefix)text\(suffix)" : "\n\(prefix)text\(suffix)")
+                    }, onImage: onImage)
+
+                    if showPreview {
+                        MarkdownNoteView(markdown: editText)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(DS.cardAlt)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(DS.hairline, lineWidth: 1)
+                            )
+                    } else {
+                        TextEditor(text: $editText)
+                            .font(DS.body)
+                            .foregroundStyle(DS.ink)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 80)
+                            .padding(8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(DS.cardAlt)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(DS.hairline, lineWidth: 1)
+                            )
+                            .onDrop(of: [.fileURL, .image], isTargeted: nil) { providers in
+                                for provider in providers {
+                                    if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                                        provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                                            guard let data = data else { return }
+                                            let filename = NoteImageStore.saveImage(data, ext: "png")
+                                            DispatchQueue.main.async {
+                                                editText.append("\n![image](note-image://\(filename))\n")
+                                            }
+                                        }
+                                    }
+                                }
+                                return true
+                            }
+                    }
+
+                    HStack(spacing: 6) {
+                        Button("Save") { onSave() }
+                            .buttonStyle(.plain)
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Capsule().fill(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? DS.inkTertiary.opacity(0.3) : DS.brand))
+                            .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        Button(showPreview ? "Edit" : "Preview") {
+                            showPreview.toggle()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.inter(11, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.brand)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill(DS.brand.opacity(0.12)))
+
+                        Spacer()
+
+                        Button("Cancel") { onCancel() }
+                            .buttonStyle(.plain)
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(DS.inkSecondary)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Capsule().fill(DS.cardAlt))
+                    }
+                }
+            } else {
+                HStack(alignment: .top) {
+                    MarkdownNoteView(markdown: note.content)
+                    Spacer(minLength: 8)
+                    HStack(spacing: 2) {
+                        Button(action: onEdit) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .help("Edit note")
+
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .help("Delete note")
+                    }
+                }
+            }
+
+            HStack(spacing: 4) {
+                Text("Created: \(Self.dateFormatter.string(from: note.createdAt))")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
+                if note.updatedAt != note.createdAt {
+                    Text("· Edited: \(Self.dateFormatter.string(from: note.updatedAt))")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
