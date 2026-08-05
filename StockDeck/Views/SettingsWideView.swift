@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -434,3 +435,4 @@ private struct SettingDivider: View {
         Divider().overlay(DS.hairline.opacity(0.6))
     }
 }
+#endif

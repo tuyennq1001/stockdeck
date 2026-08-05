@@ -1,6 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 // MARK: - Image store
 
@@ -26,6 +30,7 @@ enum NoteImageStore {
     }
 }
 
+#if os(macOS)
 // MARK: - Editor Model (holds NSTextView reference for toolbar)
 
 final class EditorModel: ObservableObject {
@@ -114,13 +119,28 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView else { return }
+            guard let tv = textView else { return }
             isInternalChange = true
-            text = textView.string
+            text = tv.string
             isInternalChange = false
         }
     }
 }
+#else
+final class EditorModel: ObservableObject {
+    func insertFormatting(prefix: String, suffix: String) {}
+    func insertImageMarkdown(filename: String) {}
+    func handleImageDrop(_ data: Data) {}
+}
+
+struct MarkdownEditor: View {
+    @Binding var text: String
+    var model: EditorModel
+    var body: some View {
+        TextEditor(text: $text)
+    }
+}
+#endif
 
 // MARK: - Markdown Toolbar
 
@@ -275,10 +295,21 @@ struct MarkdownNoteView: View {
                 switch block {
                 case .text(let md): MarkdownRenderer(text: expanded ? md : truncated(md)).frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let f, let alt):
-                    if let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f)) {
+                    #if os(macOS)
+                    let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f))
+                    #else
+                    let img = UIImage(contentsOfFile: NoteImageStore.imageURL(for: f).path)
+                    #endif
+                    if let img {
+                        #if os(macOS)
                         Image(nsImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
+                        #else
+                        Image(uiImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
+                        #endif
                         if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
                     }
                 }

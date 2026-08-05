@@ -6,7 +6,7 @@ import Combine
 @MainActor
 @Observable
 final class PortfolioViewModel {
-    let scope: PortfolioWindowView.Scope
+    let scope: PortfolioScope
 
     private let stockService: StockService
     private let storageService: StorageService
@@ -32,7 +32,7 @@ final class PortfolioViewModel {
     /// Subscription bag for Combine observation of quote changes.
     private var cancellable: AnyCancellable?
 
-    init(scope: PortfolioWindowView.Scope, stockService: StockService, storageService: StorageService) {
+    init(scope: PortfolioScope, stockService: StockService, storageService: StorageService) {
         self.scope = scope
         self.stockService = stockService
         self.storageService = storageService

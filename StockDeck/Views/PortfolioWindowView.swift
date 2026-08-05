@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -20,10 +21,7 @@ struct PortfolioWindowView: View {
     }
 
     /// Scope passed to the portfolio overview.
-    enum Scope: Hashable {
-        case all
-        case portfolio(UUID)
-    }
+    typealias Scope = PortfolioScope
 
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
     @State private var portfolioPath = NavigationPath()
@@ -774,3 +772,4 @@ private struct WatchlistSidebarDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
+#endif
