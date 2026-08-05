@@ -122,6 +122,7 @@ final class PortfolioViewModel {
         /// Weighted-average buy price in the asset's native currency (JPY funds
         /// divided by the 10,000 scale so the number is a per-口 price).
         let avgPrice: Double
+        let totalQuantity: Double
     }
 
     struct ValuationBundle {
@@ -141,7 +142,7 @@ final class PortfolioViewModel {
         var totalVal = 0.0
         var totalCst = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double)] = [:]
+        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double)] = [:]
 
         for portfolio in portfolios {
             for holding in portfolio.holdings {
@@ -184,7 +185,7 @@ final class PortfolioViewModel {
                 let nativePnl = holding.pnl(currentPrice: price)
 
                 let sym = StockService.canonicalSymbol(for: holding.symbol)
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0)
                 existing.value += value
                 existing.cost += cost
                 // P&L only for holdings with a known cost basis — a Binance
@@ -197,6 +198,7 @@ final class PortfolioViewModel {
                 if hasCost {
                     existing.nativeQty += abs(qty * lev)
                 }
+                existing.totalQty += qty
                 bySymbol[sym] = existing
 
                 // ValuedHolding still stores preferred-currency value/cost for legacy compatibility
@@ -252,7 +254,8 @@ final class PortfolioViewModel {
                 nativeCost: data.nativeCost,
                 nativeValue: data.nativeValue,
                 nativePnl: data.nativePnl,
-                avgPrice: avg
+                avgPrice: avg,
+                totalQuantity: data.totalQty
             )
         }
         symbolAggregates = symAggs

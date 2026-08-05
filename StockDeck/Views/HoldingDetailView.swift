@@ -93,12 +93,14 @@ struct HoldingDetailView: View {
 
     // MARK: - Related news
 
+    @Environment(\.openURL) private var openURL
+
     private var newsCard: some View {
         Card(title: "Related news") {
             VStack(spacing: 0) {
                 ForEach(relatedNews.prefix(5)) { article in
                     Button {
-                        if let url = article.url { NSWorkspace.shared.open(url) }
+                        if let url = article.url { openURL(url) }
                     } label: {
                         HStack(spacing: 10) {
                             Text(article.title).font(DS.body).foregroundStyle(DS.ink)

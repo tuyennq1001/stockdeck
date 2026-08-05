@@ -142,9 +142,11 @@ private struct FeaturedNewsCard: View {
     }
     private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
 
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         Button {
-            if let url = article.url { NSWorkspace.shared.open(url) }
+            if let url = article.url { openURL(url) }
         } label: {
             GeometryReader { geo in
                 HStack(spacing: 0) {
@@ -236,9 +238,11 @@ private struct NewsCard: View {
     private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
     private var otherTickers: [String] { Array(article.relatedTickers.filter { $0 != referenceTicker }.prefix(2)) }
 
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         Button {
-            if let url = article.url { NSWorkspace.shared.open(url) }
+            if let url = article.url { openURL(url) }
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 thumbnail

@@ -131,9 +131,11 @@ private struct NewsRow: View {
         Array(article.relatedTickers.filter { $0 != referenceTicker }.prefix(2))
     }
 
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         Button {
-            if let url = article.url { NSWorkspace.shared.open(url) }
+            if let url = article.url { openURL(url) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 thumbnail

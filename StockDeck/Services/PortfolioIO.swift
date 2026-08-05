@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import UniformTypeIdentifiers
 
@@ -289,3 +290,17 @@ enum PortfolioIO {
         }
     }
 }
+#else
+import Foundation
+import UniformTypeIdentifiers
+
+@MainActor
+enum PortfolioIO {
+    static func exportAll(_ portfolios: [Portfolio], storageService: StorageService, restoreActivationPolicy: Bool) {}
+    static func exportWatchlists(_ watchlists: [Watchlist], stockService: StockService, restoreActivationPolicy: Bool) {}
+    static func exportSinglePortfolio(_ portfolio: Portfolio, storageService: StorageService, restoreActivationPolicy: Bool) {}
+    static func importPortfolios(storageService: StorageService, restoreActivationPolicy: Bool) {}
+    static func saveSamplePortfolioSpreadsheet(onAlert: ((String) -> Void)? = nil) {}
+    static func saveSampleWatchlistSpreadsheet(onAlert: ((String) -> Void)? = nil) {}
+}
+#endif

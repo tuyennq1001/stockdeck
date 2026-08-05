@@ -1,5 +1,11 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+typealias PlatformNativeColor = NSColor
+#else
+import UIKit
+typealias PlatformNativeColor = UIColor
+#endif
 
 /// Design tokens for the StockDeck desktop window — the "private banking" light
 /// editorial system: warm paper ground, white card stock, one sober emerald,
@@ -9,30 +15,30 @@ import AppKit
 enum DS {
     // MARK: Surfaces
     /// Window/detail ground — warm paper.
-    static let ground = dynamic(light: NSColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1),
-                                dark: NSColor(white: 0.09, alpha: 1))
+    static let ground = dynamic(light: PlatformNativeColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1),
+                                dark: PlatformNativeColor(white: 0.09, alpha: 1))
     /// Sidebar flat tint — a hair darker than the ground.
-    static let sidebarBG = dynamic(light: NSColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1),
-                                   dark: NSColor(white: 0.11, alpha: 1))
+    static let sidebarBG = dynamic(light: PlatformNativeColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1),
+                                   dark: PlatformNativeColor(white: 0.11, alpha: 1))
     /// Card stock.
-    static let card = dynamic(light: .white, dark: NSColor(white: 0.13, alpha: 1))
+    static let card = dynamic(light: PlatformNativeColor.white, dark: PlatformNativeColor(white: 0.13, alpha: 1))
     /// Inset wells, chart placeholders, thumbnails.
-    static let cardAlt = dynamic(light: NSColor(red: 0.961, green: 0.949, blue: 0.925, alpha: 1),
-                                 dark: NSColor(white: 0.17, alpha: 1))
+    static let cardAlt = dynamic(light: PlatformNativeColor(red: 0.961, green: 0.949, blue: 0.925, alpha: 1),
+                                 dark: PlatformNativeColor(white: 0.17, alpha: 1))
     /// Borders and dividers — warm, near-invisible.
-    static let hairline = dynamic(light: NSColor(red: 0.102, green: 0.090, blue: 0.059, alpha: 0.07),
-                                  dark: NSColor(white: 1, alpha: 0.10))
+    static let hairline = dynamic(light: PlatformNativeColor(red: 0.102, green: 0.090, blue: 0.059, alpha: 0.07),
+                                  dark: PlatformNativeColor(white: 1, alpha: 0.10))
 
     // MARK: Ink
     /// Warm near-black for display text.
-    static let ink = dynamic(light: NSColor(red: 0.110, green: 0.102, blue: 0.082, alpha: 1),
-                             dark: NSColor(white: 0.94, alpha: 1))
+    static let ink = dynamic(light: PlatformNativeColor(red: 0.110, green: 0.102, blue: 0.082, alpha: 1),
+                             dark: PlatformNativeColor(white: 0.94, alpha: 1))
     /// Warm secondary gray (instead of the blue-ish system secondary).
-    static let inkSecondary = dynamic(light: NSColor(red: 0.431, green: 0.416, blue: 0.376, alpha: 1),
-                                      dark: NSColor(red: 0.64, green: 0.62, blue: 0.58, alpha: 1))
+    static let inkSecondary = dynamic(light: PlatformNativeColor(red: 0.431, green: 0.416, blue: 0.376, alpha: 1),
+                                      dark: PlatformNativeColor(red: 0.64, green: 0.62, blue: 0.58, alpha: 1))
     /// Captions, placeholders, timestamps.
-    static let inkTertiary = dynamic(light: NSColor(red: 0.608, green: 0.588, blue: 0.541, alpha: 1),
-                                     dark: NSColor(red: 0.50, green: 0.485, blue: 0.45, alpha: 1))
+    static let inkTertiary = dynamic(light: PlatformNativeColor(red: 0.608, green: 0.588, blue: 0.541, alpha: 1),
+                                     dark: PlatformNativeColor(red: 0.50, green: 0.485, blue: 0.45, alpha: 1))
 
     // MARK: Accents
     /// Brand emerald — selection, links, the mark.
@@ -47,13 +53,21 @@ enum DS {
     /// show P&L observe StorageService, so changing the color re-renders them.
     @MainActor static var up: Color {
         let s = StorageService.shared
+        #if os(macOS)
         return s.gainColorHex.isEmpty ? upDefault : Color(nsColor: s.gainColor)
+        #else
+        return s.gainColorHex.isEmpty ? upDefault : Color(uiColor: s.gainColor)
+        #endif
     }
     /// Loss color used across the whole app. Custom loss color when set, else the
     /// terracotta default.
     @MainActor static var down: Color {
         let s = StorageService.shared
+        #if os(macOS)
         return s.lossColorHex.isEmpty ? downDefault : Color(nsColor: s.lossColor)
+        #else
+        return s.lossColorHex.isEmpty ? downDefault : Color(uiColor: s.lossColor)
+        #endif
     }
     @MainActor static var upSoft: Color { up.opacity(0.10) }
     @MainActor static var downSoft: Color { down.opacity(0.10) }
@@ -103,16 +117,30 @@ enum DS {
     /// Detail content max width.
     static let contentMaxWidth: CGFloat = 1120
     /// Clearance under the transparent titlebar (traffic lights).
+    #if os(macOS)
     static let titlebarClearance: CGFloat = 52
+    #else
+    static let titlebarClearance: CGFloat = 0
+    #endif
 
+    #if os(macOS)
     private static func dynamic(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: .init(name: nil) { $0.isDarkMode ? dark : light })
     }
+    #else
+    private static func dynamic(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: .init { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? dark : light
+        })
+    }
+    #endif
 }
 
+#if os(macOS)
 extension NSAppearance {
     fileprivate var isDarkMode: Bool { bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 }
+#endif
 
 /// The window ground: warm paper with a whisper of brand emerald in one corner.
 struct AppBackground: View {
@@ -184,6 +212,7 @@ struct SectionLabel: View {
     }
 }
 
+#if os(macOS)
 /// An AppKit NSView wrapper that allows dragging the window by mouse down in this view area,
 /// and double-clicking to zoom/maximize the window to full screen size.
 struct WindowDragArea: NSViewRepresentable {
@@ -204,6 +233,13 @@ struct WindowDragArea: NSViewRepresentable {
         }
     }
 }
+#else
+struct WindowDragArea: View {
+    var body: some View {
+        Color.clear.frame(height: 0)
+    }
+}
+#endif
 
 /// Shared page header: big Inter title + optional caption + trailing actions.
 struct PageHeader<Trailing: View>: View {
@@ -247,7 +283,9 @@ struct PageHeader<Trailing: View>: View {
             }
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
+                #if os(macOS)
                 NSApp.keyWindow?.performZoom(nil)
+                #endif
             }
             Spacer()
             trailing
@@ -409,7 +447,7 @@ struct Tag: View {
 struct BrandMark: View {
     var size: CGFloat = 28
 
-    /// Loaded once from the app's bundled icon (works in dev and release).
+#if os(macOS)
     private static let appIcon: NSImage? = {
         if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
                      Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
@@ -430,11 +468,26 @@ struct BrandMark: View {
         let sys = NSApp.applicationIconImage
         return (sys?.size.width ?? 0) > 0 ? sys : nil
     }()
+    #else
+    private static let appIcon: UIImage? = {
+        if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let data = try? Data(contentsOf: url),
+           let img = UIImage(data: data) {
+            return img
+        }
+        return nil
+    }()
+    #endif
 
     var body: some View {
         Group {
             if let icon = Self.appIcon {
+                #if os(macOS)
                 Image(nsImage: icon).resizable().interpolation(.high)
+                #else
+                Image(uiImage: icon).resizable().interpolation(.high)
+                #endif
             } else {
                 fallbackMark
             }
@@ -913,10 +966,17 @@ private struct HSBColorPicker: View {
     private func push() { color = Color(hue: hue, saturation: sat, brightness: bri) }
 
     private func pull() {
+        #if os(macOS)
         let ns = NSColor(color).usingColorSpace(.deviceRGB) ?? .white
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
         hue = Double(h); sat = Double(s); bri = Double(b)
+        #else
+        let ui = UIColor(color)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        hue = Double(h); sat = Double(s); bri = Double(b)
+        #endif
     }
 }
 
@@ -1064,6 +1124,7 @@ struct NavRow: View {
 extension View {
     /// Shows the pointing hand cursor when hovering over interactive elements.
     func pointingHandCursor() -> some View {
+        #if os(macOS)
         self.onHover { inside in
             if inside {
                 NSCursor.pointingHand.push()
@@ -1071,6 +1132,9 @@ extension View {
                 NSCursor.pop()
             }
         }
+        #else
+        self
+        #endif
     }
 }
 

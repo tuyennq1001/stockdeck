@@ -1,11 +1,14 @@
+import SwiftUI
+#if os(macOS)
 import AppKit
 import Sparkle
-import SwiftUI
+#endif
 
 struct SettingsView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
+    @Environment(\.openURL) private var openURL
     @State private var showResetAlert = false
     @State private var showClearAlerts = false
     @State private var showClearPortfolioNotifs = false
@@ -324,7 +327,7 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Button {
                             if let url = URL(string: "https://github.com/sponsors/tuyennq1001") {
-                                NSWorkspace.shared.open(url)
+                                openURL(url)
                             }
                         } label: {
                             Label("Become a Sponsor", systemImage: "heart.fill")
@@ -335,7 +338,7 @@ struct SettingsView: View {
 
                         Button {
                             if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") {
-                                NSWorkspace.shared.open(url)
+                                openURL(url)
                             }
                         } label: {
                             Label("Star on GitHub", systemImage: "star.fill")

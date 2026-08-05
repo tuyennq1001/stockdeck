@@ -144,6 +144,7 @@ struct PortfolioOverview: View {
         case value
         case todayPnl
         case pnl
+        case shares
         case weight
     }
     @State private var sortColumn: PositionSortColumn = .weight
@@ -207,6 +208,7 @@ struct PortfolioOverview: View {
         case .value: return .value
         case .todayPnl: return .todayPnl
         case .totalPnl: return .pnl
+        case .shares: return .shares
         case .weight: return .weight
         }
     }
@@ -233,9 +235,12 @@ struct PortfolioOverview: View {
         case .cost, .value, .todayPnl, .totalPnl:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+        case .shares:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
         case .weight:
             sortHeader(metric.title, column: column)
-                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
+                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         }
     }
 
@@ -368,7 +373,7 @@ struct PortfolioOverview: View {
         }) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: DS.gap) {
+                    LazyVStack(alignment: .leading, spacing: DS.gap, pinnedViews: [.sectionHeaders]) {
                         heroCard
                         statRow
                         performanceMatrixCard
@@ -1083,6 +1088,83 @@ struct PortfolioOverview: View {
 
     // MARK: - Positions
 
+    private var positionsHeaderView: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
+                sortHeader("Symbol", column: .symbol)
+                    .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 230, maxWidth: .infinity, alignment: .leading)
+                ForEach(selectedColumns) { metric in
+                    columnHeader(metric)
+                }
+                Color.clear.frame(width: PositionColumnWidth.chevron)
+            }
+            .font(DS.label)
+            .foregroundStyle(DS.inkTertiary)
+            .tracking(0.8).textCase(.uppercase)
+            .padding(.vertical, 8)
+            Divider().overlay(DS.hairline)
+        }
+        .background(DS.card)
+    }
+
+    private func sortedSymbols(groupedValued: [String: [ValuedHolding]]) -> [String] {
+        if sortColumn == .manual {
+            return insertionOrderedSymbols.filter { groupedValued[$0] != nil }
+        }
+        return groupedValued.keys.sorted { sym1, sym2 in
+            let isAsc = sortAscending
+
+            switch sortColumn {
+            case .manual:
+                return false
+            case .symbol:
+                return isAsc ? sym1 < sym2 : sym1 > sym2
+            case .avgPrice:
+                let a1 = viewModel.symbolAggregates[sym1]?.avgPrice ?? .nan
+                let a2 = viewModel.symbolAggregates[sym2]?.avgPrice ?? .nan
+                return isAsc ? a1 < a2 : a1 > a2
+            case .price:
+                let p1 = groupedValued[sym1]?.first?.quote.changePercent ?? 0
+                let p2 = groupedValued[sym2]?.first?.quote.changePercent ?? 0
+                return isAsc ? p1 < p2 : p1 > p2
+            case .extended:
+                let e1 = groupedValued[sym1]?.first?.quote.extendedChangePercent
+                let e2 = groupedValued[sym2]?.first?.quote.extendedChangePercent
+                switch (e1, e2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .cost:
+                let c1 = viewModel.symbolAggregates[sym1]?.nativeCost ?? groupedValued[sym1]?.reduce(0) { $0 + $1.cost } ?? 0
+                let c2 = viewModel.symbolAggregates[sym2]?.nativeCost ?? groupedValued[sym2]?.reduce(0) { $0 + $1.cost } ?? 0
+                return isAsc ? c1 < c2 : c1 > c2
+            case .value:
+                let v1 = viewModel.symbolAggregates[sym1]?.value ?? groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0
+                let v2 = viewModel.symbolAggregates[sym2]?.value ?? groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0
+                return isAsc ? v1 < v2 : v1 > v2
+            case .todayPnl:
+                let t1 = todayPnl(for: sym1, grouped: groupedValued)
+                let t2 = todayPnl(for: sym2, grouped: groupedValued)
+                return isAsc ? t1 < t2 : t1 > t2
+            case .pnl:
+                let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
+                let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
+                return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+            case .shares:
+                let s1 = viewModel.symbolAggregates[sym1]?.totalQuantity ?? groupedValued[sym1]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
+                let s2 = viewModel.symbolAggregates[sym2]?.totalQuantity ?? groupedValued[sym2]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
+                return isAsc ? s1 < s2 : s1 > s2
+            case .weight:
+                let w1 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
+                let w2 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
+                return isAsc ? w1 < w2 : w1 > w2
+            }
+        }
+    }
+
     private var positionsCard: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
@@ -1102,116 +1184,51 @@ struct PortfolioOverview: View {
             } else {
                 let minTableWidth: CGFloat = storageService.showExtendedHours ? 780 : 680
                 let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
+                let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
+                let symbolsList = sortedSymbols(groupedValued: groupedValued)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 0) {
-                            Text("#").frame(width: PositionColumnWidth.number, alignment: .leading)
-                            sortHeader("Symbol", column: .symbol)
-                                .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
-                            ForEach(selectedColumns) { metric in
-                                columnHeader(metric)
-                            }
-                            Color.clear.frame(width: PositionColumnWidth.chevron)
-                        }
-                        .font(DS.label)
-                        .foregroundStyle(DS.inkTertiary)
-                        .tracking(0.8).textCase(.uppercase)
-                        .padding(.bottom, 12)
-                        Divider().overlay(DS.hairline)
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        Section(header: positionsHeaderView) {
+                            ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
+                                if let group = groupedValued[sym], let first = group.first {
+                                    let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
+                                    let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
 
-                        let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
-                        let sortedSymbols: [String] = {
-                            if sortColumn == .manual {
-                                return insertionOrderedSymbols.filter { groupedValued[$0] != nil }
-                            }
-                            return groupedValued.keys.sorted { sym1, sym2 in
-                                let isAsc = sortAscending
-
-                                switch sortColumn {
-                                case .manual:
-                                    return false
-                                case .symbol:
-                                    return isAsc ? sym1 < sym2 : sym1 > sym2
-                                case .avgPrice:
-                                    let a1 = viewModel.symbolAggregates[sym1]?.avgPrice ?? .nan
-                                    let a2 = viewModel.symbolAggregates[sym2]?.avgPrice ?? .nan
-                                    return isAsc ? a1 < a2 : a1 > a2
-                                case .price:
-                                    let p1 = groupedValued[sym1]?.first?.quote.changePercent ?? 0
-                                    let p2 = groupedValued[sym2]?.first?.quote.changePercent ?? 0
-                                    return isAsc ? p1 < p2 : p1 > p2
-                                case .extended:
-                                    let e1 = groupedValued[sym1]?.first?.quote.extendedChangePercent
-                                    let e2 = groupedValued[sym2]?.first?.quote.extendedChangePercent
-                                    switch (e1, e2) {
-                                    case let (l?, r?): return isAsc ? l < r : l > r
-                                    case (_?, nil): return true
-                                    case (nil, _?): return false
-                                    case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                                    NavigationLink(value: first.id) {
+                                        PositionSummaryRow(
+                                            position: index + 1,
+                                            symbol: sym,
+                                            holdings: group,
+                                            currencySymbol: currencySymbol,
+                                            weight: weight,
+                                            topWeight: topWeight,
+                                            decimals: decimals,
+                                            valueDecimals: storageService.valueDecimals,
+                                            showExtendedHours: storageService.showExtendedHours,
+                                            aggregate: viewModel.symbolAggregates[sym],
+                                            columns: selectedColumns
+                                        )
                                     }
-                                case .cost:
-                                    let c1 = viewModel.symbolAggregates[sym1]?.nativeCost ?? groupedValued[sym1]?.reduce(0) { $0 + $1.cost } ?? 0
-                                    let c2 = viewModel.symbolAggregates[sym2]?.nativeCost ?? groupedValued[sym2]?.reduce(0) { $0 + $1.cost } ?? 0
-                                    return isAsc ? c1 < c2 : c1 > c2
-                                case .value:
-                                    let v1 = viewModel.symbolAggregates[sym1]?.value ?? groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0
-                                    let v2 = viewModel.symbolAggregates[sym2]?.value ?? groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0
-                                    return isAsc ? v1 < v2 : v1 > v2
-                                case .todayPnl:
-                                    let t1 = todayPnl(for: sym1, grouped: groupedValued)
-                                    let t2 = todayPnl(for: sym2, grouped: groupedValued)
-                                    return isAsc ? t1 < t2 : t1 > t2
-                                case .pnl:
-                                    let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
-                                    let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
-                                    return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
-                                case .weight:
-                                    let w1 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
-                                    let w2 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
-                                    return isAsc ? w1 < w2 : w1 > w2
-                                }
-                            }
-                        }()
-
-                        ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
-                            if let group = groupedValued[sym], let first = group.first {
-                                let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
-                                let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
-
-                                NavigationLink(value: first.id) {
-                                    PositionSummaryRow(
-                                        position: index + 1,
-                                        symbol: sym,
-                                        holdings: group,
-                                        currencySymbol: currencySymbol,
-                                        weight: weight,
-                                        topWeight: topWeight,
-                                        decimals: decimals,
-                                        valueDecimals: storageService.valueDecimals,
-                                        showExtendedHours: storageService.showExtendedHours,
-                                        aggregate: viewModel.symbolAggregates[sym],
-                                        columns: selectedColumns
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .help("View \(sym) details")
-                                .contextMenu {
-                                    let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
-                                    if group.count == 1 && !isPortReadOnly {
-                                        Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
-                                        Button(role: .destructive) {
-                                            storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
-                                        } label: { Label("Delete", systemImage: "trash") }
+                                    .buttonStyle(.plain)
+                                    .help("View \(sym) details")
+                                    .contextMenu {
+                                        let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
+                                        if group.count == 1 && !isPortReadOnly {
+                                            Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                            Button(role: .destructive) {
+                                                storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
+                                            } label: { Label("Delete", systemImage: "trash") }
+                                        }
                                     }
-                                }
-                                if index < sortedSymbols.count - 1 {
-                                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                                    if index < symbolsList.count - 1 {
+                                        Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                                    }
                                 }
                             }
                         }
                     }
-                    .frame(width: max(availableWidth, minTableWidth))
+                    .frame(minWidth: max(availableWidth, minTableWidth))
                 }
                 .navigationDestination(for: UUID.self) { id in
                     if let h = holdings.first(where: { $0.id == id }) {
@@ -1326,11 +1343,12 @@ private struct CardWidthPreferenceKey: PreferenceKey {
 
 private enum PositionColumnWidth {
     static let number: CGFloat = 24
-    static let symbolMin: CGFloat = 120
+    static let symbolMin: CGFloat = 150
     static let priceMin: CGFloat = 90
     static let sessionMin: CGFloat = 90
     static let amountMin: CGFloat = 95
-    static let weightMin: CGFloat = 95
+    static let sharesMin: CGFloat = 85
+    static let weightMin: CGFloat = 65
     static let chevron: CGFloat = 16
 }
 
@@ -1528,18 +1546,21 @@ private struct PositionSummaryRow: View {
                     .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
             }
 
+        case .shares:
+            let totalQty = aggregate?.totalQuantity ?? holdings.reduce(0) { $0 + $1.holding.quantity }
+            let qtyDecimals = totalQty.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (totalQty < 1 ? 4 : 2)
+            Text(StorageService.formatNumber(totalQty, decimals: qtyDecimals))
+                .font(DS.figure)
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
+
         case .weight:
-            HStack(spacing: 7) {
-                ZStack(alignment: .leading) {
-                    Capsule().fill(DS.cardAlt).frame(width: 56, height: 3)
-                    Capsule().fill(DS.brand.opacity(0.5))
-                        .frame(width: max(2, 56 * weight / max(topWeight, 0.01)), height: 3)
-                }
-                Text(String(format: "%.1f%%", weight))
-                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                    .foregroundStyle(DS.inkSecondary)
-            }
-            .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
+            Text(String(format: "%.1f%%", weight))
+                .font(DS.figure)
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         }
     }
 
@@ -1583,7 +1604,7 @@ private struct PositionSummaryRow: View {
                     }
                 }
             }
-            .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 200, maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: PositionColumnWidth.symbolMin, idealWidth: 230, maxWidth: .infinity, alignment: .leading)
 
             // Dynamic metric columns
             ForEach(columns) { metric in
