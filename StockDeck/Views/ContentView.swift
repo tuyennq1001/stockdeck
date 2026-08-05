@@ -128,7 +128,7 @@ struct ContentView: View {
                 mainContent
             }
         }
-        .frame(width: 380, height: 520)
+        .frame(width: 420, height: 520)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         .onAppear {
             selectedTab = Tab.resolve(stored: storageService.lastSelectedTab,
