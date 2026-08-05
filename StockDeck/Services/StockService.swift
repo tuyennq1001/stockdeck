@@ -249,6 +249,13 @@ class StockService: ObservableObject {
     func fetchQuotes(symbols: [String]) async {
         guard !symbols.isEmpty else { return }
 
+        // Resolve legacy/alternate tickers to the Yahoo-canonical symbol.
+        // "^VNINDEX" was the first version we shipped; Yahoo actually serves
+        // VN-Index as "^VNINDEX.VN". Mapping here keeps existing watchlist
+        // entries working without requiring the user to remove & re-add.
+        let canonicalAliases: [String: String] = ["^VNINDEX": "^VNINDEX.VN"]
+        let symbols = symbols.map { canonicalAliases[$0.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)] ?? $0 }
+
         let fundSymbols = symbols.filter { self.isJapaneseMutualFund($0) }
         let regularSymbols = symbols.filter { !self.isJapaneseMutualFund($0) }
 
@@ -332,6 +339,15 @@ class StockService: ObservableObject {
                     self.quotes[sym] = fallbackQuote
                     self.quotes[sym.uppercased()] = fallbackQuote
                 }
+            }
+        }
+
+        // Also index quotes under legacy alias keys so existing watchlist
+        // entries (e.g. "^VNINDEX") resolve to the canonical quote.
+        for (alias, canonical) in canonicalAliases {
+            if let quote = self.quotes[canonical], self.quotes[alias] == nil {
+                self.quotes[alias] = quote
+                self.quotes[alias.uppercased()] = quote
             }
         }
     }
@@ -1203,6 +1219,58 @@ class StockService: ObservableObject {
         SearchResult(symbol: "^TOPX", name: "TOPIX", exchange: "JPX", type: "INDEX")
     ]
 
+    static let popularGlobalIndices: [SearchResult] = [
+        SearchResult(symbol: "^KS11", name: "KOSPI Composite Index", exchange: "KSE", type: "INDEX"),
+        SearchResult(symbol: "^VNINDEX.VN", name: "VN-Index", exchange: "HOSE", type: "INDEX"),
+        SearchResult(symbol: "^HSI", name: "Hang Seng Index", exchange: "HKG", type: "INDEX"),
+        SearchResult(symbol: "^STI", name: "Straits Times Index", exchange: "SGX", type: "INDEX"),
+        SearchResult(symbol: "^AXJO", name: "S&P/ASX 200", exchange: "ASX", type: "INDEX"),
+        SearchResult(symbol: "^NSEI", name: "Nifty 50", exchange: "NSE", type: "INDEX"),
+        SearchResult(symbol: "^BSESN", name: "S&P BSE Sensex", exchange: "BSE", type: "INDEX"),
+        SearchResult(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX"),
+        SearchResult(symbol: "^DJI", name: "Dow Jones Industrial Average", exchange: "DJI", type: "INDEX"),
+        SearchResult(symbol: "^IXIC", name: "NASDAQ Composite", exchange: "NMS", type: "INDEX"),
+        SearchResult(symbol: "^FTSE", name: "FTSE 100", exchange: "LSE", type: "INDEX"),
+        SearchResult(symbol: "^GDAXI", name: "DAX PERFORMANCE-INDEX", exchange: "GER", type: "INDEX"),
+        SearchResult(symbol: "^FCHI", name: "CAC 40", exchange: "PAR", type: "INDEX"),
+        SearchResult(symbol: "^TWII", name: "TSEC weighted index", exchange: "TAI", type: "INDEX"),
+        SearchResult(symbol: "^KOSDAQ", name: "KOSDAQ Composite Index", exchange: "KOSDAQ", type: "INDEX")
+    ]
+
+    /// Common aliases users type that don't substring-match Yahoo tickers:
+    /// index abbreviations (SPX), futures (ES=F), and commodities (XAUUSD).
+    static let popularIndexAliases: [String: SearchResult] = [
+        // Index abbreviations
+        "SPX": SearchResult(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX"),
+        "SP500": SearchResult(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX"),
+        "DOW": SearchResult(symbol: "^DJI", name: "Dow Jones Industrial Average", exchange: "DJI", type: "INDEX"),
+        "DJIA": SearchResult(symbol: "^DJI", name: "Dow Jones Industrial Average", exchange: "DJI", type: "INDEX"),
+        "NASDAQ": SearchResult(symbol: "^IXIC", name: "NASDAQ Composite", exchange: "NMS", type: "INDEX"),
+        "NDX": SearchResult(symbol: "^IXIC", name: "NASDAQ Composite", exchange: "NMS", type: "INDEX"),
+        "KOSDAQ": SearchResult(symbol: "^KOSDAQ", name: "KOSDAQ Composite Index", exchange: "KOSDAQ", type: "INDEX"),
+        // Index futures
+        "ES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "SPX FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "NQ": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "NASDAQ FUTURES": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "YM": SearchResult(symbol: "YM=F", name: "Mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
+        "DOW FUTURES": SearchResult(symbol: "YM=F", name: "Mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
+        "RTY": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        "RUSSELL": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        // Commodities
+        "XAUUSD": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
+        "GOLD": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
+        "XAGUSD": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
+        "SILVER": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
+        "OIL": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
+        "WTI": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
+        "CRUDE": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
+        "BRENT": SearchResult(symbol: "BZ=F", name: "Brent Crude Oil Futures", exchange: "ICE", type: "FUTURE"),
+        "COPPER": SearchResult(symbol: "HG=F", name: "Copper Futures", exchange: "NYMEX", type: "FUTURE"),
+        "NATGAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE"),
+        "GAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE")
+    ]
+
     nonisolated static func containsJapaneseCharacters(_ str: String) -> Bool {
         for scalar in str.unicodeScalars {
             if (0x3040...0x309F).contains(scalar.value) ||
@@ -1528,6 +1596,19 @@ class StockService: ObservableObject {
             }
         }
 
+        for index in Self.popularGlobalIndices {
+            if index.symbol.contains(upperQuery) || index.name.localizedCaseInsensitiveContains(cleanQuery) {
+                fundResults.append(index)
+            }
+        }
+
+        // Exact alias match (SPX, ES, XAUUSD, GOLD, ...) before hitting Yahoo
+        if let aliasResult = Self.popularIndexAliases[upperQuery] {
+            if !fundResults.contains(where: { $0.symbol == aliasResult.symbol }) {
+                fundResults.append(aliasResult)
+            }
+        }
+
         // Only suggest as a mutual fund if the query genuinely looks like one
         // (code in our fund map or Japanese characters) — not for generic
         // 5-12 char alphanumeric strings like "BTCETH", "HYPEUSDT".
@@ -1584,13 +1665,14 @@ class StockService: ObservableObject {
 
     private func fetchYahooSearch(query: String) async -> [SearchResult] {
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0") else {
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=10&newsCount=0&enableFuzzyQuery=true&enableCb=true") else {
             return []
         }
         do {
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooSearchResponse.self, from: data)
-            return response.quotes
+            // Decode is now defensive; drop rows that had no symbol.
+            return response.quotes.filter { !$0.symbol.isEmpty }
         } catch {
             return []
         }
