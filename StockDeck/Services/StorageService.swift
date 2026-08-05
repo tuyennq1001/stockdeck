@@ -230,12 +230,35 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// Maps symbol → Exchange ("HOSE", "HNX", "NASDAQ", "NYSE", "BINANCE", ...), uppercased.
+    @Published var symbolExchange: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// Records a symbol's asset class. Ignores empty values and no-ops when
     /// unchanged so it doesn't churn the save loop on every price refresh.
     func setType(_ type: String, for symbol: String) {
         let normalized = type.uppercased()
         guard !normalized.isEmpty, symbolType[symbol] != normalized else { return }
         symbolType[symbol] = normalized
+    }
+
+    /// Records a symbol's exchange. Ignores empty values.
+    func setExchange(_ exchange: String, for symbol: String) {
+        let normalized = exchange.uppercased()
+        guard !normalized.isEmpty else { return }
+        if symbolExchange[symbol] != normalized || symbolExchange[symbol.uppercased()] != normalized {
+            symbolExchange[symbol] = normalized
+            symbolExchange[symbol.uppercased()] = normalized
+        }
+    }
+
+    /// Primary exchange for a symbol, if recorded.
+    func exchange(for symbol: String) -> String {
+        if let stored = symbolExchange[symbol] ?? symbolExchange[symbol.uppercased()], !stored.isEmpty {
+            return stored
+        }
+        return ""
     }
 
     /// Asset class for a symbol, using fallback heuristics if not yet known.
@@ -1100,6 +1123,7 @@ class StorageService: ObservableObject {
         var tickerShowName: Bool?
         var watchlistSort: String?
         var symbolType: [String: String]?
+        var symbolExchange: [String: String]?
         var appLanguage: String?
         var advancedPositions: Bool?
         var appearanceRaw: String?
@@ -1124,7 +1148,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1229,6 +1253,7 @@ class StorageService: ObservableObject {
             advancedPositions = decoded.advancedPositions ?? false
             watchlistSort = decoded.watchlistSort ?? "manual"
             symbolType = decoded.symbolType ?? [:]
+            symbolExchange = decoded.symbolExchange ?? [:]
             appLanguage = decoded.appLanguage ?? "en"
             showCompanyName = decoded.showCompanyName ?? true
             showDayRange = decoded.showDayRange ?? true

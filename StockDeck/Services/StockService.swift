@@ -55,6 +55,10 @@ class StockService: ObservableObject {
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: config)
+
+        Task {
+            _ = await self.fetchCrumb()
+        }
     }
 
     static func collectSymbols(storageService: StorageService) -> Set<String> {
@@ -302,16 +306,23 @@ class StockService: ObservableObject {
             await fetchBinanceEquityQuotes(symbols: equitySymbols)
         }
 
-        guard !stockSymbols.isEmpty else { return }
+        let vnSymbols = stockSymbols.filter { Self.isVietnameseStock($0) }
+        let remainingStockSymbols = stockSymbols.filter { !vnSymbols.contains($0) }
+
+        if !vnSymbols.isEmpty {
+            await fetchVietnameseQuotes(symbols: vnSymbols)
+        }
+
+        guard !remainingStockSymbols.isEmpty else { return }
 
         // Try v7 batch quote first for regular stock/ETF symbols
-        if await fetchQuotesV7(symbols: stockSymbols) {
+        if await fetchQuotesV7(symbols: remainingStockSymbols) {
             return
         }
 
         // Fallback: fetch each stock symbol via v8 chart API
         await withTaskGroup(of: Void.self) { group in
-            for symbol in stockSymbols {
+            for symbol in remainingStockSymbols {
                 group.addTask { [weak self] in
                     await self?.fetchSingleQuote(symbol: symbol)
                 }
@@ -545,6 +556,71 @@ class StockService: ObservableObject {
             return true
         } catch {
             return false
+        }
+    }
+
+    private func fetchVietnameseQuotes(symbols: [String]) async {
+        let now = Int64(Date().timeIntervalSince1970)
+        let fourteenDaysAgo = now - (14 * 86400)
+
+        await withTaskGroup(of: (String, StockQuote?).self) { group in
+            for symbol in symbols {
+                group.addTask { [weak self] in
+                    guard let self = self else { return (symbol, nil) }
+                    let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                    let ticker = clean
+                        .replacingOccurrences(of: ".HM", with: "")
+                        .replacingOccurrences(of: ".HN", with: "")
+                        .replacingOccurrences(of: ".VN", with: "")
+                        .replacingOccurrences(of: "^", with: "")
+                    let isIndex = ticker == "VNINDEX" || ticker == "HNXINDEX" || ticker == "UPINDEX" || clean.contains("VNINDEX")
+                    let scale = isIndex ? 1.0 : 1000.0
+                    let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(ticker)&from=\(fourteenDaysAgo)&to=\(now)"
+                    guard let url = URL(string: urlString) else { return (symbol, nil) }
+                    do {
+                        let (data, _) = try await self.session.data(from: url)
+                        let response = try JSONDecoder().decode(VNDirectHistoryResponse.self, from: data)
+                        guard let closes = response.c, let lastClose = closes.last else { return (symbol, nil) }
+                        let prevClose = closes.count > 1 ? closes[closes.count - 2] : lastClose
+                        let change = (lastClose - prevClose) * scale
+                        let changePercent = prevClose > 0 ? ((lastClose - prevClose) / prevClose) * 100.0 : 0.0
+                        let currentPrice = lastClose * scale
+                        
+                        let high = response.h?.max().map { $0 * scale }
+                        let low = response.l?.min().map { $0 * scale }
+
+                        let companyName = isIndex ? "VN-Index" : (Self.popularVietnameseStocks.first(where: { $0.symbol.uppercased() == ticker })?.name ?? ticker)
+                        let currency = isIndex ? "PTS" : "VND"
+                        let quote = StockQuote(
+                            symbol: symbol,
+                            name: companyName,
+                            price: currentPrice,
+                            change: change,
+                            changePercent: changePercent,
+                            regularMarketPreviousClose: prevClose * scale,
+                            currency: currency,
+                            fiftyTwoWeekHigh: high,
+                            fiftyTwoWeekLow: low
+                        )
+                        return (symbol, quote)
+                    } catch {
+                        return (symbol, nil)
+                    }
+                }
+            }
+            for await (originalSymbol, quote) in group {
+                if let quote = quote {
+                    let upperOriginal = originalSymbol.uppercased()
+                    let upperQuoteSym = quote.symbol.uppercased()
+                    self.quotes[upperOriginal] = quote
+                    self.quotes[upperQuoteSym] = quote
+                    if upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") {
+                        self.quotes["^VNINDEX"] = quote
+                        self.quotes["^VNINDEX.VN"] = quote
+                        self.quotes["VNINDEX"] = quote
+                    }
+                }
+            }
         }
     }
 
@@ -1024,6 +1100,33 @@ class StockService: ObservableObject {
         if let at = priceHistoryFetchedAt[symbol],
            Date().timeIntervalSince(at) < 3600,
            priceHistory[symbol]?.isEmpty == false { return }
+
+        if isVietnameseStock(symbol) {
+            let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+                .replacingOccurrences(of: "^", with: "")
+            let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
+            let scale = isIndex ? 1.0 : 1000.0
+            let now = Int64(Date().timeIntervalSince1970)
+            let oneYearAgo = now - (365 * 86400)
+            let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(oneYearAgo)&to=\(now)"
+            guard let url = URL(string: urlString) else { return }
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(VNDirectHistoryResponse.self, from: data)
+                guard let closes = response.c, let timestamps = response.t, !closes.isEmpty else { return }
+                let scaledCloses = closes.map { $0 * scale }
+                let scaledOpens = response.o?.map { $0 * scale }
+                let scaledHighs = response.h?.map { $0 * scale }
+                let scaledLows = response.l?.map { $0 * scale }
+                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                guard !points.isEmpty else { return }
+                priceHistory[symbol] = points
+                priceHistoryFetchedAt[symbol] = Date()
+            } catch { return }
+            return
+        }
+
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
         // range=10y daily closes & OHLC for 1Y/3Y/5Y/10Y chart ranges
         guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
@@ -1050,6 +1153,33 @@ class StockService: ObservableObject {
         if let at = priceHistoryMaxAt[symbol],
            Date().timeIntervalSince(at) < 21600,
            priceHistoryMax[symbol]?.isEmpty == false { return }
+
+        if isVietnameseStock(symbol) {
+            let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+                .replacingOccurrences(of: "^", with: "")
+            let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
+            let scale = isIndex ? 1.0 : 1000.0
+            let now = Int64(Date().timeIntervalSince1970)
+            let maxAgo = now - (15 * 365 * 86400)
+            let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(maxAgo)&to=\(now)"
+            guard let url = URL(string: urlString) else { return }
+            do {
+                let (data, _) = try await session.data(from: url)
+                let response = try JSONDecoder().decode(VNDirectHistoryResponse.self, from: data)
+                guard let closes = response.c, let timestamps = response.t, !closes.isEmpty else { return }
+                let scaledCloses = closes.map { $0 * scale }
+                let scaledOpens = response.o?.map { $0 * scale }
+                let scaledHighs = response.h?.map { $0 * scale }
+                let scaledLows = response.l?.map { $0 * scale }
+                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                guard !points.isEmpty else { return }
+                priceHistoryMax[symbol] = points
+                priceHistoryMaxAt[symbol] = Date()
+            } catch { return }
+            return
+        }
+
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
         guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max") else { return }
         do {
@@ -1127,18 +1257,66 @@ class StockService: ObservableObject {
            symbols.allSatisfy({ watchlistHistory[$0]?.isEmpty == false }) { return }
         let missing = symbols.filter { (watchlistHistory[$0]?.isEmpty ?? true) }
         guard !missing.isEmpty else { sparkFetchedAt = Date(); return }
-        let joined = missing.joined(separator: ",")
-        let encoded = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/spark?symbols=\(encoded)&range=5y&interval=1d") else { return }
-        do {
-            let (data, _) = try await session.data(from: url)
-            let parsed = try YahooSparkParser.parse(data)
-            for (symbol, points) in parsed where !points.isEmpty {
-                watchlistHistory[symbol] = points
+
+        let vnMissing = missing.filter { Self.isVietnameseStock($0) }
+        let regularMissing = missing.filter { !vnMissing.contains($0) }
+
+        if !vnMissing.isEmpty {
+            let now = Int64(Date().timeIntervalSince1970)
+            let fiveYearsAgo = now - (5 * 365 * 86400)
+            await withTaskGroup(of: (String, [PricePoint]).self) { group in
+                for sym in vnMissing {
+                    group.addTask { [weak self] in
+                        guard let self = self else { return (sym, []) }
+                        let clean = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                            .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+                            .replacingOccurrences(of: "^", with: "")
+                        let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
+                        let scale = isIndex ? 1.0 : 1000.0
+                        let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(fiveYearsAgo)&to=\(now)"
+                        guard let url = URL(string: urlString) else { return (sym, []) }
+                        do {
+                            let (data, _) = try await self.session.data(from: url)
+                            let response = try JSONDecoder().decode(VNDirectHistoryResponse.self, from: data)
+                            guard let closes = response.c, let timestamps = response.t, !closes.isEmpty else { return (sym, []) }
+                            let scaledCloses = closes.map { $0 * scale }
+                            let scaledOpens = response.o?.map { $0 * scale }
+                            let scaledHighs = response.h?.map { $0 * scale }
+                            let scaledLows = response.l?.map { $0 * scale }
+                            let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                            return (sym, points)
+                        } catch {
+                            return (sym, [])
+                        }
+                    }
+                }
+                for await (sym, points) in group where !points.isEmpty {
+                    self.watchlistHistory[sym] = points
+                    self.watchlistHistory[sym.uppercased()] = points
+                    if sym.contains("VNINDEX") {
+                        self.watchlistHistory["^VNINDEX"] = points
+                        self.watchlistHistory["^VNINDEX.VN"] = points
+                        self.watchlistHistory["VNINDEX"] = points
+                    }
+                }
             }
-            sparkFetchedAt = Date()
-        } catch {
         }
+
+        if !regularMissing.isEmpty {
+            let joined = regularMissing.joined(separator: ",")
+            let encoded = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
+            if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/spark?symbols=\(encoded)&range=5y&interval=1d") {
+                do {
+                    let (data, _) = try await session.data(from: url)
+                    let parsed = try YahooSparkParser.parse(data)
+                    for (symbol, points) in parsed where !points.isEmpty {
+                        watchlistHistory[symbol] = points
+                    }
+                } catch {
+                }
+            }
+        }
+        sparkFetchedAt = Date()
     }
 
     /// Ensures historical rate is loaded for a holding (e.g. when opening edit view)
@@ -1327,6 +1505,50 @@ class StockService: ObservableObject {
         "GAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE")
     ]
 
+    nonisolated static let popularVietnameseStocks: [SearchResult] = [
+        SearchResult(symbol: "VND", name: "Công ty Cổ phần Chứng khoán VNDIRECT", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "FPT", name: "Công ty Cổ phần FPT", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "HPG", name: "Tập đoàn Hòa Phát", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VNM", name: "Công ty Cổ phần Sữa Việt Nam (Vinamilk)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VIC", name: "Tập đoàn Vingroup", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VHM", name: "Công ty Cổ phần Vinhomes", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VRE", name: "Công ty Cổ phần Vincom Retail", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "SSI", name: "Công ty Cổ phần Chứng khoán SSI", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VCI", name: "Công ty Cổ phần Chứng khoán Vietcap", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "HCM", name: "Công ty Cổ phần Chứng khoán TP.HCM (HSC)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "TCB", name: "Ngân hàng Kỹ thương Việt Nam (Techcombank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "MWG", name: "Công ty Cổ phần Đầu tư Thế Giới Di Động", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VCB", name: "Ngân hàng Ngoại thương Việt Nam (Vietcombank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "MBB", name: "Ngân hàng Quân đội (MBBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "STB", name: "Ngân hàng Sài Gòn Thương Tín (Sacombank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "ACB", name: "Ngân hàng Á Châu (ACB)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "BID", name: "Ngân hàng Đầu tư và Phát triển Việt Nam (BIDV)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "CTG", name: "Ngân hàng Công thương Việt Nam (VietinBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "HDB", name: "Ngân hàng Phát triển TP.HCM (HDBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "LPB", name: "Ngân hàng Lộc Phát Việt Nam (LPBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "SHB", name: "Ngân hàng Sài Gòn - Hà Nội (SHB)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "TPB", name: "Ngân hàng Tiên Phong (TPBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VPB", name: "Ngân hàng Việt Nam Thịnh Vượng (VPBank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "EIB", name: "Ngân hàng Xuất Nhập khẩu Việt Nam (Eximbank)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "MSN", name: "Tập đoàn Masan", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "GAS", name: "Tổng Công ty Khí Việt Nam (PV GAS)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "PLX", name: "Tập đoàn Xăng dầu Việt Nam (Petrolimex)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "POW", name: "Tổng Công ty Điện lực Dầu khí Việt Nam (PV Power)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "PVD", name: "Tổng Công ty Cổ phần Khoan và Dịch vụ Khoan Dầu khí", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "PVS", name: "Tổng Công ty Cổ phần Dịch vụ Kỹ thuật Dầu khí Việt Nam", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "SAB", name: "Tổng Công ty Cổ phần Bia - Rượu - Nước giải khát Sài Gòn", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VJC", name: "Công ty Cổ phần Hàng không Vietjet", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "DGC", name: "Tập đoàn Hóa chất Đức Giang", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "REE", name: "Công ty Cổ phần Cơ Điện Lạnh", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "NVL", name: "Tập đoàn Đầu tư Địa ốc No Va (Novaland)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "PDR", name: "Bất động sản Phát Đạt", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "DIG", name: "Tổng Công ty Cổ phần Đầu tư Phát triển Xây dựng (DIC Corp)", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "DXG", name: "Tập đoàn Đất Xanh", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "KBC", name: "Tổng Công ty Phát triển Đô thị Kinh Bắc", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "GEX", name: "Tập đoàn GELEX", exchange: "HOSE", type: "EQUITY"),
+        SearchResult(symbol: "VHC", name: "Công ty Cổ phần Vĩnh Hoàn", exchange: "HOSE", type: "EQUITY")
+    ]
+
     // MARK: - Display names (indices, FX, futures)
 
     /// Maps Yahoo index tickers (e.g. "^GSPC") to their conventional display
@@ -1406,13 +1628,24 @@ class StockService: ObservableObject {
     }
 
     func containsJapaneseCharacters(_ str: String) -> Bool { Self.containsJapaneseCharacters(str) }
-    func isVietnameseStock(_ symbol: String) -> Bool { Self.isVietnameseStock(symbol) }
+    func isVietnameseStock(_ symbol: String) -> Bool {
+        let storedExchange = StorageService.shared.exchange(for: symbol)
+        return Self.isVietnameseStock(symbol, exchange: storedExchange)
+    }
     func isJapaneseStock(_ symbol: String) -> Bool { Self.isJapaneseStock(symbol) }
     func isJapaneseMutualFund(_ symbol: String) -> Bool { Self.isJapaneseMutualFund(symbol) }
 
-    nonisolated static func isVietnameseStock(_ symbol: String) -> Bool {
+    nonisolated static func isVietnameseStock(_ symbol: String, exchange: String = "") -> Bool {
         let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return upper.hasSuffix(".VN") || upper.hasSuffix(".HM") || upper.hasSuffix(".HN")
+        if upper.hasSuffix(".VN") || upper.hasSuffix(".HM") || upper.hasSuffix(".HN") {
+            return true
+        }
+        let upperExchange = exchange.uppercased()
+        if upperExchange == "HOSE" || upperExchange == "HNX" || upperExchange == "UPCOM" {
+            return true
+        }
+        let clean = upper.replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+        return popularVietnameseStocks.contains(where: { $0.symbol.uppercased() == clean })
     }
 
     nonisolated static func isJapaneseStock(_ symbol: String) -> Bool {
@@ -1455,10 +1688,10 @@ class StockService: ObservableObject {
     }
 
     nonisolated static func detectedCurrency(for symbol: String, quotes: [String: StockQuote] = [:]) -> String {
-        if isVietnameseStock(symbol) {
+        if Self.isVietnameseStock(symbol) {
             return "VND"
         }
-        if isJapaneseMutualFund(symbol) || isJapaneseStock(symbol) || containsJapaneseCharacters(symbol) {
+        if Self.isJapaneseMutualFund(symbol) || Self.isJapaneseStock(symbol) || Self.containsJapaneseCharacters(symbol) {
             return "JPY"
         }
         if let quote = quotes[symbol], !quote.currency.isEmpty {
@@ -1707,6 +1940,12 @@ class StockService: ObservableObject {
         var fundResults: [SearchResult] = []
         let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let upperQuery = cleanQuery.uppercased()
+
+        for stock in Self.popularVietnameseStocks {
+            if stock.symbol.contains(upperQuery) || stock.name.localizedCaseInsensitiveContains(cleanQuery) {
+                fundResults.append(stock)
+            }
+        }
 
         for fund in Self.popularJapaneseFunds {
             if fund.symbol.contains(upperQuery) || fund.name.localizedCaseInsensitiveContains(cleanQuery) {
@@ -1986,4 +2225,14 @@ private struct YahooSearchResponse: Codable {
 
 private struct YahooNewsResponse: Decodable {
     let news: [NewsArticle]?
+}
+
+private struct VNDirectHistoryResponse: Decodable {
+    let t: [Int64]?
+    let c: [Double]?
+    let o: [Double]?
+    let h: [Double]?
+    let l: [Double]?
+    let v: [Double]?
+    let s: String?
 }

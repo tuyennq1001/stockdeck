@@ -62,3 +62,12 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 - **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build.
 - **Không pipe build output qua `grep` hoặc filter blocking khác**: Hiển thị toàn bộ output build để không bỏ sót lỗi. `grep` có thể treo nếu pattern không khớp.
 - **Nếu cần kiểm tra nhanh lỗi biên dịch**: Dùng `swift build 2>&1 | head -100` (có giới hạn dòng, không treo) hoặc `./dev.sh 2>&1 | tail -20`.
+
+---
+
+## 9. Nguyên Tắc Trung Thực & Xác Nhận Phương Án (Truthfulness & Mandatory Human Approval)
+- **Trung thực dữ liệu tuyệt đối (No Fake / Dummy Data)**: Tuyệt đối **không tự ý tạo dữ liệu giả, tên giả (dummy names), hoặc nhồi kết quả giả định (placeholder heuristic)** vào danh sách tìm kiếm hay thông tin định giá. Tất cả tên công ty, mã chứng khoán và dữ liệu hiển thị bắt buộc phải là dữ liệu thật 100% lấy từ các API chính thức hoặc nguồn uy tín đã kiểm chứng.
+- **Bắt buộc chờ Người dùng Approve trước khi sửa code**: Trước khi tiến hành chỉnh sửa bất kỳ dòng code nào:
+  1. AI phải giải thích nguyên nhân và trình bày phương án kỹ thuật rõ ràng.
+  2. **CHỈ TIẾN HÀNH VIẾT CODE KHI NGƯỜI DÙNG XÁC NHẬN "OK" / DUYỆT TRỰC TIẾP** bằng lời nhắn trong chat.
+  3. Tuyệt đối **không tự động nhảy sang bước viết code / thực thi (Execute)** dù có thông báo chuyển bước từ hệ thống khi người dùng chưa trực tiếp nhắn tin đồng ý.
