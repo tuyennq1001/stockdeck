@@ -451,7 +451,10 @@ struct SearchResult: Identifiable, Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        symbol = try container.decode(String.self, forKey: .symbol)
+        // Yahoo sometimes appends decorative search results that lack a
+        // symbol (observed on q=soxl). Decode defensively so one bad row
+        // can't throw away every result; callers filter these out later.
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? ""
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         exchange = try container.decodeIfPresent(String.self, forKey: .exchange) ?? ""
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
