@@ -17,7 +17,7 @@ struct WatchlistView: View {
     @State private var confirmRemoveSymbol: String? = nil
 
     enum SortColumn {
-        case manual, symbol, price, change
+        case manual, symbol, price, absoluteChange, changePercent
     }
 
     var sortedSymbols: [String] {
@@ -34,10 +34,14 @@ struct WatchlistView: View {
             case .symbol:
                 result = a.localizedCompare(b) == .orderedAscending
             case .price:
-                let pa = qa?.changePercent ?? 0
-                let pb = qb?.changePercent ?? 0
+                let pa = qa?.price ?? 0
+                let pb = qb?.price ?? 0
                 result = pa < pb
-            case .change:
+            case .absoluteChange:
+                let ca = qa?.change ?? 0
+                let cb = qb?.change ?? 0
+                result = ca < cb
+            case .changePercent:
                 let ca = qa?.changePercent ?? 0
                 let cb = qb?.changePercent ?? 0
                 result = ca < cb
@@ -73,17 +77,21 @@ struct WatchlistView: View {
             } else {
                 HStack(spacing: 0) {
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 100, alignment: .leading)
+                        .frame(width: 105, alignment: .center)
                     sortHeader("Price", column: .price)
-                        .frame(width: 75, alignment: .trailing)
-                    sortHeader("Today %", column: .change)
-                        .frame(width: 75, alignment: .trailing)
+                        .frame(width: 70, alignment: .center)
+                    if storageService.showAbsoluteChange {
+                        sortHeader("Change", column: .absoluteChange)
+                            .frame(width: 80, alignment: .center)
+                    }
+                    sortHeader("Today %", column: .changePercent)
+                        .frame(width: 70, alignment: .center)
                     Text("Ext")
                         .font(.inter(10, weight: .medium, relativeTo: .caption))
                         .foregroundColor(.secondary)
                         .tracking(0.8)
                         .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .font(.inter(10, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
@@ -104,14 +112,33 @@ struct WatchlistView: View {
                                 watchlistContextMenu(symbol: symbol)
                             }
                     } else {
-                        HStack {
-                            SymbolLogo(symbol: symbol, size: 20)
-                            Text(symbol)
-                                .font(.inter(12, relativeTo: .body).monospacedDigit())
-                            Spacer()
+                        // Placeholder row matches QuoteRow's column structure so
+                        // the symbol column stays aligned while data is loading.
+                        HStack(spacing: 0) {
+                            HStack(spacing: 5) {
+                                SymbolLogo(symbol: symbol, size: 20)
+                                Text(symbol)
+                                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                                    .fontWeight(.bold)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 105, alignment: .leading)
+
+                            Color.clear
+                                .frame(width: 70) // Price
+                            if storageService.showAbsoluteChange {
+                                Color.clear
+                                    .frame(width: 80) // Change
+                            }
+                            Color.clear
+                                .frame(width: 70) // Today %
+
                             ProgressView()
                                 .scaleEffect(0.6)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 3)
                         .contentShape(Rectangle())
                         .pointingHandCursor()
                         .contextMenu {
@@ -557,7 +584,7 @@ struct QuoteRow: View {
                     }
                 }
             }
-            .frame(width: 100, alignment: .leading)
+            .frame(width: 105, alignment: .leading)
 
             // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
             let displayPrice = quote.price
@@ -571,18 +598,29 @@ struct QuoteRow: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 75, alignment: .trailing)
+            .frame(width: 70, alignment: .trailing)
 
-            // Col 3: % (Percent change ONLY)
+            // Col 3: Change (Absolute change value, follows valueDecimals/format settings)
+            if storageService.showAbsoluteChange {
+                Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: 80, alignment: .trailing)
+            }
+
+            // Col 4: Today % (Percent change)
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                 .font(.inter(12, relativeTo: .body).monospacedDigit())
                 .fontWeight(.bold)
                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(width: 65, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
 
-            // Col 4: Ext (Extended hours % change)
+            // Col 5: Ext (Extended hours % change)
             VStack(alignment: .trailing, spacing: 0) {
                 if storageService.showExtendedHours,
                    let extPct = quote.extendedChangePercent {
