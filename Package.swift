@@ -14,7 +14,7 @@ let package = Package(
             name: "StockDeck",
             dependencies: [
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-                .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
             ],
             path: "StockDeck",
             resources: [
