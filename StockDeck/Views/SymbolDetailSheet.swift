@@ -24,10 +24,13 @@ struct SymbolDetailSheet: View {
             VStack(alignment: .leading, spacing: DS.gap) {
                 HStack(alignment: .firstTextBaseline) {
                     SymbolLogo(symbol: symbol, size: 38)
+                    let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+                    let titleText = isDisplayAsset ? StockService.beautifiedSymbol(symbol) : (StockService.codeToFundNameMap[symbol] ?? symbol)
+                    let subTitleText = isDisplayAsset ? symbol : (quote?.name ?? "")
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(symbol).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
-                        if let name = quote?.name, !name.isEmpty {
-                            Text(name).font(DS.caption).foregroundStyle(DS.inkTertiary)
+                        Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
+                        if !subTitleText.isEmpty {
+                            Text(subTitleText).font(DS.caption).foregroundStyle(DS.inkTertiary)
                         }
                     }
                     Spacer()

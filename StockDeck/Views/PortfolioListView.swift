@@ -774,7 +774,7 @@ struct HoldingRow: View {
                 SymbolLogo(symbol: holding.symbol, size: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 3) {
-                        Text(holding.symbol)
+                        Text(StockService.beautifiedSymbol(holding.symbol))
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.bold)
                         if holding.isShort {
@@ -901,7 +901,7 @@ struct EditHoldingView: View {
                     .foregroundColor(.secondary)
                 HStack(spacing: 8) {
                     SymbolLogo(symbol: holding.symbol, size: 24)
-                    Text(holding.symbol)
+                    Text(StockService.beautifiedSymbol(holding.symbol))
                         .font(.inter(13, weight: .semibold, relativeTo: .body))
                     if let name = stockService.quotes[holding.symbol]?.name, !name.isEmpty {
                         Text(name)
@@ -998,7 +998,7 @@ struct GroupedHoldingRow: View {
                     SymbolLogo(symbol: symbol, size: 22)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 4) {
-                            Text(symbol)
+                            Text(StockService.beautifiedSymbol(symbol))
                                 .font(.inter(13, relativeTo: .body).monospacedDigit())
                                 .fontWeight(.bold)
                             Text("\(holdings.count) lots")
@@ -1173,8 +1173,9 @@ struct PortfolioQuoteRow: View {
         HStack(spacing: 0) {
             // Col 1: Logo + symbol + name
             let isJpFund = stockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
-            let titleText = isJpFund ? (quote?.displayName ?? globalPos.symbol) : globalPos.symbol
-            let subTitleText = isJpFund ? "" : (quote?.name ?? "")
+            let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
+            let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(globalPos.symbol)) : globalPos.symbol
+            let subTitleText = isDisplayAsset ? globalPos.symbol : (isJpFund ? "" : (quote?.name ?? ""))
 
             HStack(spacing: 4) {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)

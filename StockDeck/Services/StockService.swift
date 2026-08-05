@@ -1203,7 +1203,7 @@ class StockService: ObservableObject {
 
     // MARK: - Japanese Mutual Funds (投資信託)
 
-    static let popularJapaneseFunds: [SearchResult] = [
+    nonisolated static let popularJapaneseFunds: [SearchResult] = [
         SearchResult(symbol: "9I31223A", name: "楽天・プラス・S&P500インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
         SearchResult(symbol: "0331423B", name: "楽天・S&P500インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND"),
         SearchResult(symbol: "03311187", name: "eMAXIS Slim米国株式(S&P500)", exchange: "JP_FUND", type: "MUTUALFUND"),
@@ -1214,12 +1214,12 @@ class StockService: ObservableObject {
         SearchResult(symbol: "0331418A", name: "楽天・全米株式インデックス・ファンド", exchange: "JP_FUND", type: "MUTUALFUND")
     ]
 
-    static let popularJapaneseIndices: [SearchResult] = [
+    nonisolated static let popularJapaneseIndices: [SearchResult] = [
         SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
         SearchResult(symbol: "^TOPX", name: "TOPIX", exchange: "JPX", type: "INDEX")
     ]
 
-    static let popularGlobalIndices: [SearchResult] = [
+    nonisolated static let popularGlobalIndices: [SearchResult] = [
         SearchResult(symbol: "^KS11", name: "KOSPI Composite Index", exchange: "KSE", type: "INDEX"),
         SearchResult(symbol: "^VNINDEX.VN", name: "VN-Index", exchange: "HOSE", type: "INDEX"),
         SearchResult(symbol: "^HSI", name: "Hang Seng Index", exchange: "HKG", type: "INDEX"),
@@ -1239,7 +1239,7 @@ class StockService: ObservableObject {
 
     /// Common aliases users type that don't substring-match Yahoo tickers:
     /// index abbreviations (SPX), futures (ES=F), and commodities (XAUUSD).
-    static let popularIndexAliases: [String: SearchResult] = [
+    nonisolated static let popularIndexAliases: [String: SearchResult] = [
         // Index abbreviations
         "SPX": SearchResult(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX"),
         "SP500": SearchResult(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX"),
@@ -1248,6 +1248,28 @@ class StockService: ObservableObject {
         "NASDAQ": SearchResult(symbol: "^IXIC", name: "NASDAQ Composite", exchange: "NMS", type: "INDEX"),
         "NDX": SearchResult(symbol: "^IXIC", name: "NASDAQ Composite", exchange: "NMS", type: "INDEX"),
         "KOSDAQ": SearchResult(symbol: "^KOSDAQ", name: "KOSDAQ Composite Index", exchange: "KOSDAQ", type: "INDEX"),
+        "N225": SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
+        "NIKKEI": SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
+        "NIKKEI225": SearchResult(symbol: "^N225", name: "Nikkei 225", exchange: "JPX", type: "INDEX"),
+        "TOPIX": SearchResult(symbol: "^TOPX", name: "TOPIX", exchange: "JPX", type: "INDEX"),
+        "KOSPI": SearchResult(symbol: "^KS11", name: "KOSPI Composite Index", exchange: "KSE", type: "INDEX"),
+        "NIFTY": SearchResult(symbol: "^NSEI", name: "Nifty 50", exchange: "NSE", type: "INDEX"),
+        "NIFTY50": SearchResult(symbol: "^NSEI", name: "Nifty 50", exchange: "NSE", type: "INDEX"),
+        "SENSEX": SearchResult(symbol: "^BSESN", name: "S&P BSE Sensex", exchange: "BSE", type: "INDEX"),
+        "HANGSENG": SearchResult(symbol: "^HSI", name: "Hang Seng Index", exchange: "HKG", type: "INDEX"),
+        "HSI": SearchResult(symbol: "^HSI", name: "Hang Seng Index", exchange: "HKG", type: "INDEX"),
+        "ASX200": SearchResult(symbol: "^AXJO", name: "S&P/ASX 200", exchange: "ASX", type: "INDEX"),
+        "ASX": SearchResult(symbol: "^AXJO", name: "S&P/ASX 200", exchange: "ASX", type: "INDEX"),
+        "DAX": SearchResult(symbol: "^GDAXI", name: "DAX", exchange: "GER", type: "INDEX"),
+        "CAC": SearchResult(symbol: "^FCHI", name: "CAC 40", exchange: "PAR", type: "INDEX"),
+        "CAC40": SearchResult(symbol: "^FCHI", name: "CAC 40", exchange: "PAR", type: "INDEX"),
+        "FTSE": SearchResult(symbol: "^FTSE", name: "FTSE 100", exchange: "LSE", type: "INDEX"),
+        "FTSE100": SearchResult(symbol: "^FTSE", name: "FTSE 100", exchange: "LSE", type: "INDEX"),
+        "TAIEX": SearchResult(symbol: "^TWII", name: "TSEC weighted index", exchange: "TAI", type: "INDEX"),
+        "TWII": SearchResult(symbol: "^TWII", name: "TSEC weighted index", exchange: "TAI", type: "INDEX"),
+        "VNINDEX": SearchResult(symbol: "^VNINDEX.VN", name: "VN-Index", exchange: "HOSE", type: "INDEX"),
+        "VN": SearchResult(symbol: "^VNINDEX.VN", name: "VN-Index", exchange: "HOSE", type: "INDEX"),
+        "STI": SearchResult(symbol: "^STI", name: "Straits Times Index", exchange: "SGX", type: "INDEX"),
         // Index futures
         "ES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
         "SPX FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
@@ -1270,6 +1292,73 @@ class StockService: ObservableObject {
         "NATGAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE"),
         "GAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE")
     ]
+
+    // MARK: - Display names (indices, FX, futures)
+
+    /// Maps Yahoo index tickers (e.g. "^GSPC") to their conventional display
+    /// names (e.g. "S&P 500"). Built once from the popular index lists above.
+    nonisolated static var indexDisplayNameMap: [String: String] {
+        var map: [String: String] = [:]
+        for index in popularJapaneseIndices + popularGlobalIndices {
+            map[index.symbol.uppercased()] = index.name
+        }
+        return map
+    }
+
+    /// True when the symbol is a Yahoo market index ticker (prefix "^").
+    nonisolated static func isIndexSymbol(_ symbol: String) -> Bool {
+        symbol.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("^")
+    }
+
+    /// True when the symbol should use the "beautified" display-name path
+    /// instead of the raw ticker: indices ("^N225"), FX pairs ("USDJPY=X"),
+    /// and futures/commodities ("GC=F"). Single stocks, ETFs, funds, and
+    /// crypto keep their raw ticker as the primary label.
+    nonisolated static func isDisplayNameAsset(_ symbol: String) -> Bool {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if isIndexSymbol(symbol) { return true }
+        return upper.hasSuffix("=X") || upper.hasSuffix("=F")
+    }
+
+    /// Best-effort human-friendly display name for any symbol:
+    /// - Index tickers ("^N225") → their conventional name ("Nikkei 225")
+    /// - Unknown index tickers → the "^" prefix stripped ("^FOO" → "FOO")
+    /// - FX pairs ("EURUSD=X") → "EUR/USD"
+    /// - Futures & commodities ("GC=F") → the conventional name ("Gold Futures")
+    /// - Everything else (stocks, ETFs, funds, crypto) → the raw symbol
+    nonisolated static func beautifiedSymbol(_ symbol: String) -> String {
+        let trimmed = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        let upper = trimmed.uppercased()
+
+        // Market indices: preferred name, fallback strips the "^".
+        if isIndexSymbol(trimmed) {
+            if let name = indexDisplayNameMap[upper] { return name }
+            return String(trimmed.dropFirst())
+        }
+
+        // FX pairs: "EURUSD=X" → "EUR/USD".
+        if upper.hasSuffix("=X") {
+            let base = String(upper.dropLast(2))
+            if base.count == 6 {
+                let from = String(base.prefix(3))
+                let to = String(base.dropFirst(3))
+                return "\(from)/\(to)"
+            }
+            return base
+        }
+
+        // Futures & commodities: look up the conventional name from the alias
+        // table ("GC=F" → "Gold Futures"), fallback strips the "=F".
+        if upper.hasSuffix("=F") {
+            for (_, result) in popularIndexAliases
+            where result.type.uppercased() == "FUTURE" && result.symbol.uppercased() == upper {
+                return result.name
+            }
+            return String(upper.dropLast(2))
+        }
+
+        return symbol
+    }
 
     nonisolated static func containsJapaneseCharacters(_ str: String) -> Bool {
         for scalar in str.unicodeScalars {

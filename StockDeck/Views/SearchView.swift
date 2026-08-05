@@ -111,7 +111,7 @@ struct SearchView: View {
                         HStack(spacing: 8) {
                             SymbolLogo(symbol: result.symbol, size: 28)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(result.symbol)
+                                Text(StockService.beautifiedSymbol(result.symbol))
                                     .font(.inter(13, relativeTo: .body).monospacedDigit())
                                     .fontWeight(.semibold)
                                 Text(result.name)

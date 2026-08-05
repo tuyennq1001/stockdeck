@@ -452,7 +452,7 @@ struct AlertRow: View {
                 .frame(width: 14)
             SymbolLogo(symbol: alert.symbol, size: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text(alert.symbol)
+                Text(StockService.beautifiedSymbol(alert.symbol))
                     .font(.inter(12, weight: .semibold, relativeTo: .body))
                 Text(AlertEvaluator.describe(alert, currencySymbol: currencySymbol))
                     .font(.inter(9, relativeTo: .caption2))

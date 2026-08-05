@@ -388,7 +388,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return (" \(symbol)", .secondaryLabelColor)
         }
         // #8.2: prefer the readable name when the user opted in and it's available.
-        let label = (storageService.tickerShowName && !quote.name.isEmpty) ? quote.name : quote.symbol
+        // Indices, FX pairs, and futures always use their conventional display
+        // name ("^N225" → "Nikkei 225", "EURUSD=X" → "EUR/USD", "GC=F" → "Gold
+        // Futures"). Single stocks / ETFs keep the raw ticker by default.
+        let label: String
+        if StockService.isDisplayNameAsset(quote.symbol) {
+            label = quote.displayName
+        } else if storageService.tickerShowName && !quote.name.isEmpty {
+            label = quote.name
+        } else {
+            label = quote.symbol
+        }
         let sign = quote.changePercent >= 0 ? "+" : ""
         let priceValue = quote.displayPrice(extendedHours: storageService.showExtendedHours)
         let price = StorageService.formatNumber(priceValue, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: priceValue))
@@ -545,7 +555,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case "bestStock":
             if let best = bestStock {
                 let sign = best.changePercent >= 0 ? "+" : ""
-                title = " \(best.symbol) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%"
+                title = " \(best.displayName) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%"
                 color = best.changePercent >= 0 ? upColor : downColor
             } else {
                 title = " --"
@@ -555,7 +565,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case "worstStock":
             if let worst = worstStock {
                 let sign = worst.changePercent >= 0 ? "+" : ""
-                title = " \(worst.symbol) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", worst.changePercent))%"
+                title = " \(worst.displayName) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", worst.changePercent))%"
                 color = worst.changePercent >= 0 ? upColor : downColor
             } else {
                 title = " --"
@@ -566,11 +576,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let best = bestStock, let worst = worstStock, best.symbol != worst.symbol {
                 let bSign = best.changePercent >= 0 ? "+" : ""
                 let wSign = worst.changePercent >= 0 ? "+" : ""
-                title = " ▲\(best.symbol) \(bSign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%  ▼\(worst.symbol) \(wSign)\(String(format: "%.\(storageService.percentDecimals)f", worst.changePercent))%"
+                title = " ▲\(best.displayName) \(bSign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%  ▼\(worst.displayName) \(wSign)\(String(format: "%.\(storageService.percentDecimals)f", worst.changePercent))%"
                 color = .labelColor
             } else if let best = bestStock {
                 let sign = best.changePercent >= 0 ? "+" : ""
-                title = " \(best.symbol) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%"
+                title = " \(best.displayName) \(sign)\(String(format: "%.\(storageService.percentDecimals)f", best.changePercent))%"
                 color = best.changePercent >= 0 ? upColor : downColor
             } else {
                 title = " --"

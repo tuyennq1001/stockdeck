@@ -117,7 +117,7 @@ struct WatchlistView: View {
                         HStack(spacing: 0) {
                             HStack(spacing: 5) {
                                 SymbolLogo(symbol: symbol, size: 20)
-                                Text(symbol)
+                                Text(StockService.beautifiedSymbol(symbol))
                                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                                     .fontWeight(.bold)
                                     .lineLimit(1)
@@ -569,15 +569,18 @@ struct QuoteRow: View {
         HStack(spacing: 0) {
 
             // Col 1: Logo + symbol + name
+            let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
             HStack(spacing: 5) {
                 SymbolLogo(symbol: quote.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(quote.symbol)
+                    // Single stocks / ETFs keep the raw ticker as the primary label;
+                    // indices, FX pairs, and futures use their conventional name.
+                    Text(isDisplayAsset ? quote.displayName : quote.symbol)
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)
                     if storageService.showCompanyName {
-                        Text(quote.name)
+                        Text(isDisplayAsset ? quote.symbol : quote.name)
                             .font(.inter(9, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
