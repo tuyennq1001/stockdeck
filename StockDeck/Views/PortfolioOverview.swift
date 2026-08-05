@@ -153,6 +153,7 @@ struct PortfolioOverview: View {
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
     @State private var positionsCardWidth: CGFloat = 0
+    @State private var confirmDeleteSymbol: (symbol: String, portfolioId: UUID, count: Int)? = nil
 
     init(viewModel: PortfolioViewModel) {
         self.viewModel = viewModel
@@ -389,6 +390,23 @@ struct PortfolioOverview: View {
         .sheet(isPresented: $showColumnCustomizer) {
             PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { columns in
                 storageService.setPortfolioColumns(columns)
+            }
+        }
+        .alert("Delete Symbol", isPresented: Binding(get: { confirmDeleteSymbol != nil }, set: { if !$0 { confirmDeleteSymbol = nil } })) {
+            Button("Cancel", role: .cancel) { confirmDeleteSymbol = nil }
+            Button("Delete", role: .destructive) {
+                if let target = confirmDeleteSymbol {
+                    storageService.removeSymbol(from: target.portfolioId, symbol: target.symbol)
+                }
+                confirmDeleteSymbol = nil
+            }
+        } message: {
+            if let target = confirmDeleteSymbol {
+                if target.count > 1 {
+                    Text("Are you sure you want to delete \(target.symbol) across all \(target.count) purchase lots? This action cannot be undone.")
+                } else {
+                    Text("Are you sure you want to delete \(target.symbol)? This action cannot be undone.")
+                }
             }
         }
         .onAppear {
@@ -1198,11 +1216,31 @@ struct PortfolioOverview: View {
                                 .help("View \(sym) details")
                                 .contextMenu {
                                     let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
-                                    if group.count == 1 && !isPortReadOnly {
-                                        Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                    if !isPortReadOnly {
+                                        if group.count == 1 {
+                                            Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                        }
+
+                                        let otherPortfolios = storageService.portfolios.filter { $0.id != first.portfolioId && !$0.isReadOnly }
+                                        if !otherPortfolios.isEmpty {
+                                            Menu {
+                                                ForEach(otherPortfolios) { targetPort in
+                                                    Button {
+                                                        storageService.moveSymbol(symbol: sym, from: first.portfolioId, to: targetPort.id)
+                                                    } label: {
+                                                        Text(targetPort.name)
+                                                    }
+                                                }
+                                            } label: {
+                                                Label("Move to Portfolio…", systemImage: "folder.swipe")
+                                            }
+                                        }
+
                                         Button(role: .destructive) {
-                                            storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
-                                        } label: { Label("Delete", systemImage: "trash") }
+                                            confirmDeleteSymbol = (symbol: sym, portfolioId: first.portfolioId, count: group.count)
+                                        } label: {
+                                            Label(group.count > 1 ? "Delete Symbol (\(group.count) lots)" : "Delete", systemImage: "trash")
+                                        }
                                     }
                                 }
                                 if index < sortedSymbols.count - 1 {

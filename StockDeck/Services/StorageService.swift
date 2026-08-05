@@ -971,6 +971,12 @@ class StorageService: ObservableObject {
         portfolios[pIndex].holdings.removeAll { $0.id == holdingId }
     }
 
+    func removeSymbol(from portfolioId: UUID, symbol: String) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
+        portfolios[pIndex].holdings.removeAll { $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame }
+    }
+
     func moveHolding(holdingId: UUID, from sourcePortfolioId: UUID, to targetPortfolioId: UUID) {
         guard sourcePortfolioId != targetPortfolioId,
               let sIndex = portfolios.firstIndex(where: { $0.id == sourcePortfolioId }),
@@ -979,6 +985,19 @@ class StorageService: ObservableObject {
         else { return }
         let holding = portfolios[sIndex].holdings.remove(at: hIndex)
         portfolios[tIndex].holdings.append(holding)
+    }
+
+    func moveSymbol(symbol: String, from sourcePortfolioId: UUID, to targetPortfolioId: UUID) {
+        guard sourcePortfolioId != targetPortfolioId,
+              let sIndex = portfolios.firstIndex(where: { $0.id == sourcePortfolioId }),
+              !portfolios[sIndex].isReadOnly,
+              let tIndex = portfolios.firstIndex(where: { $0.id == targetPortfolioId }),
+              !portfolios[tIndex].isReadOnly
+        else { return }
+        let matchingHoldings = portfolios[sIndex].holdings.filter { $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame }
+        guard !matchingHoldings.isEmpty else { return }
+        portfolios[sIndex].holdings.removeAll { $0.symbol.caseInsensitiveCompare(symbol) == .orderedSame }
+        portfolios[tIndex].holdings.append(contentsOf: matchingHoldings)
     }
 
 
