@@ -154,6 +154,7 @@ struct SettingsView: View {
                     caption("Choose which details appear in each watchlist row")
                 }
 
+                #if os(macOS)
                 // MARK: - Menu Bar (display + colors)
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
                     subHeader("Display")
@@ -234,6 +235,7 @@ struct SettingsView: View {
                     Toggle("Use system color in the menu bar", isOn: $storageService.menuBarUseSystemColor)
                     caption("Keeps the menu bar text readable on any wallpaper (direction still shown by + / − and ▲ ▼). Doesn't affect in-app colors.")
                 }
+                #endif
 
                 // MARK: - Notifications
                 SettingsGroup(title: "Notifications", icon: "bell", isExpanded: $groupNotifications) {
@@ -314,6 +316,7 @@ struct SettingsView: View {
 
                 // MARK: - About & Data (updates, sponsor, reset)
                 SettingsGroup(title: "About & Data", icon: "info.circle", isExpanded: $groupAbout) {
+                    #if os(macOS)
                     subHeader("Updates")
                     Button("Check for Updates...") {
                         NSApp.setActivationPolicy(.regular)
@@ -321,6 +324,7 @@ struct SettingsView: View {
                         updaterViewModel.checkForUpdates()
                     }
                     .disabled(!updaterViewModel.canCheckForUpdates)
+                    #endif
 
                     subHeader("Enjoying StockDeck?")
                     caption("StockDeck is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")

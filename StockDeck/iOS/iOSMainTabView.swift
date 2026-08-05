@@ -66,14 +66,16 @@ struct iOSMainTabView: View {
                             refreshButton
                         }
                     }
-                    .sheet(item: $addHoldingBinding) { item in
-                        NavigationStack {
-                            AddHoldingView(portfolioId: item.portfolioId, isPresented: Binding(
-                                get: { addHoldingPortfolioId != nil },
-                                set: { if !$0 { addHoldingPortfolioId = nil } }
-                            ))
+                    .sheet(isPresented: Binding(
+                        get: { addHoldingPortfolioId != nil },
+                        set: { if !$0 { addHoldingPortfolioId = nil } }
+                    )) {
+                        if let portfolioId = addHoldingPortfolioId {
+                            NavigationStack {
+                                AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
+                            }
+                            .presentationDetents([.medium, .large])
                         }
-                        .presentationDetents([.medium, .large])
                     }
             }
             .tabItem {
@@ -120,17 +122,5 @@ struct iOSMainTabView: View {
         }
         .disabled(stockService.isLoading)
     }
-
-    private var addHoldingBinding: Binding<HoldingSheetItem?> {
-        Binding(
-            get: { addHoldingPortfolioId.map { HoldingSheetItem(portfolioId: $0) } },
-            set: { addHoldingPortfolioId = $0?.portfolioId }
-        )
-    }
-}
-
-private struct HoldingSheetItem: Identifiable {
-    let portfolioId: UUID
-    var id: UUID { portfolioId }
 }
 #endif

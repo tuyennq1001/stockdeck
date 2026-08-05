@@ -10,7 +10,6 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     private var webSocketService = WebSocketService.shared
     private var timer: Timer?
     private var binanceTimer: Timer?
-    private var storageServiceObserver: AnyCancellable?
     private var symbolsObserver: AnyCancellable?
     private lazy var alertMonitor = AlertMonitor(storage: storageService)
     private lazy var portfolioMonitor = PortfolioMonitor(storage: storageService, stockService: stockService)
@@ -24,8 +23,8 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
                 guard let self else { return }
-                let symbols = self.storageService.allTrackedSymbols
-                self.webSocketService.subscribe(symbols: symbols)
+                let symbols = Array(StockService.collectSymbols(storageService: self.storageService))
+                self.webSocketService.ensureConnected(symbols: symbols)
                 Task {
                     await self.stockService.refreshAll(storageService: self.storageService)
                 }
@@ -34,10 +33,9 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         // On WSS tick -> update quote in StockService & evaluate alerts
         webSocketService.onTick = { [weak self] tick in
             guard let self else { return }
-            self.stockService.applyTick(tick)
-            if let quote = self.stockService.quotes[tick.id] {
-                self.alertMonitor.evaluate(quote: quote)
-                self.portfolioMonitor.evaluate(quote: quote)
+            if self.stockService.applyTicks([tick]) {
+                self.alertMonitor.check(quotes: self.stockService.quotes)
+                self.portfolioMonitor.check()
             }
         }
 
@@ -53,14 +51,14 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         binanceTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                await self.storageService.syncAllBinancePortfolios()
+                await self.syncAllBinancePortfolios()
             }
         }
 
         // Initial refresh
         Task {
-            let symbols = storageService.allTrackedSymbols
-            webSocketService.subscribe(symbols: symbols)
+            let symbols = Array(StockService.collectSymbols(storageService: storageService))
+            webSocketService.ensureConnected(symbols: symbols)
             await stockService.refreshAll(storageService: storageService)
             if storageService.showNewsTab {
                 await stockService.refreshNews(storageService: storageService)
@@ -68,6 +66,14 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         }
 
         return true
+    }
+
+    private func syncAllBinancePortfolios() async {
+        for p in storageService.portfolios {
+            if case .binance = p.sourceType {
+                try? await storageService.syncBinancePortfolio(id: p.id)
+            }
+        }
     }
 }
 #endif

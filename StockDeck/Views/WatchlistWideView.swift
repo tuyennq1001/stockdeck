@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1124,3 +1125,4 @@ private struct WatchlistDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
+#endif

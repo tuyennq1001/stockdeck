@@ -160,9 +160,14 @@ struct ImportPreviewSheet: View {
         let currSym = StorageService.currencySymbol(for: currency)
 
         HStack(spacing: 10) {
+            #if os(macOS)
             Toggle("", isOn: item.isChecked)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
+            #else
+            Toggle("", isOn: item.isChecked)
+                .labelsHidden()
+            #endif
 
             SymbolLogo(symbol: symbol, size: 22)
 

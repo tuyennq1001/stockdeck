@@ -92,6 +92,7 @@ enum SpreadsheetIO {
         try? sheet1.write(to: xlWSDir.appendingPathComponent("sheet1.xml"), atomically: true, encoding: .utf8)
 
         let outFile = tmpDir.appendingPathComponent("export.xlsx")
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.arguments = ["-q", "-r", outFile.path, "."]
@@ -100,6 +101,9 @@ enum SpreadsheetIO {
         process.waitUntilExit()
 
         return try? Data(contentsOf: outFile)
+        #else
+        return nil
+        #endif
     }
 
     private static func columnLetter(_ index: Int) -> String {
@@ -252,6 +256,7 @@ enum SpreadsheetIO {
         try? sheet1.write(to: xlWSDir.appendingPathComponent("sheet1.xml"), atomically: true, encoding: .utf8)
 
         let outFile = tmpDir.appendingPathComponent("sample.xlsx")
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.arguments = ["-q", "-r", outFile.path, "."]
@@ -260,6 +265,9 @@ enum SpreadsheetIO {
         process.waitUntilExit()
 
         return try? Data(contentsOf: outFile)
+        #else
+        return nil
+        #endif
     }
 
     /// Generates .xlsx file data with sample 投資信託 (Japanese mutual fund) trade history using standard English headers.
@@ -598,6 +606,7 @@ enum SpreadsheetIO {
         print(json.dumps(parse(sys.argv[1])))
         """
 
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         process.arguments = ["-c", script, fileURL.path]
@@ -609,9 +618,13 @@ enum SpreadsheetIO {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let jsonRows = try? JSONDecoder().decode([[String]].self, from: data) else { return nil }
         return jsonRows
+        #else
+        return nil
+        #endif
     }
 
     private static func parseXLSXRowsWithSwift(fileURL: URL) -> [[String]]? {
+        #if os(macOS)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         task.arguments = ["-p", fileURL.path, "xl/worksheets/sheet1.xml"]
@@ -634,6 +647,9 @@ enum SpreadsheetIO {
         let sharedStrings = parseSharedStringsSwift(xml: String(data: dataSS, encoding: .utf8) ?? "")
 
         return parseSheetXMLSwift(xml: xmlString, sharedStrings: sharedStrings)
+        #else
+        return nil
+        #endif
     }
 
     private static func parseXLSXWithSwift(fileURL: URL) -> [Portfolio]? {
