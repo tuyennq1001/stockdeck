@@ -319,6 +319,7 @@ struct PortfolioWindowView: View {
                 .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
             TotalFooter(value: aggregateValue(for: storageService.portfolios),
                         cost: aggregateCost(for: storageService.portfolios),
+                        pnl: totalPnlValue,
                         currency: storageService.preferredCurrency,
                         decimals: storageService.amountDecimals)
             quitRow
@@ -649,6 +650,10 @@ struct PortfolioWindowView: View {
         PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
     }
 
+    private var totalPnlValue: Double {
+        PortfolioValuation.totals(valued(storageService.portfolios)).pnl
+    }
+
     private func aggregateValue(for portfolios: [Portfolio]) -> Double {
         PortfolioValuation.totals(valued(portfolios)).value
     }
@@ -658,9 +663,9 @@ struct PortfolioWindowView: View {
     private func aggregatePnlPercent(for portfolios: [Portfolio]) -> Double {
         // Unify with every other surface: P&L = value − cost, where cost uses the
         // historical FX rate at purchase (same as the menu bar, popover, and overview).
+        // Holdings without a known cost basis (e.g. Binance balances) contribute 0 P&L.
         let totals = PortfolioValuation.totals(valued(portfolios))
-        let pnl = totals.value - totals.cost
-        return abs(totals.cost) >= 0.01 ? (pnl / abs(totals.cost)) * 100 : 0
+        return abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
     }
 
     /// Sidebar trailing figure — nil (hidden) until at least one holding is
@@ -715,13 +720,15 @@ private struct SupportButton: View {
 private struct TotalFooter: View {
     let value: Double
     let cost: Double
+    let pnl: Double
     let currency: String
     var decimals: Int = 2
 
     var body: some View {
         let symbol = StorageService.currencySymbol(for: currency)
-        let pnl = value - cost
-        // Same convention as the popover: amount and percentage, always together.
+        // P&L comes from PortfolioValuation (0 for holdings without cost basis),
+        // not `value - cost`, so Binance balances without order history don't
+        // report their entire market value as profit.
         let pct: Double? = abs(cost) >= 0.01 ? (pnl / abs(cost)) * 100 : nil
         VStack(alignment: .leading, spacing: 3) {
             Divider().overlay(DS.hairline)

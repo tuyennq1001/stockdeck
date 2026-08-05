@@ -53,18 +53,20 @@ enum PortfolioValuation {
         var isJapaneseFund: Bool = false
     }
 
-    /// Aggregate market value and cost basis in the preferred currency, reusing
-    /// the signed, leverage-aware math on `Holding`.
+    /// Aggregate market value, cost basis, and P&L in the preferred currency,
+    /// reusing the signed, leverage-aware math on `Holding`.
     ///
-    /// Market value depends ONLY on a live price: a holding with a quote but no
-    /// known cost basis (e.g. Binance balances where order history is missing,
-    /// or a watchlist-only symbol) still has a real market value and must be
-    /// counted in Total Value. The cost side simply contributes 0, so Total P&L
-    /// (value − cost) reports just the market value for such holdings rather
-    /// than fabricating a basis.
-    static func totals(_ inputs: [Input]) -> (value: Double, cost: Double) {
+    /// - `value` depends ONLY on a live price: a holding with a quote but no
+    ///   known cost basis (e.g. Binance balances where order history is missing)
+    ///   still has a real market value and is counted in Total Value.
+    /// - `cost` is 0 for holdings without a known basis.
+    /// - `pnl` (value − cost) is only counted for holdings WITH a known cost
+    ///   basis. Without a purchase price the gain/loss is unknown, so we report
+    ///   0 rather than fabricating the entire market value as profit.
+    static func totals(_ inputs: [Input]) -> (value: Double, cost: Double, pnl: Double) {
         var value = 0.0
         var cost = 0.0
+        var pnl = 0.0
         for i in inputs {
             let isFund = i.isJapaneseFund || i.holding.isJapaneseFund
             let scale = isFund ? 10000.0 : 1.0
@@ -79,8 +81,11 @@ enum PortfolioValuation {
                 : 0
             value += val
             cost += cst
+            if hasCost, i.price.isFinite {
+                pnl += val - cst
+            }
         }
-        return (value, cost)
+        return (value, cost, pnl)
     }
 
     /// Unified resolver for holding inputs across all surfaces (menu bar, sidebar, overview).

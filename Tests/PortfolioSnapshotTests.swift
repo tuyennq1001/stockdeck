@@ -51,6 +51,20 @@ final class PortfolioSnapshotTests: XCTestCase {
         let totals = PortfolioValuation.totals([])
         XCTAssertEqual(totals.value, 0)
         XCTAssertEqual(totals.cost, 0)
+        XCTAssertEqual(totals.pnl, 0)
+    }
+
+    /// Binance balances without order history have avgPrice = .nan (no cost
+    /// basis). They still have a real market value, but their P&L is unknown and
+    /// must be 0 — never the entire market value reported as profit.
+    func testNoCostBasisContributesValueButZeroPnl() {
+        let missingCost = Holding(symbol: "BTC-USD", quantity: 1, avgPrice: .nan)
+        let totals = PortfolioValuation.totals([
+            PortfolioValuation.Input(holding: missingCost, price: 87000, rate: 1, costRate: 1)
+        ])
+        XCTAssertEqual(totals.value, 87000, accuracy: 1e-9)
+        XCTAssertEqual(totals.cost, 0, accuracy: 1e-9)
+        XCTAssertEqual(totals.pnl, 0, accuracy: 1e-9)
     }
 
     // MARK: - Snapshot derived metrics
