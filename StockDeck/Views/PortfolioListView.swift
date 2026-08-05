@@ -125,8 +125,8 @@ struct PortfolioListView: View {
                         Text("Price")
                             .frame(width: 72, alignment: .trailing)
                         Text("Today %")
-                            .frame(width: 60, alignment: .trailing)
-                        Text("Ext")
+                            .frame(width: 70, alignment: .trailing)
+                        Text("Total P&L")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .font(.inter(10, weight: .medium, relativeTo: .caption))
@@ -343,6 +343,7 @@ struct PortfolioListView: View {
         let id: String            // symbol
         let avgPrice: Double      // weighted avg buy price, in the price currency
         let priceSymbol: String
+        let hasCostBasis: Bool    // whether any holding for this symbol has a known cost basis
         let pct: Double           // price return vs. avg (position-direction aware)
         let pnl: Double           // total P&L in preferred currency
         let currentPrice: Double
@@ -362,6 +363,7 @@ struct PortfolioListView: View {
         var totalCost: [String: Double] = [:]
         var nativeCostMap: [String: Double] = [:]
         var nativeValMap: [String: Double] = [:]
+        var hasKnownCostMap: [String: Bool] = [:]
         var orderMap: [String: Int] = [:]
         var order = 0
 
@@ -399,6 +401,9 @@ struct PortfolioListView: View {
                 let nativeVal = h.marketValue(currentPrice: quote.price)
                 nativeCostMap[sym, default: 0] += nativeCst
                 nativeValMap[sym, default: 0] += nativeVal
+                if h.hasKnownCostBasis {
+                    hasKnownCostMap[sym] = true
+                }
             }
         }
         return qty.compactMap { symbol, q -> GlobalPosition? in
@@ -413,6 +418,7 @@ struct PortfolioListView: View {
             let nativeVal = nativeValMap[symbol, default: 0]
             let nativePnl = nativeVal - nativeCst
             let pct = abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
+            let hasCostBasis = hasKnownCostMap[symbol] ?? false
 
             let assetCurr = stockService.detectedCurrency(for: symbol)
             let quoteCurr = (quote?.currency.isEmpty == false) ? quote!.currency : assetCurr
@@ -421,7 +427,8 @@ struct PortfolioListView: View {
             let extPrice: Double? = (quote?.isExtendedHours == true) ? quote?.alertPrice : nil
             let extChangePercent: Double? = (quote?.isExtendedHours == true) ? quote?.extendedChangePercent : nil
 
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: nativeSymbol, pct: pct, pnl: nativePnl,
+            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: nativeSymbol, hasCostBasis: hasCostBasis,
+                                  pct: pct, pnl: nativePnl,
                                   currentPrice: price, priceChangePercent: quote?.changePercent ?? 0,
                                   extPrice: extPrice, extChangePercent: extChangePercent,
                                   value: val)
@@ -1213,8 +1220,8 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 72, alignment: .trailing)
 
-            // Col 4: Today % (regular-session % change)
-            Group {
+            // Col 4: Chg — Today % (regular session) + Ext % (extended hours), 2 lines
+            VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
@@ -1227,22 +1234,45 @@ struct PortfolioQuoteRow: View {
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
-            }
-            .frame(width: 60, alignment: .trailing)
-
-            // Col 5: Ext (extended-hours % if available)
-            Group {
-                if let quote, let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
+                if storageService.showExtendedHours, let quote, let extPct = quote.extendedChangePercent {
+                    Text(String(format: "%@ %+.\(storageService.percentDecimals)f%%", quote.marketStateLabel, extPct))
+                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+            .frame(width: 70, alignment: .trailing)
+
+            // Col 5: Total P&L — compact amount (K/M when large) + percent, 2 lines.
+            // Fixed-size fonts (not dynamic .body) so the figures never shrink
+            // below the intended size regardless of system text settings.
+            // Symbols without a known cost basis show "—" for both lines.
+            VStack(alignment: .trailing, spacing: 1) {
+                if globalPos.hasCostBasis {
+                    Text(StorageService.formatCompactAmount(globalPos.pnl, symbol: globalPos.priceSymbol, signed: true, decimals: storageService.amountDecimals))
+                        .font(.inter(13).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+                        .font(.inter(11).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 } else {
                     Text("—")
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
+                        .font(.inter(13).monospacedDigit())
+                        .fontWeight(.semibold)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Text("—")
+                        .font(.inter(11).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
