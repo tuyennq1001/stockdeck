@@ -8,6 +8,14 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var metrics: [WatchlistMetric]? = nil
 }
 
+/// Where a dragged item lands relative to its drop target: before it, or after
+/// it (the lower/right half of the target — which lets an item reach the end of
+/// a list, since there is no drop zone beyond the last row).
+enum InsertPlacement {
+    case before
+    case after
+}
+
 @MainActor
 class StorageService: ObservableObject {
     static let shared = StorageService()
@@ -786,6 +794,37 @@ class StorageService: ObservableObject {
         let item = watchlists.remove(at: srcIndex)
         let newTargetIndex = watchlists.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
         watchlists.insert(item, at: newTargetIndex)
+    }
+
+    func moveWatchlist(from sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        guard sourceId != targetId,
+              let srcIndex = watchlists.firstIndex(where: { $0.id == sourceId }),
+              let tgtIndex = watchlists.firstIndex(where: { $0.id == targetId }) else { return }
+        var result = watchlists
+        let item = result.remove(at: srcIndex)
+        let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= result.count, result != watchlists else { return }
+        result.insert(item, at: insertIndex)
+        watchlists = result
+    }
+
+    func movePortfolio(from sourceId: UUID, beforeOrAfter targetId: UUID) {
+        movePortfolio(from: sourceId, relativeTo: targetId, placement: .before)
+    }
+
+    func movePortfolio(from sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        guard sourceId != targetId,
+              let srcIndex = portfolios.firstIndex(where: { $0.id == sourceId }),
+              let tgtIndex = portfolios.firstIndex(where: { $0.id == targetId }) else { return }
+        var result = portfolios
+        let item = result.remove(at: srcIndex)
+        let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= result.count,
+              result.map(\.id) != portfolios.map(\.id) else { return }
+        result.insert(item, at: insertIndex)
+        portfolios = result
     }
 
     func addPortfolio(name: String) {

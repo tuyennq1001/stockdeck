@@ -250,57 +250,57 @@ struct WatchlistView: View {
                 HStack(spacing: 6) {
                     ForEach(storageService.watchlists) { wl in
                         let selected = wl.id == storageService.currentWatchlist.id
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                storageService.selectWatchlist(id: wl.id)
-                            }
-                        }) {
-                            Text(wl.name)
-                                .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
-                                .foregroundColor(selected ? .white : DS.ink)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .id(wl.id)
-                        .onDrag {
-                            self.draggingWatchlistId = wl.id
-                            return NSItemProvider(object: wl.id.uuidString as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: WatchlistTabDropDelegate(
-                            targetId: wl.id,
+                        ReorderRow(
+                            id: wl.id,
                             draggingId: $draggingWatchlistId,
-                            onMove: { srcId, tgtId in
-                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            isHorizontal: true,
+                            makeDragItem: { NSItemProvider(object: wl.id.uuidString as NSString) },
+                            onMove: { srcId, tgtId, placement in
+                                storageService.moveWatchlist(from: srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: {}
+                        ) {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    storageService.selectWatchlist(id: wl.id)
+                                }
+                            }) {
+                                Text(wl.name)
+                                    .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
+                                    .foregroundColor(selected ? .white : DS.ink)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                    )
                             }
-                        ))
-                        .contextMenu {
-                            Button("Rename…") {
-                                renamingWatchlist = wl
-                                renameWatchlistName = wl.name
-                            }
-                            if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
-                                if idx > 0 {
-                                    Button("Move Left") {
-                                        let prevId = storageService.watchlists[idx - 1].id
-                                        storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .id(wl.id)
+                            .contextMenu {
+                                Button("Rename…") {
+                                    renamingWatchlist = wl
+                                    renameWatchlistName = wl.name
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
+                                    if idx > 0 {
+                                        Button("Move Left") {
+                                            let prevId = storageService.watchlists[idx - 1].id
+                                            storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                        }
+                                    }
+                                    if idx < storageService.watchlists.count - 1 {
+                                        Button("Move Right") {
+                                            let nextId = storageService.watchlists[idx + 1].id
+                                            storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
+                                        }
                                     }
                                 }
-                                if idx < storageService.watchlists.count - 1 {
-                                    Button("Move Right") {
-                                        let nextId = storageService.watchlists[idx + 1].id
-                                        storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
-                                    }
+                                Divider()
+                                Button("Delete Watchlist", role: .destructive) {
+                                    confirmDeleteWatchlist = wl
                                 }
-                            }
-                            Divider()
-                            Button("Delete Watchlist", role: .destructive) {
-                                confirmDeleteWatchlist = wl
                             }
                         }
                     }
@@ -439,28 +439,6 @@ private struct AddToPortfolioItem: Identifiable {
 private struct AlertSheetItem: Identifiable {
     let symbol: String
     var id: String { symbol }
-}
-
-struct WatchlistTabDropDelegate: DropDelegate {
-    let targetId: UUID
-    @Binding var draggingId: UUID?
-    let onMove: (UUID, UUID) -> Void
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingId = nil
-        return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let draggingId = draggingId, draggingId != targetId else { return }
-        withAnimation(.easeOut(duration: 0.15)) {
-            onMove(draggingId, targetId)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
 }
 
 struct QuickAddHoldingView: View {
