@@ -582,9 +582,9 @@ struct PortfolioSection: View {
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
                     Text("Symbol")
-                        .frame(width: 80, alignment: .leading)
+                        .frame(width: 120, alignment: .leading)
                     Text("Price")
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value / P&L")
                         .frame(width: 120, alignment: .trailing)
                 }
@@ -837,7 +837,7 @@ struct HoldingRow: View {
                             )
                     }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
                 // Col 3: Value + P&L in native currency
                 let nativeVal = holding.marketValue(currentPrice: displayPrice)
@@ -1040,7 +1040,7 @@ struct GroupedHoldingRow: View {
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
 
                     // Col 3: Total Market Value & Total P&L in native currency
                     let displayPrice = quote.price

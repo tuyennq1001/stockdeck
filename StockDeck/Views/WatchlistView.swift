@@ -77,21 +77,21 @@ struct WatchlistView: View {
             } else {
                 HStack(spacing: 0) {
                     sortHeader("Symbol", column: .symbol)
-                        .frame(width: 105, alignment: .center)
+                        .frame(width: 105, alignment: .leading)
                     sortHeader("Price", column: .price)
-                        .frame(width: 70, alignment: .center)
+                        .frame(width: 70, alignment: .trailing)
                     if storageService.showAbsoluteChange {
                         sortHeader("Change", column: .absoluteChange)
-                            .frame(width: 80, alignment: .center)
+                            .frame(width: 80, alignment: .trailing)
                     }
                     sortHeader("Today %", column: .changePercent)
-                        .frame(width: 70, alignment: .center)
+                        .frame(width: 70, alignment: .trailing)
                     Text("Ext")
                         .font(.inter(10, weight: .medium, relativeTo: .caption))
                         .foregroundColor(.secondary)
                         .tracking(0.8)
                         .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .font(.inter(10, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
