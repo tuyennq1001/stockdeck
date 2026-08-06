@@ -647,12 +647,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var menuBarImage: NSImage? {
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
                      Bundle.module.url(forResource: "AppIcon", withExtension: "png") ??
                      Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
-                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+                     Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
            let src = NSImage(contentsOf: url) {
             let targetSize = NSSize(width: 18, height: 18)
             let rep = NSBitmapImageRep(
