@@ -144,6 +144,7 @@ struct PortfolioOverview: View {
         case value
         case todayPnl
         case pnl
+        case shares
         case weight
     }
     @State private var sortColumn: PositionSortColumn = .weight
@@ -207,6 +208,7 @@ struct PortfolioOverview: View {
         case .value: return .value
         case .todayPnl: return .todayPnl
         case .totalPnl: return .pnl
+        case .shares: return .shares
         case .weight: return .weight
         }
     }
@@ -233,6 +235,9 @@ struct PortfolioOverview: View {
         case .cost, .value, .todayPnl, .totalPnl:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
+        case .shares:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
@@ -1166,6 +1171,10 @@ struct PortfolioOverview: View {
                                     let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
                                     let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
                                     return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+                                case .shares:
+                                    let s1 = groupedValued[sym1]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
+                                    let s2 = groupedValued[sym2]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
+                                    return isAsc ? s1 < s2 : s1 > s2
                                 case .weight:
                                     let w1 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
                                     let w2 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
@@ -1330,6 +1339,7 @@ private enum PositionColumnWidth {
     static let priceMin: CGFloat = 90
     static let sessionMin: CGFloat = 90
     static let amountMin: CGFloat = 95
+    static let sharesMin: CGFloat = 85
     static let weightMin: CGFloat = 95
     static let chevron: CGFloat = 16
 }
@@ -1527,6 +1537,15 @@ private struct PositionSummaryRow: View {
                     .font(DS.figure).foregroundStyle(DS.inkTertiary)
                     .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
             }
+
+        case .shares:
+            let totalQty = holdings.reduce(0) { $0 + $1.holding.quantity }
+            let qtyDecimals = totalQty.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (totalQty < 1 ? 4 : 2)
+            Text(StorageService.formatNumber(totalQty, decimals: qtyDecimals))
+                .font(DS.figure)
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
 
         case .weight:
             HStack(spacing: 7) {

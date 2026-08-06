@@ -89,8 +89,15 @@ final class BatchImportTests: XCTestCase {
     }
 
     @MainActor
+    private func createIsolatedStorage() -> StorageService {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        return StorageService(fileURL: tempDir.appendingPathComponent("test_stockdeck.json"))
+    }
+
+    @MainActor
     func testAddHoldingsBatchPositionMerging() {
-        let storageService = StorageService.shared
+        let storageService = createIsolatedStorage()
         let pId = UUID()
         let initialPortfolio = Portfolio(id: pId, name: "Test Portfolio", holdings: [
             Holding(symbol: "AAPL", quantity: 10, avgPrice: 150.0),
