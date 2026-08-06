@@ -1132,7 +1132,7 @@ class StorageService: ObservableObject {
         var watchlist: [String]
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
-        var portfolioColumns: [PortfolioColumnMetric]?
+        var portfolioColumns: [String]?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -1187,7 +1187,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1302,7 +1302,8 @@ class StorageService: ObservableObject {
             fontFamily = decoded.fontFamily ?? "Inter Variable"
             appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
             showNewsTab = decoded.showNewsTab ?? true
-            portfolioColumns = decoded.portfolioColumns
+            let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+            portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
             FontRegistration.familyName = fontFamily
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
         } catch {

@@ -9,7 +9,9 @@ final class InvestmentEffectivenessTests: XCTestCase {
     override func setUp() {
         super.setUp()
         stockService = StockService.shared
-        storageService = StorageService.shared
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        storageService = StorageService(fileURL: tempDir.appendingPathComponent("test_stockdeck.json"))
     }
 
     func testExcludesNilPurchaseDateHoldings() {
