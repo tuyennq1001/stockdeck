@@ -13,6 +13,7 @@ struct PortfolioListView: View {
     @State private var confirmDeletePortfolio: Portfolio? = nil
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
+    @State private var draggingPortfolioId: UUID? = nil
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -288,24 +289,35 @@ struct PortfolioListView: View {
 
                     ForEach(storageService.portfolios) { p in
                         let selected = p.id == selectedPortfolioId
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedPortfolioId = p.id
+                        ReorderRow(
+                            id: p.id,
+                            draggingId: $draggingPortfolioId,
+                            isHorizontal: true,
+                            makeDragItem: { NSItemProvider(object: p.id.uuidString as NSString) },
+                            onMove: { srcId, tgtId, placement in
+                                storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: {}
+                        ) {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedPortfolioId = p.id
+                                }
+                            }) {
+                                Text(p.name)
+                                    .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
+                                    .foregroundColor(selected ? .white : DS.ink)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                    )
                             }
-                        }) {
-                            Text(p.name)
-                                .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
-                                .foregroundColor(selected ? .white : DS.ink)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                )
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .id(p.id)
                         }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .id(p.id)
                     }
                 }
                 .padding(.horizontal, 10)

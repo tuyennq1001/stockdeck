@@ -50,6 +50,7 @@ struct PortfolioWindowView: View {
     @State private var renameWatchlistName = ""
     @State private var deleteWatchlistTarget: Watchlist? = nil
     @State private var draggingWatchlistId: UUID? = nil
+    @State private var draggingPortfolioId: UUID? = nil
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
@@ -237,36 +238,36 @@ struct PortfolioWindowView: View {
 
                     watchlistsHeader
                     ForEach(storageService.watchlists) { wl in
-                        NavRow(icon: "star", title: wl.name,
-                               trailing: "\(wl.symbols.count)",
-                               trailingTint: DS.inkTertiary,
-                               helpText: "Open “\(wl.name)” watchlist · Drag to reorder",
-                               selected: selection == .watchlist && storageService.selectedWatchlistId == wl.id,
-                               namespace: navNamespace) {
-                            storageService.selectedWatchlistId = wl.id
-                            navigate(to: .watchlist)
-                        }
-                        .onDrag {
-                            self.draggingWatchlistId = wl.id
-                            return NSItemProvider(object: wl.id.uuidString as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: WatchlistSidebarDropDelegate(
-                            targetId: wl.id,
+                        ReorderRow(
+                            id: wl.id,
                             draggingId: $draggingWatchlistId,
-                            onMove: { srcId, tgtId in
-                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            isHorizontal: false,
+                            makeDragItem: { NSItemProvider(object: wl.id.uuidString as NSString) },
+                            onMove: { srcId, tgtId, placement in
+                                storageService.moveWatchlist(from: srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: {}
+                        ) {
+                            NavRow(icon: "star", title: wl.name,
+                                   trailing: "\(wl.symbols.count)",
+                                   trailingTint: DS.inkTertiary,
+                                   helpText: "Open “\(wl.name)” watchlist · Drag to reorder",
+                                   selected: selection == .watchlist && storageService.selectedWatchlistId == wl.id,
+                                   namespace: navNamespace) {
+                                storageService.selectedWatchlistId = wl.id
+                                navigate(to: .watchlist)
                             }
-                        ))
-                        .contextMenu {
-                            Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
-                                Label("Rename Watchlist…", systemImage: "pencil")
-                            }
-                            if storageService.watchlists.count > 1 {
-                                Divider()
-                                Button(role: .destructive) {
-                                    deleteWatchlistTarget = wl
-                                } label: {
-                                    Label("Delete Watchlist", systemImage: "trash")
+                            .contextMenu {
+                                Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
+                                    Label("Rename Watchlist…", systemImage: "pencil")
+                                }
+                                if storageService.watchlists.count > 1 {
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        deleteWatchlistTarget = wl
+                                    } label: {
+                                        Label("Delete Watchlist", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -279,31 +280,57 @@ struct PortfolioWindowView: View {
                            helpText: "Combined view of every portfolio  ⌘3",
                            selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
                     ForEach(storageService.portfolios) { portfolio in
-                        NavRow(icon: "briefcase", title: portfolio.name,
-                               trailing: trailingPercent(for: [portfolio]),
-                               trailingTint: DS.pnlColor(aggregatePnlPercent(for: [portfolio])),
-                               helpText: "Open “\(portfolio.name)” · right-click for rename, notifications",
-                               selected: selection == .portfolio(portfolio.id), namespace: navNamespace) {
-                            navigate(to: .portfolio(portfolio.id))
-                        }
-                        .contextMenu {
-                            Button { addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) } label: {
-                                Label("Add Holding…", systemImage: "plus")
+                        ReorderRow(
+                            id: portfolio.id,
+                            draggingId: $draggingPortfolioId,
+                            isHorizontal: false,
+                            makeDragItem: { NSItemProvider(object: portfolio.id.uuidString as NSString) },
+                            onMove: { srcId, tgtId, placement in
+                                storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: {}
+                        ) {
+                            NavRow(icon: "briefcase", title: portfolio.name,
+                                   trailing: trailingPercent(for: [portfolio]),
+                                   trailingTint: DS.pnlColor(aggregatePnlPercent(for: [portfolio])),
+                                   helpText: "Open “\(portfolio.name)” · Drag to reorder · right-click for rename, notifications",
+                                   selected: selection == .portfolio(portfolio.id), namespace: navNamespace) {
+                                navigate(to: .portfolio(portfolio.id))
                             }
-                            Button { importStandard() } label: {
-                                Label("Import File…", systemImage: "square.and.arrow.down")
+                            .contextMenu {
+                                Button { addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) } label: {
+                                    Label("Add Holding…", systemImage: "plus")
+                                }
+                                Button { importStandard() } label: {
+                                    Label("Import File…", systemImage: "square.and.arrow.down")
+                                }
+                                Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
+                                    Label("Rename…", systemImage: "pencil")
+                                }
+                                Button { notifTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
+                                    Label("Notifications…", systemImage: "bell")
+                                }
+                                if storageService.portfolios.count > 1 {
+                                    Divider()
+                                    if let idx = storageService.portfolios.firstIndex(where: { $0.id == portfolio.id }), idx > 0 {
+                                        let prevId = storageService.portfolios[idx - 1].id
+                                        Button { storageService.movePortfolio(from: portfolio.id, beforeOrAfter: prevId) } label: {
+                                            Label("Move Up", systemImage: "arrow.up")
+                                        }
+                                    }
+                                    if let idx = storageService.portfolios.firstIndex(where: { $0.id == portfolio.id }), idx < storageService.portfolios.count - 1 {
+                                        let nextId = storageService.portfolios[idx + 1].id
+                                        Button { storageService.movePortfolio(from: nextId, beforeOrAfter: portfolio.id) } label: {
+                                            Label("Move Down", systemImage: "arrow.down")
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button(role: .destructive) {
+                                    storageService.deletePortfolio(id: portfolio.id)
+                                    if selection == .portfolio(portfolio.id) { navigate(to: .portfoliosAll) }
+                                } label: { Label("Delete", systemImage: "trash") }
                             }
-                            Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
-                                Label("Rename…", systemImage: "pencil")
-                            }
-                            Button { notifTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
-                                Label("Notifications…", systemImage: "bell")
-                            }
-                            Divider()
-                            Button(role: .destructive) {
-                                storageService.deletePortfolio(id: portfolio.id)
-                                if selection == .portfolio(portfolio.id) { navigate(to: .portfoliosAll) }
-                            } label: { Label("Delete", systemImage: "trash") }
                         }
                     }
                 }
@@ -753,20 +780,68 @@ private struct TotalFooter: View {
     }
 }
 
-private struct WatchlistSidebarDropDelegate: DropDelegate {
-    let targetId: UUID
-    @Binding var draggingId: UUID?
-    let onMove: (UUID, UUID) -> Void
+/// Wraps a reorderable row/tab, measures its size, and attaches drag & drop with
+/// half-split placement: dropping on the top/left half inserts the dragged item
+/// BEFORE the target, on the bottom/right half AFTER it. The after-half of the
+/// last row is what lets an item reach the very end of a list.
+struct ReorderRow<Target: Hashable, Content: View>: View {
+    let id: Target
+    @Binding var draggingId: Target?
+    let isHorizontal: Bool
+    let makeDragItem: () -> NSItemProvider
+    let onMove: (Target, Target, InsertPlacement) -> Void
+    let onCommit: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var height: CGFloat = 44
+
+    var body: some View {
+        content()
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { height = max(1, geo.size.height) }
+                        .onChange(of: geo.size.height) { _, h in height = max(1, h) }
+                }
+            )
+            .onDrag {
+                draggingId = id
+                return makeDragItem()
+            }
+            .onDrop(of: [.text], delegate: ReorderDropDelegate(
+                targetId: id,
+                draggingId: $draggingId,
+                height: height,
+                isHorizontal: isHorizontal,
+                onMove: onMove,
+                onCommit: onCommit
+            ))
+    }
+}
+
+/// Half-split drop delegate used by `ReorderRow`. `info.location` is measured in
+/// the row's own coordinate space, so comparing it against the measured height
+/// decides whether the dragged item lands before or after the target.
+struct ReorderDropDelegate<Target: Hashable>: DropDelegate {
+    let targetId: Target
+    @Binding var draggingId: Target?
+    let height: CGFloat
+    let isHorizontal: Bool
+    let onMove: (Target, Target, InsertPlacement) -> Void
+    let onCommit: () -> Void
 
     func performDrop(info: DropInfo) -> Bool {
+        onCommit()
         draggingId = nil
         return true
     }
 
     func dropEntered(info: DropInfo) {
         guard let draggingId = draggingId, draggingId != targetId else { return }
+        let coordinate = isHorizontal ? info.location.x : info.location.y
+        let placement: InsertPlacement = coordinate < height / 2 ? .before : .after
         withAnimation(.easeOut(duration: 0.15)) {
-            onMove(draggingId, targetId)
+            onMove(draggingId, targetId, placement)
         }
     }
 

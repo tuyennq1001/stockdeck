@@ -21,6 +21,10 @@ struct WatchlistWideView: View {
     @State private var sortKey: SortKey = .order
     @State private var sortAsc = true
     @State private var draggingSymbol: String? = nil
+    /// Live display order while dragging: reordering only touches this local
+    /// array (no storage writes / objectWillChange churn / task restarts), and
+    /// the final order is committed once on drop.
+    @State private var previewOrder: [String] = []
     @State private var addToPortfolio: AddTarget?
     @State private var alertSymbol: AlertTarget?
     @State private var showMetricCustomizer = false
@@ -101,7 +105,8 @@ struct WatchlistWideView: View {
     @State private var hScrollOffset: CGFloat = 0
 
     private var rows: [WatchRow] {
-        storageService.watchlist.enumerated().map { index, symbol in
+        let order = (draggingSymbol != nil && !previewOrder.isEmpty) ? previewOrder : storageService.watchlist
+        return order.enumerated().map { index, symbol in
             let q = stockService.quotes[symbol]
             let rate = q.map { stockService.priceRate(from: $0.currency) } ?? 1
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
@@ -214,7 +219,7 @@ struct WatchlistWideView: View {
             }
         }
         .navigationTitle(storageService.currentWatchlist.name)
-        .task(id: storageService.watchlist) {
+        .task(id: Set(storageService.watchlist)) {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
         }
@@ -224,6 +229,21 @@ struct WatchlistWideView: View {
                 await stockService.ensurePriceHistoryMax(for: symbol)
             }
         }
+        .onAppear {
+            if previewOrder.isEmpty { previewOrder = storageService.watchlist }
+        }
+        .onChange(of: storageService.watchlist) { _, newList in
+            // Keep the preview in sync with outside changes (add/remove/switch) —
+            // but never clobber an in-flight drag preview.
+            if draggingSymbol == nil { previewOrder = newList }
+        }
+        .onChange(of: draggingSymbol) { _, newValue in
+            if newValue == nil { previewOrder = [] }
+        }
+        .onDrop(of: [.text], delegate: WatchlistListCommitDelegate(
+            draggingSymbol: $draggingSymbol,
+            onCommit: { commitPreviewOrder() }
+        ))
         .sheet(item: $addToPortfolio) { t in
             HoldingFormSheet(mode: .addSymbol(symbol: t.symbol, portfolioId: t.portfolioId)) { addToPortfolio = nil }
                 .environmentObject(stockService).environmentObject(storageService)
@@ -401,57 +421,57 @@ struct WatchlistWideView: View {
                 HStack(spacing: 6) {
                     ForEach(storageService.watchlists) { wl in
                         let selected = wl.id == storageService.currentWatchlist.id
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                storageService.selectWatchlist(id: wl.id)
-                            }
-                        }) {
-                            Text(wl.name)
-                                .font(DS.bodyStrong)
-                                .foregroundStyle(selected ? .white : DS.ink)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 5)
-                                .background(
-                                    Capsule()
-                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .id(wl.id)
-                        .onDrag {
-                            self.draggingWatchlistId = wl.id
-                            return NSItemProvider(object: wl.id.uuidString as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: WatchlistTabDropDelegate(
-                            targetId: wl.id,
+                        ReorderRow(
+                            id: wl.id,
                             draggingId: $draggingWatchlistId,
-                            onMove: { srcId, tgtId in
-                                storageService.moveWatchlist(from: srcId, beforeOrAfter: tgtId)
+                            isHorizontal: true,
+                            makeDragItem: { NSItemProvider(object: wl.id.uuidString as NSString) },
+                            onMove: { srcId, tgtId, placement in
+                                storageService.moveWatchlist(from: srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: {}
+                        ) {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    storageService.selectWatchlist(id: wl.id)
+                                }
+                            }) {
+                                Text(wl.name)
+                                    .font(DS.bodyStrong)
+                                    .foregroundStyle(selected ? .white : DS.ink)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        Capsule()
+                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                    )
                             }
-                        ))
-                        .contextMenu {
-                            Button("Rename…") {
-                                renamingWatchlist = wl
-                                renameWatchlistName = wl.name
-                            }
-                            if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
-                                if idx > 0 {
-                                    Button("Move Left") {
-                                        let prevId = storageService.watchlists[idx - 1].id
-                                        storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .id(wl.id)
+                            .contextMenu {
+                                Button("Rename…") {
+                                    renamingWatchlist = wl
+                                    renameWatchlistName = wl.name
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
+                                    if idx > 0 {
+                                        Button("Move Left") {
+                                            let prevId = storageService.watchlists[idx - 1].id
+                                            storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                        }
+                                    }
+                                    if idx < storageService.watchlists.count - 1 {
+                                        Button("Move Right") {
+                                            let nextId = storageService.watchlists[idx + 1].id
+                                            storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
+                                        }
                                     }
                                 }
-                                if idx < storageService.watchlists.count - 1 {
-                                    Button("Move Right") {
-                                        let nextId = storageService.watchlists[idx + 1].id
-                                        storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
-                                    }
+                                Divider()
+                                Button("Delete Watchlist", role: .destructive) {
+                                    storageService.deleteWatchlist(id: wl.id)
                                 }
-                            }
-                            Divider()
-                            Button("Delete Watchlist", role: .destructive) {
-                                storageService.deleteWatchlist(id: wl.id)
                             }
                         }
                     }
@@ -591,35 +611,38 @@ struct WatchlistWideView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
-                        WatchRowView(row: row,
-                                     position: idx + 1,
-                                     showExtended: storageService.showExtendedHours,
-                                     extendedSession: extendedSession,
-                                     percentDecimals: storageService.percentDecimals,
-                                     valueDecimals: storageService.valueDecimals,
-                                     metrics: selectedMetrics,
-                                     isSelected: selectedSymbols.contains(row.symbol),
-                                     compact: isCompact,
-                                     hScrollOffset: hScrollOffset,
-                                     onOpen: {
-                                         handleRowClick(row.symbol)
-                                     },
-                                     menu: { rowMenu(row) })
-                        .onDrag {
-                            self.draggingSymbol = row.symbol
-                            return NSItemProvider(object: row.symbol as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: WatchlistDropDelegate(
-                            targetSymbol: row.symbol,
-                            draggingSymbol: $draggingSymbol,
-                            onMove: { src, tgt in
+                        ReorderRow(
+                            id: row.symbol,
+                            draggingId: $draggingSymbol,
+                            isHorizontal: false,
+                            makeDragItem: {
+                                previewOrder = storageService.watchlist
+                                return NSItemProvider(object: row.symbol as NSString)
+                            },
+                            onMove: { src, tgt, placement in
                                 if sortKey != .order || !sortAsc {
                                     sortKey = .order
                                     sortAsc = true
                                 }
-                                storageService.moveWatchlistSymbol(src, beforeOrAfter: tgt)
-                            }
-                        ))
+                                moveInPreview(src, beforeOrAfter: tgt, placement: placement)
+                            },
+                            onCommit: { commitPreviewOrder() }
+                        ) {
+                            WatchRowView(row: row,
+                                         position: idx + 1,
+                                         showExtended: storageService.showExtendedHours,
+                                         extendedSession: extendedSession,
+                                         percentDecimals: storageService.percentDecimals,
+                                         valueDecimals: storageService.valueDecimals,
+                                         metrics: selectedMetrics,
+                                         isSelected: selectedSymbols.contains(row.symbol),
+                                         compact: isCompact,
+                                         hScrollOffset: hScrollOffset,
+                                         onOpen: {
+                                             handleRowClick(row.symbol)
+                                         },
+                                         menu: { rowMenu(row) })
+                        }
                         if idx < visibleRows.count - 1 {
                             Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                         }
@@ -846,6 +869,30 @@ struct WatchlistWideView: View {
         let j = i + delta
         guard j >= 0, j < storageService.watchlist.count else { return }
         storageService.watchlist.swapAt(i, j)
+    }
+
+    /// Live, local-only reorder of the preview while dragging. No storage writes.
+    private func moveInPreview(_ sourceSymbol: String, beforeOrAfter targetSymbol: String, placement: InsertPlacement) {
+        if previewOrder.isEmpty { previewOrder = storageService.watchlist }
+        guard sourceSymbol != targetSymbol,
+              let srcIndex = previewOrder.firstIndex(of: sourceSymbol),
+              let tgtIndex = previewOrder.firstIndex(of: targetSymbol) else { return }
+        let item = previewOrder.remove(at: srcIndex)
+        let newTargetIndex = previewOrder.firstIndex(of: targetSymbol) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= previewOrder.count else { return }
+        previewOrder.insert(item, at: insertIndex)
+    }
+
+    /// Commits the previewed order to storage exactly once, when the drop lands.
+    private func commitPreviewOrder() {
+        guard !previewOrder.isEmpty else { return }
+        let final = previewOrder
+        previewOrder = []
+        draggingSymbol = nil
+        if final != storageService.watchlist {
+            storageService.watchlist = final
+        }
     }
 
 
@@ -1103,21 +1150,16 @@ private struct HScrollOffsetKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-private struct WatchlistDropDelegate: DropDelegate {
-    let targetSymbol: String
+/// Top-level fallback so a drop anywhere in the watchlist page (between rows,
+/// below the last row, on the toolbar) still commits the drag preview once.
+private struct WatchlistListCommitDelegate: DropDelegate {
     @Binding var draggingSymbol: String?
-    let onMove: (String, String) -> Void
+    let onCommit: () -> Void
 
     func performDrop(info: DropInfo) -> Bool {
+        onCommit()
         draggingSymbol = nil
         return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let draggingSymbol = draggingSymbol, draggingSymbol != targetSymbol else { return }
-        withAnimation(.easeOut(duration: 0.15)) {
-            onMove(draggingSymbol, targetSymbol)
-        }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
