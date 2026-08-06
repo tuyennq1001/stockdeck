@@ -762,7 +762,6 @@ struct PortfolioSection: View {
 struct HoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.editHoldingAction) var editHoldingAction
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
@@ -864,11 +863,6 @@ struct HoldingRow: View {
         }
         .padding(.vertical, 2)
         .contextMenu(isReadOnly ? nil : ContextMenu {
-            Button {
-                editHoldingAction.perform(portfolioId, holding)
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
             Button(role: .destructive) {
                 confirmDeleteHolding = (holding, portfolioId)
             } label: {
@@ -878,97 +872,9 @@ struct HoldingRow: View {
     }
 }
 
-struct EditHoldingView: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-
-    let portfolioId: UUID
-    let holding: Holding
-    @Binding var isPresented: (portfolioId: UUID, holding: Holding)?
-
-    @State private var targetPortfolioId: UUID
-
-    init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
-        self.portfolioId = portfolioId
-        self.holding = holding
-        self._isPresented = isPresented
-        self._targetPortfolioId = State(initialValue: portfolioId)
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("Edit \(holding.symbol)")
-                    .font(.inter(13, weight: .bold, relativeTo: .headline))
-                Spacer()
-                Button("Close") { isPresented = nil }
-                    .buttonStyle(.borderless)
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            VStack(alignment: .leading) {
-                Text("Symbol")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    SymbolLogo(symbol: holding.symbol, size: 24)
-                    Text(StockService.beautifiedSymbol(holding.symbol))
-                        .font(.inter(13, weight: .semibold, relativeTo: .body))
-                    if let name = stockService.quotes[holding.symbol]?.name, !name.isEmpty {
-                        Text(name)
-                            .font(DS.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-            }
-            .padding(.horizontal)
-
-            VStack(alignment: .leading) {
-                Text("Portfolio")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                Picker("Portfolio", selection: $targetPortfolioId) {
-                    ForEach(storageService.portfolios) { p in
-                        Text(p.name).tag(p.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal)
-
-            Spacer()
-
-            Button("Save") {
-                save()
-            }
-            .buttonStyle(.borderedProminent)
-            .padding()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func save() {
-        if targetPortfolioId != portfolioId {
-            storageService.moveHolding(holdingId: holding.id, from: portfolioId, to: targetPortfolioId)
-        }
-        Task {
-            await stockService.refreshAll(storageService: storageService)
-        }
-        isPresented = nil
-    }
-}
-
 struct GroupedHoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.editHoldingAction) var editHoldingAction
     @Environment(\.addHoldingAction) var addHoldingAction
 
     let symbol: String
@@ -1120,13 +1026,6 @@ struct GroupedHoldingRow: View {
                             let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
                             if !isReadOnly {
                                 HStack(spacing: 6) {
-                                    Button { editHoldingAction.perform(portfolioId, h) } label: {
-                                        Image(systemName: "pencil").font(.system(size: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .pointingHandCursor()
-                                    .help("Edit lot")
-
                                     Button { confirmDeleteHolding = (h, portfolioId) } label: {
                                         Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
                                     }

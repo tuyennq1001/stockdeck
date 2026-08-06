@@ -218,6 +218,27 @@ struct PortfolioOverview: View {
         storageService.resolvedPortfolioColumns
     }
 
+    /// Natural content width of the positions table (sum of ideal column widths),
+    /// so columns keep a readable size and the table scrolls horizontally when
+    /// the window is narrower instead of compressing the cells.
+    private var positionsTableNaturalWidth: CGFloat {
+        let rowPadding: CGFloat = 16
+        let symbolIdealWidth: CGFloat = 200
+        let metricIdealWidth: (PortfolioColumnMetric) -> CGFloat = { metric in
+            switch metric {
+            case .avgPrice, .price, .ext: return 110
+            case .cost, .value, .todayPnl, .totalPnl: return 120
+            case .shares: return 100
+            case .weight: return 115
+            }
+        }
+        return rowPadding
+            + PositionColumnWidth.number
+            + symbolIdealWidth
+            + selectedColumns.reduce(0) { $0 + metricIdealWidth($1) }
+            + PositionColumnWidth.chevron
+    }
+
     @ViewBuilder
     private func columnHeader(_ metric: PortfolioColumnMetric) -> some View {
         let column = sortColumn(for: metric)
@@ -1105,7 +1126,7 @@ struct PortfolioOverview: View {
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             } else {
-                let minTableWidth: CGFloat = storageService.showExtendedHours ? 780 : 680
+                let minTableWidth: CGFloat = positionsTableNaturalWidth
                 let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1334,7 +1355,7 @@ private struct CardWidthPreferenceKey: PreferenceKey {
 }
 
 private enum PositionColumnWidth {
-    static let number: CGFloat = 24
+    static let number: CGFloat = 30
     static let symbolMin: CGFloat = 120
     static let priceMin: CGFloat = 90
     static let sessionMin: CGFloat = 90
@@ -1475,7 +1496,6 @@ private struct PositionSummaryRow: View {
                 .font(DS.figure)
                 .foregroundStyle(avgValid ? DS.ink : DS.inkTertiary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
                 .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
 
         case .price:
@@ -1565,8 +1585,8 @@ private struct PositionSummaryRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Text("\(position)")
-                .font(DS.micro.monospacedDigit())
-                .foregroundStyle(DS.inkTertiary)
+                .font(DS.figure)
+                .foregroundStyle(DS.inkSecondary)
                 .frame(width: PositionColumnWidth.number, alignment: .leading)
 
             // Symbol column
