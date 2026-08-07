@@ -54,7 +54,7 @@ struct HoldingDetailView: View {
                     Tag(text: "\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))×",
                         color: DS.brand)
                 }
-                if isEditableScope {
+                if isEditableScope && !isPortfolioReadOnly {
                     Button { editHoldingAction.perform(portfolioId, holding) } label: {
                         Image(systemName: "pencil").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
                     }
@@ -126,6 +126,13 @@ struct HoldingDetailView: View {
     private var isEditableScope: Bool {
         if case .portfolio = scope { return true }
         return false
+    }
+
+    /// Read-only (Binance) portfolios can't be edited or deleted manually — the
+    /// Edit/Delete buttons are hidden because their update/remove paths are
+    /// no-ops for read-only holdings.
+    private var isPortfolioReadOnly: Bool {
+        storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
     }
 
     private var showsPortfolioColumn: Bool {
@@ -224,7 +231,7 @@ struct HoldingDetailView: View {
                     Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("P&L").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
-                    if isEditableScope {
+                    if isEditableScope && !isPortfolioReadOnly {
                         Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
                     }
                 }
@@ -285,7 +292,7 @@ struct HoldingDetailView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
 
-                        if isEditableScope {
+                        if isEditableScope && !isPortfolioReadOnly {
                             HStack(spacing: 6) {
                                 Button {
                                     editHoldingAction.perform(vh.portfolioId, vh.holding)
@@ -318,7 +325,7 @@ struct HoldingDetailView: View {
                     }
                 }
 
-                if isEditableScope {
+                if isEditableScope && !isPortfolioReadOnly {
                     Divider().overlay(DS.hairline).padding(.top, 4)
                     Button(action: {
                         addHoldingAction.perform(portfolioId, holding.symbol)

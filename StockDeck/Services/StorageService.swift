@@ -887,6 +887,28 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Normalizes and aggregates Binance holdings by symbol. Holdings with and
+    /// without a known cost basis are kept in separate buckets, so a
+    /// Spot-reconstructed portion and an untracked remainder of the same symbol
+    /// both survive a reload without being merged into one ambiguous lot.
+    nonisolated static func aggregateBinanceHoldings(_ holdings: [Holding]) -> [Holding] {
+        var aggregated: [String: Holding] = [:]
+        for h in holdings {
+            let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
+            let hasCost = h.avgPrice.isFinite && h.avgPrice > 0
+            let key = normSym + (hasCost ? "|c" : "|n")
+            if var existing = aggregated[key] {
+                existing.quantity += h.quantity
+                aggregated[key] = existing
+            } else {
+                var newH = h
+                newH.symbol = normSym
+                aggregated[key] = newH
+            }
+        }
+        return Array(aggregated.values)
+    }
+
     /// Whether a base symbol (e.g. "PEPE", "FDUSD") is a known cryptocurrency
     /// traded on Binance. Symbols that are NOT in this set fall through to Yahoo
     /// Finance, which is less reliable for crypto and can fail for newer tokens.
@@ -1241,19 +1263,10 @@ class StorageService: ObservableObject {
             portfolios = decoded.portfolios.map { p in
                 var updated = p
                 if updated.isReadOnly {
-                    var aggregated: [String: Holding] = [:]
-                    for h in updated.holdings {
-                        let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
-                        if var existing = aggregated[normSym] {
-                            existing.quantity += h.quantity
-                            aggregated[normSym] = existing
-                        } else {
-                            var newH = h
-                            newH.symbol = normSym
-                            aggregated[normSym] = newH
-                        }
-                    }
-                    updated.holdings = Array(aggregated.values)
+                    // Keep holdings with and without a known cost basis separate
+                    // (a Spot-reconstructed portion vs. an untracked remainder of
+                    // the same symbol) so partial cost basis survives a reload.
+                    updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
                 } else {
                     // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
                     updated.holdings = updated.holdings.map { h in
