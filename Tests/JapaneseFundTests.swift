@@ -84,4 +84,29 @@ final class JapaneseFundTests: XCTestCase {
         let allHoldings = portfolios?.flatMap { $0.holdings } ?? []
         XCTAssertGreaterThanOrEqual(allHoldings.count, 3, "Generated template should contain Japanese fund holdings")
     }
+
+    func testParseJapaneseFundHistory() {
+        // Mirrors the real Yahoo Japan `/quote/<code>/history` table: a date in
+        // the `<th scope="row">` header, then 基準価額 as the first numeric cell.
+        let html = """
+        <table>
+        <tr class="_Table__row_t3ju0_24"><th scope="row" class="_Table__header_t3ju0_1 styles-module-scss-module__001sWW__FundsHistoryContainer__cell">2026/8/6</th><td class="_Table__data_t3ju0_1"><span class="_StyledNumber_1arhg_1 _StyledNumber--vertical_1arhg_24"><span class="_StyledNumber__item_1arhg_6 _StyledNumber__item--small_1arhg_40"><span class="_StyledNumber__value_1arhg_9">19,940</span></span></span></td><td class="_Table__data_t3ju0_1"><span class="_StyledNumber__value_1arhg_9">-4</span></td></tr>
+        <tr class="_Table__row_t3ju0_24 _Table__row--even_t3ju0_24"><th scope="row" class="_Table__header_t3ju0_1 styles-module-scss-module__001sWW__FundsHistoryContainer__cell">2026/8/5</th><td class="_Table__data_t3ju0_1"><span class="_StyledNumber__value_1arhg_9">19,944</span></td><td class="_Table__data_t3ju0_1"><span class="_StyledNumber__value_1arhg_9">+368</span></td></tr>
+        <tr class="_Table__row_t3ju0_24"><th scope="row" class="_Table__header_t3ju0_1 styles-module-scss-module__001sWW__FundsHistoryContainer__cell">2026/8/3</th><td class="_Table__data_t3ju0_1"><span class="_StyledNumber__value_1arhg_9">19,090</span></td><td class="_Table__data_t3ju0_1"><span class="_StyledNumber__value_1arhg_9">-466</span></td></tr>
+        </table>
+        """
+
+        let points = StockService.parseJapaneseFundHistory(html: html)
+
+        XCTAssertEqual(points.count, 3)
+        XCTAssertEqual(points[0].close, 19090, accuracy: 0.001)
+        XCTAssertEqual(points[1].close, 19944, accuracy: 0.001)
+        XCTAssertEqual(points[2].close, 19940, accuracy: 0.001)
+        XCTAssertEqual(points.map(\.date).sorted(), points.map(\.date))
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let firstDay = calendar.dateComponents([.day], from: points[0].date).day
+        XCTAssertEqual(firstDay, 3)
+    }
 }

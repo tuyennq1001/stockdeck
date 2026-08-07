@@ -362,13 +362,46 @@ struct PortfolioOverview: View {
         return estimatedSeries
     }
 
-    /// The curve actually drawn and used for period change calculations.
-    private var displaySeries: (points: [ValuePoint], isEstimated: Bool) {
-        if chartRange == .week {
-            return (valueSeries(from: stockService.intradayWeek), true)
-        } else {
-            return (estimatedFiltered, true)
+    /// Real daily snapshots mapped to drawable points, filtered to the range.
+    private var realSeriesPoints: [ValuePoint] {
+        filteredSeries.map { ValuePoint(date: $0.date, value: $0.totalValue) }
+    }
+
+    /// The curves actually drawn and used for period change calculations.
+    /// The estimated backfill (real Yahoo prices × current positions) is the
+    /// base line so a young portfolio still has a full-span trend; real daily
+    /// snapshots are drawn solid on top wherever they exist, giving truthful
+    /// checkpoints that the dashed estimate only approximates.
+    private var displaySeries: DisplaySeries {
+        let real = realSeriesPoints
+        let estimated: [ValuePoint] = chartRange == .week
+            ? valueSeries(from: stockService.intradayWeek)
+            : estimatedFiltered
+        return DisplaySeries(estimated: estimated, real: real)
+    }
+
+    /// Minimum number of real daily snapshots before they replace the dashed
+    /// estimate on the chart / period math. A younger portfolio renders as a
+    /// single smooth estimated line with exactly one endpoint instead of a few
+    /// scattered real checkpoints at the end.
+    private static let realOverlayMinimumSnapshots = 7
+
+    /// Drawn series: dashed estimated base line plus solid real snapshots.
+    private struct DisplaySeries {
+        var estimated: [ValuePoint]
+        var real: [ValuePoint]
+
+        /// All points, for axis domain / crosshair / hover lookup.
+        var all: [ValuePoint] { estimated + real }
+
+        /// Source for the period-change math: real snapshots when they form a
+        /// trustworthy line (enough of them), else the estimated curve, which
+        /// measures market movement across the selected range.
+        var changePoints: [ValuePoint] {
+            real.count >= PortfolioOverview.realOverlayMinimumSnapshots ? real : estimated
         }
+
+        var isEmpty: Bool { estimated.isEmpty && real.isEmpty }
     }
 
     /// Evaluates benchmark matrix once per app session (not updating real-time).
@@ -436,12 +469,15 @@ struct PortfolioOverview: View {
             }
         }
         .task(id: symbols) {
+            // On window open: only the daily 10y series per symbol (the base the
+            // estimated curve and benchmark are built from). The monthly "max"
+            // series is derived locally from it; long-range data is fetched
+            // lazily when the matching chart range is actually selected.
             await withTaskGroup(of: Void.self) { group in
-                group.addTask { await stockService.ensurePriceHistoryMax(for: "^GSPC") }
+                group.addTask { await stockService.ensurePriceHistory(for: "^GSPC") }
                 for symbol in symbols {
                     let s = symbol
                     group.addTask { await stockService.ensurePriceHistory(for: s) }
-                    group.addTask { await stockService.ensurePriceHistoryMax(for: s) }
                 }
             }
         }
@@ -454,7 +490,14 @@ struct PortfolioOverview: View {
                         group.addTask { await stockService.ensureIntradayWeek(for: sym) }
                     }
                 }
-            case .threeYears, .fiveYears, .all:
+            case .all:
+                await withTaskGroup(of: Void.self) { group in
+                    for s in symbols {
+                        let sym = s
+                        group.addTask { await stockService.ensureFullHistoryMax(for: sym) }
+                    }
+                }
+            case .threeYears, .fiveYears:
                 await withTaskGroup(of: Void.self) { group in
                     for s in symbols {
                         let sym = s
@@ -491,12 +534,12 @@ struct PortfolioOverview: View {
             periodValue = totalValue * (perfPct / 100.0)
             periodLabel = chartRange.changeLabel
         } else {
-            periodValue = PortfolioPeriodChange.value(ds.points) ?? dayChangeValue
-            periodPercent = PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent
-            periodLabel = PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today"
+            periodValue = PortfolioPeriodChange.value(ds.changePoints) ?? dayChangeValue
+            periodPercent = PortfolioPeriodChange.percent(ds.changePoints) ?? dayChangePercent
+            periodLabel = PortfolioPeriodChange.percent(ds.changePoints) != nil ? chartRange.changeLabel : "today"
         }
         
-        let cagrVal = PortfolioPeriodChange.cagr(ds.points)
+        let cagrVal = PortfolioPeriodChange.cagr(ds.changePoints)
         let pillText: String
         if let cagrVal {
             pillText = String(format: "%+.\(decimals)f%% %@ (%.1f%% CAGR)", periodPercent, periodLabel, cagrVal)
@@ -509,7 +552,7 @@ struct PortfolioOverview: View {
                 HStack(alignment: .top) {
                     SectionLabel("Total value")
                     Spacer()
-                    if !ds.points.isEmpty { rangePicker }
+                    if !ds.isEmpty { rangePicker }
                 }
                 Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
                     .font(DS.display).tracking(-0.5)
@@ -567,8 +610,8 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func valueDomain(_ points: [ValuePoint]) -> ClosedRange<Double> {
-        let vals = points.map(\.value).filter(\.isFinite)
+    private func valueDomain(_ series: DisplaySeries) -> ClosedRange<Double> {
+        let vals = series.all.map(\.value).filter(\.isFinite)
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
@@ -622,28 +665,64 @@ struct PortfolioOverview: View {
         }
     }
 
-    @ViewBuilder private func heroChart(_ ds: (points: [ValuePoint], isEstimated: Bool)) -> some View {
-        let points = ds.points
-        if points.count >= 2 {
-            let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
-            let tint = periodUp ? DS.up : DS.down
-            Chart {
-                ForEach(points) { p in
-                    AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
-                                                         startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: ds.isEstimated ? [4, 3] : []))
-                        .interpolationMethod(.monotone)
+    @ViewBuilder private func heroChart(_ ds: DisplaySeries) -> some View {
+        let estimated = ds.estimated
+        let real = ds.real
+        if ds.isEmpty {
+            ZStack {
+                DS.cardAlt.opacity(0.6)
+                DecorativeCurve()
+                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .padding(.horizontal, 24)
+                VStack(spacing: 4) {
+                    Text("Value history builds up day by day")
+                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
+                    Text("Your first trend appears tomorrow.")
+                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
                 }
-                if let last = points.last {
+            }
+        } else {
+            let periodUp = (ds.changePoints.last?.value ?? 0) >= (ds.changePoints.first?.value ?? 0)
+            let tint = periodUp ? DS.up : DS.down
+            let crosshairPoints = ds.all
+            Chart {
+                if !estimated.isEmpty {
+                    ForEach(estimated) { p in
+                        AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
+                                                             startPoint: .top, endPoint: .bottom))
+                            .interpolationMethod(.monotone)
+                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
+                            .interpolationMethod(.monotone)
+                    }
+                }
+                let drawReal = real.count >= PortfolioOverview.realOverlayMinimumSnapshots
+                if drawReal && real.count >= 2 {
+                    ForEach(real) { p in
+                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
+                            .interpolationMethod(.monotone)
+                    }
+                }
+                if drawReal {
+                    ForEach(real) { p in
+                        PointMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .symbolSize(30)
+                            .foregroundStyle(tint)
+                    }
+                }
+                if drawReal, let last = real.last {
+                    PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
+                        .symbolSize(50)
+                        .foregroundStyle(tint)
+                } else if let last = estimated.last {
                     PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
                         .symbolSize(50)
                         .foregroundStyle(tint)
                 }
             }
-            .chartYScale(domain: valueDomain(points))
+            .chartYScale(domain: valueDomain(ds))
             .chartYAxis {
                 AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
                     AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
@@ -663,23 +742,10 @@ struct PortfolioOverview: View {
                 }
             }
             .chartLegend(.hidden)
-            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
-            .animation(.easeInOut(duration: 0.4), value: points)
+            .chartOverlay { proxy in valueCrosshair(proxy, points: crosshairPoints, tint: tint) }
+            .animation(.easeInOut(duration: 0.4), value: crosshairPoints)
             .id(chartRange)
             .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-        } else {
-            ZStack {
-                DS.cardAlt.opacity(0.6)
-                DecorativeCurve()
-                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .padding(.horizontal, 24)
-                VStack(spacing: 4) {
-                    Text("Value history builds up day by day")
-                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
-                    Text("Your first trend appears tomorrow.")
-                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
-                }
-            }
         }
     }
 
