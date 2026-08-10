@@ -78,6 +78,28 @@ enum MoneyWeightedReturnCache {
     }
 }
 
+/// Session cache for the monthly P&L table so the (cheap but repeated) recompute
+/// only happens once per scope — holdings/rate changes bust the key naturally.
+enum MonthlyPnlCache {
+    private static var cache: [String: [MonthlyPnlRow]] = [:]
+    private static let lock = NSLock()
+
+    static func rows(for key: String, compute: () -> [MonthlyPnlRow]) -> [MonthlyPnlRow] {
+        lock.lock()
+        if let existing = cache[key] {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let result = compute()
+        lock.lock()
+        cache[key] = result
+        lock.unlock()
+        return result
+    }
+}
+
 struct PortfolioOverview: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -153,6 +175,7 @@ struct PortfolioOverview: View {
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
+    @State private var hoveredMonth: MonthlyPnlRow?
     @State private var positionsCardWidth: CGFloat = 0
 
     init(viewModel: PortfolioViewModel) {
@@ -416,6 +439,35 @@ struct PortfolioOverview: View {
         )
     }
 
+    /// Per-month P&L bars (up to 36 months, or as many as history covers),
+    /// computed once per scope from real cost basis × price history. Keyed by
+    /// scope + holdings + rate fingerprint so a fresh scope or changed
+    /// positions recompute; quote ticks do not.
+    private var monthlyPnlRows: [MonthlyPnlRow] {
+        let hs = viewModel.portfolios.flatMap { $0.holdings }
+        let hFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let rateFingerprint = hs.map {
+            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
+        }.joined(separator: ";")
+        let key = "\(scopeKey):\(hFingerprint):\(rateFingerprint)"
+        return MonthlyPnlCache.rows(for: key) {
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
+                    ?? stockService.priceHistory[h.symbol]
+                    ?? []
+            }
+            let monthCount = MonthlyPnl.monthCount(for: histBySymbol, today: Date(), calendar: .current, maxMonths: 36)
+            var rateBySymbol: [String: Double] = [:]
+            for h in hs {
+                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            }
+            return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        }
+    }
+
     var body: some View {
         PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)", trailing: {
             HStack(spacing: 12) {
@@ -431,6 +483,7 @@ struct PortfolioOverview: View {
                         heroCard
                         statRow
                         performanceMatrixCard
+                        monthlyPnlCard
                         moneyWeightedReturnCard
                         allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
@@ -886,6 +939,111 @@ struct PortfolioOverview: View {
                 }
             }
         }
+    }
+
+    private var monthlyPnlCard: some View {
+        Card(title: "Monthly P&L") {
+            if monthlyPnlRows.isEmpty {
+                emptyLine
+            } else {
+                Chart {
+                    ForEach(monthlyPnlRows.reversed()) { row in
+                        let isHovered = hoveredMonth?.monthStart == row.monthStart
+                        BarMark(
+                            x: .value("Month", monthAxisLabel(row.monthStart)),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("P&L", row.pnl ?? 0),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                        .opacity(isHovered ? 1.0 : 0.75)
+                        .cornerRadius(3)
+                    }
+                    RuleMark(y: .value("Zero", 0))
+                        .foregroundStyle(DS.hairline.opacity(0.6))
+                }
+                .frame(height: 170)
+                .chartYAxis {
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
+                        AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) {
+                                Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
+                                    .font(DS.micro).foregroundStyle(DS.inkTertiary)
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: monthAxisValues) { value in
+                        if let s = value.as(String.self) {
+                            AxisValueLabel { Text(s).font(DS.micro).foregroundStyle(DS.inkTertiary) }
+                        }
+                    }
+                }
+                .chartLegend(.hidden)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        if let plotAnchor = proxy.plotFrame {
+                            let plot = geo[plotAnchor]
+                            ZStack(alignment: .topLeading) {
+                                Rectangle().fill(.clear).contentShape(Rectangle())
+                                    .onContinuousHover { phase in
+                                        switch phase {
+                                        case .active(let loc):
+                                            let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                                            if let label: String = proxy.value(atX: localX) {
+                                                hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
+                                            }
+                                        case .ended:
+                                            hoveredMonth = nil
+                                        }
+                                    }
+                                if let h = hoveredMonth,
+                                   let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
+                                    let cx = plot.minX + px
+                                    let pnl = h.pnl ?? 0
+                                    ChartTooltip(title: monthAxisLabel(h.monthStart),
+                                                 value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                                                 tint: DS.pnlColor(pnl))
+                                        .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Divider().overlay(DS.hairline.opacity(0.5))
+
+                Text("Real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
+                    .padding(.top, 6)
+            }
+        }
+    }
+
+    private func monthAxisLabel(_ date: Date) -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: date)
+        return "\(comps.year ?? 0)/\(comps.month ?? 0)"
+    }
+
+    /// X-axis tick labels for the monthly chart. Picks evenly spaced months so
+    /// the axis stays readable even at 24–36 columns (targets ~6 labels).
+    private var monthAxisValues: [String] {
+        let rows = monthlyPnlRows
+        guard rows.count > 8 else {
+            return rows.map { monthAxisLabel($0.monthStart) }
+        }
+        let target = 6
+        let step = max(1, (rows.count + target - 1) / target)
+        var values: [String] = []
+        for i in stride(from: 0, to: rows.count, by: step) {
+            values.append(monthAxisLabel(rows[i].monthStart))
+        }
+        return values
     }
 
     private var moneyWeightedReturnCard: some View {
