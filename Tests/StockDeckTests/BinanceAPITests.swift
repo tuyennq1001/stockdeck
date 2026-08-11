@@ -151,7 +151,7 @@ final class BinanceAPITests: XCTestCase {
 
     func testCanonicalSymbolForEquitiesAndCrypto() throws {
         XCTAssertEqual(StockService.canonicalSymbol(for: "GOOGL"), "GOOGL")
-        XCTAssertEqual(StockService.canonicalSymbol(for: "GOOG"), "GOOGL")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "GOOG"), "GOOG")
         XCTAssertEqual(StockService.canonicalSymbol(for: "ALPHABET"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_ALPHABET"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_ALPHABET-USD"), "GOOGL")

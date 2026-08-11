@@ -290,7 +290,6 @@ class StockService: ObservableObject {
         let canonicalAliases: [String: String] = [
             "^VNINDEX": "^VNINDEX.VN",
             "ALPHABET": "GOOGL",
-            "GOOG": "GOOGL",
             "FB": "META"
         ]
         let symbols = symbols.map { canonicalAliases[$0.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)] ?? $0 }
@@ -404,7 +403,6 @@ class StockService: ObservableObject {
 
     nonisolated private static let symbolAliases: [String: String] = [
         "ALPHABET": "GOOGL",
-        "GOOG": "GOOGL",
         "FB": "META"
     ]
 

@@ -232,6 +232,7 @@ struct PortfolioOverview: View {
         case .todayPnl: return .todayPnl
         case .totalPnl: return .pnl
         case .shares: return .shares
+        case .lots: return .shares
         case .weight: return .weight
         }
     }
@@ -251,7 +252,7 @@ struct PortfolioOverview: View {
             switch metric {
             case .avgPrice, .price, .ext: return 110
             case .cost, .value, .todayPnl, .totalPnl: return 120
-            case .shares: return 100
+            case .shares, .lots: return 100
             case .weight: return 115
             }
         }
@@ -282,6 +283,9 @@ struct PortfolioOverview: View {
         case .shares:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
+        case .lots:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 115, maxWidth: 150, alignment: .trailing)
@@ -1611,7 +1615,11 @@ private struct PositionSummaryRow: View {
     private var first: ValuedHolding? { holdings.first }
 
     private var liveQuote: StockQuote? {
-        stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
+        if let holdingSymbol = holdings.first?.holding.symbol,
+           let quote = stockService.quotes[holdingSymbol] ?? stockService.quotes[holdingSymbol.uppercased()] {
+            return quote
+        }
+        return stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
     }
 
     private var nativeCurrencySymbol: String {
@@ -1791,6 +1799,13 @@ private struct PositionSummaryRow: View {
                 .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
 
+        case .lots:
+            Text("\(holdings.count)")
+                .font(DS.figure)
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
+
         case .weight:
             HStack(spacing: 7) {
                 ZStack(alignment: .leading) {
@@ -1827,14 +1842,7 @@ private struct PositionSummaryRow: View {
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
-                        if holdings.count > 1 {
-                            Text("\(holdings.count) lots")
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundStyle(DS.brand)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                        } else if first?.holding.isShort == true {
+                        if first?.holding.isShort == true {
                             Tag(text: "S", color: DS.down)
                         }
                     }

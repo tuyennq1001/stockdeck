@@ -914,23 +914,26 @@ struct GroupedHoldingRow: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(DS.brand)
                     SymbolLogo(symbol: symbol, size: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(StockService.beautifiedSymbol(symbol))
-                                .font(.inter(13, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
-                            Text("\(holdings.count) lots")
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundColor(DS.brand)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                        }
-                        Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
-                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(StockService.beautifiedSymbol(symbol))
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                        HStack(spacing: 4) {
+                            Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
+                                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            if holdings.count > 1 {
+                                Text("\(holdings.count) lots")
+                                    .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                                    .foregroundColor(DS.brand)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                            }
+                        }
                     }
                 }
                 .frame(width: 140, alignment: .leading)
