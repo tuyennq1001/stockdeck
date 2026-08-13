@@ -149,7 +149,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleRESTPolling()
 
         // Dev affordance: open the Portfolio window on launch for screenshots/testing.
-        if ProcessInfo.processInfo.environment["SD_OPEN_WINDOW"] != nil {
+        // Only when explicitly set to "1" — a bare env var or "0" must NOT open it.
+        if ProcessInfo.processInfo.environment["SD_OPEN_WINDOW"] == "1" {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 self.showPortfolioWindow()
