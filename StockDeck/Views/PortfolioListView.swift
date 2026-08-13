@@ -375,7 +375,7 @@ struct PortfolioListView: View {
         var totalCost: [String: Double] = [:]
         var nativeCostMap: [String: Double] = [:]
         var nativeValMap: [String: Double] = [:]
-        var hasKnownCostMap: [String: Bool] = [:]
+        var hasMissingCostMap: [String: Bool] = [:]
         var orderMap: [String: Int] = [:]
         var order = 0
 
@@ -413,8 +413,8 @@ struct PortfolioListView: View {
                 let nativeVal = h.marketValue(currentPrice: quote.price)
                 nativeCostMap[sym, default: 0] += nativeCst
                 nativeValMap[sym, default: 0] += nativeVal
-                if h.hasKnownCostBasis {
-                    hasKnownCostMap[sym] = true
+                if !h.hasKnownCostBasis {
+                    hasMissingCostMap[sym] = true
                 }
             }
         }
@@ -428,9 +428,10 @@ struct PortfolioListView: View {
 
             let nativeCst = nativeCostMap[symbol, default: 0]
             let nativeVal = nativeValMap[symbol, default: 0]
-            let nativePnl = nativeVal - nativeCst
-            let pct = abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
-            let hasCostBasis = hasKnownCostMap[symbol] ?? false
+            let hasCompleteCost = !(hasMissingCostMap[symbol] ?? false)
+            let nativePnl = hasCompleteCost ? nativeVal - nativeCst : 0
+            let pct = hasCompleteCost && abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
+            let hasCostBasis = hasCompleteCost
 
             let assetCurr = stockService.detectedCurrency(for: symbol)
             let quoteCurr = (quote?.currency.isEmpty == false) ? quote!.currency : assetCurr
@@ -953,9 +954,10 @@ struct GroupedHoldingRow: View {
 
                     // Col 3: Total Market Value & Total P&L in native currency
                     let displayPrice = quote.price
-                    let nativeVal = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: displayPrice) }
-                    let nativeCost = holdings.reduce(0) { $0 + $1.costBasisLocal }
-                    let totalPnl = holdings.reduce(0) { $0 + $1.pnl(currentPrice: displayPrice) }
+                    let nativeTotals = PortfolioValuation.nativeTotals(holdings: holdings, currentPrice: displayPrice)
+                    let nativeVal = nativeTotals.value
+                    let nativeCost = nativeTotals.cost
+                    let totalPnl = nativeTotals.pnl
                     let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
                     let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 

@@ -59,32 +59,55 @@ enum PortfolioValuation {
     /// - `value` depends ONLY on a live price: a holding with a quote but no
     ///   known cost basis (e.g. Binance balances where order history is missing)
     ///   still has a real market value and is counted in Total Value.
-    /// - `cost` is 0 for holdings without a known basis.
-    /// - `pnl` (value − cost) is only counted for holdings WITH a known cost
-    ///   basis. Without a purchase price the gain/loss is unknown, so we report
-    ///   0 rather than fabricating the entire market value as profit.
+    /// - `cost` and `pnl` are **all-or-nothing per symbol**, matching how every
+    ///   position row renders them. A symbol with ANY lot missing its cost basis
+    ///   (mixed lots, e.g. a Binance BTC balance where one batch has an order
+    ///   history and another doesn't) is treated as having an unknown cost — its
+    ///   entire cost basis and P&L are excluded, so the total never counts a
+    ///   partially-known profit. Symbols whose lots all carry a known basis
+    ///   contribute normally.
     static func totals(_ inputs: [Input]) -> (value: Double, cost: Double, pnl: Double) {
         var value = 0.0
         var cost = 0.0
         var pnl = 0.0
-        for i in inputs {
-            let isFund = i.isJapaneseFund || i.holding.isJapaneseFund
+
+        let grouped = Dictionary(grouping: inputs, by: { StockService.canonicalSymbol(for: $0.holding.symbol) })
+        for (_, symbolInputs) in grouped {
+            let isFund = symbolInputs.contains { $0.isJapaneseFund || $0.holding.isJapaneseFund }
             let scale = isFund ? 10000.0 : 1.0
-            let lev = i.holding.effectiveLeverage
-            let qty = i.holding.quantity
-            let hasCost = i.holding.hasKnownCostBasis
-            let val = i.price.isFinite
-                ? (i.price / scale) * qty * lev * i.rate
-                : 0
-            let cst = hasCost
-                ? (i.holding.avgPrice / scale) * qty * lev * i.costRate
-                : 0
-            value += val
-            cost += cst
-            if hasCost, i.price.isFinite {
-                pnl += val - cst
+            let hasCompleteCost = symbolInputs.allSatisfy { $0.holding.hasKnownCostBasis }
+
+            for i in symbolInputs {
+                let lev = i.holding.effectiveLeverage
+                let qty = i.holding.quantity
+                let val = i.price.isFinite
+                    ? (i.price / scale) * qty * lev * i.rate
+                    : 0
+                let cst = (i.holding.avgPrice / scale) * qty * lev * i.costRate
+                value += val
+                if hasCompleteCost {
+                    cost += cst
+                    if i.price.isFinite {
+                        pnl += val - cst
+                    }
+                }
             }
         }
+        return (value, cost, pnl)
+    }
+
+    /// Native-currency (stock currency) aggregates for a symbol's lots,
+    /// applying the same all-or-nothing cost rule as `totals`: a symbol with
+    /// ANY lot missing its cost basis (mixed lots, e.g. a Binance BTC balance
+    /// where one batch has order history and another doesn't) contributes 0 cost
+    /// and 0 P&L while keeping its real market value. Lots that all carry a
+    /// known basis contribute normally. Leverage and the Japanese-fund 10,000
+    /// scale are already inside `Holding`'s own accessors.
+    static func nativeTotals(holdings: [Holding], currentPrice: Double) -> (value: Double, cost: Double, pnl: Double) {
+        let hasCompleteCost = holdings.allSatisfy(\.hasKnownCostBasis)
+        let value = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: currentPrice) }
+        let cost = hasCompleteCost ? holdings.reduce(0) { $0 + $1.costBasisLocal } : 0
+        let pnl = hasCompleteCost ? holdings.reduce(0) { $0 + $1.pnl(currentPrice: currentPrice) } : 0
         return (value, cost, pnl)
     }
 

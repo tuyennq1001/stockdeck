@@ -139,9 +139,9 @@ final class PortfolioViewModel {
     private func recomputeValuation() {
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
-        var totalCst = 0.0
         var todayInputs: [TodayPerformance.Input] = []
         var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double)] = [:]
+        var missingCostSymbols: Set<String> = []
 
         for portfolio in portfolios {
             for holding in portfolio.holdings {
@@ -176,7 +176,6 @@ final class PortfolioViewModel {
                     : 0
 
                 totalVal += value
-                totalCst += cost
 
                 // Native-currency aggregates for position rows
                 let nativeVal = price.isFinite ? holding.marketValue(currentPrice: price) : 0
@@ -184,6 +183,9 @@ final class PortfolioViewModel {
                 let nativePnl = holding.pnl(currentPrice: price)
 
                 let sym = StockService.canonicalSymbol(for: holding.symbol)
+                if !hasCost {
+                    missingCostSymbols.insert(sym)
+                }
                 var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0)
                 existing.value += value
                 existing.cost += cost
@@ -220,11 +222,26 @@ final class PortfolioViewModel {
         valued.sort { abs($0.value) > abs($1.value) }
         sortedValuedHoldings = valued
 
-        // P&L only for holdings with a known cost basis — matches
-        // PortfolioValuation.totals(). A Binance balance without order history
-        // contributes value but 0 P&L.
+        // Cost basis is all-or-nothing per symbol: a symbol with ANY lot missing
+        // its cost basis (e.g. a Binance balance where one batch has order history
+        // and another doesn't) is treated as having an unknown cost — its entire
+        // cost basis, P&L, and native aggregates are excluded from the totals so
+        // a partially-known profit is never counted. Matches
+        // PortfolioValuation.totals().
+        for sym in missingCostSymbols {
+            guard var data = bySymbol[sym] else { continue }
+            data.cost = 0
+            data.pnl = 0
+            data.nativeCost = 0
+            data.nativePnl = 0
+            data.nativeQty = 0
+            bySymbol[sym] = data
+        }
+
+        var totalCst = 0.0
         var pnl = 0.0
         for agg in bySymbol.values {
+            totalCst += agg.cost
             pnl += agg.pnl
         }
         let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
