@@ -66,6 +66,7 @@ struct SymbolDetailSheet: View {
                                 factsCard(quote).frame(maxWidth: .infinity)
                             }
                             SymbolNotesCard(storageService: storageService, symbol: symbol)
+                                SymbolNewsCard(stockService: stockService, symbol: symbol)
                         }
                         .padding(.bottom, 24)
                     }
