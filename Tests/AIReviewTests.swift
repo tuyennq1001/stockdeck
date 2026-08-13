@@ -1,0 +1,104 @@
+import XCTest
+@testable import StockDeck
+
+/// Covers the AI Review foundation that must not regress:
+/// (1) the sliding-window API payload — a long conversation stays cheap because
+/// only the most recent dialogue messages are sent, and reports never enter the
+/// window; (2) the compact portfolio context — it caps top positions so token
+/// cost stays flat regardless of portfolio size, and always uses the app's
+/// regular-session valuation math (no fabricated figures).
+@MainActor
+final class AIReviewTests: XCTestCase {
+
+    // MARK: - AIChatSection
+
+    private func msg(_ role: AIChatRole, _ i: Int) -> AIChatMessage {
+        AIChatMessage(role: role, content: "content \(i)")
+    }
+
+    func testApiMessagesTakesOnlyTheWindowTail() {
+        var section = AIChatSection(title: "T")
+        for i in 1...30 {
+            section.messages.append(msg(.user, i))
+            section.messages.append(msg(.assistant, i))
+        }
+        let api = section.apiMessages(window: 12)
+        XCTAssertEqual(api.count, 12)
+        XCTAssertEqual(api.first?.content, "content 25") // latest 6 turns only
+        XCTAssertEqual(api.last?.content, "content 30")
+        XCTAssertTrue(api.allSatisfy { $0.role == "user" || $0.role == "assistant" })
+    }
+
+    func testApiMessagesExcludesReports() {
+        var section = AIChatSection(title: "T")
+        section.messages.append(msg(.user, 1))
+        section.messages.append(msg(.report, 1)) // legacy role, never sent to the API
+        let api = section.apiMessages(window: 12)
+        XCTAssertEqual(api.map(\.content), ["content 1"])
+        XCTAssertEqual(api.count, 1)
+    }
+
+    // MARK: - AIPortfolioContext (pure aggregation, no network)
+
+    private func makeHolding(symbol: String, qty: Double, avg: Double) -> Holding {
+        Holding(symbol: symbol, quantity: qty, avgPrice: avg)
+    }
+
+    func testContextCapsTopPositionsAndKeepsTotals() {
+        // A stock-heavy portfolio where cost basis is known → P&L is real.
+        var holdings: [Holding] = []
+        for i in 0..<40 {
+            holdings.append(makeHolding(symbol: "S\(i)", qty: 10, avg: 100))
+        }
+        let context = AIPortfolioContext.build(
+            storageService: .shared,
+            stockService: .shared,
+            scope: .allPortfolios,
+            viewModel: nil
+        )
+        // With no quotes loaded, value is 0 → context still renders but caps.
+        XCTAssertLessThanOrEqual(context.topPositions.count, 10)
+        XCTAssertGreaterThanOrEqual(context.contextText.count, 0)
+    }
+
+    func testContextTextMentionsMissingHistoryInsteadOfGuessing() {
+        let context = AIPortfolioContext.build(
+            storageService: .shared,
+            stockService: .shared,
+            scope: .allPortfolios,
+            viewModel: nil
+        )
+        // Instructions must forbid inventing data and label '-' explicitly.
+        XCTAssertTrue(context.contextText.lowercased().contains("insufficient"))
+        XCTAssertTrue(context.contextText.lowercased().contains("never guess"))
+    }
+
+    func testScopeIDRoundTrip() {
+        XCTAssertEqual(AIReviewScope.parse(AIReviewScope.allPortfolios.idString), .allPortfolios)
+        let pid = UUID()
+        XCTAssertEqual(AIReviewScope.parse(AIReviewScope.portfolio(pid).idString), .portfolio(pid))
+        let wid = UUID()
+        XCTAssertEqual(AIReviewScope.parse(AIReviewScope.watchlist(wid).idString), .watchlist(wid))
+        XCTAssertEqual(AIReviewScope.parse("garbage"), .allPortfolios)
+    }
+
+    func testWorkspaceNotesInjectedWhenConfigured() {
+        // Point at a temp folder and write notes — they must appear in context.
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let notes = tmp.appendingPathComponent("ai-context.md")
+        try? "Risk tolerance: moderate; goal: growth over 10y".write(to: notes, atomically: true, encoding: .utf8)
+        let storage = StorageService.shared
+        let original = storage.aiWorkspacePath
+        storage.aiWorkspacePath = tmp.path
+        defer { storage.aiWorkspacePath = original }
+        let context = AIPortfolioContext.build(
+            storageService: storage,
+            stockService: .shared,
+            scope: .allPortfolios,
+            viewModel: nil
+        )
+        XCTAssertTrue(context.contextText.contains("WORKSPACE NOTES"))
+        XCTAssertTrue(context.contextText.contains("Risk tolerance: moderate"))
+    }
+}

@@ -15,7 +15,7 @@ struct PortfolioWindowView: View {
 
     /// Sidebar destinations — the dock tabs, with Portfolios expanded per portfolio.
     enum Nav: Hashable {
-        case home, watchlist, portfoliosAll, importExport, settings
+        case home, watchlist, portfoliosAll, importExport, settings, aiReview
         case portfolio(UUID)
     }
 
@@ -203,6 +203,7 @@ struct PortfolioWindowView: View {
             Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
             Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
             Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
+            Button("") { if storageService.aiEnabled { navigate(to: .aiReview) } }.keyboardShortcut("5", modifiers: .command)
             Button("") {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
@@ -333,6 +334,13 @@ struct PortfolioWindowView: View {
                             }
                         }
                     }
+
+                    if storageService.aiEnabled {
+                        aiReviewHeader
+                        NavRow(icon: "sparkles", title: "AI Review",
+                               helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
+                               selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
+                    }
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
@@ -415,6 +423,19 @@ struct PortfolioWindowView: View {
     }
 
     /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
+    /// "AI REVIEW" section label in the sidebar.
+    private var aiReviewHeader: some View {
+        HStack {
+            Text("AI Review")
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .tracking(0.8).textCase(.uppercase)
+            Spacer()
+        }
+        .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
+    }
+
+    /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -440,26 +461,6 @@ struct PortfolioWindowView: View {
                 Label("Export All Portfolios (XLSX)…", systemImage: "square.and.arrow.up")
             }
         }
-    }
-
-    /// "IMPORT / EXPORT" section header in the sidebar.
-    private var importExportHeader: some View {
-        HStack {
-            Text("Import / Export")
-                .font(DS.label)
-                .foregroundStyle(DS.inkTertiary)
-                .tracking(0.8).textCase(.uppercase)
-            Spacer()
-
-            DSMenu(width: 260, sections: importMenuSections) {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.inkSecondary)
-                    .frame(width: 20, height: 20)
-            }
-            .help("Import portfolios/watchlists, download samples, or export data…")
-        }
-        .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
     }
 
     /// Dedicated menu sections for Import & Sample Downloads.
@@ -557,6 +558,8 @@ struct PortfolioWindowView: View {
                 PortfolioOverview(viewModel: vm)
                     .onAppear { activeOverviewVM = vm }
             }
+        case .aiReview:
+            AIReviewWideView()
         }
     }
 

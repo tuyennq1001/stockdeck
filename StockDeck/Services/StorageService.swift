@@ -320,6 +320,177 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    // MARK: - AI Review
+
+    /// OpenAI-compatible chat history for the AI Review tab. Stored in full
+    /// locally (free); only a sliding window of messages is ever sent to the
+    /// provider so a long conversation stays cheap on tokens.
+    @Published var aiChatSections: [AIChatSection] = [] {
+        didSet { scheduleSave() }
+    }
+
+    /// Provider base URL for chat completions (OpenAI-compatible). Users can
+    /// point this at OpenAI, DeepSeek, Groq, OpenRouter, etc.
+    @Published var aiBaseURL: String = "https://api.openai.com/v1" {
+        didSet { scheduleSave() }
+    }
+    /// Model name sent to the provider.
+    @Published var aiModel: String = "gpt-4o-mini" {
+        didSet { scheduleSave() }
+    }
+    /// Whether the AI Review tab is enabled.
+    @Published var aiEnabled: Bool = true {
+        didSet { scheduleSave() }
+    }
+    /// Chosen provider preset; "custom" unlocks the free-form base URL field.
+    @Published var aiProvider: String = "openai" {
+        didSet { scheduleSave() }
+    }
+
+    /// Path to the AI Review workspace folder (mirrors the Codex/cowork idea: a
+    /// folder the AI treats as long-term memory). When set, the app reads
+    /// `<folder>/ai-context.md` on every request so durable notes survive across
+    /// sessions instead of being re-asked each time.
+    @Published var aiWorkspacePath: String = "" {
+        didSet { scheduleSave() }
+    }
+
+    /// DeepSeek V4 thinking mode. V4 models default to thinking enabled; turning
+    /// it off restores the classic fast-chat behavior of the retired
+    /// `deepseek-chat` alias. Only sent for DeepSeek.
+    @Published var aiDeepseekThinking: Bool = false {
+        didSet { scheduleSave() }
+    }
+
+    /// Known OpenAI-compatible provider presets.
+    static let aiProviders: [(id: String, label: String)] = [
+        ("openai", "OpenAI"),
+        ("deepseek", "DeepSeek"),
+        ("groq", "Groq"),
+        ("openrouter", "OpenRouter"),
+        ("custom", "Custom…")
+    ]
+
+    /// Sensible default models for the preset providers.
+    static let aiProviderDefaults: [String: String] = [
+        "openai": "gpt-4o-mini",
+        "deepseek": "deepseek-v4-flash",
+        "groq": "llama-3.1-8b-instant",
+        "openrouter": "openai/gpt-4o-mini"
+    ]
+
+    /// Base URL for the preset providers (without trailing slash).
+    static let aiProviderBaseURLs: [String: String] = [
+        "openai": "https://api.openai.com/v1",
+        "deepseek": "https://api.deepseek.com/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "openrouter": "https://openrouter.ai/api/v1"
+    ]
+
+    /// Model options offered in Settings, all OpenAI-compatible. DeepSeek's
+    /// legacy `deepseek-chat`/`deepseek-reasoner` aliases were retired on
+    /// 2026-07-24; the current IDs are `deepseek-v4-flash` and `deepseek-v4-pro`
+    /// (thinking mode is controlled separately via `aiDeepseekThinking`).
+    static let aiModelOptions: [(String, String)] = [
+        ("gpt-4o-mini", "gpt-4o-mini"),
+        ("gpt-4o", "gpt-4o"),
+        ("deepseek-v4-flash", "deepseek-v4-flash"),
+        ("deepseek-v4-pro", "deepseek-v4-pro"),
+        ("llama-3.1-8b-instant", "llama-3.1-8b-instant"),
+        ("llama-3.3-70b-versatile", "llama-3.3-70b-versatile"),
+        ("openai/gpt-4o-mini", "openai/gpt-4o-mini"),
+        ("meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct")
+    ]
+
+    private static let aiApiKeyKeychainKey = "aiReview_apiKey"
+
+    /// The user's provider API key. Stored in the Keychain (never persisted as
+    /// plaintext in data.json); empty string = not configured.
+    var aiApiKey: String {
+        get { KeychainService.loadString(forKey: Self.aiApiKeyKeychainKey) ?? "" }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                _ = KeychainService.delete(key: Self.aiApiKeyKeychainKey)
+            } else {
+                _ = KeychainService.saveString(trimmed, forKey: Self.aiApiKeyKeychainKey)
+            }
+        }
+    }
+
+    var hasAIConfiguration: Bool {
+        !aiApiKey.isEmpty && !aiBaseURL.isEmpty
+    }
+
+    /// When the user picks a known provider preset, fill its base URL and a
+    /// sensible default model (kept in sync with the preset). Does nothing for
+    /// the "custom" option, which exposes the free-form fields.
+    func applyAIPreset(_ provider: String) {
+        if let url = Self.aiProviderBaseURLs[provider] {
+            aiBaseURL = url
+        }
+        if let model = Self.aiProviderDefaults[provider] {
+            aiModel = model
+        }
+    }
+
+    /// Resolves the workspace folder, creating it (plus a starter `ai-context.md`
+    /// if absent) the first time it's referenced. Returns nil when no workspace
+    /// is configured.
+    @discardableResult
+    func ensureAIWorkspace() -> URL? {
+        let path = aiWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        let folder = URL(fileURLWithPath: path, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let notes = folder.appendingPathComponent("ai-context.md")
+            if !FileManager.default.fileExists(atPath: notes.path) {
+                try """
+                # AI Review workspace notes
+
+                Anything you want the assistant to remember across conversations —
+                your approach, goals, risk tolerance, important context — goes here.
+                The AI reads this file on every request.
+
+                """.write(to: notes, atomically: true, encoding: .utf8)
+            }
+            return folder
+        } catch {
+            return nil
+        }
+    }
+
+    /// The current content of `<workspace>/ai-context.md`, ready to be injected
+    /// into the AI prompt. Returns nil when no workspace is configured or the
+    /// file is empty.
+    func aiWorkspaceContextText() -> String? {
+        guard let folder = ensureAIWorkspace() else { return nil }
+        let notes = folder.appendingPathComponent("ai-context.md")
+        guard let text = try? String(contentsOf: notes, encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Appends a note to `<workspace>/ai-context.md` (creates the workspace and
+    /// file if needed). Returns false when no workspace is configured.
+    @discardableResult
+    func appendAIWorkspaceNote(_ note: String) -> Bool {
+        guard let folder = ensureAIWorkspace() else { return false }
+        let notes = folder.appendingPathComponent("ai-context.md")
+        let stamp = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short)
+        var content = "\n## \(stamp)\n\n\(note)\n"
+        if let existing = try? String(contentsOf: notes, encoding: .utf8) {
+            content = existing.trimmingCharacters(in: .whitespacesAndNewlines) + "\n" + content
+        }
+        do {
+            try content.write(to: notes, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     @Published var fontSizeLevel: Int = 9 {
         didSet {
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
@@ -1105,6 +1276,12 @@ class StorageService: ObservableObject {
         showNewsTab = true
         symbolNotes = [:]
         lastSelectedTab = "Watchlist"
+        aiBaseURL = "https://api.openai.com/v1"
+        aiModel = "gpt-4o-mini"
+        aiEnabled = true
+        aiProvider = "openai"
+        aiWorkspacePath = ""
+        aiDeepseekThinking = false
     }
 
     // MARK: - Export / Import
@@ -1189,6 +1366,13 @@ class StorageService: ObservableObject {
         var advancedPositions: Bool?
         var appearanceRaw: String?
         var showNewsTab: Bool?
+        var aiChatSections: [AIChatSection]?
+        var aiBaseURL: String?
+        var aiModel: String?
+        var aiEnabled: Bool?
+        var aiProvider: String?
+        var aiWorkspacePath: String?
+        var aiDeepseekThinking: Bool?
     }
 
     private func scheduleSave() {
@@ -1209,7 +1393,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiEnabled: aiEnabled, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1315,6 +1499,13 @@ class StorageService: ObservableObject {
             fontFamily = decoded.fontFamily ?? "Inter Variable"
             appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
             showNewsTab = decoded.showNewsTab ?? true
+            aiChatSections = decoded.aiChatSections ?? []
+            aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
+            aiModel = decoded.aiModel ?? "gpt-4o-mini"
+            aiEnabled = decoded.aiEnabled ?? true
+            aiProvider = decoded.aiProvider ?? "openai"
+            aiWorkspacePath = decoded.aiWorkspacePath ?? ""
+            aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
             let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
             portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
             FontRegistration.familyName = fontFamily
