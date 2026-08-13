@@ -3,57 +3,64 @@ import XCTest
 
 final class NewsArticleTests: XCTestCase {
 
-    /// A representative news item as returned by Yahoo's v1 search endpoint.
-    private let sampleJSON = """
-    {
-      "uuid": "abc-123",
-      "title": "Apple hits new high",
-      "publisher": "Reuters",
-      "link": "https://finance.yahoo.com/news/apple-hits-new-high.html",
-      "providerPublishTime": 1719400000,
-      "type": "STORY",
-      "thumbnail": {
-        "resolutions": [
-          {"url": "https://img/original.jpg", "width": 1000, "height": 1000, "tag": "original"},
-          {"url": "https://img/140.jpg", "width": 140, "height": 140, "tag": "140x140"}
-        ]
-      },
-      "relatedTickers": ["AAPL", "MSFT"]
-    }
+    /// A representative Google News RSS feed as returned by `/rss/search`.
+    private let sampleRSS = """
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <rss version="2.0">
+      <channel>
+        <title>"AAPL" - Google News</title>
+        <item>
+          <title>Apple hits new high after earnings beat - Yahoo Finance</title>
+          <link>https://news.google.com/rss/articles/CBMi-test1?oc=5</link>
+          <guid isPermaLink="false">CBMi-test1</guid>
+          <pubDate>Tue, 11 Aug 2026 17:10:15 GMT</pubDate>
+          <description>&lt;a href="https://news.google.com/rss/articles/CBMi-test1?oc=5"&gt;Apple hits new high&lt;/a&gt;</description>
+          <source url="https://finance.yahoo.com">Yahoo Finance</source>
+        </item>
+        <item>
+          <title>Apple supplier warning - Reuters</title>
+          <link>https://news.google.com/rss/articles/CBMi-test2?oc=5</link>
+          <guid isPermaLink="false">CBMi-test2</guid>
+          <pubDate>Mon, 10 Aug 2026 09:30:00 GMT</pubDate>
+          <source url="https://www.reuters.com">Reuters</source>
+        </item>
+        <item>
+          <title>Untitled</title>
+        </item>
+      </channel>
+    </rss>
     """.data(using: .utf8)!
 
-    func testDecodesAllFields() throws {
-        let a = try JSONDecoder().decode(NewsArticle.self, from: sampleJSON)
-        XCTAssertEqual(a.id, "abc-123")
-        XCTAssertEqual(a.title, "Apple hits new high")
-        XCTAssertEqual(a.publisher, "Reuters")
-        XCTAssertEqual(a.link, "https://finance.yahoo.com/news/apple-hits-new-high.html")
-        XCTAssertEqual(a.publishTime, 1719400000)
-        XCTAssertEqual(a.relatedTickers, ["AAPL", "MSFT"])
-        XCTAssertEqual(a.url?.scheme, "https")
-        XCTAssertNil(a.sourceSymbol, "sourceSymbol is not part of the payload; set by the fetcher")
+    func testParsesRSSItems() {
+        let articles = GoogleNewsRSSParser.parse(sampleRSS)
+        XCTAssertEqual(articles.count, 2, "items without a link are skipped")
     }
 
-    func testPrefersSmallestThumbnailResolution() throws {
-        let a = try JSONDecoder().decode(NewsArticle.self, from: sampleJSON)
-        XCTAssertEqual(a.thumbnailURL, "https://img/140.jpg")
-    }
-
-    func testMissingOptionalFieldsFallBackGracefully() throws {
-        let minimal = """
-        {"uuid": "x1", "link": "https://example.com/a"}
-        """.data(using: .utf8)!
-        let a = try JSONDecoder().decode(NewsArticle.self, from: minimal)
-        XCTAssertEqual(a.id, "x1")
-        XCTAssertEqual(a.title, "")
-        XCTAssertEqual(a.publisher, "")
-        XCTAssertEqual(a.publishTime, 0)
-        XCTAssertNil(a.thumbnailURL)
+    func testParsesAllFields() throws {
+        let a = try XCTUnwrap(GoogleNewsRSSParser.parse(sampleRSS).first)
+        XCTAssertEqual(a.id, "CBMi-test1")
+        XCTAssertEqual(a.title, "Apple hits new high after earnings beat - Yahoo Finance")
+        XCTAssertEqual(a.publisher, "Yahoo Finance")
+        XCTAssertEqual(a.link, "https://news.google.com/rss/articles/CBMi-test1?oc=5")
+        XCTAssertEqual(a.publishTime, 1786468215)
+        XCTAssertNil(a.thumbnailURL, "Google News RSS exposes no thumbnails")
         XCTAssertTrue(a.relatedTickers.isEmpty)
+        XCTAssertNil(a.sourceSymbol, "sourceSymbol is not part of the feed; set by the fetcher")
+        XCTAssertEqual(a.url?.scheme, "https")
     }
 
-    func testMissingUUIDThrows() {
-        let noID = #"{"title": "no id"}"#.data(using: .utf8)!
-        XCTAssertThrowsError(try JSONDecoder().decode(NewsArticle.self, from: noID))
+    func testParserSetsSourceSymbol() {
+        let articles = GoogleNewsRSSParser.parse(sampleRSS, sourceSymbol: "AAPL")
+        XCTAssertEqual(articles.first?.sourceSymbol, "AAPL")
+        XCTAssertEqual(articles.last?.sourceSymbol, "AAPL")
+    }
+
+    func testSkipsItemWithoutLink() {
+        let malformed = """
+        <rss version="2.0"><channel><item>
+          <title>No link</title><guid>g1</guid>
+        </item></channel></rss>
+        """.data(using: .utf8)!
+        XCTAssertTrue(GoogleNewsRSSParser.parse(malformed).isEmpty)
     }
 }

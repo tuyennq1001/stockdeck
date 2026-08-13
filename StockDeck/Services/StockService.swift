@@ -2477,8 +2477,8 @@ class StockService: ObservableObject {
     // MARK: - Finance News (Home tab)
 
     /// Refresh the Home news feed. Pulls stories related to the user's tracked
-    /// symbols (or general market news when nothing is tracked), from the same
-    /// Yahoo search endpoint used for quote lookup — no API key required.
+    /// symbols (or general market news when nothing is tracked) from Google
+    /// News' public RSS search feed — no API key required.
     /// Throttled to at most once every 5 minutes unless `force` is set.
     func refreshNews(storageService: StorageService, force: Bool = false) async {
         if !force, !news.isEmpty, let last = lastNewsFetch,
@@ -2515,21 +2515,27 @@ class StockService: ObservableObject {
     }
 
     private func fetchNewsChunk(query: String, sourceSymbol: String?) async -> [NewsArticle] {
+        // Google News RSS search feed: symbol-aware, publisher-diverse, no key.
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=0&newsCount=10") else { return [] }
+        guard let url = URL(string: "https://news.google.com/rss/search?q=\(encoded)&hl=en-US&gl=US&ceid=US:en") else { return [] }
         do {
-            let (data, _) = try await session.data(from: url)
-            let articles = try JSONDecoder().decode(YahooNewsResponse.self, from: data).news ?? []
-            guard let sourceSymbol else { return articles }
-            return articles.map { var a = $0; a.sourceSymbol = sourceSymbol; return a }
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            let articles: [NewsArticle]
+            if let sourceSymbol {
+                articles = GoogleNewsRSSParser.parse(data, sourceSymbol: sourceSymbol)
+            } else {
+                articles = GoogleNewsRSSParser.parse(data)
+            }
+            return articles
         } catch {
             return []
         }
     }
 
     /// Refresh news for a single symbol (used by the symbol detail page).
-    /// Fetches from the same Yahoo search endpoint, throttled to at most once
-    /// every 5 minutes per symbol, and stores the result in `newsBySymbol`.
+    /// Fetches from Google News RSS, throttled to at most once every 5 minutes
+    /// per symbol, and stores the result in `newsBySymbol`.
     func refreshNews(for symbol: String) async {
         let key = symbol.uppercased()
         if let existing = newsBySymbol[key], !existing.isEmpty,
@@ -2675,10 +2681,6 @@ private struct YahooV7Response: Codable {
 
 private struct YahooSearchResponse: Codable {
     let quotes: [SearchResult]
-}
-
-private struct YahooNewsResponse: Decodable {
-    let news: [NewsArticle]?
 }
 
 private struct VNDirectHistoryResponse: Decodable {
