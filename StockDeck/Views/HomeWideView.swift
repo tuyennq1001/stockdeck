@@ -2,12 +2,13 @@ import SwiftUI
 import AppKit
 
 /// Desktop news view: a featured lead story anchoring a responsive grid of story
-/// cards. Tapping opens the article in the default browser.
+/// cards. Tapping opens the article in the in-app browser.
 struct HomeWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
     @State private var query = ""
+    @State private var activeLink: InAppWebLink?
     @FocusState private var searchFocused: Bool
 
     private let columns = [GridItem(.adaptive(minimum: 320, maximum: 420), spacing: DS.gap)]
@@ -44,11 +45,11 @@ struct HomeWideView: View {
                     ScrollView {
                         VStack(spacing: DS.gap) {
                             if let featured = news.first {
-                                FeaturedNewsCard(article: featured)
+                                FeaturedNewsCard(article: featured) { open($0) }
                             }
                             LazyVGrid(columns: columns, spacing: DS.gap) {
                                 ForEach(news.dropFirst()) { article in
-                                    NewsCard(article: article)
+                                    NewsCard(article: article) { open($0) }
                                 }
                             }
                         }
@@ -60,6 +61,13 @@ struct HomeWideView: View {
         }
         .navigationTitle("Home")
         .task { await stockService.refreshNews(storageService: storageService) }
+        .sheet(item: $activeLink) { link in
+            InAppWebViewPopup(url: link.url)
+        }
+    }
+
+    private func open(_ url: URL) {
+        activeLink = InAppWebLink(url: url)
     }
 
     private var searchField: some View {
@@ -132,6 +140,7 @@ struct HomeWideView: View {
 /// soft gradient seam, gold FEATURED label, Craft-style image zoom on hover.
 private struct FeaturedNewsCard: View {
     let article: NewsArticle
+    let onOpen: (URL) -> Void
     @Environment(\.locale) private var locale
     @State private var hovered = false
 
@@ -144,7 +153,7 @@ private struct FeaturedNewsCard: View {
 
     var body: some View {
         Button {
-            if let url = article.url { NSWorkspace.shared.open(url) }
+            onOpen(url: article.url)
         } label: {
             GeometryReader { geo in
                 HStack(spacing: 0) {
@@ -203,6 +212,11 @@ private struct FeaturedNewsCard: View {
         .help(article.title)
     }
 
+    private func onOpen(url: URL?) {
+        guard let url else { return }
+        onOpen(url)
+    }
+
     @ViewBuilder private var thumbnail: some View {
         if let thumb = article.thumbnailURL, let url = URL(string: thumb) {
             AsyncImage(url: url) { phase in
@@ -225,6 +239,7 @@ private struct FeaturedNewsCard: View {
 
 private struct NewsCard: View {
     let article: NewsArticle
+    let onOpen: (URL) -> Void
     @Environment(\.locale) private var locale
     @State private var hovered = false
 
@@ -238,7 +253,7 @@ private struct NewsCard: View {
 
     var body: some View {
         Button {
-            if let url = article.url { NSWorkspace.shared.open(url) }
+            onOpen(url: article.url)
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 thumbnail
@@ -275,6 +290,11 @@ private struct NewsCard: View {
             if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
         .help(article.title)
+    }
+
+    private func onOpen(url: URL?) {
+        guard let url else { return }
+        onOpen(url)
     }
 
     @ViewBuilder private var thumbnail: some View {

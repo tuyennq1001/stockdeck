@@ -343,6 +343,7 @@ struct WatchlistWideView: View {
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
+                    SymbolNewsCard(stockService: stockService, symbol: symbol)
                 }
                 .padding(16)
             }

@@ -21,6 +21,10 @@ class StockService: ObservableObject {
     @Published var lastFxFetchDate: Date? = nil
     @Published var news: [NewsArticle] = []
     @Published var isLoadingNews = false
+    /// Per-symbol news cache used by the symbol detail page. Each key is the
+    /// canonical (uppercased) symbol; throttled separately from the Home feed.
+    @Published var newsBySymbol: [String: [NewsArticle]] = [:]
+    @Published var isLoadingSymbolNews: Set<String> = []
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:]
@@ -39,6 +43,7 @@ class StockService: ObservableObject {
     private let session: URLSession
     private var crumb: String?
     private var lastNewsFetch: Date?
+    private var lastSymbolNewsFetch: [String: Date] = [:]
     private var priceHistoryFetchedAt: [String: Date] = [:]
     private var priceHistoryMaxAt: [String: Date] = [:]
     private var intradayFetchedAt: [String: Date] = [:]
@@ -2520,6 +2525,27 @@ class StockService: ObservableObject {
         } catch {
             return []
         }
+    }
+
+    /// Refresh news for a single symbol (used by the symbol detail page).
+    /// Fetches from the same Yahoo search endpoint, throttled to at most once
+    /// every 5 minutes per symbol, and stores the result in `newsBySymbol`.
+    func refreshNews(for symbol: String) async {
+        let key = symbol.uppercased()
+        if let existing = newsBySymbol[key], !existing.isEmpty,
+           let last = lastSymbolNewsFetch[key],
+           Date().timeIntervalSince(last) < 300 {
+            return
+        }
+        if isLoadingSymbolNews.contains(key) { return }
+        isLoadingSymbolNews.insert(key)
+        defer { isLoadingSymbolNews.remove(key) }
+
+        let articles = await fetchNewsChunk(query: symbol, sourceSymbol: key)
+        let deduped = articles.filter { !$0.title.isEmpty }
+            .sorted { $0.publishTime > $1.publishTime }
+        newsBySymbol[key] = Array(deduped.prefix(5))
+        lastSymbolNewsFetch[key] = Date()
     }
 }
 

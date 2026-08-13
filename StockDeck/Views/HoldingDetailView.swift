@@ -33,12 +33,6 @@ struct HoldingDetailView: View {
         }
     }
 
-    private var relatedNews: [NewsArticle] {
-        stockService.news.filter {
-            $0.sourceSymbol == holding.symbol || $0.relatedTickers.contains(holding.symbol)
-        }
-    }
-
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -77,8 +71,8 @@ struct HoldingDetailView: View {
                     statStrip
                     purchaseLotsCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
-                    if !relatedNews.isEmpty { newsCard }
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
+                    SymbolNewsCard(stockService: stockService, symbol: holding.symbol)
                 }
                 .pageColumn()
                 .padding(.top, 4)
@@ -88,36 +82,6 @@ struct HoldingDetailView: View {
         .sheet(isPresented: $showAlert) {
             PriceAlertSheet(symbol: holding.symbol) { showAlert = false }
                 .environmentObject(stockService).environmentObject(storageService)
-        }
-    }
-
-    // MARK: - Related news
-
-    private var newsCard: some View {
-        Card(title: "Related news") {
-            VStack(spacing: 0) {
-                ForEach(relatedNews.prefix(5)) { article in
-                    Button {
-                        if let url = article.url { NSWorkspace.shared.open(url) }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text(article.title).font(DS.body).foregroundStyle(DS.ink)
-                                .lineLimit(2).multilineTextAlignment(.leading)
-                            Spacer(minLength: 8)
-                            if !article.publisher.isEmpty {
-                                Text(article.publisher).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                            }
-                            Image(systemName: "arrow.up.right").font(.system(size: 9)).foregroundStyle(DS.inkTertiary)
-                        }
-                        .padding(.vertical, 8)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if article.id != relatedNews.prefix(5).last?.id {
-                        Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-                    }
-                }
-            }
         }
     }
 
