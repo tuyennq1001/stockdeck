@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Per-symbol finance news shown at the bottom of the symbol detail page
-/// (below the notes card). Fetches on demand from the same Yahoo search
-/// endpoint used by the Home feed — no API key — and is throttled per symbol
-/// so opening a chart repeatedly stays cheap.
+/// (below the notes card). Fetches on demand from Google News' public RSS
+/// feed — no API key — and is throttled per symbol so opening a chart
+/// repeatedly stays cheap.
 struct SymbolNewsCard: View {
     @ObservedObject var stockService: StockService
     let symbol: String
