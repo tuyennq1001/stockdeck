@@ -449,7 +449,7 @@ struct SearchResult: Identifiable, Codable {
     let exchange: String
     let type: String
 
-    var id: String { symbol }
+    var id: String { "\(symbol)|\(type)|\(exchange)" }
 
     private enum CodingKeys: String, CodingKey {
         case symbol

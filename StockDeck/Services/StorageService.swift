@@ -851,6 +851,7 @@ class StorageService: ObservableObject {
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         guard !watchlists[idx].symbols.contains(symbol) else { return }
         watchlists[idx].symbols.append(symbol)
+        prefetchLogo(symbol)
     }
 
     func removeFromWatchlist(_ symbol: String) {
@@ -869,6 +870,7 @@ class StorageService: ObservableObject {
         guard let idx = watchlists.firstIndex(where: { $0.id == targetWatchlistId }) else { return }
         let toAdd = symbols.filter { !watchlists[idx].symbols.contains($0) }
         watchlists[idx].symbols.append(contentsOf: toAdd)
+        toAdd.forEach { prefetchLogo($0) }
     }
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
@@ -1194,6 +1196,7 @@ class StorageService: ObservableObject {
               !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
+        prefetchLogo(symbol)
     }
 
     func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
@@ -1231,6 +1234,12 @@ class StorageService: ObservableObject {
         }
 
         portfolios[pIndex].holdings = currentHoldings
+        Set(currentHoldings.map(\.symbol)).forEach { prefetchLogo($0) }
+    }
+
+    private func prefetchLogo(_ symbol: String) {
+        guard StockService.isVietnameseStock(symbol, exchange: exchange(for: symbol)) else { return }
+        Task { await LogoCache.shared.ensureLogo(for: symbol) }
     }
 
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
