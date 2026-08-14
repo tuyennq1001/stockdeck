@@ -871,11 +871,8 @@ class StorageService: ObservableObject {
 
     func addMultipleToWatchlist(_ symbols: Set<String>, targetWatchlistId: UUID) {
         guard let idx = watchlists.firstIndex(where: { $0.id == targetWatchlistId }) else { return }
-        for s in symbols {
-            if !watchlists[idx].symbols.contains(s) {
-                watchlists[idx].symbols.append(s)
-            }
-        }
+        let toAdd = symbols.filter { !watchlists[idx].symbols.contains($0) }
+        watchlists[idx].symbols.append(contentsOf: toAdd)
     }
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
@@ -996,6 +993,26 @@ class StorageService: ObservableObject {
               result.map(\.id) != portfolios.map(\.id) else { return }
         result.insert(item, at: insertIndex)
         portfolios = result
+    }
+
+    /// Persists a full reordering of the watchlists built by a local drag
+    /// preview. Validates membership so a stale preview never clobbers a
+    /// concurrent add/remove/switch.
+    func commitWatchlistOrder(_ orderedIds: [UUID]) {
+        guard orderedIds.count == watchlists.count,
+              Set(orderedIds) == Set(watchlists.map(\.id)) else { return }
+        let byId = Dictionary(uniqueKeysWithValues: watchlists.map { ($0.id, $0) })
+        watchlists = orderedIds.compactMap { byId[$0] }
+    }
+
+    /// Persists a full reordering of the portfolios built by a local drag
+    /// preview. Validates membership so a stale preview never clobbers a
+    /// concurrent add/remove.
+    func commitPortfolioOrder(_ orderedIds: [UUID]) {
+        guard orderedIds.count == portfolios.count,
+              Set(orderedIds) == Set(portfolios.map(\.id)) else { return }
+        let byId = Dictionary(uniqueKeysWithValues: portfolios.map { ($0.id, $0) })
+        portfolios = orderedIds.compactMap { byId[$0] }
     }
 
     func addPortfolio(name: String) {

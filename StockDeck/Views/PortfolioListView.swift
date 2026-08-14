@@ -14,6 +14,9 @@ struct PortfolioListView: View {
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
     @State private var draggingPortfolioId: UUID? = nil
+    /// Live display order of the portfolio tabs while dragging: no storage writes
+    /// during the drag — the final order is committed once on drop.
+    @State private var previewPortfolioIds: [UUID] = []
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -216,6 +219,9 @@ struct PortfolioListView: View {
             }
         }
         }
+        .onChange(of: draggingPortfolioId) { _, newValue in
+            if newValue == nil { previewPortfolioIds = [] }
+        }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService)
         }
@@ -287,17 +293,20 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
                     .id("all_portfolios_tab")
 
-                    ForEach(storageService.portfolios) { p in
+                    ForEach(displayedPortfolios) { p in
                         let selected = p.id == selectedPortfolioId
                         ReorderRow(
                             id: p.id,
                             draggingId: $draggingPortfolioId,
                             isHorizontal: true,
-                            makeDragItem: { NSItemProvider(object: p.id.uuidString as NSString) },
-                            onMove: { srcId, tgtId, placement in
-                                storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
+                            makeDragItem: {
+                                if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+                                return NSItemProvider(object: p.id.uuidString as NSString)
                             },
-                            onCommit: {}
+                            onMove: { srcId, tgtId, placement in
+                                movePortfolioInPreview(srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: { commitPortfolioPreview() }
                         ) {
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -324,6 +333,42 @@ struct PortfolioListView: View {
                 .padding(.vertical, 6)
             }
         }
+    }
+
+    /// The portfolio tabs in order: the local drag preview while dragging, else the
+    /// persisted order.
+    private var displayedPortfolios: [Portfolio] {
+        if draggingPortfolioId != nil, !previewPortfolioIds.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: storageService.portfolios.map { ($0.id, $0) })
+            return previewPortfolioIds.compactMap { byId[$0] }
+        }
+        return storageService.portfolios
+    }
+
+    /// Live, local-only reorder of the portfolio tab preview while dragging.
+    private func movePortfolioInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+        guard sourceId != targetId,
+              let srcIndex = previewPortfolioIds.firstIndex(of: sourceId),
+              let tgtIndex = previewPortfolioIds.firstIndex(of: targetId) else { return }
+        let item = previewPortfolioIds.remove(at: srcIndex)
+        let newTargetIndex = previewPortfolioIds.firstIndex(of: targetId) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= previewPortfolioIds.count else { return }
+        previewPortfolioIds.insert(item, at: insertIndex)
+    }
+
+    /// Persists the previewed portfolio order exactly once, when the tab drop
+    /// lands (or the drag ends outside the picker bar).
+    private func commitPortfolioPreview() {
+        guard !previewPortfolioIds.isEmpty else {
+            draggingPortfolioId = nil
+            return
+        }
+        let final = previewPortfolioIds
+        previewPortfolioIds = []
+        draggingPortfolioId = nil
+        storageService.commitPortfolioOrder(final)
     }
 
     private func portfolioTotals(for portfolios: [Portfolio]) -> (value: Double, cost: Double, pnl: Double) {
