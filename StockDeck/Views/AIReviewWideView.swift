@@ -8,6 +8,12 @@ struct AIReviewWideView: View {
     @EnvironmentObject var storageService: StorageService
     @State private var viewModel: AIReviewViewModel?
     @FocusState private var composerFocused: Bool
+    /// Jumps the user to the Settings pane to configure an API key.
+    let onOpenSettings: () -> Void
+
+    init(onOpenSettings: @escaping () -> Void = {}) {
+        self.onOpenSettings = onOpenSettings
+    }
 
     private var vm: AIReviewViewModel? {
         viewModel ?? AIReviewViewModel(stockService: stockService, storageService: storageService)
@@ -56,6 +62,19 @@ struct AIReviewWideView: View {
                 .font(DS.body).foregroundStyle(DS.inkSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
+            Button(action: onOpenSettings) {
+                HStack(spacing: 6) {
+                    Image(systemName: "gearshape")
+                    Text("Open Settings")
+                }
+                .font(.inter(12, weight: .semibold, relativeTo: .body))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Capsule().fill(DS.brand))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

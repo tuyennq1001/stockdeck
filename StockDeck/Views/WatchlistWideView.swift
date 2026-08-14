@@ -62,6 +62,8 @@ struct WatchlistWideView: View {
                 return nil
             case .today:
                 return changePercent
+            case .todayChange:
+                return change
             case .oneMonth:
                 return oneMonthChangePercent
             case .threeMonths:
@@ -1105,6 +1107,8 @@ private struct WatchRowView<Menu: View>: View {
                 }
             case .today:
                 periodCell(row.changePercent)
+            case .todayChange:
+                todayChangeCell
             case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
                 periodCell(periodChange(metric))
             case .ath:
@@ -1138,6 +1142,20 @@ private struct WatchRowView<Menu: View>: View {
             Text(StorageService.formatMarketCap(mc, currency: row.currency))
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    /// The absolute (signed) today's change, formatted like price (no currency
+    /// symbol), e.g. "+1.23", fixed at 2 decimals.
+    @ViewBuilder
+    private var todayChangeCell: some View {
+        if row.loaded {
+            Text("\(row.change >= 0 ? "+" : "")\(StorageService.formatNumber(row.change, decimals: 2))")
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.pnlColor(row.change))
                 .contentTransition(.numericText())
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)

@@ -338,10 +338,6 @@ class StorageService: ObservableObject {
     @Published var aiModel: String = "gpt-4o-mini" {
         didSet { scheduleSave() }
     }
-    /// Whether the AI Review tab is enabled.
-    @Published var aiEnabled: Bool = true {
-        didSet { scheduleSave() }
-    }
     /// Chosen provider preset; "custom" unlocks the free-form base URL field.
     @Published var aiProvider: String = "openai" {
         didSet { scheduleSave() }
@@ -855,6 +851,7 @@ class StorageService: ObservableObject {
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         guard !watchlists[idx].symbols.contains(symbol) else { return }
         watchlists[idx].symbols.append(symbol)
+        prefetchLogo(symbol)
     }
 
     func removeFromWatchlist(_ symbol: String) {
@@ -873,6 +870,7 @@ class StorageService: ObservableObject {
         guard let idx = watchlists.firstIndex(where: { $0.id == targetWatchlistId }) else { return }
         let toAdd = symbols.filter { !watchlists[idx].symbols.contains($0) }
         watchlists[idx].symbols.append(contentsOf: toAdd)
+        toAdd.forEach { prefetchLogo($0) }
     }
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
@@ -1198,6 +1196,7 @@ class StorageService: ObservableObject {
               !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
+        prefetchLogo(symbol)
     }
 
     func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
@@ -1235,6 +1234,12 @@ class StorageService: ObservableObject {
         }
 
         portfolios[pIndex].holdings = currentHoldings
+        Set(currentHoldings.map(\.symbol)).forEach { prefetchLogo($0) }
+    }
+
+    private func prefetchLogo(_ symbol: String) {
+        guard StockService.isVietnameseStock(symbol, exchange: exchange(for: symbol)) else { return }
+        Task { await LogoCache.shared.ensureLogo(for: symbol) }
     }
 
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
@@ -1295,7 +1300,6 @@ class StorageService: ObservableObject {
         lastSelectedTab = "Watchlist"
         aiBaseURL = "https://api.openai.com/v1"
         aiModel = "gpt-4o-mini"
-        aiEnabled = true
         aiProvider = "openai"
         aiWorkspacePath = ""
         aiDeepseekThinking = false
@@ -1386,7 +1390,6 @@ class StorageService: ObservableObject {
         var aiChatSections: [AIChatSection]?
         var aiBaseURL: String?
         var aiModel: String?
-        var aiEnabled: Bool?
         var aiProvider: String?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
@@ -1410,7 +1413,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiEnabled: aiEnabled, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1519,7 +1522,6 @@ class StorageService: ObservableObject {
             aiChatSections = decoded.aiChatSections ?? []
             aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
             aiModel = decoded.aiModel ?? "gpt-4o-mini"
-            aiEnabled = decoded.aiEnabled ?? true
             aiProvider = decoded.aiProvider ?? "openai"
             aiWorkspacePath = decoded.aiWorkspacePath ?? ""
             aiDeepseekThinking = decoded.aiDeepseekThinking ?? false

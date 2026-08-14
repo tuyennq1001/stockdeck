@@ -15,7 +15,7 @@ struct PortfolioWindowView: View {
 
     /// Sidebar destinations — the dock tabs, with Portfolios expanded per portfolio.
     enum Nav: Hashable {
-        case home, watchlist, portfoliosAll, importExport, settings, aiReview
+        case home, watchlist, portfoliosAll, importExport, settings, aiReview, alerts
         case portfolio(UUID)
     }
 
@@ -215,7 +215,7 @@ struct PortfolioWindowView: View {
             Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
             Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
             Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
-            Button("") { if storageService.aiEnabled { navigate(to: .aiReview) } }.keyboardShortcut("5", modifiers: .command)
+            Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command)
             Button("") {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
@@ -353,12 +353,13 @@ struct PortfolioWindowView: View {
                         }
                     }
 
-                    if storageService.aiEnabled {
-                        aiReviewHeader
-                        NavRow(icon: "sparkles", title: "AI Review",
-                               helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
-                               selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
-                    }
+                    utilitiesHeader
+                    NavRow(icon: "sparkles", title: "AI Review",
+                           helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
+                           selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
+                    NavRow(icon: "bell", title: "Alerts",
+                           helpText: "Price alerts you've set on your watchlist symbols",
+                           selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
@@ -511,10 +512,10 @@ struct PortfolioWindowView: View {
     }
 
     /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
-    /// "AI REVIEW" section label in the sidebar.
-    private var aiReviewHeader: some View {
+    /// "UTILITIES" section label in the sidebar (AI Review + Alerts).
+    private var utilitiesHeader: some View {
         HStack {
-            Text("AI Review")
+            Text("Utilities")
                 .font(DS.label)
                 .foregroundStyle(DS.inkTertiary)
                 .tracking(0.8).textCase(.uppercase)
@@ -647,7 +648,9 @@ struct PortfolioWindowView: View {
                     .onAppear { activeOverviewVM = vm }
             }
         case .aiReview:
-            AIReviewWideView()
+            AIReviewWideView(onOpenSettings: { navigate(to: .settings) })
+        case .alerts:
+            AlertsWideView()
         }
     }
 
