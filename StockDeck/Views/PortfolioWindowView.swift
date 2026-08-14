@@ -50,7 +50,13 @@ struct PortfolioWindowView: View {
     @State private var renameWatchlistName = ""
     @State private var deleteWatchlistTarget: Watchlist? = nil
     @State private var draggingWatchlistId: UUID? = nil
+    /// Live display order of sidebar watchlists while dragging: no storage writes
+    /// during the drag — the final order is committed once on drop.
+    @State private var previewWatchlistIds: [UUID] = []
     @State private var draggingPortfolioId: UUID? = nil
+    /// Live display order of sidebar portfolios while dragging: no storage writes
+    /// during the drag — the final order is committed once on drop.
+    @State private var previewPortfolioIds: [UUID] = []
     @State private var renameTarget: PortfolioRef?
     @State private var notifTarget: PortfolioRef?
     @State private var importAlert: String?
@@ -97,6 +103,12 @@ struct PortfolioWindowView: View {
         // If News is turned off while its pane is open, fall back to Watchlist.
         .onChange(of: storageService.showNewsTab) { _, showNews in
             if !showNews, selection == .home { navigate(to: .watchlist) }
+        }
+        .onChange(of: draggingWatchlistId) { _, newValue in
+            if newValue == nil { previewWatchlistIds = [] }
+        }
+        .onChange(of: draggingPortfolioId) { _, newValue in
+            if newValue == nil { previewPortfolioIds = [] }
         }
         .environment(\.locale, Locale(identifier: storageService.appLanguage))
         .environment(\.addHoldingAction, AddHoldingAction { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: $1) })
@@ -238,16 +250,19 @@ struct PortfolioWindowView: View {
                     }
 
                     watchlistsHeader
-                    ForEach(storageService.watchlists) { wl in
+                    ForEach(displayedWatchlists) { wl in
                         ReorderRow(
                             id: wl.id,
                             draggingId: $draggingWatchlistId,
                             isHorizontal: false,
-                            makeDragItem: { NSItemProvider(object: wl.id.uuidString as NSString) },
-                            onMove: { srcId, tgtId, placement in
-                                storageService.moveWatchlist(from: srcId, relativeTo: tgtId, placement: placement)
+                            makeDragItem: {
+                                if previewWatchlistIds.isEmpty { previewWatchlistIds = storageService.watchlists.map(\.id) }
+                                return NSItemProvider(object: wl.id.uuidString as NSString)
                             },
-                            onCommit: {}
+                            onMove: { srcId, tgtId, placement in
+                                moveWatchlistInPreview(srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: { commitWatchlistPreview() }
                         ) {
                             NavRow(icon: "star", title: wl.name,
                                    trailing: "\(wl.symbols.count)",
@@ -280,16 +295,19 @@ struct PortfolioWindowView: View {
                            trailingTint: DS.pnlColor(aggregatePnlPercent(for: storageService.portfolios)),
                            helpText: "Combined view of every portfolio  ⌘3",
                            selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
-                    ForEach(storageService.portfolios) { portfolio in
+                    ForEach(displayedPortfolios) { portfolio in
                         ReorderRow(
                             id: portfolio.id,
                             draggingId: $draggingPortfolioId,
                             isHorizontal: false,
-                            makeDragItem: { NSItemProvider(object: portfolio.id.uuidString as NSString) },
-                            onMove: { srcId, tgtId, placement in
-                                storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
+                            makeDragItem: {
+                                if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+                                return NSItemProvider(object: portfolio.id.uuidString as NSString)
                             },
-                            onCommit: {}
+                            onMove: { srcId, tgtId, placement in
+                                movePortfolioInPreview(srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: { commitPortfolioPreview() }
                         ) {
                             NavRow(icon: "briefcase", title: portfolio.name,
                                    trailing: trailingPercent(for: [portfolio]),
@@ -361,6 +379,76 @@ struct PortfolioWindowView: View {
         }
         .background(DS.sidebarBG)
         .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
+    }
+
+    /// The sidebar watchlists in order: the local drag preview while dragging,
+    /// else the persisted order.
+    private var displayedWatchlists: [Watchlist] {
+        if draggingWatchlistId != nil, !previewWatchlistIds.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: storageService.watchlists.map { ($0.id, $0) })
+            return previewWatchlistIds.compactMap { byId[$0] }
+        }
+        return storageService.watchlists
+    }
+
+    /// Live, local-only reorder of the sidebar watchlist preview while dragging.
+    private func moveWatchlistInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        if previewWatchlistIds.isEmpty { previewWatchlistIds = storageService.watchlists.map(\.id) }
+        guard sourceId != targetId,
+              let srcIndex = previewWatchlistIds.firstIndex(of: sourceId),
+              let tgtIndex = previewWatchlistIds.firstIndex(of: targetId) else { return }
+        let item = previewWatchlistIds.remove(at: srcIndex)
+        let newTargetIndex = previewWatchlistIds.firstIndex(of: targetId) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= previewWatchlistIds.count else { return }
+        previewWatchlistIds.insert(item, at: insertIndex)
+    }
+
+    /// Persists the previewed sidebar watchlist order exactly once, on drop.
+    private func commitWatchlistPreview() {
+        guard !previewWatchlistIds.isEmpty else {
+            draggingWatchlistId = nil
+            return
+        }
+        let final = previewWatchlistIds
+        previewWatchlistIds = []
+        draggingWatchlistId = nil
+        storageService.commitWatchlistOrder(final)
+    }
+
+    /// The sidebar portfolios in order: the local drag preview while dragging,
+    /// else the persisted order.
+    private var displayedPortfolios: [Portfolio] {
+        if draggingPortfolioId != nil, !previewPortfolioIds.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: storageService.portfolios.map { ($0.id, $0) })
+            return previewPortfolioIds.compactMap { byId[$0] }
+        }
+        return storageService.portfolios
+    }
+
+    /// Live, local-only reorder of the sidebar portfolio preview while dragging.
+    private func movePortfolioInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+        guard sourceId != targetId,
+              let srcIndex = previewPortfolioIds.firstIndex(of: sourceId),
+              let tgtIndex = previewPortfolioIds.firstIndex(of: targetId) else { return }
+        let item = previewPortfolioIds.remove(at: srcIndex)
+        let newTargetIndex = previewPortfolioIds.firstIndex(of: targetId) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= previewPortfolioIds.count else { return }
+        previewPortfolioIds.insert(item, at: insertIndex)
+    }
+
+    /// Persists the previewed sidebar portfolio order exactly once, on drop.
+    private func commitPortfolioPreview() {
+        guard !previewPortfolioIds.isEmpty else {
+            draggingPortfolioId = nil
+            return
+        }
+        let final = previewPortfolioIds
+        previewPortfolioIds = []
+        draggingPortfolioId = nil
+        storageService.commitPortfolioOrder(final)
     }
 
 
@@ -796,6 +884,12 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
     let onCommit: () -> Void
     @ViewBuilder let content: () -> Content
 
+    /// Optional drop indicator: when set, this row paints a highlight line at the
+    /// top (`placement == .before`) or bottom (`placement == .after`) while an
+    /// external `DropIndicator<Target>` points at it. Used by Watchlist sections
+    /// to show exactly where a dragged symbol will land.
+    var dropIndicator: Binding<DropIndicator<Target>?>?
+
     @State private var height: CGFloat = 44
 
     var body: some View {
@@ -807,6 +901,21 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
                         .onChange(of: geo.size.height) { _, h in height = max(1, h) }
                 }
             )
+            .overlay(alignment: draggingSide) {
+                if let ind = dropIndicator?.wrappedValue, ind.target == id {
+                    if isHorizontal {
+                        Rectangle()
+                            .fill(ind.color)
+                            .frame(width: 3)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        Rectangle()
+                            .fill(ind.color)
+                            .frame(height: 3)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
             .onDrag {
                 draggingId = id
                 return makeDragItem()
@@ -816,9 +925,33 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
                 draggingId: $draggingId,
                 height: height,
                 isHorizontal: isHorizontal,
+                dropIndicator: dropIndicator,
                 onMove: onMove,
                 onCommit: onCommit
             ))
+    }
+
+    private var draggingSide: Alignment {
+        guard let ind = dropIndicator?.wrappedValue, ind.target == id else {
+            return isHorizontal ? .leading : .top
+        }
+        if isHorizontal { return ind.placement == .before ? .leading : .trailing }
+        return ind.placement == .before ? .top : .bottom
+    }
+}
+
+/// Describes where a symbol would land while dragging: `.before`/`.after` the
+/// hovered row plus the highlight color (brand for same-section drops, neutral
+/// for an empty/bucket target).
+struct DropIndicator<Target: Hashable>: Equatable {
+    let target: Target
+    let placement: InsertPlacement
+    let color: Color
+
+    init(target: Target, placement: InsertPlacement, color: Color = Color.accentColor) {
+        self.target = target
+        self.placement = placement
+        self.color = color
     }
 }
 
@@ -830,19 +963,28 @@ struct ReorderDropDelegate<Target: Hashable>: DropDelegate {
     @Binding var draggingId: Target?
     let height: CGFloat
     let isHorizontal: Bool
+    var dropIndicator: Binding<DropIndicator<Target>?>?
     let onMove: (Target, Target, InsertPlacement) -> Void
     let onCommit: () -> Void
 
     func performDrop(info: DropInfo) -> Bool {
         onCommit()
         draggingId = nil
+        dropIndicator?.wrappedValue = nil
         return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if dropIndicator?.wrappedValue?.target == targetId {
+            dropIndicator?.wrappedValue = nil
+        }
     }
 
     func dropEntered(info: DropInfo) {
         guard let draggingId = draggingId, draggingId != targetId else { return }
         let coordinate = isHorizontal ? info.location.x : info.location.y
         let placement: InsertPlacement = coordinate < height / 2 ? .before : .after
+        dropIndicator?.wrappedValue = DropIndicator(target: targetId, placement: placement)
         withAnimation(.easeOut(duration: 0.15)) {
             onMove(draggingId, targetId, placement)
         }
