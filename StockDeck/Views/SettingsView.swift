@@ -7,7 +7,6 @@ struct SettingsView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var showResetAlert = false
-    @State private var showClearAlerts = false
     @State private var showClearPortfolioNotifs = false
 
     // Collapsible category state — remembered across popover opens. General is
@@ -153,12 +152,8 @@ struct SettingsView: View {
 
                 // MARK: - AI Review
                 SettingsGroup(title: "AI Review", icon: "sparkles", isExpanded: $groupAI) {
-                    Toggle("Enable AI Review tab", isOn: $storageService.aiEnabled)
-                        .toggleStyle(.switch)
-                    caption("Chat with an AI about your portfolio in the desktop window's AI Review tab. Your portfolio data is sent only to the provider you configure.")
-                    if storageService.aiEnabled {
-                        subHeader("Provider")
-                        Picker("Provider", selection: $storageService.aiProvider) {
+                    subHeader("Provider")
+                    Picker("Provider", selection: $storageService.aiProvider) {
                             ForEach(AIProviderOption.allCases) { p in
                                 Text(p.label).tag(p.rawValue)
                             }
@@ -214,7 +209,6 @@ struct SettingsView: View {
                             }
                         }
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
-                    }
                 }
 
                 // MARK: - Watchlist Display
@@ -338,27 +332,6 @@ struct SettingsView: View {
                     .controlSize(.small)
                     .disabled(!storageService.discordEnabled || !WebhookNotifier.isValid(trimmed))
 
-                    // Price alerts
-                    HStack {
-                        subHeader("Price alerts")
-                        Spacer()
-                        if !storageService.alerts.isEmpty {
-                            Button(action: { showClearAlerts = true }) {
-                                Text("Clear all")
-                                    .font(.inter(10, relativeTo: .caption))
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundColor(.red)
-                        }
-                    }
-                    if storageService.alerts.isEmpty {
-                        caption("No alerts. Right-click a stock in the watchlist to add one.")
-                    } else {
-                        ForEach(storageService.alerts) { alert in
-                            AlertRow(alert: alert)
-                        }
-                    }
-
                     // Portfolio notifications
                     let withNotifs = storageService.portfolios.filter {
                         !storageService.notifications(for: $0.id).isEmpty
@@ -445,14 +418,6 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will reset all settings to their defaults. Your portfolios and watchlist will not be affected.")
-        }
-        .alert("Clear all alerts", isPresented: $showClearAlerts) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear all", role: .destructive) {
-                storageService.removeAllAlerts()
-            }
-        } message: {
-            Text("This will delete all your price alerts. This cannot be undone.")
         }
         .alert("Clear all portfolio notifications", isPresented: $showClearPortfolioNotifs) {
             Button("Cancel", role: .cancel) {}

@@ -10,7 +10,6 @@ struct SettingsWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var showResetAlert = false
-    @State private var showClearAlerts = false
     @State private var showClearPortfolioNotifs = false
     @FocusState private var webhookFocused: Bool
     @FocusState private var aiApiKeyFocused: Bool
@@ -29,7 +28,6 @@ struct SettingsWideView: View {
                         generalCard
                         aiReviewCard
                         menuBarCard
-                        if !storageService.alerts.isEmpty { alertsCard }
                         let withNotifs = storageService.portfolios.filter { !storageService.notifications(for: $0.id).isEmpty }
                         if !withNotifs.isEmpty { portfolioNotifsCard(withNotifs) }
                     }
@@ -52,9 +50,6 @@ struct SettingsWideView: View {
             storageService.resetToDefaults()
             Task { stockService.exchangeRates.removeAll(); await stockService.refreshAll(storageService: storageService) }
         }
-        .dsAlert($showClearAlerts, title: "Clear all alerts",
-                 message: "This will delete all your price alerts. This cannot be undone.",
-                 confirmTitle: "Clear all", destructive: true) { storageService.removeAllAlerts() }
         .dsAlert($showClearPortfolioNotifs, title: "Clear all portfolio notifications",
                  message: "This will delete all portfolio notifications across every portfolio. This cannot be undone.",
                  confirmTitle: "Clear all", destructive: true) { storageService.removeAllPortfolioNotifications() }
@@ -91,10 +86,6 @@ struct SettingsWideView: View {
 
     private var aiReviewCard: some View {
         SettingsCard(title: "AI Review") {
-            SettingToggle("Enable AI Review",
-                          caption: "Chat about your portfolio in the AI Review tab (desktop window)",
-                          isOn: $storageService.aiEnabled)
-            SettingDivider()
             SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
                 HStack(spacing: 8) {
                     SecureField("sk-…", text: Binding(
@@ -384,24 +375,6 @@ struct SettingsWideView: View {
                 }
                 .padding(.vertical, 6)
             }
-        }
-    }
-
-    private var alertsCard: some View {
-        SettingsCard(title: "Price alerts") {
-            ForEach(storageService.alerts) { alert in
-                AlertRow(alert: alert)
-                if alert.id != storageService.alerts.last?.id { SettingDivider() }
-            }
-            SettingDivider()
-            HStack {
-                Spacer()
-                Button("Clear all alerts") { showClearAlerts = true }
-                    .buttonStyle(.plain)
-                    .font(.inter(11, weight: .medium, relativeTo: .caption))
-                    .foregroundStyle(DS.down)
-            }
-            .padding(.vertical, 6)
         }
     }
 
