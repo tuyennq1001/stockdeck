@@ -11,10 +11,12 @@ struct SettingsWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var showResetAlert = false
-    @State private var showClearAlerts = false
     @State private var showClearPortfolioNotifs = false
     @FocusState private var webhookFocused: Bool
-
+    @FocusState private var aiApiKeyFocused: Bool
+    @State private var aiTestResult: String?
+    @State private var aiTestIsLoading = false
+    @State private var showAiKeyHelp = false
     var body: some View {
         PageScaffold("Settings", caption: "Preferences are shared with the menu bar.") {
             EmptyView()
@@ -25,8 +27,8 @@ struct SettingsWideView: View {
                 HStack(alignment: .top, spacing: DS.gap) {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         generalCard
+                        aiReviewCard
                         menuBarCard
-                        if !storageService.alerts.isEmpty { alertsCard }
                         let withNotifs = storageService.portfolios.filter { !storageService.notifications(for: $0.id).isEmpty }
                         if !withNotifs.isEmpty { portfolioNotifsCard(withNotifs) }
                     }
@@ -49,9 +51,6 @@ struct SettingsWideView: View {
             storageService.resetToDefaults()
             Task { stockService.exchangeRates.removeAll(); await stockService.refreshAll(storageService: storageService) }
         }
-        .dsAlert($showClearAlerts, title: "Clear all alerts",
-                 message: "This will delete all your price alerts. This cannot be undone.",
-                 confirmTitle: "Clear all", destructive: true) { storageService.removeAllAlerts() }
         .dsAlert($showClearPortfolioNotifs, title: "Clear all portfolio notifications",
                  message: "This will delete all portfolio notifications across every portfolio. This cannot be undone.",
                  confirmTitle: "Clear all", destructive: true) { storageService.removeAllPortfolioNotifications() }
@@ -83,6 +82,157 @@ struct SettingsWideView: View {
                         Task { await stockService.refreshAll(storageService: storageService) }
                     }
             }
+        }
+    }
+
+    private var aiReviewCard: some View {
+        SettingsCard(title: "AI Review") {
+            SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
+                HStack(spacing: 8) {
+                    SecureField("sk-…", text: Binding(
+                        get: { storageService.aiApiKey },
+                        set: { storageService.aiApiKey = $0 }))
+                        .textFieldStyle(.plain)
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .focused($aiApiKeyFocused)
+                    Button {
+                        storageService.aiApiKey = ""
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(storageService.aiApiKey.isEmpty ? DS.inkTertiary : DS.down)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(storageService.aiApiKey.isEmpty)
+                    .pointingHandCursor()
+                    .help("Remove the stored API key")
+                }
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(aiApiKeyFocused ? DS.brand : .clear, lineWidth: 1.5))
+            }
+            SettingDivider()
+            SettingRow("Provider", caption: "OpenAI first — compatible with DeepSeek, Groq, OpenRouter, etc.") {
+                DSPicker(options: AIProviderOption.all.map { ($0.value.rawValue, $0.label) },
+                         selection: $storageService.aiProvider, width: 200)
+                    .onChange(of: storageService.aiProvider) { _, newValue in
+                        storageService.applyAIPreset(newValue)
+                    }
+            }
+            SettingDivider()
+            if storageService.aiProvider == "custom" {
+                SettingRow("Base URL") {
+                    TextField("https://api.example.com/v1", text: $storageService.aiBaseURL)
+                        .textFieldStyle(.plain)
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .frame(width: 220)
+                }
+                SettingDivider()
+            }
+            SettingRow("Model") {
+                DSPicker(options: StorageService.aiModelOptions, selection: $storageService.aiModel, width: 200)
+            }
+            if storageService.aiProvider == "deepseek" {
+                SettingDivider()
+                SettingToggle("Thinking mode (V4)",
+                              caption: "DeepSeek V4 defaults to thinking on. Turn off for fast chat (like the retired deepseek-chat).",
+                              isOn: $storageService.aiDeepseekThinking)
+            }
+            SettingDivider()
+            SettingRow("Workspace folder", caption: "A folder the assistant reads & writes as long-term memory (ai-context.md). Durable notes survive across sessions — no need to re-answer every time.") {
+                workspaceFolderControl
+            }
+            SettingDivider()
+            HStack {
+                if let result = aiTestResult {
+                    Text(result).font(DS.micro).foregroundStyle(result.hasPrefix("✓") ? DS.up : DS.down)
+                    Spacer()
+                } else {
+                    Spacer()
+                }
+                if aiTestIsLoading {
+                    HStack(spacing: 6) {
+                        DSSpinner(size: 11)
+                        Text("Testing…").font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
+                    }
+                } else {
+                    Button("Test connection") {
+                        Task { await runAITest() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.inter(11, weight: .medium, relativeTo: .caption))
+                    .foregroundStyle(storageService.hasAIConfiguration ? DS.brand : DS.inkTertiary)
+                    .disabled(!storageService.hasAIConfiguration)
+                    .pointingHandCursor()
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func runAITest() async {
+        aiTestIsLoading = true
+        aiTestResult = nil
+        defer { aiTestIsLoading = false }
+        let result = await TestAI.quickCheck(storageService: storageService)
+        aiTestResult = result ? "✓ Connected — model reached." : "✗ Test failed. Check the key, URL and model."
+    }
+
+    @ViewBuilder
+    private var workspaceFolderControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if storageService.aiWorkspacePath.isEmpty {
+                Text("Not set")
+                    .font(.inter(11.5, relativeTo: .caption))
+                    .foregroundStyle(DS.inkTertiary)
+            } else {
+                Text((storageService.aiWorkspacePath as NSString).lastPathComponent)
+                    .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(storageService.aiWorkspacePath)
+            }
+            HStack(spacing: 8) {
+                Button("Choose…") {
+                    chooseWorkspaceFolder()
+                }
+                .buttonStyle(.plain)
+                .font(.inter(11, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.brand)
+                .pointingHandCursor()
+                if !storageService.aiWorkspacePath.isEmpty {
+                    Button("Open") {
+                        if let folder = storageService.ensureAIWorkspace() {
+                            NSWorkspace.shared.open(folder)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.inter(11, weight: .medium, relativeTo: .caption))
+                    .foregroundStyle(DS.inkSecondary)
+                    .pointingHandCursor()
+                    Button("Remove") {
+                        storageService.aiWorkspacePath = ""
+                    }
+                    .buttonStyle(.plain)
+                    .font(.inter(11, weight: .medium, relativeTo: .caption))
+                    .foregroundStyle(DS.down)
+                    .pointingHandCursor()
+                }
+            }
+        }
+    }
+
+    private func chooseWorkspaceFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose a folder StockDeck AI Review should use as long-term memory (ai-context.md)."
+        if panel.runModal() == .OK, let url = panel.url {
+            storageService.aiWorkspacePath = url.path
         }
     }
 
@@ -226,24 +376,6 @@ struct SettingsWideView: View {
                 }
                 .padding(.vertical, 6)
             }
-        }
-    }
-
-    private var alertsCard: some View {
-        SettingsCard(title: "Price alerts") {
-            ForEach(storageService.alerts) { alert in
-                AlertRow(alert: alert)
-                if alert.id != storageService.alerts.last?.id { SettingDivider() }
-            }
-            SettingDivider()
-            HStack {
-                Spacer()
-                Button("Clear all alerts") { showClearAlerts = true }
-                    .buttonStyle(.plain)
-                    .font(.inter(11, weight: .medium, relativeTo: .caption))
-                    .foregroundStyle(DS.down)
-            }
-            .padding(.vertical, 6)
         }
     }
 

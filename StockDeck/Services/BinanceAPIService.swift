@@ -190,9 +190,14 @@ private struct BinanceEquityOrderHistoryResponse: Decodable {
 struct BinanceEquityCostBasis {
     let averagePrice: Double
     let purchaseDate: Date?
+    /// The quantity that the reconstructed ledger actually covers. When this is
+    /// less than the current balance, the caller splits the holding so the
+    /// covered portion gets a real average price and the rest stays "unknown cost".
+    let coveredQuantity: Double
 }
 
 private struct BinanceSpotTrade: Decodable {
+    let id: Int64?
     let price: String
     let qty: String
     let quoteQty: String
@@ -339,7 +344,7 @@ class BinanceAPIService {
         }
 
         guard quantity > 0, cost > 0 else { return nil }
-        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate)
+        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate, coveredQuantity: quantity)
     }
 
     private func fetchEquityCostBases(
@@ -370,37 +375,83 @@ class BinanceAPIService {
         }
     }
 
-    /// Derives a cost basis from Spot fills only when the trade ledger covers
-    /// the current balance. This deliberately refuses to extrapolate a small
-    /// known purchase over coins deposited or acquired outside Spot.
+    /// USD-pegged quote assets used to reconstruct Spot cost basis. Any of
+    /// these pairs whose trade history is reconstructed shares the same unit,
+    /// so costs stay comparable across pairs without FX conversion.
+    private static let spotUSDQuoteAssets = ["USDT", "USDC", "FDUSD", "TUSD", "BUSD", "USDP", "DAI", "USD"]
+
+    private struct BinanceExchangeSymbol: Decodable {
+        let symbol: String
+    }
+    private struct BinanceExchangeInfo: Decodable {
+        let symbols: [BinanceExchangeSymbol]
+    }
+
+    /// Public exchangeInfo lists every tradable pair (including delisted ones,
+    /// whose old fills may still matter for cost basis), so the reconstruction
+    /// only calls myTrades for pairs that actually exist.
+    private func fetchValidSpotPairs() async -> Set<String> {
+        guard let url = URL(string: "\(baseURL)/api/v3/exchangeInfo") else { return [] }
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let info = try? JSONDecoder().decode(BinanceExchangeInfo.self, from: data) else { return [] }
+        return Set(info.symbols.map(\.symbol))
+    }
+
+    private func fetchSpotTrades(
+        apiKey: String,
+        secretKey: String,
+        pair: String,
+        fromId: Int64,
+        timestamp: Int64
+    ) async -> [BinanceSpotTrade] {
+        let queryString = "symbol=\(pair)&fromId=\(fromId)&limit=1000&recvWindow=5000&timestamp=\(timestamp)"
+        guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
+              let url = URL(string: "\(baseURL)/api/v3/myTrades?\(queryString)&signature=\(signature)") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let trades = try? JSONDecoder().decode([BinanceSpotTrade].self, from: data) else { return [] }
+        return trades
+    }
+
+    /// Derives a cost basis from Spot fills. When the trade ledger only covers
+    /// part of the current balance (coins deposited or acquired outside Spot,
+    /// e.g. Simple Earn subscriptions), it returns the basis for the covered
+    /// portion and lets `fetchAccountBalances` split the holding — it never
+    /// extrapolates the small known purchase over the untracked remainder.
     private func fetchSpotCostBasis(
         apiKey: String,
         secretKey: String,
         asset: String,
         currentQuantity: Double,
-        timestamp: Int64
+        timestamp: Int64,
+        validPairs: Set<String>
     ) async -> BinanceEquityCostBasis? {
-        let quoteAssets = ["USDT", "USDC"]
         var allTrades: [BinanceSpotTrade] = []
 
-        for quoteAsset in quoteAssets {
+        for quoteAsset in Self.spotUSDQuoteAssets {
             let pair = "\(asset)\(quoteAsset)"
-            let queryString = "symbol=\(pair)&limit=1000&recvWindow=5000&timestamp=\(timestamp)"
-            guard let signature = hmacHMAC256(message: queryString, secret: secretKey),
-                  let url = URL(string: "\(baseURL)/api/v3/myTrades?\(queryString)&signature=\(signature)") else { continue }
-
-            var request = URLRequest(url: url)
-            request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
-            guard let (data, response) = try? await URLSession.shared.data(for: request),
-                  let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200,
-                  let trades = try? JSONDecoder().decode([BinanceSpotTrade].self, from: data) else { continue }
-            allTrades.append(contentsOf: trades)
+            guard validPairs.contains(pair) else { continue }
+            var fromId: Int64 = 0
+            var pageTrades: [BinanceSpotTrade] = []
+            repeat {
+                pageTrades = await fetchSpotTrades(apiKey: apiKey, secretKey: secretKey, pair: pair, fromId: fromId, timestamp: timestamp)
+                guard !pageTrades.isEmpty else { break }
+                allTrades.append(contentsOf: pageTrades)
+                let lastId = pageTrades.compactMap(\.id).max() ?? (fromId - 1)
+                fromId = lastId + 1
+            } while pageTrades.count >= 1000
         }
 
         var quantity = 0.0
         var cost = 0.0
         var firstBuyDate: Date?
+        let quoteAssets = Set(Self.spotUSDQuoteAssets)
 
         for trade in allTrades.sorted(by: { $0.time < $1.time }) {
             guard let qty = Double(trade.qty), qty > 0,
@@ -427,15 +478,16 @@ class BinanceAPIService {
 
         guard quantity > 0, cost > 0, currentQuantity > 0 else { return nil }
         let coverage = quantity / currentQuantity
-        guard coverage >= 0.95 && coverage <= 1.05 else { return nil }
-        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate)
+        guard coverage <= 1.05 else { return nil }
+        return BinanceEquityCostBasis(averagePrice: cost / quantity, purchaseDate: firstBuyDate, coveredQuantity: quantity)
     }
 
     private func fetchSpotCostBases(
         apiKey: String,
         secretKey: String,
         assets: [(name: String, quantity: Double)],
-        timestamp: Int64
+        timestamp: Int64,
+        validPairs: Set<String>
     ) async -> [String: BinanceEquityCostBasis] {
         await withTaskGroup(of: (String, BinanceEquityCostBasis?).self, returning: [String: BinanceEquityCostBasis].self) { group in
             for asset in assets {
@@ -445,7 +497,8 @@ class BinanceAPIService {
                         secretKey: secretKey,
                         asset: asset.name,
                         currentQuantity: asset.quantity,
-                        timestamp: timestamp
+                        timestamp: timestamp,
+                        validPairs: validPairs
                     )
                     return (asset.name, basis)
                 }
@@ -599,35 +652,78 @@ class BinanceAPIService {
             apiKey: apiKey,
             secretKey: secretKey,
             assets: spotAssets,
-            timestamp: timestamp
+            timestamp: timestamp,
+            validPairs: await fetchValidSpotPairs()
         )
 
-        return aggregatedBalances.compactMap { (assetName, qty) -> Holding? in
-            guard qty >= 1e-8 else { return nil }
-            let rawSymbol: String
-            if assetName.hasPrefix("EQ_") && assetName.count > 3 {
-                let base = assetName.hasSuffix("-USD") ? String(assetName.dropLast(4)) : assetName
-                rawSymbol = String(base.dropFirst(3))
-            } else if BinanceStablecoin.isUSDPegged(assetName) {
-                rawSymbol = "\(assetName)-USD"
-            } else if assetName.contains("-") {
-                rawSymbol = assetName
-            } else {
-                rawSymbol = "\(assetName)-USD"
-            }
-            let symbol = StockService.canonicalSymbol(for: rawSymbol)
-
-            return Holding(
-                id: UUID(),
-                symbol: symbol,
-                quantity: qty,
-                avgPrice: equityCosts[assetName]?.averagePrice
-                    ?? spotCosts[assetName]?.averagePrice
-                    ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : .nan),
-                purchaseDate: equityCosts[assetName]?.purchaseDate
-                    ?? spotCosts[assetName]?.purchaseDate
-            )
+        return aggregatedBalances.flatMap { (assetName, qty) -> [Holding] in
+            buildHoldings(assetName: assetName, quantity: qty, equityCosts: equityCosts, spotCosts: spotCosts)
         }
+    }
+
+    /// Builds the display holdings for one Binance asset. When Spot only covers
+    /// part of the balance, the holding is split so the reconstructed portion
+    /// shows a real average price and the untracked remainder stays "unknown
+    /// cost" (never fabricated). Equity and USD-pegged assets are never split.
+    func buildHoldings(
+        assetName: String,
+        quantity: Double,
+        equityCosts: [String: BinanceEquityCostBasis],
+        spotCosts: [String: BinanceEquityCostBasis]
+    ) -> [Holding] {
+        guard quantity >= 1e-8 else { return [] }
+        let rawSymbol: String
+        if assetName.hasPrefix("EQ_") && assetName.count > 3 {
+            let base = assetName.hasSuffix("-USD") ? String(assetName.dropLast(4)) : assetName
+            rawSymbol = String(base.dropFirst(3))
+        } else if BinanceStablecoin.isUSDPegged(assetName) {
+            rawSymbol = "\(assetName)-USD"
+        } else if assetName.contains("-") {
+            rawSymbol = assetName
+        } else {
+            rawSymbol = "\(assetName)-USD"
+        }
+        let symbol = StockService.canonicalSymbol(for: rawSymbol)
+
+        let isEquity = assetName.hasPrefix("EQ_")
+        let basis = equityCosts[assetName] ?? spotCosts[assetName]
+
+        if let basis,
+           !isEquity,
+           !BinanceStablecoin.isUSDPegged(assetName),
+           basis.coveredQuantity > 0 {
+            let covered = min(basis.coveredQuantity, quantity)
+            let remainder = quantity - covered
+            // Skip dust remainders (≤1% of the balance) so they don't show up
+            // as a separate zero-P&L row.
+            if remainder > 0, remainder / quantity > 0.01 {
+                return [
+                    Holding(
+                        id: UUID(),
+                        symbol: symbol,
+                        quantity: covered,
+                        avgPrice: basis.averagePrice,
+                        purchaseDate: basis.purchaseDate
+                    ),
+                    Holding(
+                        id: UUID(),
+                        symbol: symbol,
+                        quantity: remainder,
+                        avgPrice: .nan,
+                        purchaseDate: nil
+                    )
+                ]
+            }
+        }
+
+        return [Holding(
+            id: UUID(),
+            symbol: symbol,
+            quantity: quantity,
+            avgPrice: basis?.averagePrice
+                ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : .nan),
+            purchaseDate: basis?.purchaseDate
+        )]
     }
 
     /// Fetch balances from Binance Funding Wallet (P2P Wallet)

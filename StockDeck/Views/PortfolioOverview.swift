@@ -78,6 +78,28 @@ enum MoneyWeightedReturnCache {
     }
 }
 
+/// Session cache for the monthly P&L table so the (cheap but repeated) recompute
+/// only happens once per scope — holdings/rate changes bust the key naturally.
+enum MonthlyPnlCache {
+    private static var cache: [String: [MonthlyPnlRow]] = [:]
+    private static let lock = NSLock()
+
+    static func rows(for key: String, compute: () -> [MonthlyPnlRow]) -> [MonthlyPnlRow] {
+        lock.lock()
+        if let existing = cache[key] {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let result = compute()
+        lock.lock()
+        cache[key] = result
+        lock.unlock()
+        return result
+    }
+}
+
 struct PortfolioOverview: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -153,6 +175,7 @@ struct PortfolioOverview: View {
     @State private var chartRange: ChartRange = .all
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
+    @State private var hoveredMonth: MonthlyPnlRow?
     @State private var positionsCardWidth: CGFloat = 0
 
     init(viewModel: PortfolioViewModel) {
@@ -209,6 +232,7 @@ struct PortfolioOverview: View {
         case .todayPnl: return .todayPnl
         case .totalPnl: return .pnl
         case .shares: return .shares
+        case .lots: return .shares
         case .weight: return .weight
         }
     }
@@ -216,6 +240,27 @@ struct PortfolioOverview: View {
     /// Selected portfolio columns (rank # and Symbol stay fixed).
     private var selectedColumns: [PortfolioColumnMetric] {
         storageService.resolvedPortfolioColumns
+    }
+
+    /// Natural content width of the positions table (sum of ideal column widths),
+    /// so columns keep a readable size and the table scrolls horizontally when
+    /// the window is narrower instead of compressing the cells.
+    private var positionsTableNaturalWidth: CGFloat {
+        let rowPadding: CGFloat = 16
+        let symbolIdealWidth: CGFloat = 200
+        let metricIdealWidth: (PortfolioColumnMetric) -> CGFloat = { metric in
+            switch metric {
+            case .avgPrice, .price, .ext: return 110
+            case .cost, .value, .todayPnl, .totalPnl: return 120
+            case .shares, .lots: return 100
+            case .weight: return 115
+            }
+        }
+        return rowPadding
+            + PositionColumnWidth.number
+            + symbolIdealWidth
+            + selectedColumns.reduce(0) { $0 + metricIdealWidth($1) }
+            + PositionColumnWidth.chevron
     }
 
     @ViewBuilder
@@ -238,6 +283,9 @@ struct PortfolioOverview: View {
         case .shares:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
+        case .lots:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
@@ -341,13 +389,46 @@ struct PortfolioOverview: View {
         return estimatedSeries
     }
 
-    /// The curve actually drawn and used for period change calculations.
-    private var displaySeries: (points: [ValuePoint], isEstimated: Bool) {
-        if chartRange == .week {
-            return (valueSeries(from: stockService.intradayWeek), true)
-        } else {
-            return (estimatedFiltered, true)
+    /// Real daily snapshots mapped to drawable points, filtered to the range.
+    private var realSeriesPoints: [ValuePoint] {
+        filteredSeries.map { ValuePoint(date: $0.date, value: $0.totalValue) }
+    }
+
+    /// The curves actually drawn and used for period change calculations.
+    /// The estimated backfill (real Yahoo prices × current positions) is the
+    /// base line so a young portfolio still has a full-span trend; real daily
+    /// snapshots are drawn solid on top wherever they exist, giving truthful
+    /// checkpoints that the dashed estimate only approximates.
+    private var displaySeries: DisplaySeries {
+        let real = realSeriesPoints
+        let estimated: [ValuePoint] = chartRange == .week
+            ? valueSeries(from: stockService.intradayWeek)
+            : estimatedFiltered
+        return DisplaySeries(estimated: estimated, real: real)
+    }
+
+    /// Minimum number of real daily snapshots before they replace the dashed
+    /// estimate on the chart / period math. A younger portfolio renders as a
+    /// single smooth estimated line with exactly one endpoint instead of a few
+    /// scattered real checkpoints at the end.
+    private static let realOverlayMinimumSnapshots = 7
+
+    /// Drawn series: dashed estimated base line plus solid real snapshots.
+    private struct DisplaySeries {
+        var estimated: [ValuePoint]
+        var real: [ValuePoint]
+
+        /// All points, for axis domain / crosshair / hover lookup.
+        var all: [ValuePoint] { estimated + real }
+
+        /// Source for the period-change math: real snapshots when they form a
+        /// trustworthy line (enough of them), else the estimated curve, which
+        /// measures market movement across the selected range.
+        var changePoints: [ValuePoint] {
+            real.count >= PortfolioOverview.realOverlayMinimumSnapshots ? real : estimated
         }
+
+        var isEmpty: Bool { estimated.isEmpty && real.isEmpty }
     }
 
     /// Evaluates benchmark matrix once per app session (not updating real-time).
@@ -360,6 +441,35 @@ struct PortfolioOverview: View {
         viewModel.moneyWeightedResult ?? InvestmentEffectiveness.Result(
             portfolioXIRR: nil, benchmarkXIRR: nil, excludedHoldingsCount: 0, isYoungerThan30Days: false
         )
+    }
+
+    /// Per-month P&L bars (up to 36 months, or as many as history covers),
+    /// computed once per scope from real cost basis × price history. Keyed by
+    /// scope + holdings + rate fingerprint so a fresh scope or changed
+    /// positions recompute; quote ticks do not.
+    private var monthlyPnlRows: [MonthlyPnlRow] {
+        let hs = viewModel.portfolios.flatMap { $0.holdings }
+        let hFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let rateFingerprint = hs.map {
+            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
+        }.joined(separator: ";")
+        let key = "\(scopeKey):\(hFingerprint):\(rateFingerprint)"
+        return MonthlyPnlCache.rows(for: key) {
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
+                    ?? stockService.priceHistory[h.symbol]
+                    ?? []
+            }
+            let monthCount = MonthlyPnl.monthCount(for: histBySymbol, today: Date(), calendar: .current, maxMonths: 36)
+            var rateBySymbol: [String: Double] = [:]
+            for h in hs {
+                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            }
+            return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        }
     }
 
     var body: some View {
@@ -377,6 +487,7 @@ struct PortfolioOverview: View {
                         heroCard
                         statRow
                         performanceMatrixCard
+                        monthlyPnlCard
                         moneyWeightedReturnCard
                         allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
@@ -415,12 +526,15 @@ struct PortfolioOverview: View {
             }
         }
         .task(id: symbols) {
+            // On window open: only the daily 10y series per symbol (the base the
+            // estimated curve and benchmark are built from). The monthly "max"
+            // series is derived locally from it; long-range data is fetched
+            // lazily when the matching chart range is actually selected.
             await withTaskGroup(of: Void.self) { group in
-                group.addTask { await stockService.ensurePriceHistoryMax(for: "^GSPC") }
+                group.addTask { await stockService.ensurePriceHistory(for: "^GSPC") }
                 for symbol in symbols {
                     let s = symbol
                     group.addTask { await stockService.ensurePriceHistory(for: s) }
-                    group.addTask { await stockService.ensurePriceHistoryMax(for: s) }
                 }
             }
         }
@@ -433,7 +547,14 @@ struct PortfolioOverview: View {
                         group.addTask { await stockService.ensureIntradayWeek(for: sym) }
                     }
                 }
-            case .threeYears, .fiveYears, .all:
+            case .all:
+                await withTaskGroup(of: Void.self) { group in
+                    for s in symbols {
+                        let sym = s
+                        group.addTask { await stockService.ensureFullHistoryMax(for: sym) }
+                    }
+                }
+            case .threeYears, .fiveYears:
                 await withTaskGroup(of: Void.self) { group in
                     for s in symbols {
                         let sym = s
@@ -470,12 +591,12 @@ struct PortfolioOverview: View {
             periodValue = totalValue * (perfPct / 100.0)
             periodLabel = chartRange.changeLabel
         } else {
-            periodValue = PortfolioPeriodChange.value(ds.points) ?? dayChangeValue
-            periodPercent = PortfolioPeriodChange.percent(ds.points) ?? dayChangePercent
-            periodLabel = PortfolioPeriodChange.percent(ds.points) != nil ? chartRange.changeLabel : "today"
+            periodValue = PortfolioPeriodChange.value(ds.changePoints) ?? dayChangeValue
+            periodPercent = PortfolioPeriodChange.percent(ds.changePoints) ?? dayChangePercent
+            periodLabel = PortfolioPeriodChange.percent(ds.changePoints) != nil ? chartRange.changeLabel : "today"
         }
         
-        let cagrVal = PortfolioPeriodChange.cagr(ds.points)
+        let cagrVal = PortfolioPeriodChange.cagr(ds.changePoints)
         let pillText: String
         if let cagrVal {
             pillText = String(format: "%+.\(decimals)f%% %@ (%.1f%% CAGR)", periodPercent, periodLabel, cagrVal)
@@ -488,7 +609,7 @@ struct PortfolioOverview: View {
                 HStack(alignment: .top) {
                     SectionLabel("Total value")
                     Spacer()
-                    if !ds.points.isEmpty { rangePicker }
+                    if !ds.isEmpty { rangePicker }
                 }
                 Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
                     .font(DS.display).tracking(-0.5)
@@ -546,8 +667,8 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func valueDomain(_ points: [ValuePoint]) -> ClosedRange<Double> {
-        let vals = points.map(\.value).filter(\.isFinite)
+    private func valueDomain(_ series: DisplaySeries) -> ClosedRange<Double> {
+        let vals = series.all.map(\.value).filter(\.isFinite)
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
@@ -601,28 +722,64 @@ struct PortfolioOverview: View {
         }
     }
 
-    @ViewBuilder private func heroChart(_ ds: (points: [ValuePoint], isEstimated: Bool)) -> some View {
-        let points = ds.points
-        if points.count >= 2 {
-            let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
-            let tint = periodUp ? DS.up : DS.down
-            Chart {
-                ForEach(points) { p in
-                    AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
-                                                         startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: ds.isEstimated ? [4, 3] : []))
-                        .interpolationMethod(.monotone)
+    @ViewBuilder private func heroChart(_ ds: DisplaySeries) -> some View {
+        let estimated = ds.estimated
+        let real = ds.real
+        if ds.isEmpty {
+            ZStack {
+                DS.cardAlt.opacity(0.6)
+                DecorativeCurve()
+                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .padding(.horizontal, 24)
+                VStack(spacing: 4) {
+                    Text("Value history builds up day by day")
+                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
+                    Text("Your first trend appears tomorrow.")
+                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
                 }
-                if let last = points.last {
+            }
+        } else {
+            let periodUp = (ds.changePoints.last?.value ?? 0) >= (ds.changePoints.first?.value ?? 0)
+            let tint = periodUp ? DS.up : DS.down
+            let crosshairPoints = ds.all
+            Chart {
+                if !estimated.isEmpty {
+                    ForEach(estimated) { p in
+                        AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
+                                                             startPoint: .top, endPoint: .bottom))
+                            .interpolationMethod(.monotone)
+                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
+                            .interpolationMethod(.monotone)
+                    }
+                }
+                let drawReal = real.count >= PortfolioOverview.realOverlayMinimumSnapshots
+                if drawReal && real.count >= 2 {
+                    ForEach(real) { p in
+                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
+                            .interpolationMethod(.monotone)
+                    }
+                }
+                if drawReal {
+                    ForEach(real) { p in
+                        PointMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                            .symbolSize(30)
+                            .foregroundStyle(tint)
+                    }
+                }
+                if drawReal, let last = real.last {
+                    PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
+                        .symbolSize(50)
+                        .foregroundStyle(tint)
+                } else if let last = estimated.last {
                     PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
                         .symbolSize(50)
                         .foregroundStyle(tint)
                 }
             }
-            .chartYScale(domain: valueDomain(points))
+            .chartYScale(domain: valueDomain(ds))
             .chartYAxis {
                 AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
                     AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
@@ -642,23 +799,10 @@ struct PortfolioOverview: View {
                 }
             }
             .chartLegend(.hidden)
-            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
-            .animation(.easeInOut(duration: 0.4), value: points)
+            .chartOverlay { proxy in valueCrosshair(proxy, points: crosshairPoints, tint: tint) }
+            .animation(.easeInOut(duration: 0.4), value: crosshairPoints)
             .id(chartRange)
             .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-        } else {
-            ZStack {
-                DS.cardAlt.opacity(0.6)
-                DecorativeCurve()
-                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .padding(.horizontal, 24)
-                VStack(spacing: 4) {
-                    Text("Value history builds up day by day")
-                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
-                    Text("Your first trend appears tomorrow.")
-                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
-                }
-            }
         }
     }
 
@@ -799,6 +943,111 @@ struct PortfolioOverview: View {
                 }
             }
         }
+    }
+
+    private var monthlyPnlCard: some View {
+        Card(title: "Monthly P&L") {
+            if monthlyPnlRows.isEmpty {
+                emptyLine
+            } else {
+                Chart {
+                    ForEach(monthlyPnlRows.reversed()) { row in
+                        let isHovered = hoveredMonth?.monthStart == row.monthStart
+                        BarMark(
+                            x: .value("Month", monthAxisLabel(row.monthStart)),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("P&L", row.pnl ?? 0),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                        .opacity(isHovered ? 1.0 : 0.75)
+                        .cornerRadius(3)
+                    }
+                    RuleMark(y: .value("Zero", 0))
+                        .foregroundStyle(DS.hairline.opacity(0.6))
+                }
+                .frame(height: 170)
+                .chartYAxis {
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
+                        AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) {
+                                Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
+                                    .font(DS.micro).foregroundStyle(DS.inkTertiary)
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: monthAxisValues) { value in
+                        if let s = value.as(String.self) {
+                            AxisValueLabel { Text(s).font(DS.micro).foregroundStyle(DS.inkTertiary) }
+                        }
+                    }
+                }
+                .chartLegend(.hidden)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        if let plotAnchor = proxy.plotFrame {
+                            let plot = geo[plotAnchor]
+                            ZStack(alignment: .topLeading) {
+                                Rectangle().fill(.clear).contentShape(Rectangle())
+                                    .onContinuousHover { phase in
+                                        switch phase {
+                                        case .active(let loc):
+                                            let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                                            if let label: String = proxy.value(atX: localX) {
+                                                hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
+                                            }
+                                        case .ended:
+                                            hoveredMonth = nil
+                                        }
+                                    }
+                                if let h = hoveredMonth,
+                                   let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
+                                    let cx = plot.minX + px
+                                    let pnl = h.pnl ?? 0
+                                    ChartTooltip(title: monthAxisLabel(h.monthStart),
+                                                 value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                                                 tint: DS.pnlColor(pnl))
+                                        .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Divider().overlay(DS.hairline.opacity(0.5))
+
+                Text("Real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
+                    .padding(.top, 6)
+            }
+        }
+    }
+
+    private func monthAxisLabel(_ date: Date) -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: date)
+        return "\(comps.year ?? 0)/\(comps.month ?? 0)"
+    }
+
+    /// X-axis tick labels for the monthly chart. Picks evenly spaced months so
+    /// the axis stays readable even at 24–36 columns (targets ~6 labels).
+    private var monthAxisValues: [String] {
+        let rows = monthlyPnlRows
+        guard rows.count > 8 else {
+            return rows.map { monthAxisLabel($0.monthStart) }
+        }
+        let target = 6
+        let step = max(1, (rows.count + target - 1) / target)
+        var values: [String] = []
+        for i in stride(from: 0, to: rows.count, by: step) {
+            values.append(monthAxisLabel(rows[i].monthStart))
+        }
+        return values
     }
 
     private var moneyWeightedReturnCard: some View {
@@ -1182,7 +1431,7 @@ struct PortfolioOverview: View {
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             } else {
-                let minTableWidth: CGFloat = storageService.showExtendedHours ? 780 : 680
+                let minTableWidth: CGFloat = positionsTableNaturalWidth
                 let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
                 let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
                 let symbolsList = sortedSymbols(groupedValued: groupedValued)
@@ -1342,13 +1591,13 @@ private struct CardWidthPreferenceKey: PreferenceKey {
 }
 
 private enum PositionColumnWidth {
-    static let number: CGFloat = 24
-    static let symbolMin: CGFloat = 150
+    static let number: CGFloat = 30
+    static let symbolMin: CGFloat = 120
     static let priceMin: CGFloat = 90
     static let sessionMin: CGFloat = 90
     static let amountMin: CGFloat = 95
     static let sharesMin: CGFloat = 85
-    static let weightMin: CGFloat = 65
+    static let weightMin: CGFloat = 95
     static let chevron: CGFloat = 16
 }
 
@@ -1374,7 +1623,11 @@ private struct PositionSummaryRow: View {
     private var first: ValuedHolding? { holdings.first }
 
     private var liveQuote: StockQuote? {
-        stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
+        if let holdingSymbol = holdings.first?.holding.symbol,
+           let quote = stockService.quotes[holdingSymbol] ?? stockService.quotes[holdingSymbol.uppercased()] {
+            return quote
+        }
+        return stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
     }
 
     private var nativeCurrencySymbol: String {
@@ -1483,7 +1736,6 @@ private struct PositionSummaryRow: View {
                 .font(DS.figure)
                 .foregroundStyle(avgValid ? DS.ink : DS.inkTertiary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
                 .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
 
         case .price:
@@ -1555,6 +1807,12 @@ private struct PositionSummaryRow: View {
                 .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
 
+        case .lots:
+            Text("\(holdings.count)")
+                .font(DS.figure)
+                .foregroundStyle(DS.ink)
+                .contentTransition(.numericText())
+                .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         case .weight:
             Text(String(format: "%.1f%%", weight))
                 .font(DS.figure)
@@ -1567,8 +1825,8 @@ private struct PositionSummaryRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Text("\(position)")
-                .font(DS.micro.monospacedDigit())
-                .foregroundStyle(DS.inkTertiary)
+                .font(DS.figure)
+                .foregroundStyle(DS.inkSecondary)
                 .frame(width: PositionColumnWidth.number, alignment: .leading)
 
             // Symbol column
@@ -1585,14 +1843,7 @@ private struct PositionSummaryRow: View {
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
-                        if holdings.count > 1 {
-                            Text("\(holdings.count) lots")
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundStyle(DS.brand)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                        } else if first?.holding.isShort == true {
+                        if first?.holding.isShort == true {
                             Tag(text: "S", color: DS.down)
                         }
                     }

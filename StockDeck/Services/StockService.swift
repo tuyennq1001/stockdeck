@@ -21,6 +21,10 @@ class StockService: ObservableObject {
     @Published var lastFxFetchDate: Date? = nil
     @Published var news: [NewsArticle] = []
     @Published var isLoadingNews = false
+    /// Per-symbol news cache used by the symbol detail page. Each key is the
+    /// canonical (uppercased) symbol; throttled separately from the Home feed.
+    @Published var newsBySymbol: [String: [NewsArticle]] = [:]
+    @Published var isLoadingSymbolNews: Set<String> = []
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:]
@@ -39,11 +43,41 @@ class StockService: ObservableObject {
     private let session: URLSession
     private var crumb: String?
     private var lastNewsFetch: Date?
+    private var lastSymbolNewsFetch: [String: Date] = [:]
     private var priceHistoryFetchedAt: [String: Date] = [:]
     private var priceHistoryMaxAt: [String: Date] = [:]
     private var intradayFetchedAt: [String: Date] = [:]
     private var intradayWeekAt: [String: Date] = [:]
     private var sparkFetchedAt: Date?
+    /// Single-flight: coalesces concurrent `ensurePriceHistory` calls for the
+    /// same symbol so the window-open task and the range-change task never issue
+    /// two identical daily-history requests.
+    private var dailyHistoryTasks: [String: Task<Void, Never>] = [:]
+
+    /// Caps how many Yahoo history requests are in flight at once and staggers
+    /// them, so the per-symbol burst on the Portfolio window never trips Yahoo's
+    /// rate limiter.
+    private let historyGate = AsyncSemaphore(count: 3)
+    /// Global cool-down: when Yahoo answers 429 we stop issuing chart requests
+    /// for this long so the burst unwinds instead of re-hammering the endpoint.
+    private let rateLimitLock = NSLock()
+    private var yahooRateLimitUntil = Date.distantPast
+
+    /// On-disk mirror of the (immutable) price history so relaunching the app
+    /// within the TTL window needs zero network requests.
+    private static let historyCacheFileName = "historyCache.json"
+    private var historyCacheURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return appSupport.appendingPathComponent("StockDeck/\(Self.historyCacheFileName)")
+    }
+    private var historyCacheLoaded = false
+    private var historyCacheSaveTask: Task<Void, Never>?
+
+    /// Shared NAV history for Japanese mutual funds, keyed by fund code, so the
+    /// daily and max-history paths never fetch the Yahoo Japan pages twice.
+    private static var jpFundHistoryCache: [String: (points: [PricePoint], fetchedAt: Date)] = [:]
+    private static let jpFundHistoryLock = NSLock()
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -56,6 +90,7 @@ class StockService: ObservableObject {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: config)
 
+        loadHistoryCache()
         Task {
             _ = await self.fetchCrumb()
         }
@@ -260,7 +295,6 @@ class StockService: ObservableObject {
         let canonicalAliases: [String: String] = [
             "^VNINDEX": "^VNINDEX.VN",
             "ALPHABET": "GOOGL",
-            "GOOG": "GOOGL",
             "FB": "META"
         ]
         let symbols = symbols.map { canonicalAliases[$0.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)] ?? $0 }
@@ -277,7 +311,11 @@ class StockService: ObservableObject {
                     }
                 }
                 for await (sym, q) in group {
-                    if let quote = q, quote.price > 0 {
+                    var quote = q
+                    if quote == nil || (quote?.price ?? 0) <= 0 {
+                        quote = self.japaneseFundFallbackQuote(symbol: sym)
+                    }
+                    if let quote, quote.price > 0 {
                         self.quotes[sym] = quote
                         self.quotes[sym.uppercased()] = quote
                         self.quotes[quote.symbol] = quote
@@ -370,7 +408,6 @@ class StockService: ObservableObject {
 
     nonisolated private static let symbolAliases: [String: String] = [
         "ALPHABET": "GOOGL",
-        "GOOG": "GOOGL",
         "FB": "META"
     ]
 
@@ -1093,13 +1130,136 @@ class StockService: ObservableObject {
         }
     }
 
-    /// Loads (or refreshes after ~1h) one year of daily closes for the detail
+    // MARK: - Yahoo chart request throttling & disk cache
+
+    /// Runs a Yahoo `v8/finance/chart` GET under a concurrency cap with
+    /// inter-request spacing, a global cool-down after a 429, and an automatic
+    /// `query2` host fallback. Returns the raw body on success or nil when every
+    /// host failed or was rate-limited.
+    private func fetchYahooChart(url primary: URL, fallback secondary: URL) async -> Data? {
+        // Global cool-down: wait out the current rate-limit window (capped at
+        // 30s per sleep) before issuing anything new.
+        while true {
+            if Task.isCancelled { return nil }
+            var remaining: TimeInterval = 0
+            rateLimitLock.lock()
+            remaining = yahooRateLimitUntil.timeIntervalSinceNow
+            rateLimitLock.unlock()
+            guard remaining > 0 else { break }
+            try? await Task.sleep(nanoseconds: UInt64(min(remaining, 30.0) * 1_000_000_000))
+        }
+
+        await historyGate.wait()
+        defer { historyGate.signal() }
+
+        // Stagger requests so the per-symbol burst does not trip the threshold.
+        try? await Task.sleep(nanoseconds: 150_000_000)
+
+        for url in [primary, secondary] {
+            do {
+                let (data, response) = try await session.data(from: url)
+                if let http = response as? HTTPURLResponse {
+                    if http.statusCode == 429 {
+                        rateLimitLock.lock()
+                        yahooRateLimitUntil = Date().addingTimeInterval(45)
+                        rateLimitLock.unlock()
+                        continue
+                    }
+                    guard http.statusCode == 200 else { continue }
+                }
+                return data
+            } catch {
+                continue
+            }
+        }
+        return nil
+    }
+
+    private struct HistoryCacheEntry: Codable {
+        var points: [PricePoint]
+        var fetchedAt: Date
+    }
+
+    /// Loads the on-disk history cache into memory. Entries are reused for as
+    /// long as their fetch timestamp is still inside the corresponding TTL, so
+    /// relaunching the app shortly after a fetch issues no network requests.
+    private func loadHistoryCache() {
+        guard !historyCacheLoaded,
+              let data = try? Data(contentsOf: historyCacheURL),
+              let decoded = try? JSONDecoder().decode([String: HistoryCacheEntry].self, from: data) else { return }
+        historyCacheLoaded = true
+        let now = Date()
+        for (key, entry) in decoded where !entry.points.isEmpty && entry.fetchedAt <= now {
+            if key.hasPrefix("daily:"), priceHistoryFetchedAt[String(key.dropFirst(6))] == nil {
+                let symbol = String(key.dropFirst(6))
+                priceHistory[symbol] = entry.points
+                priceHistoryFetchedAt[symbol] = entry.fetchedAt
+            } else if key.hasPrefix("max:"), priceHistoryMaxAt[String(key.dropFirst(4))] == nil {
+                let symbol = String(key.dropFirst(4))
+                priceHistoryMax[symbol] = entry.points
+                priceHistoryMaxAt[symbol] = entry.fetchedAt
+            }
+        }
+    }
+
+    /// Coalesces writes to the on-disk cache: several symbols can finish around
+    /// the same time, but the file is only rewritten once shortly after.
+    private func scheduleHistoryCacheSave() {
+        historyCacheSaveTask?.cancel()
+        historyCacheSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.saveHistoryCache()
+        }
+    }
+
+    private func saveHistoryCache() {
+        var entries: [String: HistoryCacheEntry] = [:]
+        for (symbol, points) in priceHistory where !points.isEmpty {
+            if let at = priceHistoryFetchedAt[symbol] {
+                entries["daily:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: at)
+            }
+        }
+        for (symbol, points) in priceHistoryMax where !points.isEmpty {
+            if let at = priceHistoryMaxAt[symbol] {
+                entries["max:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: at)
+            }
+        }
+        guard !entries.isEmpty, let data = try? JSONEncoder().encode(entries) else { return }
+        try? data.write(to: historyCacheURL, options: .atomic)
+    }
+
+    /// Loads (or refreshes after ~6h) ten years of daily closes for the detail
     /// chart. Real Yahoo history — the portfolio value chart intentionally has no
-    /// backfill, but a single symbol's price history is accurate data.
+    /// backfill, but a single symbol's price history is accurate data. Concurrent
+    /// calls for the same symbol share one network request.
     func ensurePriceHistory(for symbol: String) async {
         if let at = priceHistoryFetchedAt[symbol],
-           Date().timeIntervalSince(at) < 3600,
+           Date().timeIntervalSince(at) < 21600,
            priceHistory[symbol]?.isEmpty == false { return }
+
+        if let existing = dailyHistoryTasks[symbol] {
+            await existing.value
+            return
+        }
+
+        let task: Task<Void, Never> = Task { [weak self] in
+            _ = await self?.loadPriceHistory(symbol)
+        }
+        dailyHistoryTasks[symbol] = task
+        await task.value
+        dailyHistoryTasks[symbol] = nil
+    }
+
+    private func loadPriceHistory(_ symbol: String) async {
+        if isJapaneseMutualFund(symbol) {
+            let points = await fetchJapaneseFundHistory(symbol: symbol)
+            guard !points.isEmpty, points.count >= (priceHistory[symbol]?.count ?? 0) else { return }
+            priceHistory[symbol] = points
+            priceHistoryFetchedAt[symbol] = Date()
+            scheduleHistoryCacheSave()
+            return
+        }
 
         if isVietnameseStock(symbol) {
             let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -1129,9 +1289,10 @@ class StockService: ObservableObject {
 
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
         // range=10y daily closes & OHLC for 1Y/3Y/5Y/10Y chart ranges
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
+        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y"),
+              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
+        guard let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
         do {
-            let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
             let q = result.indicators?.quote?.first
@@ -1143,6 +1304,7 @@ class StockService: ObservableObject {
             guard !points.isEmpty else { return }
             priceHistory[symbol] = points
             priceHistoryFetchedAt[symbol] = Date()
+            scheduleHistoryCacheSave()
         } catch {
             // Non-fatal: the detail view keeps its placeholder band.
         }
@@ -1153,6 +1315,15 @@ class StockService: ObservableObject {
         if let at = priceHistoryMaxAt[symbol],
            Date().timeIntervalSince(at) < 21600,
            priceHistoryMax[symbol]?.isEmpty == false { return }
+
+        if isJapaneseMutualFund(symbol) {
+            let points = await fetchJapaneseFundHistory(symbol: symbol)
+            guard !points.isEmpty, points.count >= (priceHistoryMax[symbol]?.count ?? 0) else { return }
+            priceHistoryMax[symbol] = points
+            priceHistoryMaxAt[symbol] = Date()
+            scheduleHistoryCacheSave()
+            return
+        }
 
         if isVietnameseStock(symbol) {
             let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -1180,10 +1351,24 @@ class StockService: ObservableObject {
             return
         }
 
+        // Preferred: derive the monthly series locally from the 10-year daily
+        // closes (no second network request). Only falls back to a real
+        // interval=1mo&range=max request when the daily series is missing.
+        await ensurePriceHistory(for: symbol)
+        if let daily = priceHistory[symbol], !daily.isEmpty {
+            let monthly = PriceHistory.deriveMonthly(from: daily)
+            if !monthly.isEmpty {
+                priceHistoryMax[symbol] = monthly
+                priceHistoryMaxAt[symbol] = Date()
+                return
+            }
+        }
+
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max") else { return }
+        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max"),
+              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max") else { return }
+        guard let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
         do {
-            let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
             let q = result.indicators?.quote?.first
@@ -1195,7 +1380,90 @@ class StockService: ObservableObject {
             guard !points.isEmpty else { return }
             priceHistoryMax[symbol] = points
             priceHistoryMaxAt[symbol] = Date()
+            scheduleHistoryCacheSave()
         } catch {
+        }
+    }
+
+    /// Full monthly history for the "All" chart range. Derives from the daily
+    /// 10y series locally first (no network); for symbols listed longer than
+    /// ~10 years it also fetches Yahoo's `interval=1mo&range=max` so the "All"
+    /// curve keeps its pre-10y depth. Fetched lazily — only when the user
+    /// selects the "All" range.
+    func ensureFullHistoryMax(for symbol: String) async {
+        if let at = priceHistoryMaxAt[symbol],
+           Date().timeIntervalSince(at) < 21600,
+           priceHistoryMax[symbol]?.isEmpty == false { return }
+
+        if isJapaneseMutualFund(symbol) {
+            let points = await fetchJapaneseFundHistory(symbol: symbol)
+            guard !points.isEmpty, points.count >= (priceHistoryMax[symbol]?.count ?? 0) else { return }
+            priceHistoryMax[symbol] = points
+            priceHistoryMaxAt[symbol] = Date()
+            scheduleHistoryCacheSave()
+            return
+        }
+
+        if isVietnameseStock(symbol) {
+            await ensurePriceHistoryMax(for: symbol)
+            return
+        }
+
+        await ensurePriceHistory(for: symbol)
+
+        // Base: a monthly series derived from the daily 10y closes — always
+        // available without a network request.
+        var monthly: [PricePoint] = []
+        if let daily = priceHistory[symbol], !daily.isEmpty {
+            monthly = PriceHistory.deriveMonthly(from: daily)
+            if !monthly.isEmpty {
+                priceHistoryMax[symbol] = monthly
+            }
+        }
+
+        var needsFullFetch = monthly.isEmpty
+        if let daily = priceHistory[symbol], let first = daily.first {
+            let spanYears = Date().timeIntervalSince(first.date) / (365.25 * 86400)
+            needsFullFetch = needsFullFetch || spanYears >= 9.5
+        }
+
+        guard needsFullFetch else {
+            priceHistoryMaxAt[symbol] = Date()
+            scheduleHistoryCacheSave()
+            return
+        }
+
+        // Best-effort full history for long-listed symbols. On failure the
+        // derived 10y series stays in place and the TTL is left unstamped so a
+        // later "All" selection retries instead of being locked out for 6h.
+        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max"),
+              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max"),
+              let data = await fetchYahooChart(url: primary, fallback: fallback) else {
+            scheduleHistoryCacheSave()
+            return
+        }
+        do {
+            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
+            guard let result = response.chart.result?.first else {
+                scheduleHistoryCacheSave()
+                return
+            }
+            let q = result.indicators?.quote?.first
+            let points = PriceHistory.points(timestamps: result.timestamp ?? [],
+                                             closes: q?.close ?? [],
+                                             opens: q?.open,
+                                             highs: q?.high,
+                                             lows: q?.low)
+            guard !points.isEmpty else {
+                scheduleHistoryCacheSave()
+                return
+            }
+            priceHistoryMax[symbol] = points
+            priceHistoryMaxAt[symbol] = Date()
+            scheduleHistoryCacheSave()
+        } catch {
+            scheduleHistoryCacheSave()
         }
     }
 
@@ -1206,9 +1474,10 @@ class StockService: ObservableObject {
            Date().timeIntervalSince(at) < 300,
            intradayHistory[symbol]?.isEmpty == false { return }
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=5m&range=1d") else { return }
+        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=5m&range=1d"),
+              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=5m&range=1d"),
+              let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
         do {
-            let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
             let q = result.indicators?.quote?.first
@@ -1230,9 +1499,10 @@ class StockService: ObservableObject {
            Date().timeIntervalSince(at) < 900,
            intradayWeek[symbol]?.isEmpty == false { return }
         let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d") else { return }
+        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
+              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
+              let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
         do {
-            let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
             guard let result = response.chart.result?.first else { return }
             let q = result.indicators?.quote?.first
@@ -1724,15 +1994,7 @@ class StockService: ObservableObject {
     ]
 
     func fetchJapaneseFundQuote(symbol: String) async -> StockQuote? {
-        let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        var targetCode = cleanCode
-        if let foundCode = Self.codeToFundNameMap.first(where: {
-            $0.key == cleanCode || $0.value.uppercased() == cleanCode ||
-            $0.value.replacingOccurrences(of: " ", with: "").uppercased() == cleanCode.replacingOccurrences(of: " ", with: "").uppercased() ||
-            (Self.containsJapaneseCharacters(cleanCode) && (cleanCode.contains($0.value) || $0.value.contains(cleanCode)))
-        })?.key {
-            targetCode = foundCode
-        }
+        let targetCode = japaneseFundTargetCode(for: symbol)
 
         guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(targetCode)") else { return nil }
 
@@ -1748,7 +2010,7 @@ class StockService: ObservableObject {
             var price: Double = 0
             var change: Double = 0
             var percent: Double = 0
-            var name = Self.codeToFundNameMap[targetCode] ?? cleanCode
+            var name = Self.codeToFundNameMap[targetCode] ?? symbol
 
             if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
                let match = regex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count)) {
@@ -1804,6 +2066,177 @@ class StockService: ObservableObject {
         } catch {
             return nil
         }
+    }
+
+    /// Fallback NAV when the Yahoo Japan quote page is unreachable (rate-limited
+    /// or offline): reuse the last cached daily close. The history series stores
+    /// the NAV per 10,000 口 un-scaled — exactly the unit the live quote uses —
+    /// so this is a faithful last-known value, not a made-up number.
+    private func japaneseFundFallbackQuote(symbol: String) -> StockQuote? {
+        let series = priceHistory[symbol] ?? priceHistoryMax[symbol]
+        guard let last = series?.last, last.close.isFinite, last.close > 0 else { return nil }
+        let prev: Double = series?.dropLast().last?.close ?? last.close
+        let change = prev.isFinite ? last.close - prev : 0
+        let percent = (prev.isFinite && prev > 0) ? change / prev * 100 : 0
+        let targetCode = japaneseFundTargetCode(for: symbol)
+        return StockQuote(
+            symbol: symbol,
+            name: Self.codeToFundNameMap[targetCode] ?? symbol,
+            price: last.close,
+            change: change,
+            changePercent: percent,
+            regularMarketPreviousClose: prev.isFinite ? prev : last.close,
+            currency: "JPY",
+            marketState: "CLOSED",
+            dayHigh: nil,
+            dayLow: nil,
+            fiftyTwoWeekHigh: nil,
+            fiftyTwoWeekLow: nil,
+            preMarketPrice: nil,
+            preMarketChange: nil,
+            preMarketChangePercent: nil,
+            postMarketPrice: nil,
+            postMarketChange: nil,
+            postMarketChangePercent: nil
+        )
+    }
+
+    /// Resolves a Japanese mutual fund symbol (fund code or fund name) to the
+    /// canonical fund code used on the Yahoo Japan quote pages.
+    private func japaneseFundTargetCode(for symbol: String) -> String {
+        let cleanCode = symbol.replacingOccurrences(of: ".JP", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if let foundCode = Self.codeToFundNameMap.first(where: {
+            $0.key == cleanCode || $0.value.uppercased() == cleanCode ||
+            $0.value.replacingOccurrences(of: " ", with: "").uppercased() == cleanCode.replacingOccurrences(of: " ", with: "").uppercased() ||
+            (Self.containsJapaneseCharacters(cleanCode) && (cleanCode.contains($0.value) || $0.value.contains(cleanCode)))
+        })?.key {
+            return foundCode
+        }
+        return cleanCode
+    }
+
+    /// Number of paginated history pages to fetch. Each page holds ~20 trading
+    /// days, so 20 pages comfortably covers the endpoint's full reach (~1 year
+    /// of NAV for Japanese funds).
+    private static let jpFundHistoryMaxPages = 20
+
+    /// Attempts per history page before giving up; a transient network error
+    /// must not silently truncate the series.
+    private static let jpFundHistoryRetries = 3
+
+    /// Fetches the daily NAV (基準価額) history for a Japanese mutual fund from
+    /// the Yahoo Japan history pages. Each page holds ~20 trading days; the
+    /// endpoint stops once every date is covered (funds expose roughly the last
+    /// year). NAV is per 10,000 口 — the 10,000 scale is applied downstream
+    /// exactly like the live quote, so it is stored here un-scaled. Best-effort:
+    /// any failure returns an empty array (the caller keeps its existing data).
+    /// Individual pages are retried so a flaky response can't truncate the
+    /// series, and only a fetch that reached the true end is cached in memory.
+    func fetchJapaneseFundHistory(symbol: String) async -> [PricePoint] {
+        let targetCode = japaneseFundTargetCode(for: symbol)
+
+        Self.jpFundHistoryLock.lock()
+        if let cached = Self.jpFundHistoryCache[targetCode],
+           Date().timeIntervalSince(cached.fetchedAt) < 21600 {
+            let points = cached.points
+            Self.jpFundHistoryLock.unlock()
+            return points
+        }
+        Self.jpFundHistoryLock.unlock()
+
+        var collected: [PricePoint] = []
+        var sawPartial = false
+        var reachedEnd = false
+        for page in 1...Self.jpFundHistoryMaxPages {
+            let points = await fetchJapaneseFundHistoryPage(targetCode: targetCode, page: page)
+            if points.isEmpty {
+                // An empty page only counts as the true end once a partial page
+                // was seen or a substantial series was already collected. An
+                // empty page after full pages is usually a transient failure
+                // (throttling), not the end — never truncate the cache.
+                if sawPartial || collected.count >= 200 {
+                    reachedEnd = true
+                }
+                break
+            }
+            collected.append(contentsOf: points)
+            if points.count < 20 {
+                sawPartial = true
+                reachedEnd = true
+                break  // final, partial page
+            }
+        }
+        if collected.isEmpty || !reachedEnd { return [] }
+
+        // De-duplicate by day (pages never overlap, but stay safe) and sort ascending.
+        let byDay = Dictionary(grouping: collected, by: { Calendar.current.startOfDay(for: $0.date) })
+        let unique = byDay.values.compactMap(\.first).sorted { $0.date < $1.date }
+
+        // Only a fetch that reached the true end is cached, so a partial result
+        // is re-fetched on the next access instead of being locked in for 6h.
+        if reachedEnd {
+            Self.jpFundHistoryLock.lock()
+            Self.jpFundHistoryCache[targetCode] = (unique, Date())
+            Self.jpFundHistoryLock.unlock()
+        }
+        return unique
+    }
+
+    /// Fetches one paginated history page with a few retries; empty on failure.
+    private func fetchJapaneseFundHistoryPage(targetCode: String, page: Int) async -> [PricePoint] {
+        for attempt in 0..<Self.jpFundHistoryRetries {
+            guard let url = URL(string: "https://finance.yahoo.co.jp/quote/\(targetCode)/history?page=\(page)") else { return [] }
+
+            var request = URLRequest(url: url)
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let html = String(data: data, encoding: .utf8) else { continue }
+                let points = Self.parseJapaneseFundHistory(html: html)
+                if !points.isEmpty { return points }
+            } catch {
+                // fall through to the retry backoff
+            }
+            if attempt < Self.jpFundHistoryRetries - 1 {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+        return []
+    }
+
+    /// Parses the Yahoo Japan fund history table (`/quote/<code>/history`) into
+    /// daily NAV points. Each row carries a date in the `<th scope="row">`
+    /// header followed by the 基準価額 as the first numeric cell; that value is
+    /// the NAV per 10,000 口, stored un-scaled.
+    nonisolated static func parseJapaneseFundHistory(html: String) -> [PricePoint] {
+        let rowPattern = "<tr class=\"[^\"]*_Table__row[^\"]*\">(.*?)</tr>"
+        let datePattern = "<th scope=\"row\"[^>]*>([0-9]{4}/[0-9]{1,2}/[0-9]{1,2})</th>"
+        let numberPattern = "<span class=\"[^\"]*_StyledNumber__value[^\"]*\">([0-9,]+)</span>"
+
+        guard let rowRegex = try? NSRegularExpression(pattern: rowPattern, options: [.dotMatchesLineSeparators]),
+              let dateRegex = try? NSRegularExpression(pattern: datePattern),
+              let numRegex = try? NSRegularExpression(pattern: numberPattern) else { return [] }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.calendar = Calendar(identifier: .gregorian)
+        dateFormatter.dateFormat = "yyyy/M/d"
+
+        var points: [PricePoint] = []
+        let ns = html as NSString
+        for rowMatch in rowRegex.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count)) {
+            let row = ns.substring(with: rowMatch.range(at: 1)) as NSString
+            guard let dMatch = dateRegex.firstMatch(in: row as String, options: [], range: NSRange(location: 0, length: row.length)),
+                  let date = dateFormatter.date(from: row.substring(with: dMatch.range(at: 1))),
+                  let nMatch = numRegex.firstMatch(in: row as String, options: [], range: NSRange(location: 0, length: row.length)),
+                  let nav = Double(row.substring(with: nMatch.range(at: 1)).replacingOccurrences(of: ",", with: "")),
+                  nav > 0 else { continue }
+            points.append(PricePoint(date: Calendar.current.startOfDay(for: date), close: nav))
+        }
+        return points.sorted { $0.date < $1.date }
     }
 
     // MARK: - Binance Exchange Info Cache
@@ -2044,8 +2477,8 @@ class StockService: ObservableObject {
     // MARK: - Finance News (Home tab)
 
     /// Refresh the Home news feed. Pulls stories related to the user's tracked
-    /// symbols (or general market news when nothing is tracked), from the same
-    /// Yahoo search endpoint used for quote lookup — no API key required.
+    /// symbols (or general market news when nothing is tracked) from Google
+    /// News' public RSS search feed — no API key required.
     /// Throttled to at most once every 5 minutes unless `force` is set.
     func refreshNews(storageService: StorageService, force: Bool = false) async {
         if !force, !news.isEmpty, let last = lastNewsFetch,
@@ -2082,16 +2515,43 @@ class StockService: ObservableObject {
     }
 
     private func fetchNewsChunk(query: String, sourceSymbol: String?) async -> [NewsArticle] {
+        // Google News RSS search feed: symbol-aware, publisher-diverse, no key.
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v1/finance/search?q=\(encoded)&quotesCount=0&newsCount=10") else { return [] }
+        guard let url = URL(string: "https://news.google.com/rss/search?q=\(encoded)&hl=en-US&gl=US&ceid=US:en") else { return [] }
         do {
-            let (data, _) = try await session.data(from: url)
-            let articles = try JSONDecoder().decode(YahooNewsResponse.self, from: data).news ?? []
-            guard let sourceSymbol else { return articles }
-            return articles.map { var a = $0; a.sourceSymbol = sourceSymbol; return a }
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            let articles: [NewsArticle]
+            if let sourceSymbol {
+                articles = GoogleNewsRSSParser.parse(data, sourceSymbol: sourceSymbol)
+            } else {
+                articles = GoogleNewsRSSParser.parse(data)
+            }
+            return articles
         } catch {
             return []
         }
+    }
+
+    /// Refresh news for a single symbol (used by the symbol detail page).
+    /// Fetches from Google News RSS, throttled to at most once every 5 minutes
+    /// per symbol, and stores the result in `newsBySymbol`.
+    func refreshNews(for symbol: String) async {
+        let key = symbol.uppercased()
+        if let existing = newsBySymbol[key], !existing.isEmpty,
+           let last = lastSymbolNewsFetch[key],
+           Date().timeIntervalSince(last) < 300 {
+            return
+        }
+        if isLoadingSymbolNews.contains(key) { return }
+        isLoadingSymbolNews.insert(key)
+        defer { isLoadingSymbolNews.remove(key) }
+
+        let articles = await fetchNewsChunk(query: symbol, sourceSymbol: key)
+        let deduped = articles.filter { !$0.title.isEmpty }
+            .sorted { $0.publishTime > $1.publishTime }
+        newsBySymbol[key] = Array(deduped.prefix(5))
+        lastSymbolNewsFetch[key] = Date()
     }
 }
 
@@ -2221,10 +2681,6 @@ private struct YahooV7Response: Codable {
 
 private struct YahooSearchResponse: Codable {
     let quotes: [SearchResult]
-}
-
-private struct YahooNewsResponse: Decodable {
-    let news: [NewsArticle]?
 }
 
 private struct VNDirectHistoryResponse: Decodable {

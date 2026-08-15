@@ -8,6 +8,14 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var metrics: [WatchlistMetric]? = nil
 }
 
+/// Where a dragged item lands relative to its drop target: before it, or after
+/// it (the lower/right half of the target — which lets an item reach the end of
+/// a list, since there is no drop zone beyond the last row).
+enum InsertPlacement {
+    case before
+    case after
+}
+
 @MainActor
 class StorageService: ObservableObject {
     static let shared = StorageService()
@@ -310,6 +318,173 @@ class StorageService: ObservableObject {
     }
     @Published var discordEnabled: Bool = false {
         didSet { scheduleSave() }
+    }
+
+    // MARK: - AI Review
+
+    /// OpenAI-compatible chat history for the AI Review tab. Stored in full
+    /// locally (free); only a sliding window of messages is ever sent to the
+    /// provider so a long conversation stays cheap on tokens.
+    @Published var aiChatSections: [AIChatSection] = [] {
+        didSet { scheduleSave() }
+    }
+
+    /// Provider base URL for chat completions (OpenAI-compatible). Users can
+    /// point this at OpenAI, DeepSeek, Groq, OpenRouter, etc.
+    @Published var aiBaseURL: String = "https://api.openai.com/v1" {
+        didSet { scheduleSave() }
+    }
+    /// Model name sent to the provider.
+    @Published var aiModel: String = "gpt-4o-mini" {
+        didSet { scheduleSave() }
+    }
+    /// Chosen provider preset; "custom" unlocks the free-form base URL field.
+    @Published var aiProvider: String = "openai" {
+        didSet { scheduleSave() }
+    }
+
+    /// Path to the AI Review workspace folder (mirrors the Codex/cowork idea: a
+    /// folder the AI treats as long-term memory). When set, the app reads
+    /// `<folder>/ai-context.md` on every request so durable notes survive across
+    /// sessions instead of being re-asked each time.
+    @Published var aiWorkspacePath: String = "" {
+        didSet { scheduleSave() }
+    }
+
+    /// DeepSeek V4 thinking mode. V4 models default to thinking enabled; turning
+    /// it off restores the classic fast-chat behavior of the retired
+    /// `deepseek-chat` alias. Only sent for DeepSeek.
+    @Published var aiDeepseekThinking: Bool = false {
+        didSet { scheduleSave() }
+    }
+
+    /// Known OpenAI-compatible provider presets.
+    static let aiProviders: [(id: String, label: String)] = [
+        ("openai", "OpenAI"),
+        ("deepseek", "DeepSeek"),
+        ("groq", "Groq"),
+        ("openrouter", "OpenRouter"),
+        ("custom", "Custom…")
+    ]
+
+    /// Sensible default models for the preset providers.
+    static let aiProviderDefaults: [String: String] = [
+        "openai": "gpt-4o-mini",
+        "deepseek": "deepseek-v4-flash",
+        "groq": "llama-3.1-8b-instant",
+        "openrouter": "openai/gpt-4o-mini"
+    ]
+
+    /// Base URL for the preset providers (without trailing slash).
+    static let aiProviderBaseURLs: [String: String] = [
+        "openai": "https://api.openai.com/v1",
+        "deepseek": "https://api.deepseek.com/v1",
+        "groq": "https://api.groq.com/openai/v1",
+        "openrouter": "https://openrouter.ai/api/v1"
+    ]
+
+    /// Model options offered in Settings, all OpenAI-compatible. DeepSeek's
+    /// legacy `deepseek-chat`/`deepseek-reasoner` aliases were retired on
+    /// 2026-07-24; the current IDs are `deepseek-v4-flash` and `deepseek-v4-pro`
+    /// (thinking mode is controlled separately via `aiDeepseekThinking`).
+    static let aiModelOptions: [(String, String)] = [
+        ("gpt-4o-mini", "gpt-4o-mini"),
+        ("gpt-4o", "gpt-4o"),
+        ("deepseek-v4-flash", "deepseek-v4-flash"),
+        ("deepseek-v4-pro", "deepseek-v4-pro"),
+        ("llama-3.1-8b-instant", "llama-3.1-8b-instant"),
+        ("llama-3.3-70b-versatile", "llama-3.3-70b-versatile"),
+        ("openai/gpt-4o-mini", "openai/gpt-4o-mini"),
+        ("meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct")
+    ]
+
+    private static let aiApiKeyKeychainKey = "aiReview_apiKey"
+
+    /// The user's provider API key. Stored in the Keychain (never persisted as
+    /// plaintext in data.json); empty string = not configured.
+    var aiApiKey: String {
+        get { KeychainService.loadString(forKey: Self.aiApiKeyKeychainKey) ?? "" }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                _ = KeychainService.delete(key: Self.aiApiKeyKeychainKey)
+            } else {
+                _ = KeychainService.saveString(trimmed, forKey: Self.aiApiKeyKeychainKey)
+            }
+        }
+    }
+
+    var hasAIConfiguration: Bool {
+        !aiApiKey.isEmpty && !aiBaseURL.isEmpty
+    }
+
+    /// When the user picks a known provider preset, fill its base URL and a
+    /// sensible default model (kept in sync with the preset). Does nothing for
+    /// the "custom" option, which exposes the free-form fields.
+    func applyAIPreset(_ provider: String) {
+        if let url = Self.aiProviderBaseURLs[provider] {
+            aiBaseURL = url
+        }
+        if let model = Self.aiProviderDefaults[provider] {
+            aiModel = model
+        }
+    }
+
+    /// Resolves the workspace folder, creating it (plus a starter `ai-context.md`
+    /// if absent) the first time it's referenced. Returns nil when no workspace
+    /// is configured.
+    @discardableResult
+    func ensureAIWorkspace() -> URL? {
+        let path = aiWorkspacePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return nil }
+        let folder = URL(fileURLWithPath: path, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let notes = folder.appendingPathComponent("ai-context.md")
+            if !FileManager.default.fileExists(atPath: notes.path) {
+                try """
+                # AI Review workspace notes
+
+                Anything you want the assistant to remember across conversations —
+                your approach, goals, risk tolerance, important context — goes here.
+                The AI reads this file on every request.
+
+                """.write(to: notes, atomically: true, encoding: .utf8)
+            }
+            return folder
+        } catch {
+            return nil
+        }
+    }
+
+    /// The current content of `<workspace>/ai-context.md`, ready to be injected
+    /// into the AI prompt. Returns nil when no workspace is configured or the
+    /// file is empty.
+    func aiWorkspaceContextText() -> String? {
+        guard let folder = ensureAIWorkspace() else { return nil }
+        let notes = folder.appendingPathComponent("ai-context.md")
+        guard let text = try? String(contentsOf: notes, encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Appends a note to `<workspace>/ai-context.md` (creates the workspace and
+    /// file if needed). Returns false when no workspace is configured.
+    @discardableResult
+    func appendAIWorkspaceNote(_ note: String) -> Bool {
+        guard let folder = ensureAIWorkspace() else { return false }
+        let notes = folder.appendingPathComponent("ai-context.md")
+        let stamp = DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short)
+        var content = "\n## \(stamp)\n\n\(note)\n"
+        if let existing = try? String(contentsOf: notes, encoding: .utf8) {
+            content = existing.trimmingCharacters(in: .whitespacesAndNewlines) + "\n" + content
+        }
+        do {
+            try content.write(to: notes, atomically: true, encoding: .utf8)
+            return true
+        } catch {
+            return false
+        }
     }
 
     @Published var fontSizeLevel: Int = 9 {
@@ -676,6 +851,7 @@ class StorageService: ObservableObject {
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         guard !watchlists[idx].symbols.contains(symbol) else { return }
         watchlists[idx].symbols.append(symbol)
+        prefetchLogo(symbol)
     }
 
     func removeFromWatchlist(_ symbol: String) {
@@ -692,11 +868,9 @@ class StorageService: ObservableObject {
 
     func addMultipleToWatchlist(_ symbols: Set<String>, targetWatchlistId: UUID) {
         guard let idx = watchlists.firstIndex(where: { $0.id == targetWatchlistId }) else { return }
-        for s in symbols {
-            if !watchlists[idx].symbols.contains(s) {
-                watchlists[idx].symbols.append(s)
-            }
-        }
+        let toAdd = symbols.filter { !watchlists[idx].symbols.contains($0) }
+        watchlists[idx].symbols.append(contentsOf: toAdd)
+        toAdd.forEach { prefetchLogo($0) }
     }
 
     func moveWatchlistItem(from source: IndexSet, to destination: Int) {
@@ -788,6 +962,57 @@ class StorageService: ObservableObject {
         watchlists.insert(item, at: newTargetIndex)
     }
 
+    func moveWatchlist(from sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        guard sourceId != targetId,
+              let srcIndex = watchlists.firstIndex(where: { $0.id == sourceId }),
+              let tgtIndex = watchlists.firstIndex(where: { $0.id == targetId }) else { return }
+        var result = watchlists
+        let item = result.remove(at: srcIndex)
+        let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= result.count, result != watchlists else { return }
+        result.insert(item, at: insertIndex)
+        watchlists = result
+    }
+
+    func movePortfolio(from sourceId: UUID, beforeOrAfter targetId: UUID) {
+        movePortfolio(from: sourceId, relativeTo: targetId, placement: .before)
+    }
+
+    func movePortfolio(from sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        guard sourceId != targetId,
+              let srcIndex = portfolios.firstIndex(where: { $0.id == sourceId }),
+              let tgtIndex = portfolios.firstIndex(where: { $0.id == targetId }) else { return }
+        var result = portfolios
+        let item = result.remove(at: srcIndex)
+        let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= result.count,
+              result.map(\.id) != portfolios.map(\.id) else { return }
+        result.insert(item, at: insertIndex)
+        portfolios = result
+    }
+
+    /// Persists a full reordering of the watchlists built by a local drag
+    /// preview. Validates membership so a stale preview never clobbers a
+    /// concurrent add/remove/switch.
+    func commitWatchlistOrder(_ orderedIds: [UUID]) {
+        guard orderedIds.count == watchlists.count,
+              Set(orderedIds) == Set(watchlists.map(\.id)) else { return }
+        let byId = Dictionary(uniqueKeysWithValues: watchlists.map { ($0.id, $0) })
+        watchlists = orderedIds.compactMap { byId[$0] }
+    }
+
+    /// Persists a full reordering of the portfolios built by a local drag
+    /// preview. Validates membership so a stale preview never clobbers a
+    /// concurrent add/remove.
+    func commitPortfolioOrder(_ orderedIds: [UUID]) {
+        guard orderedIds.count == portfolios.count,
+              Set(orderedIds) == Set(portfolios.map(\.id)) else { return }
+        let byId = Dictionary(uniqueKeysWithValues: portfolios.map { ($0.id, $0) })
+        portfolios = orderedIds.compactMap { byId[$0] }
+    }
+
     func addPortfolio(name: String) {
         portfolios.append(Portfolio(name: name))
     }
@@ -846,6 +1071,28 @@ class StorageService: ObservableObject {
         } else {
             return "\(base)-USD"
         }
+    }
+
+    /// Normalizes and aggregates Binance holdings by symbol. Holdings with and
+    /// without a known cost basis are kept in separate buckets, so a
+    /// Spot-reconstructed portion and an untracked remainder of the same symbol
+    /// both survive a reload without being merged into one ambiguous lot.
+    nonisolated static func aggregateBinanceHoldings(_ holdings: [Holding]) -> [Holding] {
+        var aggregated: [String: Holding] = [:]
+        for h in holdings {
+            let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
+            let hasCost = h.avgPrice.isFinite && h.avgPrice > 0
+            let key = normSym + (hasCost ? "|c" : "|n")
+            if var existing = aggregated[key] {
+                existing.quantity += h.quantity
+                aggregated[key] = existing
+            } else {
+                var newH = h
+                newH.symbol = normSym
+                aggregated[key] = newH
+            }
+        }
+        return Array(aggregated.values)
     }
 
     /// Whether a base symbol (e.g. "PEPE", "FDUSD") is a known cryptocurrency
@@ -949,6 +1196,7 @@ class StorageService: ObservableObject {
               !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
+        prefetchLogo(symbol)
     }
 
     func addHoldingsBatch(_ newHoldings: [Holding], to portfolioId: UUID) {
@@ -986,6 +1234,12 @@ class StorageService: ObservableObject {
         }
 
         portfolios[pIndex].holdings = currentHoldings
+        Set(currentHoldings.map(\.symbol)).forEach { prefetchLogo($0) }
+    }
+
+    private func prefetchLogo(_ symbol: String) {
+        guard StockService.isVietnameseStock(symbol, exchange: exchange(for: symbol)) else { return }
+        Task { await LogoCache.shared.ensureLogo(for: symbol) }
     }
 
     func removeHolding(from portfolioId: UUID, holdingId: UUID) {
@@ -1044,6 +1298,11 @@ class StorageService: ObservableObject {
         showNewsTab = true
         symbolNotes = [:]
         lastSelectedTab = "Watchlist"
+        aiBaseURL = "https://api.openai.com/v1"
+        aiModel = "gpt-4o-mini"
+        aiProvider = "openai"
+        aiWorkspacePath = ""
+        aiDeepseekThinking = false
     }
 
     // MARK: - Export / Import
@@ -1093,7 +1352,7 @@ class StorageService: ObservableObject {
         var watchlist: [String]
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
-        var portfolioColumns: [PortfolioColumnMetric]?
+        var portfolioColumns: [String]?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -1128,6 +1387,12 @@ class StorageService: ObservableObject {
         var advancedPositions: Bool?
         var appearanceRaw: String?
         var showNewsTab: Bool?
+        var aiChatSections: [AIChatSection]?
+        var aiBaseURL: String?
+        var aiModel: String?
+        var aiProvider: String?
+        var aiWorkspacePath: String?
+        var aiDeepseekThinking: Bool?
     }
 
     private func scheduleSave() {
@@ -1148,7 +1413,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns, portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1202,19 +1467,10 @@ class StorageService: ObservableObject {
             portfolios = decoded.portfolios.map { p in
                 var updated = p
                 if updated.isReadOnly {
-                    var aggregated: [String: Holding] = [:]
-                    for h in updated.holdings {
-                        let normSym = StorageService.normalizeBinanceHoldingSymbol(h.symbol)
-                        if var existing = aggregated[normSym] {
-                            existing.quantity += h.quantity
-                            aggregated[normSym] = existing
-                        } else {
-                            var newH = h
-                            newH.symbol = normSym
-                            aggregated[normSym] = newH
-                        }
-                    }
-                    updated.holdings = Array(aggregated.values)
+                    // Keep holdings with and without a known cost basis separate
+                    // (a Spot-reconstructed portion vs. an untracked remainder of
+                    // the same symbol) so partial cost basis survives a reload.
+                    updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
                 } else {
                     // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
                     updated.holdings = updated.holdings.map { h in
@@ -1263,7 +1519,14 @@ class StorageService: ObservableObject {
             fontFamily = decoded.fontFamily ?? "Inter Variable"
             appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
             showNewsTab = decoded.showNewsTab ?? true
-            portfolioColumns = decoded.portfolioColumns
+            aiChatSections = decoded.aiChatSections ?? []
+            aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
+            aiModel = decoded.aiModel ?? "gpt-4o-mini"
+            aiProvider = decoded.aiProvider ?? "openai"
+            aiWorkspacePath = decoded.aiWorkspacePath ?? ""
+            aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+            let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+            portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
             FontRegistration.familyName = fontFamily
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
         } catch {

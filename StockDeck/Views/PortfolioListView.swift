@@ -13,6 +13,10 @@ struct PortfolioListView: View {
     @State private var confirmDeletePortfolio: Portfolio? = nil
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
+    @State private var draggingPortfolioId: UUID? = nil
+    /// Live display order of the portfolio tabs while dragging: no storage writes
+    /// during the drag — the final order is committed once on drop.
+    @State private var previewPortfolioIds: [UUID] = []
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -215,6 +219,9 @@ struct PortfolioListView: View {
             }
         }
         }
+        .onChange(of: draggingPortfolioId) { _, newValue in
+            if newValue == nil { previewPortfolioIds = [] }
+        }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService)
         }
@@ -286,32 +293,82 @@ struct PortfolioListView: View {
                     .pointingHandCursor()
                     .id("all_portfolios_tab")
 
-                    ForEach(storageService.portfolios) { p in
+                    ForEach(displayedPortfolios) { p in
                         let selected = p.id == selectedPortfolioId
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedPortfolioId = p.id
+                        ReorderRow(
+                            id: p.id,
+                            draggingId: $draggingPortfolioId,
+                            isHorizontal: true,
+                            makeDragItem: {
+                                if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+                                return NSItemProvider(object: p.id.uuidString as NSString)
+                            },
+                            onMove: { srcId, tgtId, placement in
+                                movePortfolioInPreview(srcId, relativeTo: tgtId, placement: placement)
+                            },
+                            onCommit: { commitPortfolioPreview() }
+                        ) {
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedPortfolioId = p.id
+                                }
+                            }) {
+                                Text(p.name)
+                                    .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
+                                    .foregroundColor(selected ? .white : DS.ink)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                    )
                             }
-                        }) {
-                            Text(p.name)
-                                .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
-                                .foregroundColor(selected ? .white : DS.ink)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                )
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                            .id(p.id)
                         }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .id(p.id)
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
             }
         }
+    }
+
+    /// The portfolio tabs in order: the local drag preview while dragging, else the
+    /// persisted order.
+    private var displayedPortfolios: [Portfolio] {
+        if draggingPortfolioId != nil, !previewPortfolioIds.isEmpty {
+            let byId = Dictionary(uniqueKeysWithValues: storageService.portfolios.map { ($0.id, $0) })
+            return previewPortfolioIds.compactMap { byId[$0] }
+        }
+        return storageService.portfolios
+    }
+
+    /// Live, local-only reorder of the portfolio tab preview while dragging.
+    private func movePortfolioInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
+        if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+        guard sourceId != targetId,
+              let srcIndex = previewPortfolioIds.firstIndex(of: sourceId),
+              let tgtIndex = previewPortfolioIds.firstIndex(of: targetId) else { return }
+        let item = previewPortfolioIds.remove(at: srcIndex)
+        let newTargetIndex = previewPortfolioIds.firstIndex(of: targetId) ?? tgtIndex
+        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
+        guard insertIndex >= 0, insertIndex <= previewPortfolioIds.count else { return }
+        previewPortfolioIds.insert(item, at: insertIndex)
+    }
+
+    /// Persists the previewed portfolio order exactly once, when the tab drop
+    /// lands (or the drag ends outside the picker bar).
+    private func commitPortfolioPreview() {
+        guard !previewPortfolioIds.isEmpty else {
+            draggingPortfolioId = nil
+            return
+        }
+        let final = previewPortfolioIds
+        previewPortfolioIds = []
+        draggingPortfolioId = nil
+        storageService.commitPortfolioOrder(final)
     }
 
     private func portfolioTotals(for portfolios: [Portfolio]) -> (value: Double, cost: Double, pnl: Double) {
@@ -363,7 +420,7 @@ struct PortfolioListView: View {
         var totalCost: [String: Double] = [:]
         var nativeCostMap: [String: Double] = [:]
         var nativeValMap: [String: Double] = [:]
-        var hasKnownCostMap: [String: Bool] = [:]
+        var hasMissingCostMap: [String: Bool] = [:]
         var orderMap: [String: Int] = [:]
         var order = 0
 
@@ -401,8 +458,8 @@ struct PortfolioListView: View {
                 let nativeVal = h.marketValue(currentPrice: quote.price)
                 nativeCostMap[sym, default: 0] += nativeCst
                 nativeValMap[sym, default: 0] += nativeVal
-                if h.hasKnownCostBasis {
-                    hasKnownCostMap[sym] = true
+                if !h.hasKnownCostBasis {
+                    hasMissingCostMap[sym] = true
                 }
             }
         }
@@ -416,9 +473,10 @@ struct PortfolioListView: View {
 
             let nativeCst = nativeCostMap[symbol, default: 0]
             let nativeVal = nativeValMap[symbol, default: 0]
-            let nativePnl = nativeVal - nativeCst
-            let pct = abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
-            let hasCostBasis = hasKnownCostMap[symbol] ?? false
+            let hasCompleteCost = !(hasMissingCostMap[symbol] ?? false)
+            let nativePnl = hasCompleteCost ? nativeVal - nativeCst : 0
+            let pct = hasCompleteCost && abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
+            let hasCostBasis = hasCompleteCost
 
             let assetCurr = stockService.detectedCurrency(for: symbol)
             let quoteCurr = (quote?.currency.isEmpty == false) ? quote!.currency : assetCurr
@@ -570,9 +628,9 @@ struct PortfolioSection: View {
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
                     Text("Symbol")
-                        .frame(width: 80, alignment: .leading)
+                        .frame(width: 120, alignment: .leading)
                     Text("Price")
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value / P&L")
                         .frame(width: 120, alignment: .trailing)
                 }
@@ -750,7 +808,6 @@ struct PortfolioSection: View {
 struct HoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.editHoldingAction) var editHoldingAction
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
@@ -825,7 +882,7 @@ struct HoldingRow: View {
                             )
                     }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
                 // Col 3: Value + P&L in native currency
                 let nativeVal = holding.marketValue(currentPrice: displayPrice)
@@ -852,11 +909,6 @@ struct HoldingRow: View {
         }
         .padding(.vertical, 2)
         .contextMenu(isReadOnly ? nil : ContextMenu {
-            Button {
-                editHoldingAction.perform(portfolioId, holding)
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
             Button(role: .destructive) {
                 confirmDeleteHolding = (holding, portfolioId)
             } label: {
@@ -866,97 +918,9 @@ struct HoldingRow: View {
     }
 }
 
-struct EditHoldingView: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-
-    let portfolioId: UUID
-    let holding: Holding
-    @Binding var isPresented: (portfolioId: UUID, holding: Holding)?
-
-    @State private var targetPortfolioId: UUID
-
-    init(portfolioId: UUID, holding: Holding, isPresented: Binding<(portfolioId: UUID, holding: Holding)?>) {
-        self.portfolioId = portfolioId
-        self.holding = holding
-        self._isPresented = isPresented
-        self._targetPortfolioId = State(initialValue: portfolioId)
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("Edit \(holding.symbol)")
-                    .font(.inter(13, weight: .bold, relativeTo: .headline))
-                Spacer()
-                Button("Close") { isPresented = nil }
-                    .buttonStyle(.borderless)
-            }
-            .padding(.horizontal)
-            .padding(.top)
-
-            VStack(alignment: .leading) {
-                Text("Symbol")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                HStack(spacing: 8) {
-                    SymbolLogo(symbol: holding.symbol, size: 24)
-                    Text(StockService.beautifiedSymbol(holding.symbol))
-                        .font(.inter(13, weight: .semibold, relativeTo: .body))
-                    if let name = stockService.quotes[holding.symbol]?.name, !name.isEmpty {
-                        Text(name)
-                            .font(DS.caption)
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-            }
-            .padding(.horizontal)
-
-            VStack(alignment: .leading) {
-                Text("Portfolio")
-                    .font(.inter(10, relativeTo: .caption))
-                    .foregroundColor(.secondary)
-                Picker("Portfolio", selection: $targetPortfolioId) {
-                    ForEach(storageService.portfolios) { p in
-                        Text(p.name).tag(p.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal)
-
-            Spacer()
-
-            Button("Save") {
-                save()
-            }
-            .buttonStyle(.borderedProminent)
-            .padding()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func save() {
-        if targetPortfolioId != portfolioId {
-            storageService.moveHolding(holdingId: holding.id, from: portfolioId, to: targetPortfolioId)
-        }
-        Task {
-            await stockService.refreshAll(storageService: storageService)
-        }
-        isPresented = nil
-    }
-}
-
 struct GroupedHoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.editHoldingAction) var editHoldingAction
     @Environment(\.addHoldingAction) var addHoldingAction
 
     let symbol: String
@@ -996,23 +960,26 @@ struct GroupedHoldingRow: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(DS.brand)
                     SymbolLogo(symbol: symbol, size: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(StockService.beautifiedSymbol(symbol))
-                                .font(.inter(13, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
-                            Text("\(holdings.count) lots")
-                                .font(.inter(8, weight: .semibold, relativeTo: .caption2))
-                                .foregroundColor(DS.brand)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                        }
-                        Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
-                            .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(StockService.beautifiedSymbol(symbol))
+                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                        HStack(spacing: 4) {
+                            Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
+                                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            if holdings.count > 1 {
+                                Text("\(holdings.count) lots")
+                                    .font(.inter(8, weight: .semibold, relativeTo: .caption2))
+                                    .foregroundColor(DS.brand)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                            }
+                        }
                     }
                 }
                 .frame(width: 140, alignment: .leading)
@@ -1028,13 +995,14 @@ struct GroupedHoldingRow: View {
                             .font(.inter(13, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
 
                     // Col 3: Total Market Value & Total P&L in native currency
                     let displayPrice = quote.price
-                    let nativeVal = holdings.reduce(0) { $0 + $1.marketValue(currentPrice: displayPrice) }
-                    let nativeCost = holdings.reduce(0) { $0 + $1.costBasisLocal }
-                    let totalPnl = holdings.reduce(0) { $0 + $1.pnl(currentPrice: displayPrice) }
+                    let nativeTotals = PortfolioValuation.nativeTotals(holdings: holdings, currentPrice: displayPrice)
+                    let nativeVal = nativeTotals.value
+                    let nativeCost = nativeTotals.cost
+                    let totalPnl = nativeTotals.pnl
                     let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
                     let nativeSym = StorageService.currencySymbol(for: quoteCurr)
 
@@ -1108,13 +1076,6 @@ struct GroupedHoldingRow: View {
                             let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
                             if !isReadOnly {
                                 HStack(spacing: 6) {
-                                    Button { editHoldingAction.perform(portfolioId, h) } label: {
-                                        Image(systemName: "pencil").font(.system(size: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .pointingHandCursor()
-                                    .help("Edit lot")
-
                                     Button { confirmDeleteHolding = (h, portfolioId) } label: {
                                         Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
                                     }

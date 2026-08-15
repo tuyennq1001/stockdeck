@@ -4,7 +4,7 @@ import Foundation
 /// this list controls the investment metrics that follow them.
 enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     case price, ext
-    case today, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears
+    case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears
     case ath, fromAth, atl, fromAtl
     case marketCap
     case chart24h, chart7d, chart30d, chart60d, chart90d
@@ -16,6 +16,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         case .price: return "Price"
         case .ext: return "Ext"
         case .today: return "Today %"
+        case .todayChange: return "Today Change"
         case .oneMonth: return "1M %"
         case .threeMonths: return "3M %"
         case .ytd: return "YTD %"
@@ -41,7 +42,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         switch self {
         case .price, .ext:
             return .core
-        case .today, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
+        case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
             return .change
         case .ath, .fromAth, .atl, .fromAtl, .marketCap:
             return .price
@@ -54,7 +55,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         category == .chart
     }
 
-    static let defaultSelection: [WatchlistMetric] = [.price, .ext, .today, .oneMonth, .threeMonths, .ytd, .chart7d]
+    static let defaultSelection: [WatchlistMetric] = [.price, .ext, .today, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
 }
 
 enum WatchlistMetricCategory: String, CaseIterable, Identifiable {

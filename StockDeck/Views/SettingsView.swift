@@ -10,7 +10,6 @@ struct SettingsView: View {
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @Environment(\.openURL) private var openURL
     @State private var showResetAlert = false
-    @State private var showClearAlerts = false
     @State private var showClearPortfolioNotifs = false
 
     // Collapsible category state — remembered across popover opens. General is
@@ -22,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("settings.group.watchlist") private var groupWatchlist = false
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
+    @AppStorage("settings.group.ai") private var groupAI = false
     @AppStorage("settings.group.about") private var groupAbout = false
 
     /// Small secondary caption used throughout the settings list.
@@ -37,6 +37,18 @@ struct SettingsView: View {
         Text(text)
             .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
             .foregroundColor(.secondary)
+    }
+
+    private func chooseWorkspaceFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.message = "Choose a folder StockDeck AI Review should use as long-term memory (ai-context.md)."
+        if panel.runModal() == .OK, let url = panel.url {
+            storageService.aiWorkspacePath = url.path
+        }
     }
 
     var body: some View {
@@ -139,6 +151,67 @@ struct SettingsView: View {
                     Toggle("Show extended hours (Pre/Post)", isOn: $storageService.showExtendedHours)
                         .toggleStyle(.switch)
                     caption("Show pre-market and after-hours prices")
+                }
+
+                // MARK: - AI Review
+                SettingsGroup(title: "AI Review", icon: "sparkles", isExpanded: $groupAI) {
+                    subHeader("Provider")
+                    Picker("Provider", selection: $storageService.aiProvider) {
+                            ForEach(AIProviderOption.allCases) { p in
+                                Text(p.label).tag(p.rawValue)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: storageService.aiProvider) { _, newValue in
+                            storageService.applyAIPreset(newValue)
+                        }
+                        if storageService.aiProvider == "custom" {
+                            caption("Custom base URL")
+                            TextField("https://api.example.com/v1", text: $storageService.aiBaseURL)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        subHeader("Model")
+                        Picker("Model", selection: $storageService.aiModel) {
+                            ForEach(StorageService.aiModelOptions, id: \.0) { option in
+                                Text(option.0).tag(option.0)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        if storageService.aiProvider == "deepseek" {
+                            Toggle("Thinking mode (V4)", isOn: $storageService.aiDeepseekThinking)
+                                .toggleStyle(.switch)
+                            caption("DeepSeek V4 defaults to thinking on. Turn off for fast chat (like the retired deepseek-chat).")
+                        }
+                        subHeader("API key")
+                        SecureField("sk-…", text: Binding(
+                            get: { storageService.aiApiKey },
+                            set: { storageService.aiApiKey = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                            .disableAutocorrection(true)
+                        caption("Stored securely in the macOS Keychain. Never persisted as plaintext. An OpenAI-compatible key works with OpenAI, DeepSeek, Groq, OpenRouter, etc.")
+                        subHeader("Workspace folder")
+                        HStack(spacing: 8) {
+                            Button("Choose…") {
+                                chooseWorkspaceFolder()
+                            }
+                            .buttonStyle(.bordered)
+                            if !storageService.aiWorkspacePath.isEmpty {
+                                Text((storageService.aiWorkspacePath as NSString).lastPathComponent)
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Button {
+                                    storageService.aiWorkspacePath = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(DS.inkTertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Remove workspace folder")
+                            }
+                        }
+                        caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
                 }
 
                 // MARK: - Watchlist Display
@@ -264,27 +337,6 @@ struct SettingsView: View {
                     .controlSize(.small)
                     .disabled(!storageService.discordEnabled || !WebhookNotifier.isValid(trimmed))
 
-                    // Price alerts
-                    HStack {
-                        subHeader("Price alerts")
-                        Spacer()
-                        if !storageService.alerts.isEmpty {
-                            Button(action: { showClearAlerts = true }) {
-                                Text("Clear all")
-                                    .font(.inter(10, relativeTo: .caption))
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundColor(.red)
-                        }
-                    }
-                    if storageService.alerts.isEmpty {
-                        caption("No alerts. Right-click a stock in the watchlist to add one.")
-                    } else {
-                        ForEach(storageService.alerts) { alert in
-                            AlertRow(alert: alert)
-                        }
-                    }
-
                     // Portfolio notifications
                     let withNotifs = storageService.portfolios.filter {
                         !storageService.notifications(for: $0.id).isEmpty
@@ -373,14 +425,6 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will reset all settings to their defaults. Your portfolios and watchlist will not be affected.")
-        }
-        .alert("Clear all alerts", isPresented: $showClearAlerts) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear all", role: .destructive) {
-                storageService.removeAllAlerts()
-            }
-        } message: {
-            Text("This will delete all your price alerts. This cannot be undone.")
         }
         .alert("Clear all portfolio notifications", isPresented: $showClearPortfolioNotifs) {
             Button("Cancel", role: .cancel) {}

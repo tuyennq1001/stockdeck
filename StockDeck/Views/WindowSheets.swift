@@ -337,31 +337,29 @@ struct HoldingFormSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if !isEditing {
+            if storageService.advancedPositions {
+                FieldBlock("Position") {
+                    SegmentedRangePicker(options: [false, true],
+                                         label: { $0 ? "Short" : "Long" },
+                                         selection: $isShort)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
+                FieldBlock("Avg cost") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
                 if storageService.advancedPositions {
-                    FieldBlock("Position") {
-                        SegmentedRangePicker(options: [false, true],
-                                             label: { $0 ? "Short" : "Long" },
-                                             selection: $isShort)
-                    }
+                    FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
+                        .frame(width: 90)
                 }
+            }
 
-                HStack(alignment: .top, spacing: 12) {
-                    FieldBlock("Quantity") { DSTextField(placeholder: "0", text: $quantityText, mono: true, isFocusedBinding: $quantityFocused) }
-                    FieldBlock("Avg cost") { DSTextField(placeholder: "0.00", text: $avgPriceText, mono: true) }
-                    if storageService.advancedPositions {
-                        FieldBlock("Leverage") { DSTextField(placeholder: "1×", text: $leverageText, mono: true) }
-                            .frame(width: 90)
-                    }
-                }
+            FieldBlock("Purchase date") {
+                DSDatePicker(date: $purchaseDate)
+            }
 
-                FieldBlock("Purchase date") {
-                    DSDatePicker(date: $purchaseDate)
-                }
-
-                if let info = costBasisInfo {
-                    Text(info).font(DS.caption).foregroundStyle(DS.inkTertiary)
-                }
+            if let info = costBasisInfo {
+                Text(info).font(DS.caption).foregroundStyle(DS.inkTertiary)
             }
 
             PrimaryButton(title: isEditing ? "Save" : "Add", enabled: canSave, action: save)
@@ -445,8 +443,7 @@ struct HoldingFormSheet: View {
     // MARK: Logic
 
     private var canSave: Bool {
-        if isEditing { return symbol != nil }
-        return symbol != nil &&
+        symbol != nil &&
             Double(quantityText.replacingOccurrences(of: ",", with: ".")).map { abs($0) > 0 } == true &&
             Double(avgPriceText.replacingOccurrences(of: ",", with: ".")).map { $0 > 0 } == true
     }
@@ -488,6 +485,20 @@ struct HoldingFormSheet: View {
     private func save() {
         let destPortfolioId = selectedPortfolioId ?? portfolioId
         if let h = editingHolding {
+            let advanced = storageService.advancedPositions
+            guard let qty = Double(quantityText.replacingOccurrences(of: ",", with: ".")),
+                  let price = Double(avgPriceText.replacingOccurrences(of: ",", with: ".")),
+                  abs(qty) > 0, price > 0 else { return }
+            let short = advanced ? isShort : h.quantity < 0
+            let signedQty = short ? -abs(qty) : abs(qty)
+            let leverage: Double? = {
+                guard advanced else { return h.leverage }
+                guard let l = Double(leverageText.replacingOccurrences(of: ",", with: ".")), l > 0, l != 1 else { return nil }
+                return l
+            }()
+            storageService.updateHolding(in: portfolioId, holdingId: h.id,
+                                         quantity: signedQty, avgPrice: price,
+                                         purchaseDate: purchaseDate, leverage: leverage)
             if destPortfolioId != portfolioId {
                 storageService.moveHolding(holdingId: h.id, from: portfolioId, to: destPortfolioId)
             }

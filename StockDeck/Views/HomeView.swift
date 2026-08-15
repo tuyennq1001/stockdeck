@@ -2,11 +2,12 @@ import SwiftUI
 
 /// Home tab: a compact finance news feed related to the user's tracked symbols
 /// (or general market news when nothing is tracked). Tapping a story opens it
-/// in the default browser.
+/// in the in-app browser.
 struct HomeView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @State private var query = ""
+    @State private var activeLink: InAppWebLink?
 
     /// Filters by headline, tickers (source + related) and publisher.
     private var filteredNews: [NewsArticle] {
@@ -70,7 +71,7 @@ struct HomeView: View {
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(news) { article in
-                                    NewsRow(article: article)
+                                    NewsRow(article: article) { activeLink = InAppWebLink(url: $0) }
                                     Divider().padding(.leading, 74)
                                 }
                             }
@@ -82,6 +83,9 @@ struct HomeView: View {
         }
         .task {
             await stockService.refreshNews(storageService: storageService)
+        }
+        .sheet(item: $activeLink) { link in
+            InAppWebViewPopup(url: link.url)
         }
     }
 
@@ -108,6 +112,7 @@ struct HomeView: View {
 /// A single news story row: thumbnail, headline, publisher · relative time, related tickers.
 private struct NewsRow: View {
     let article: NewsArticle
+    let onOpen: (URL) -> Void
     @Environment(\.locale) private var locale
     @State private var hovering = false
 
@@ -134,7 +139,7 @@ private struct NewsRow: View {
 
     var body: some View {
         Button {
-            if let url = article.url { openURL(url) }
+            if let url = article.url { onOpen(url) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 thumbnail

@@ -5,7 +5,7 @@ import Foundation
 /// metrics that follow them.
 enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     case avgPrice, price, ext
-    case cost, value, todayPnl, totalPnl, shares
+    case cost, value, todayPnl, totalPnl, shares, lots
     case weight
 
     var id: String { rawValue }
@@ -20,6 +20,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
         case .todayPnl: return "Today P&L"
         case .totalPnl: return "Total P&L"
         case .shares: return "Shares"
+        case .lots: return "Lots"
         case .weight: return "Weight"
         }
     }
@@ -28,7 +29,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
         switch self {
         case .avgPrice, .price, .ext:
             return .price
-        case .cost, .value, .todayPnl, .totalPnl, .shares:
+        case .cost, .value, .todayPnl, .totalPnl, .shares, .lots:
             return .position
         case .weight:
             return .weight

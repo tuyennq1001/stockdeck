@@ -150,7 +150,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleRESTPolling()
 
         // Dev affordance: open the Portfolio window on launch for screenshots/testing.
-        if ProcessInfo.processInfo.environment["SD_OPEN_WINDOW"] != nil {
+        // Only when explicitly set to "1" — a bare env var or "0" must NOT open it.
+        if ProcessInfo.processInfo.environment["SD_OPEN_WINDOW"] == "1" {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 self.showPortfolioWindow()
@@ -648,12 +649,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var menuBarImage: NSImage? {
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+        if let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
                      Bundle.module.url(forResource: "AppIcon", withExtension: "png") ??
                      Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.main.url(forResource: "MenuBarIcon", withExtension: "png") ??
-                     Bundle.module.url(forResource: "MenuBarIcon", withExtension: "png"),
+                     Bundle.module.url(forResource: "AppLogo", withExtension: "png"),
            let src = NSImage(contentsOf: url) {
             let targetSize = NSSize(width: 18, height: 18)
             let rep = NSBitmapImageRep(

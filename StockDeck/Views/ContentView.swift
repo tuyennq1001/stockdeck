@@ -114,7 +114,6 @@ struct ContentView: View {
     @State private var selectedTab: Tab = .watchlist
     @State private var showSearch = false
     @State private var addHoldingPortfolioId: UUID?
-    @State private var editHolding: (portfolioId: UUID, holding: Holding)?
 
     var body: some View {
         Group {
@@ -122,8 +121,6 @@ struct ContentView: View {
                 SearchView(mode: .watchlist, isPresented: $showSearch)
             } else if let portfolioId = addHoldingPortfolioId {
                 AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
-            } else if let edit = editHolding {
-                EditHoldingView(portfolioId: edit.portfolioId, holding: edit.holding, isPresented: $editHolding)
             } else {
                 mainContent
             }
@@ -267,9 +264,6 @@ struct ContentView: View {
         .tint(DS.brand)
         .environment(\.addHoldingAction, AddHoldingAction { portfolioId in
             addHoldingPortfolioId = portfolioId
-        })
-        .environment(\.editHoldingAction, EditHoldingAction { portfolioId, holding in
-            editHolding = (portfolioId, holding)
         })
         // Issue #7: in-app language override. Reactive because ContentView observes
         // storageService, so changing the language re-applies the locale to all children.

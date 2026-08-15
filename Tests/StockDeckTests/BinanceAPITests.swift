@@ -151,7 +151,7 @@ final class BinanceAPITests: XCTestCase {
 
     func testCanonicalSymbolForEquitiesAndCrypto() throws {
         XCTAssertEqual(StockService.canonicalSymbol(for: "GOOGL"), "GOOGL")
-        XCTAssertEqual(StockService.canonicalSymbol(for: "GOOG"), "GOOGL")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "GOOG"), "GOOG")
         XCTAssertEqual(StockService.canonicalSymbol(for: "ALPHABET"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_ALPHABET"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_ALPHABET-USD"), "GOOGL")
@@ -161,5 +161,130 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(StockService.canonicalSymbol(for: "FB"), "META")
         XCTAssertEqual(StockService.canonicalSymbol(for: "BTC-USD"), "BTC-USD")
         XCTAssertEqual(StockService.canonicalSymbol(for: "ETH-USD"), "ETH-USD")
+    }
+
+    // MARK: - Partial Spot cost basis → split holdings
+
+    func testPartialSpotCostBasisSplitsHoldingIntoTwo() throws {
+        let service = BinanceAPIService.shared
+        let basis = BinanceEquityCostBasis(averagePrice: 64_692.90, purchaseDate: nil, coveredQuantity: 0.0212)
+
+        let holdings = service.buildHoldings(
+            assetName: "BTC",
+            quantity: 0.131736,
+            equityCosts: [:],
+            spotCosts: ["BTC": basis]
+        )
+
+        XCTAssertEqual(holdings.count, 2, "Partial coverage should split into known + unknown cost holdings")
+
+        let known = holdings.first { $0.hasKnownCostBasis }
+        let unknown = holdings.first { !$0.hasKnownCostBasis }
+        XCTAssertEqual(known?.quantity ?? 0, 0.0212, accuracy: 1e-9)
+        XCTAssertEqual(known?.avgPrice ?? 0, 64_692.90, accuracy: 1e-9)
+        XCTAssertEqual(unknown?.quantity ?? 0, 0.131736 - 0.0212, accuracy: 1e-9)
+        XCTAssertTrue(unknown?.avgPrice.isNaN ?? false)
+
+        let total = holdings.reduce(0) { $0 + $1.quantity }
+        XCTAssertEqual(total, 0.131736, accuracy: 1e-9)
+    }
+
+    func testFullCoverageStaysSingleHolding() throws {
+        let service = BinanceAPIService.shared
+        let basis = BinanceEquityCostBasis(averagePrice: 60_000, purchaseDate: nil, coveredQuantity: 1.5)
+
+        let holdings = service.buildHoldings(
+            assetName: "ETH",
+            quantity: 1.5,
+            equityCosts: [:],
+            spotCosts: ["ETH": basis]
+        )
+
+        XCTAssertEqual(holdings.count, 1)
+        XCTAssertEqual(holdings[0].quantity, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(holdings[0].avgPrice, 60_000, accuracy: 1e-9)
+    }
+
+    func testMissingCostBasisStaysUnknown() throws {
+        let service = BinanceAPIService.shared
+
+        let holdings = service.buildHoldings(
+            assetName: "SOL",
+            quantity: 8.6,
+            equityCosts: [:],
+            spotCosts: [:]
+        )
+
+        XCTAssertEqual(holdings.count, 1)
+        XCTAssertTrue(holdings[0].avgPrice.isNaN)
+        XCTAssertFalse(holdings[0].hasKnownCostBasis)
+    }
+
+    func testDustRemainderIsNotSplit() throws {
+        let service = BinanceAPIService.shared
+        let basis = BinanceEquityCostBasis(averagePrice: 10_000, purchaseDate: nil, coveredQuantity: 0.996)
+
+        let holdings = service.buildHoldings(
+            assetName: "ADA",
+            quantity: 1.0,
+            equityCosts: [:],
+            spotCosts: ["ADA": basis]
+        )
+
+        XCTAssertEqual(holdings.count, 1, "≤1% remainder should not produce a separate unknown-cost lot")
+        XCTAssertEqual(holdings[0].quantity, 1.0, accuracy: 1e-9)
+    }
+
+    func testStablecoinAndEquityAreNeverSplit() throws {
+        let service = BinanceAPIService.shared
+        let basis = BinanceEquityCostBasis(averagePrice: 60_000, purchaseDate: nil, coveredQuantity: 0.5)
+
+        let stable = service.buildHoldings(
+            assetName: "USDT",
+            quantity: 100.0,
+            equityCosts: [:],
+            spotCosts: [:]
+        )
+        XCTAssertEqual(stable.count, 1)
+        XCTAssertEqual(stable[0].avgPrice, 1.0, accuracy: 1e-9)
+
+        let equity = service.buildHoldings(
+            assetName: "EQ_GOOGL",
+            quantity: 3.0,
+            equityCosts: ["EQ_GOOGL": basis],
+            spotCosts: [:]
+        )
+        XCTAssertEqual(equity.count, 1)
+        XCTAssertEqual(equity[0].symbol, "GOOGL")
+        XCTAssertEqual(equity[0].avgPrice, 60_000, accuracy: 1e-9)
+    }
+
+    // MARK: - Load-time aggregation keeps partial cost basis split
+
+    func testAggregateBinanceHoldingsKeepsPartialCostSplit() throws {
+        let known = Holding(symbol: "LDBTC-USD", quantity: 0.0212, avgPrice: 64_692.90)
+        let unknown = Holding(symbol: "BTC-USD", quantity: 0.1105, avgPrice: .nan)
+
+        let aggregated = StorageService.aggregateBinanceHoldings([known, unknown])
+
+        XCTAssertEqual(aggregated.count, 2)
+        let knownAgg = aggregated.first { $0.hasKnownCostBasis }
+        let unknownAgg = aggregated.first { !$0.hasKnownCostBasis }
+        XCTAssertEqual(knownAgg?.symbol, "BTC-USD")
+        XCTAssertEqual(knownAgg?.quantity ?? 0, 0.0212, accuracy: 1e-9)
+        XCTAssertEqual(unknownAgg?.symbol, "BTC-USD")
+        XCTAssertEqual(unknownAgg?.quantity ?? 0, 0.1105, accuracy: 1e-9)
+    }
+
+    func testAggregateBinanceHoldingsMergesSameCostKind() throws {
+        let a = Holding(symbol: "LDETH-USD", quantity: 1.0, avgPrice: .nan)
+        let b = Holding(symbol: "ETH-USD", quantity: 2.5, avgPrice: .nan)
+
+        let aggregated = StorageService.aggregateBinanceHoldings([a, b])
+
+        XCTAssertEqual(aggregated.count, 1)
+        XCTAssertEqual(aggregated[0].symbol, "ETH-USD")
+        XCTAssertEqual(aggregated[0].quantity, 3.5, accuracy: 1e-9)
+        XCTAssertTrue(aggregated[0].avgPrice.isNaN)
     }
 }

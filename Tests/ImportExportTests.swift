@@ -7,8 +7,15 @@ import XCTest
 @MainActor
 final class ImportExportTests: XCTestCase {
 
+    @MainActor
+    private func createIsolatedStorage() -> StorageService {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        return StorageService(fileURL: tempDir.appendingPathComponent("test_stockdeck.json"))
+    }
+
     func testRoundTripPreservesData() throws {
-        let s = StorageService.shared
+        let s = createIsolatedStorage()
         let p1 = Portfolio(name: "Growth", holdings: [
             Holding(symbol: "AAPL", quantity: 10, avgPrice: 178.5, purchaseDate: Date(timeIntervalSince1970: 1_700_000_000)),
             Holding(symbol: "MU", quantity: -5, avgPrice: 92, leverage: 2),
@@ -34,12 +41,12 @@ final class ImportExportTests: XCTestCase {
     }
 
     func testImportRejectsGarbage() {
-        let s = StorageService.shared
+        let s = createIsolatedStorage()
         XCTAssertNil(s.importPortfolios(from: Data("not json".utf8)))
     }
 
     func testExportIsValidJSON() throws {
-        let s = StorageService.shared
+        let s = createIsolatedStorage()
         let data = try XCTUnwrap(s.exportPortfolios([Portfolio(name: "X")]))
         XCTAssertNoThrow(try JSONSerialization.jsonObject(with: data))
     }

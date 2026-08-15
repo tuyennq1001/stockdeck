@@ -1,7 +1,7 @@
 import Foundation
 
 /// A price point (closing or full OHLC bar) for detail charts.
-struct PricePoint: Identifiable, Equatable {
+struct PricePoint: Identifiable, Equatable, Codable {
     let date: Date
     let close: Double
     let open: Double?
@@ -59,5 +59,23 @@ enum PriceHistory {
             ?? chronological.first { $0.date > boundary }
         guard let baseline, baseline.close.isFinite, baseline.close > 0 else { return nil }
         return (currentPrice - baseline.close) / baseline.close * 100
+    }
+
+    /// Resamples a daily (or finer) close series into one point per calendar
+    /// month — the last close of the month, dated at the month's start. This is
+    /// the same shape Yahoo's `interval=1mo` bars produce, so the full-history
+    /// series used by the "All" / 3Y / 5Y chart ranges and the long performance
+    /// periods can be derived locally from the 10-year daily series instead of
+    /// issuing a second network request.
+    static func deriveMonthly(from daily: [PricePoint], calendar: Calendar = .current) -> [PricePoint] {
+        let sorted = daily.sorted { $0.date < $1.date }
+        var lastCloseByMonth: [Date: Double] = [:]
+        for p in sorted where p.close.isFinite {
+            let monthStart = calendar.dateInterval(of: .month, for: p.date)?.start
+                ?? calendar.startOfDay(for: p.date)
+            lastCloseByMonth[monthStart] = p.close
+        }
+        return lastCloseByMonth.sorted { $0.key < $1.key }
+            .map { PricePoint(date: $0.key, close: $0.value) }
     }
 }

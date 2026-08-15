@@ -71,4 +71,7 @@ pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 sleep 0.5
 
 echo "Launching StockDeck DEV..."
-SD_OPEN_WINDOW=1 "$APP/Contents/MacOS/StockDeck" >/dev/null 2>&1 &
+# By default a plain launch (menu-bar only) — the desktop window does NOT pop up
+# automatically. Pass SD_OPEN_WINDOW=1 to auto-open it after 2.5s (used for
+# deterministic screenshots of the full window).
+SD_OPEN_WINDOW=${SD_OPEN_WINDOW:-0} "$APP/Contents/MacOS/StockDeck" >/dev/null 2>&1 &
