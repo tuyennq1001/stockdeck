@@ -62,8 +62,11 @@ cat > "$APP/Contents/Info.plist" << EOF
 </dict>
 </plist>
 EOF
+SIGN_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}')
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
-codesign --deep --sign - --force "$APP" 2>/dev/null
+echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
+codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
 
 echo "Killing old StockDeck process instances..."
 pkill -9 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
