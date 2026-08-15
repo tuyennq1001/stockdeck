@@ -167,7 +167,7 @@ private struct FeaturedNewsCard: View {
                                 .frame(width: 40)
                         }
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 6) {
                             Text("FEATURED")
                                 .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
@@ -178,11 +178,22 @@ private struct FeaturedNewsCard: View {
                             }
                         }
                         Text(article.title)
-                            .font(.inter(22, weight: .semibold, relativeTo: .title2))
+                            .font(.inter(20, weight: .bold, relativeTo: .title3))
                             .foregroundStyle(DS.ink)
                             .lineSpacing(2)
-                            .lineLimit(3).multilineTextAlignment(.leading)
+                            .lineLimit(2).multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if !article.content.isEmpty {
+                            Text(article.content)
+                                .font(DS.body)
+                                .foregroundStyle(DS.inkSecondary)
+                                .lineSpacing(2)
+                                .lineLimit(3)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
                         Spacer(minLength: 0)
                         HStack(spacing: 6) {
                             if let ref = referenceTicker { TickerChipWide(text: ref, emphasized: true) }
@@ -199,7 +210,7 @@ private struct FeaturedNewsCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(height: 240)
+            .frame(height: 250)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .premiumCard(elevated: hovered)
             .contentShape(Rectangle())
@@ -257,13 +268,23 @@ private struct NewsCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 thumbnail
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(article.title)
-                        .font(.inter(13, weight: .semibold, relativeTo: .body))
+                        .font(.inter(13, weight: .bold, relativeTo: .body))
                         .foregroundStyle(DS.ink)
                         .lineSpacing(1.5)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+
+                    if !article.content.isEmpty {
+                        Text(article.content)
+                            .font(DS.caption)
+                            .foregroundStyle(DS.inkSecondary)
+                            .lineSpacing(1.5)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                    }
+
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
                         if let ref = referenceTicker {
@@ -279,7 +300,7 @@ private struct NewsCard: View {
                 .padding(14)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 232)
+            .frame(height: 264)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .premiumCard(elevated: hovered)
             .contentShape(Rectangle())

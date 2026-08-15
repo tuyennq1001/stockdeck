@@ -142,36 +142,46 @@ private struct NewsRow: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 thumbnail
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(article.title)
-                        .font(.inter(12, weight: .semibold, relativeTo: .body))
+                        .font(.inter(12, weight: .bold, relativeTo: .body))
                         .foregroundColor(.primary)
-                        .lineLimit(3)
+                        .lineLimit(2)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 4) {
+
+                    if !article.content.isEmpty {
+                        Text(article.content)
+                            .font(.inter(11, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .lineSpacing(1.5)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(spacing: 5) {
                         if !article.publisher.isEmpty {
                             Text(article.publisher)
-                                .font(.inter(9, relativeTo: .caption2))
+                                .font(.inter(9.5, weight: .medium, relativeTo: .caption2))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
                         if !relativeTime.isEmpty {
-                            Text("·").font(.inter(9, relativeTo: .caption2)).foregroundColor(.secondary)
+                            Text("·").font(.inter(9.5, relativeTo: .caption2)).foregroundColor(.secondary)
                             Text(relativeTime)
-                                .font(.inter(9, relativeTo: .caption2))
+                                .font(.inter(9.5, relativeTo: .caption2))
                                 .foregroundColor(.secondary)
                         }
-                    }
-                    if let ref = referenceTicker {
-                        HStack(spacing: 4) {
+                        if let ref = referenceTicker {
+                            Spacer(minLength: 4)
                             TickerChip(text: ref, emphasized: true)
                             ForEach(otherTickers, id: \.self) { ticker in
                                 TickerChip(text: ticker, emphasized: false)
                             }
                         }
-                        .padding(.top, 1)
                     }
+                    .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
             }

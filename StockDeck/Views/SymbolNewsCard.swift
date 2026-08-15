@@ -71,10 +71,20 @@ struct SymbolNewsCard: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(article.title)
-                        .font(DS.body)
+                        .font(.inter(12, weight: .bold, relativeTo: .body))
                         .foregroundStyle(DS.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
+
+                    if !article.content.isEmpty {
+                        Text(article.content)
+                            .font(DS.caption)
+                            .foregroundStyle(DS.inkSecondary)
+                            .lineLimit(2)
+                            .lineSpacing(1.5)
+                            .multilineTextAlignment(.leading)
+                    }
+
                     HStack(spacing: 6) {
                         Text(article.publisher.isEmpty ? symbol : article.publisher)
                             .font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
@@ -82,6 +92,7 @@ struct SymbolNewsCard: View {
                             Text("· \(relativeTime(article))").font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
                         }
                     }
+                    .padding(.top, 1)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: "arrow.up.right").font(.system(size: 9)).foregroundStyle(DS.inkTertiary)
