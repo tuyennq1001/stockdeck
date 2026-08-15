@@ -61,9 +61,9 @@ struct AlertsWideView: View {
 
     private var alertsTable: some View {
         VStack(spacing: 0) {
-            headerRow
+            tableToolbar
             Divider().overlay(DS.hairline)
-            batchBar
+            headerRow
             Divider().overlay(DS.hairline)
             rowsList
         }
@@ -71,83 +71,102 @@ struct AlertsWideView: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
     }
 
+    private var tableToolbar: some View {
+        HStack(spacing: 8) {
+            if selected.isEmpty {
+                Text("\(storageService.alerts.count) alert\(storageService.alerts.count == 1 ? "" : "s")")
+                    .font(DS.caption)
+                    .foregroundStyle(DS.inkSecondary)
+            } else {
+                let count = selected.count
+                HStack(spacing: 8) {
+                    Text("\(count) selected")
+                        .font(DS.caption)
+                        .foregroundStyle(DS.ink)
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        toggleSelected()
+                    } label: {
+                        Text(batchToggleTitle)
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.brand)
+                    .pointingHandCursor()
+
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        storageService.removeAlerts(ids: selected)
+                        selected.removeAll()
+                    } label: {
+                        Text("Delete (\(count))")
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.down)
+                    .pointingHandCursor()
+
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        selected.removeAll()
+                    } label: {
+                        Text("Clear")
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.inkSecondary)
+                    .pointingHandCursor()
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: - Header
 
     private var headerRow: some View {
         HStack(spacing: 12) {
             selectAllButton
-                .frame(width: 24)
-            Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 26, alignment: .trailing)
+            Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
             Text("Symbol").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 180, alignment: .leading)
             Text("Alert contents").font(DS.label).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .leading)
             Text("Actions").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 148, alignment: .trailing)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .tracking(0.8)
         .textCase(.uppercase)
     }
 
     /// The header checkbox: acts as select-all.
     private var selectAllButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                if selected.count == storageService.alerts.count {
-                    selected.removeAll()
-                } else {
-                    selected = Set(storageService.alerts.map(\.id))
+        Image(systemName: selectAllIcon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(!selected.isEmpty ? DS.brand : DS.inkTertiary)
+            .frame(width: 22, alignment: .leading)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        if selected.count == storageService.alerts.count && !storageService.alerts.isEmpty {
+                            selected.removeAll()
+                        } else {
+                            selected = Set(storageService.alerts.map(\.id))
+                        }
+                    }
                 }
-            }
-        } label: {
-            Image(systemName: selectAllIcon)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(!selected.isEmpty ? DS.brand : DS.inkTertiary)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(selected.count == storageService.alerts.count ? "Deselect all" : "Select all")
+            )
+            .pointingHandCursor()
+            .help(selected.count == storageService.alerts.count && !storageService.alerts.isEmpty ? "Deselect all" : "Select all")
     }
 
     private var selectAllIcon: String {
         if selected.isEmpty { return "square" }
-        if selected.count == storageService.alerts.count { return "checkmark.square.fill" }
+        if selected.count == storageService.alerts.count && !storageService.alerts.isEmpty { return "checkmark.square.fill" }
         return "minus.square.fill"
-    }
-
-    // MARK: - Batch bar
-
-    private var batchBar: some View {
-        let count = selected.count
-        return HStack(spacing: 10) {
-            Text("\(count) selected")
-                .font(DS.caption)
-                .foregroundStyle(DS.inkSecondary)
-            Spacer()
-            Button {
-                toggleSelected()
-            } label: {
-                Text(batchToggleTitle)
-                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(DS.brand)
-            .pointingHandCursor()
-            .disabled(count == 0)
-            .opacity(count == 0 ? 0.4 : 1)
-            Button {
-                storageService.removeAlerts(ids: selected)
-                selected.removeAll()
-            } label: {
-                Text("Delete (\(count))")
-                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(count == 0 ? DS.inkTertiary : DS.down)
-            .pointingHandCursor()
-            .disabled(count == 0)
-            .opacity(count == 0 ? 0.5 : 1)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 7)
-        .background(DS.cardAlt.opacity(0.5))
     }
 
     private var selectedAlerts: [PriceAlert] {
@@ -192,11 +211,10 @@ struct AlertsWideView: View {
             for: StockService.shared.quotes[alert.symbol]?.currency ?? storageService.preferredCurrency)
         return HStack(spacing: 12) {
             rowCheckbox(alert)
-                .frame(width: 24)
             Text("\(position)")
-                .font(DS.figure)
+                .font(DS.micro.monospacedDigit())
                 .foregroundStyle(DS.inkTertiary)
-                .frame(width: 26, alignment: .trailing)
+                .frame(width: 24, alignment: .leading)
             HStack(spacing: 8) {
                 SymbolLogo(symbol: alert.symbol, size: 22)
                 Text(StockService.beautifiedSymbol(alert.symbol))
@@ -228,19 +246,21 @@ struct AlertsWideView: View {
     }
 
     private func rowCheckbox(_ alert: PriceAlert) -> some View {
-        Button {
-            if selected.contains(alert.id) {
-                selected.remove(alert.id)
-            } else {
-                selected.insert(alert.id)
-            }
-        } label: {
-            Image(systemName: selected.contains(alert.id) ? "checkmark.square.fill" : "square")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(selected.contains(alert.id) ? DS.brand : DS.inkTertiary)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
+        Image(systemName: selected.contains(alert.id) ? "checkmark.square.fill" : "square")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(selected.contains(alert.id) ? DS.brand : DS.inkTertiary)
+            .frame(width: 22, alignment: .leading)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    if selected.contains(alert.id) {
+                        selected.remove(alert.id)
+                    } else {
+                        selected.insert(alert.id)
+                    }
+                }
+            )
+            .pointingHandCursor()
     }
 
     private func rowActions(_ alert: PriceAlert) -> some View {

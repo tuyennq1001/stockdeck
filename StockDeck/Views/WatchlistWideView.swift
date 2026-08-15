@@ -554,8 +554,6 @@ struct WatchlistWideView: View {
         VStack(spacing: 0) {
             tableToolbar
             Divider().overlay(DS.hairline)
-            batchBar
-            Divider().overlay(DS.hairline)
             if isCompact {
                 tableContents
             } else {
@@ -590,9 +588,52 @@ struct WatchlistWideView: View {
 
     private var tableToolbar: some View {
         HStack(spacing: 8) {
-            Text("\(storageService.watchlist.count) symbols")
-                .font(DS.caption)
-                .foregroundStyle(DS.inkSecondary)
+            if selectedSymbols.isEmpty {
+                Text("\(storageService.watchlist.count) symbols")
+                    .font(DS.caption)
+                    .foregroundStyle(DS.inkSecondary)
+            } else {
+                let countSet = selectedSymbols
+                let count = countSet.sorted()
+                HStack(spacing: 8) {
+                    Text("\(count.count) selected")
+                        .font(DS.caption)
+                        .foregroundStyle(DS.ink)
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        multiAlertSymbols = count
+                    } label: {
+                        Text("Set alert (\(count.count))")
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.brand)
+                    .pointingHandCursor()
+
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        storageService.removeMultipleFromWatchlist(countSet)
+                        selectedSymbols.removeAll()
+                    } label: {
+                        Text("Remove (\(count.count))")
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.down)
+                    .pointingHandCursor()
+
+                    Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
+                    Button {
+                        selectedSymbols.removeAll()
+                    } label: {
+                        Text("Clear")
+                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.inkSecondary)
+                    .pointingHandCursor()
+                }
+            }
 
             if !isCompact {
                 Spacer()
@@ -610,9 +651,6 @@ struct WatchlistWideView: View {
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursor()
-                RefreshButton(isLoading: stockService.isLoading) {
-                    Task { await stockService.refreshAll(storageService: storageService) }
-                }
 
                 Button { showMetricCustomizer = true } label: {
                     HStack(spacing: 5) {
@@ -738,90 +776,37 @@ WatchRowView(row: row,
 
     private var isCompact: Bool { activeDetailSymbol != nil }
 
-    /// The header checkbox: select or clear all watchlist rows. A plain Button
-    /// wrapping the same glyph as the row checkboxes so it aligns pixel-for-pixel
-    /// with the rows it controls (every other working header element is a Button).
+    /// The header checkbox: select or clear all watchlist rows.
     private var selectAllButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                if selectedSymbols.count == visibleRows.count {
-                    selectedSymbols.removeAll()
-                } else {
-                    selectedSymbols = Set(visibleRows.map(\.symbol))
+        Image(systemName: selectAllIcon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(!selectedSymbols.isEmpty ? DS.brand : DS.inkTertiary)
+            .frame(width: 22, alignment: .leading)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        if selectedSymbols.count == visibleRows.count && !visibleRows.isEmpty {
+                            selectedSymbols.removeAll()
+                        } else {
+                            selectedSymbols = Set(visibleRows.map(\.symbol))
+                        }
+                    }
                 }
-            }
-        } label: {
-            Image(systemName: selectAllIcon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 14, height: 14)
-                .foregroundStyle(!selectedSymbols.isEmpty ? DS.brand : DS.inkTertiary)
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(selectedSymbols.count == visibleRows.count ? "Deselect all" : "Select all")
-        .frame(width: 22, height: 20, alignment: .center)
+            )
+            .pointingHandCursor()
+            .help(selectedSymbols.count == visibleRows.count && !visibleRows.isEmpty ? "Deselect all" : "Select all")
     }
 
     private var selectAllIcon: String {
         if selectedSymbols.isEmpty { return "square" }
-        if selectedSymbols.count == visibleRows.count { return "checkmark.square.fill" }
+        if selectedSymbols.count == visibleRows.count && !visibleRows.isEmpty { return "checkmark.square.fill" }
         return "minus.square.fill"
-    }
-
-    // MARK: - Batch bar
-
-    /// Actions available for the rows currently selected via checkboxes.
-    private var batchBar: some View {
-        let countSet = selectedSymbols
-        let count = countSet.sorted()
-        return HStack(spacing: 10) {
-            Text("\(count.count) selected")
-                .font(DS.caption)
-                .foregroundStyle(DS.inkSecondary)
-            Spacer()
-            Button {
-                multiAlertSymbols = count
-            } label: {
-                Text("Set alert (\(count.count))")
-                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(count.isEmpty ? DS.inkTertiary : DS.brand)
-            .pointingHandCursor()
-            .disabled(count.isEmpty)
-            .opacity(count.isEmpty ? 0.5 : 1)
-            Button {
-                storageService.removeMultipleFromWatchlist(countSet)
-                selectedSymbols.removeAll()
-            } label: {
-                Text("Remove (\(count.count))")
-                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(count.isEmpty ? DS.inkTertiary : DS.down)
-            .pointingHandCursor()
-            .disabled(count.isEmpty)
-            .opacity(count.isEmpty ? 0.5 : 1)
-            Button {
-                selectedSymbols.removeAll()
-            } label: {
-                Text("Clear")
-                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(DS.inkSecondary)
-            .pointingHandCursor()
-            .disabled(count.isEmpty)
-            .opacity(count.isEmpty ? 0.5 : 1)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 7)
-        .background(DS.cardAlt.opacity(0.5))
     }
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
-            Group {
+            HStack(spacing: WCol.spacing) {
                 selectAllButton
                 Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
                 if isCompact {
@@ -830,10 +815,12 @@ WatchRowView(row: row,
                     headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(DS.card)
             .offset(x: hScrollOffset)
             .zIndex(1)
+
             if !isCompact {
                 ForEach(selectedMetrics) { metric in
                     metricHeader(metric)
@@ -841,7 +828,6 @@ WatchRowView(row: row,
             }
         }
         .padding(.vertical, 10)
-        .tracking(0.8)
         .textCase(.uppercase)
         .contextMenu {
             Button {
@@ -1291,7 +1277,7 @@ private struct WatchRowView<Menu: View>: View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
                 // Frozen columns: position + symbol, with opaque white background & zIndex
-                Group {
+                HStack(spacing: WCol.spacing) {
                     // Checkbox: toggling selection must not open the detail pane,
                     // so it swallows the tap with a high-priority gesture.
                     Image(systemName: isSelected ? "checkmark.square.fill" : "square")
@@ -1324,14 +1310,13 @@ private struct WatchRowView<Menu: View>: View {
                             }
                         }
                     }
-                    .frame(maxWidth: compact ? .infinity : WCol.symbol, alignment: .leading)
+                    .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .frame(minHeight: 44)
                 .background(
                     Group {
-                        if isSelected { DS.brand.opacity(0.12) }
-                        else if hover { DS.cardAlt.opacity(0.6) }
+                        if hover { DS.cardAlt.opacity(0.6) }
                         else { DS.card }
                     }
                 )
