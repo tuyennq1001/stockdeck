@@ -29,7 +29,7 @@ struct SymbolNewsCard: View {
                 }
             }
         }
-        .task { await stockService.refreshNews(for: symbol) }
+        .task(id: symbol) { await stockService.refreshNews(for: symbol) }
         .sheet(item: $activeLink) { link in
             InAppWebViewPopup(url: link.url)
         }
