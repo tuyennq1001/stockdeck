@@ -21,6 +21,10 @@ struct WatchlistWideView: View {
     @State private var sortKey: SortKey = .order
     @State private var sortAsc = true
     @State private var draggingSymbol: String? = nil
+    /// The full set of symbols travelling during a drag. When the dragged row is
+    /// part of a multi-selection this is the whole selection (TradingView-style
+    /// group drag); otherwise just the single row.
+    @State private var draggingSymbols: Set<String> = []
     /// Live display order of the watchlist tabs while dragging: no storage
     /// writes during the drag — the final order is committed once on drop.
     @State private var previewWatchlistIds: [UUID] = []
@@ -32,6 +36,7 @@ struct WatchlistWideView: View {
     @State private var dropIndicator: DropIndicator<String>? = nil
     @State private var addToPortfolio: AddTarget?
     @State private var alertSymbol: AlertTarget?
+    @State private var multiAlertSymbols: [String] = []
     @State private var showMetricCustomizer = false
 
     struct WatchRow: Identifiable {
@@ -108,7 +113,6 @@ struct WatchlistWideView: View {
 
     @State private var selectedSymbols: Set<String> = []
     @State private var activeDetailSymbol: String? = nil
-    @State private var lastClickedSymbol: String? = nil
     @State private var hScrollOffset: CGFloat = 0
 
     private var rows: [WatchRow] {
@@ -246,6 +250,7 @@ struct WatchlistWideView: View {
         }
         .onChange(of: draggingSymbol) { _, newValue in
             if newValue == nil {
+                draggingSymbols = []
                 previewOrder = []
                 dropIndicator = nil
             }
@@ -264,6 +269,15 @@ struct WatchlistWideView: View {
         .sheet(item: $alertSymbol) { t in
             PriceAlertSheet(symbol: t.symbol) { alertSymbol = nil }
                 .environmentObject(stockService).environmentObject(storageService)
+        }
+        .sheet(isPresented: Binding(
+            get: { !multiAlertSymbols.isEmpty },
+            set: { if !$0 { multiAlertSymbols = [] } }
+        )) {
+            if let first = multiAlertSymbols.first {
+                PriceAlertSheet(symbol: first, suggestedSymbols: multiAlertSymbols) { multiAlertSymbols = [] }
+                    .environmentObject(stockService).environmentObject(storageService)
+            }
         }
         .sheet(isPresented: $showMetricCustomizer) {
             WatchlistMetricCustomizer(initialMetrics: selectedMetrics) {
@@ -540,6 +554,8 @@ struct WatchlistWideView: View {
         VStack(spacing: 0) {
             tableToolbar
             Divider().overlay(DS.hairline)
+            batchBar
+            Divider().overlay(DS.hairline)
             if isCompact {
                 tableContents
             } else {
@@ -566,7 +582,7 @@ struct WatchlistWideView: View {
     }
 
     private var tableWidth: CGFloat {
-        let base = 24 + WCol.symbol
+        let base = 22 + 24 + WCol.symbol
         let metricWidth = selectedMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
         let columns = 2 + selectedMetrics.count
         return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
@@ -640,6 +656,7 @@ struct WatchlistWideView: View {
                         isHorizontal: false,
                         makeDragItem: {
                             previewOrder = storageService.watchlist
+                            draggingSymbols = groupForDrag(row.symbol)
                             return NSItemProvider(object: row.symbol as NSString)
                         },
                         onMove: { src, tgt, placement in
@@ -647,27 +664,31 @@ struct WatchlistWideView: View {
                                 sortKey = .order
                                 sortAsc = true
                             }
-                            moveInPreview(src, beforeOrAfter: tgt, placement: placement)
+                            moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
+                                               beforeOrAfter: tgt, placement: placement)
                         },
                         onCommit: { commitPreviewOrder() },
                         dropIndicator: $dropIndicator
                     ) {
-                        if draggingSymbol == row.symbol {
-                            WatchRowView(row: row,
-                                         position: idx + 1,
-                                         showExtended: storageService.showExtendedHours,
-                                         extendedSession: extendedSession,
-                                         percentDecimals: storageService.percentDecimals,
-                                         valueDecimals: storageService.valueDecimals,
-                                         metrics: selectedMetrics,
-                                         isSelected: selectedSymbols.contains(row.symbol),
-                                         compact: isCompact,
-                                         hScrollOffset: hScrollOffset,
-                                         onOpen: {
-                                             handleRowClick(row.symbol)
-                                         },
-                                         menu: { rowMenu(row) })
-                                .opacity(0)
+                        if draggingSymbols.contains(row.symbol) {
+WatchRowView(row: row,
+                                 position: idx + 1,
+                                 showExtended: storageService.showExtendedHours,
+                                 extendedSession: extendedSession,
+                                 percentDecimals: storageService.percentDecimals,
+                                 valueDecimals: storageService.valueDecimals,
+                                 metrics: selectedMetrics,
+                                 isSelected: selectedSymbols.contains(row.symbol),
+                                 compact: isCompact,
+                                 hScrollOffset: hScrollOffset,
+                                 onOpen: {
+                                     handleRowClick(row.symbol)
+                                 },
+                                 onToggleSelect: {
+                                     toggleSelection(of: row.symbol)
+                                 },
+                                 menu: { rowMenu(row) })
+                            .opacity(0)
                         } else {
                             WatchRowView(row: row,
                                          position: idx + 1,
@@ -681,6 +702,9 @@ struct WatchlistWideView: View {
                                          hScrollOffset: hScrollOffset,
                                          onOpen: {
                                              handleRowClick(row.symbol)
+                                         },
+                                         onToggleSelect: {
+                                             toggleSelection(of: row.symbol)
                                          },
                                          menu: { rowMenu(row) })
                         }
@@ -697,38 +721,108 @@ struct WatchlistWideView: View {
     }
 
     private func handleRowClick(_ symbol: String) {
-        let isShift = NSEvent.modifierFlags.contains(.shift)
-        let isCmd = NSEvent.modifierFlags.contains(.command)
-
-        if isShift, let last = lastClickedSymbol,
-           let lastIdx = visibleRows.firstIndex(where: { $0.symbol == last }),
-           let currentIdx = visibleRows.firstIndex(where: { $0.symbol == symbol }) {
-            let minIdx = min(lastIdx, currentIdx)
-            let maxIdx = max(lastIdx, currentIdx)
-            let rangeSymbols = visibleRows[minIdx...maxIdx].map(\.symbol)
-            selectedSymbols.formUnion(rangeSymbols)
-        } else if isCmd {
-            if selectedSymbols.contains(symbol) {
-                selectedSymbols.remove(symbol)
-            } else {
-                selectedSymbols.insert(symbol)
-            }
-            lastClickedSymbol = symbol
-        } else {
-            selectedSymbols = [symbol]
-            lastClickedSymbol = symbol
-        }
-
+        // Selection is handled exclusively by the row checkboxes; clicking a row
+        // only opens the detail chart.
         withAnimation(.easeInOut(duration: 0.2)) {
             activeDetailSymbol = symbol
         }
     }
 
+    private func toggleSelection(of symbol: String) {
+        if selectedSymbols.contains(symbol) {
+            selectedSymbols.remove(symbol)
+        } else {
+            selectedSymbols.insert(symbol)
+        }
+    }
+
     private var isCompact: Bool { activeDetailSymbol != nil }
+
+    /// The header checkbox: select or clear all watchlist rows. A plain Button
+    /// wrapping the same glyph as the row checkboxes so it aligns pixel-for-pixel
+    /// with the rows it controls (every other working header element is a Button).
+    private var selectAllButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                if selectedSymbols.count == visibleRows.count {
+                    selectedSymbols.removeAll()
+                } else {
+                    selectedSymbols = Set(visibleRows.map(\.symbol))
+                }
+            }
+        } label: {
+            Image(systemName: selectAllIcon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 14, height: 14)
+                .foregroundStyle(!selectedSymbols.isEmpty ? DS.brand : DS.inkTertiary)
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help(selectedSymbols.count == visibleRows.count ? "Deselect all" : "Select all")
+        .frame(width: 22, height: 20, alignment: .center)
+    }
+
+    private var selectAllIcon: String {
+        if selectedSymbols.isEmpty { return "square" }
+        if selectedSymbols.count == visibleRows.count { return "checkmark.square.fill" }
+        return "minus.square.fill"
+    }
+
+    // MARK: - Batch bar
+
+    /// Actions available for the rows currently selected via checkboxes.
+    private var batchBar: some View {
+        let countSet = selectedSymbols
+        let count = countSet.sorted()
+        return HStack(spacing: 10) {
+            Text("\(count.count) selected")
+                .font(DS.caption)
+                .foregroundStyle(DS.inkSecondary)
+            Spacer()
+            Button {
+                multiAlertSymbols = count
+            } label: {
+                Text("Set alert (\(count.count))")
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(count.isEmpty ? DS.inkTertiary : DS.brand)
+            .pointingHandCursor()
+            .disabled(count.isEmpty)
+            .opacity(count.isEmpty ? 0.5 : 1)
+            Button {
+                storageService.removeMultipleFromWatchlist(countSet)
+                selectedSymbols.removeAll()
+            } label: {
+                Text("Remove (\(count.count))")
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(count.isEmpty ? DS.inkTertiary : DS.down)
+            .pointingHandCursor()
+            .disabled(count.isEmpty)
+            .opacity(count.isEmpty ? 0.5 : 1)
+            Button {
+                selectedSymbols.removeAll()
+            } label: {
+                Text("Clear")
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.inkSecondary)
+            .pointingHandCursor()
+            .disabled(count.isEmpty)
+            .opacity(count.isEmpty ? 0.5 : 1)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 7)
+        .background(DS.cardAlt.opacity(0.5))
+    }
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
             Group {
+                selectAllButton
                 Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
                 if isCompact {
                     headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
@@ -736,7 +830,7 @@ struct WatchlistWideView: View {
                     headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
                 }
             }
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14).padding(.vertical, 10)
             .background(DS.card)
             .offset(x: hScrollOffset)
             .zIndex(1)
@@ -746,7 +840,7 @@ struct WatchlistWideView: View {
                 }
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .padding(.vertical, 10)
         .tracking(0.8)
         .textCase(.uppercase)
         .contextMenu {
@@ -911,17 +1005,32 @@ struct WatchlistWideView: View {
         storageService.watchlist.swapAt(i, j)
     }
 
-    /// Live, local-only reorder of the preview while dragging. No storage writes.
-    private func moveInPreview(_ sourceSymbol: String, beforeOrAfter targetSymbol: String, placement: InsertPlacement) {
+    /// The set of symbols that travel together when `symbol` is dragged.
+    /// TradingView-style: if the row is part of a live multi-selection, the whole
+    /// selection moves as one block; otherwise just that row.
+    private func groupForDrag(_ symbol: String) -> Set<String> {
+        if selectedSymbols.contains(symbol), selectedSymbols.count > 1 {
+            return selectedSymbols
+        }
+        return [symbol]
+    }
+
+    /// Live, local-only reorder of the preview while dragging. Moves a whole
+    /// group into a single contiguous block at the drop position, preserving the
+    /// group's pre-drag relative order. No storage writes.
+    private func moveGroupInPreview(_ group: Set<String>, beforeOrAfter targetSymbol: String, placement: InsertPlacement) {
         if previewOrder.isEmpty { previewOrder = storageService.watchlist }
-        guard sourceSymbol != targetSymbol,
-              let srcIndex = previewOrder.firstIndex(of: sourceSymbol),
+        guard !group.contains(targetSymbol),
               let tgtIndex = previewOrder.firstIndex(of: targetSymbol) else { return }
-        let item = previewOrder.remove(at: srcIndex)
-        let newTargetIndex = previewOrder.firstIndex(of: targetSymbol) ?? tgtIndex
-        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
-        guard insertIndex >= 0, insertIndex <= previewOrder.count else { return }
-        previewOrder.insert(item, at: insertIndex)
+        // Extract the group (in list order) and drop the target's old index so
+        // the anchor stays correct after removal.
+        let members = previewOrder.filter { group.contains($0) }
+        let afterRemoval = previewOrder.filter { !group.contains($0) }
+        let targetAfterRemoval = afterRemoval.firstIndex(of: targetSymbol) ?? tgtIndex
+        let insertIndex = placement == .before ? targetAfterRemoval : targetAfterRemoval + 1
+        guard insertIndex >= 0, insertIndex <= afterRemoval.count else { return }
+        previewOrder = afterRemoval
+        previewOrder.insert(contentsOf: members, at: insertIndex)
     }
 
     /// The watchlist tabs in order: the local drag preview while dragging, else the
@@ -1017,6 +1126,7 @@ private struct WatchRowView<Menu: View>: View {
     var compact: Bool = false
     var hScrollOffset: CGFloat = 0
     let onOpen: () -> Void
+    var onToggleSelect: () -> Void = {}
     @ViewBuilder let menu: () -> Menu
     @State private var hover = false
 
@@ -1182,6 +1292,14 @@ private struct WatchRowView<Menu: View>: View {
             HStack(spacing: WCol.spacing) {
                 // Frozen columns: position + symbol, with opaque white background & zIndex
                 Group {
+                    // Checkbox: toggling selection must not open the detail pane,
+                    // so it swallows the tap with a high-priority gesture.
+                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(isSelected ? DS.brand : DS.inkTertiary)
+                        .frame(width: 22, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(TapGesture().onEnded { onToggleSelect() })
                     Text("\(position)")
                         .font(DS.micro.monospacedDigit())
                         .foregroundStyle(DS.inkTertiary)

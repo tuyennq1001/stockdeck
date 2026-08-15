@@ -93,31 +93,64 @@ final class AlertMonitor {
     private let storage: StorageService
     private let notifier: NotificationManager
 
-    init(storage: StorageService, notifier: NotificationManager? = nil) {
+    /// History provider for MA-based (crossing) alerts. Injected so the monitor
+    /// can read daily closes without owning the network layer; nil in dev tests.
+    var history: ((String) -> [PricePoint])?
+
+    init(storage: StorageService, notifier: NotificationManager? = nil, history: ((String) -> [PricePoint])? = nil) {
         self.storage = storage
         self.notifier = notifier ?? .shared
+        self.history = history
     }
 
-    /// Check all enabled alerts against the given quotes; fire + disable those that match.
+    /// Check all enabled alerts against the given quotes; fire those that match.
     func check(quotes: [String: StockQuote]) {
         for alert in storage.alerts where alert.isEnabled {
             guard let quote = quotes[alert.symbol] else { continue }
-            guard AlertEvaluator.shouldFire(alert, quote: quote) else { continue }
+            guard let condition = alert.condition.movingAverage else {
+                // Fixed-threshold condition (price / daily % / 52-week range).
+                guard AlertEvaluator.shouldFire(alert, quote: quote) else { continue }
+                fire(alert: alert, quote: quote)
+                storage.markAlertTriggered(id: alert.id)
+                continue
+            }
 
+            // MA condition: cross the rolling average to fire, keep enabled.
+            guard let points = history?(alert.symbol), !points.isEmpty else { continue }
+            let average = MovingAverage.value(kind: condition, points: points)
+            guard let price = quote.alertPrice,
+                  let result = MovingAverage.evaluateCross(
+                      condition: alert.condition, average: average,
+                      price: price, wasAbove: alert.lastPositionAboveMA) else { continue }
+            storage.updateAlertPosition(id: alert.id, nowAbove: result.nowAbove)
+            guard result.fire else { continue }
+            fire(alert: alert, quote: quote)
+        }
+    }
+
+    private func fire(alert: PriceAlert, quote: StockQuote, average: Double? = nil) {
             let currency = StorageService.currencySymbol(for: quote.currency)
             let priceStr = "\(currency)\(StorageService.formatNumber(quote.effectivePrice, decimals: 2))"
             let sentiment: NotificationManager.Sentiment
             switch alert.condition {
-            case .priceAbove, .dailyChangeUp, .near52WeekHigh: sentiment = .positive
-            case .priceBelow, .dailyChangeDown, .near52WeekLow: sentiment = .negative
+            case .priceAbove, .dailyChangeUp, .near52WeekHigh,
+                 .priceAboveSMA200, .priceAboveEMA200, .priceAboveWeeklySMA200:
+                sentiment = .positive
+            case .priceBelow, .dailyChangeDown, .near52WeekLow,
+                 .priceBelowSMA200, .priceBelowEMA200, .priceBelowWeeklySMA200:
+                sentiment = .negative
+            }
+            var body: String
+            if let average {
+                body = "\(AlertEvaluator.describe(alert, currencySymbol: currency)) — price \(priceStr), MA \(currency)\(StorageService.formatNumber(average, decimals: 2)) now"
+            } else {
+                body = "\(AlertEvaluator.describe(alert, currencySymbol: currency)) — now \(priceStr)"
             }
             notifier.send(
                 title: "\(alert.symbol) alert",
-                body: "\(AlertEvaluator.describe(alert, currencySymbol: currency)) — now \(priceStr)",
+                body: body,
                 identifier: alert.id.uuidString,
                 sentiment: sentiment
             )
-            storage.markAlertTriggered(id: alert.id)
         }
-    }
 }

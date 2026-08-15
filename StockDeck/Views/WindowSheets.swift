@@ -903,16 +903,25 @@ struct WatchlistSearchSheet: View {
 
 // MARK: - Price alert
 
-/// DS-styled one-shot price alert creation.
+/// DS-styled one-shot price alert creation/editing. Pass `editing` to prefill
+/// an existing alert and save changes instead of creating a new one.
 struct PriceAlertSheet: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     let symbol: String
+    /// When more than one symbol, the sheet creates the same alert for every
+    /// symbol (batch mode). Single-symbol use keeps `symbol` as the target.
+    var suggestedSymbols: [String]? = nil
+    var editing: PriceAlert? = nil
     let onDismiss: () -> Void
 
     @State private var condition: AlertCondition = .priceAbove
     @State private var thresholdText = ""
 
+    private var targets: [String] {
+        if let suggestedSymbols, suggestedSymbols.count > 1 { return suggestedSymbols }
+        return [symbol]
+    }
     private var quote: StockQuote? { stockService.quotes[symbol] }
     private var currencySymbol: String {
         StorageService.currencySymbol(for: quote?.currency ?? storageService.preferredCurrency)
@@ -921,26 +930,44 @@ struct PriceAlertSheet: View {
         condition.thresholdKind == .price ? currencySymbol : "%"
     }
 
+    private var isEditing: Bool { editing != nil }
+    private var title: String {
+        if isEditing { return "Edit Alert · \(symbol)" }
+        if targets.count > 1 { return "Set alert · \(targets.count) symbols" }
+        return "Alert · \(symbol)"
+    }
+
     var body: some View {
-        SheetShell(title: "Alert · \(symbol)", onCancel: onDismiss, width: 420) {
+        SheetShell(title: title, onCancel: onDismiss, width: 420) {
             FieldBlock("Condition") {
                 DSPicker(options: AlertCondition.allCases.map { ($0, $0.label) },
                          selection: $condition, width: 260)
                     .onChange(of: condition) { prefill() }
             }
-            FieldBlock(thresholdLabel) {
-                HStack(spacing: 8) {
-                    DSTextField(placeholder: placeholder, text: $thresholdText, mono: true)
-                    Text(thresholdUnit).font(DS.body).foregroundStyle(DS.inkSecondary)
+            if condition.thresholdKind != .ma {
+                FieldBlock(thresholdLabel) {
+                    HStack(spacing: 8) {
+                        DSTextField(placeholder: placeholder, text: $thresholdText, mono: true)
+                        Text(thresholdUnit).font(DS.body).foregroundStyle(DS.inkSecondary)
+                    }
+                }
+            } else {
+                FieldBlock(thresholdLabel) {
+                    Text("\(condition.label) — fires when the price crosses this rolling average.")
+                        .font(DS.caption).foregroundStyle(DS.inkSecondary)
                 }
             }
             if let q = quote {
                 Text("Current price: \(currencySymbol)\(StorageService.formatNumber(q.effectivePrice, decimals: 2))")
                     .font(DS.caption).foregroundStyle(DS.inkTertiary)
             }
-            PrimaryButton(title: "Create alert", enabled: parsedValue != nil, action: create)
+            PrimaryButton(title: isEditing ? "Save changes" : "Create alert", enabled: isCreateEnabled, action: create)
         }
-        .onAppear(perform: prefill)
+        .onAppear(perform: prefillFromEditing)
+    }
+
+    private var isCreateEnabled: Bool {
+        condition.thresholdKind == .ma ? true : parsedValue != nil
     }
 
     private var parsedValue: Double? {
@@ -953,9 +980,27 @@ struct PriceAlertSheet: View {
         case .priceAbove, .priceBelow: return "Target price"
         case .dailyChangeUp, .dailyChangeDown: return "Daily change threshold"
         case .near52WeekHigh, .near52WeekLow: return "Proximity (within %)"
+        case .priceAboveSMA200, .priceBelowSMA200: return "SMA 200"
+        case .priceAboveEMA200, .priceBelowEMA200: return "EMA 200"
+        case .priceAboveWeeklySMA200, .priceBelowWeeklySMA200: return "Weekly SMA 200"
         }
     }
     private var placeholder: String { condition.thresholdKind == .price ? "0.00" : "5" }
+
+    private func prefillFromEditing() {
+        if let editing {
+            condition = editing.condition
+            if condition.thresholdKind == .ma {
+                thresholdText = ""
+            } else {
+                thresholdText = condition.thresholdKind == .price
+                    ? String(format: "%.2f", editing.threshold)
+                    : String(format: "%g", editing.threshold)
+            }
+        } else {
+            prefill()
+        }
+    }
 
     private func prefill() {
         switch condition.thresholdKind {
@@ -965,12 +1010,25 @@ struct PriceAlertSheet: View {
             case .near52WeekHigh, .near52WeekLow: thresholdText = "2"
             default: thresholdText = "5"
             }
+        case .ma: thresholdText = ""
         }
     }
 
     private func create() {
-        guard let v = parsedValue else { return }
-        storageService.addAlert(PriceAlert(symbol: symbol, condition: condition, threshold: v))
+        let v: Double
+        if condition.thresholdKind == .ma {
+            v = 0
+        } else {
+            guard let parsed = parsedValue else { return }
+            v = parsed
+        }
+        if let editing {
+            storageService.updateAlert(id: editing.id, condition: condition, threshold: v)
+        } else {
+            for target in targets {
+                storageService.addAlert(PriceAlert(symbol: target, condition: condition, threshold: v))
+            }
+        }
         onDismiss()
     }
 }

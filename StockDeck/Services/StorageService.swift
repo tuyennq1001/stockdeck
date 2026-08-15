@@ -519,6 +519,30 @@ class StorageService: ObservableObject {
         alerts.removeAll()
     }
 
+    func removeAlerts(ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        alerts.removeAll { ids.contains($0.id) }
+    }
+
+    func updateAlert(id: UUID, condition: AlertCondition, threshold: Double) {
+        guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
+        alerts[i].condition = condition
+        alerts[i].threshold = threshold
+        // An edited alert counts as a fresh one: re-arm it and clear the
+        // "triggered" state so it can fire again immediately.
+        alerts[i].isEnabled = true
+        alerts[i].lastTriggeredAt = nil
+        // A changed condition also resets the MA cross state (nil = prime next
+        // evaluation without firing).
+        alerts[i].lastPositionAboveMA = nil
+    }
+
+    /// Records the latest above/below side for a crossing MA alert.
+    func updateAlertPosition(id: UUID, nowAbove: Bool) {
+        guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
+        alerts[i].lastPositionAboveMA = nowAbove
+    }
+
     func setAlertEnabled(id: UUID, enabled: Bool) {
         guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
         alerts[i].isEnabled = enabled
