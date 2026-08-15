@@ -21,6 +21,7 @@ struct AlertEditView: View {
         switch condition.thresholdKind {
         case .price: return currencySymbol
         case .percent: return "%"
+        case .ma: return ""
         }
     }
 
@@ -49,15 +50,20 @@ struct AlertEditView: View {
                 .onChange(of: condition) { prefillThreshold() }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(thresholdLabel)
-                    .font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
-                HStack(spacing: 6) {
-                    TextField(placeholder, text: $thresholdText)
-                        .textFieldStyle(.roundedBorder)
-                    Text(thresholdUnit)
-                        .font(.inter(11, relativeTo: .body)).foregroundColor(.secondary)
+            if condition.thresholdKind != .ma {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(thresholdLabel)
+                        .font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        TextField(placeholder, text: $thresholdText)
+                            .textFieldStyle(.roundedBorder)
+                        Text(thresholdUnit)
+                            .font(.inter(11, relativeTo: .body)).foregroundColor(.secondary)
+                    }
                 }
+            } else {
+                Text("\(thresholdLabel): fires when the price crosses this rolling average.")
+                    .font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
             }
 
             if let q = quote {
@@ -68,17 +74,23 @@ struct AlertEditView: View {
             Spacer()
 
             Button("Create Alert") {
-                guard let value = Double(thresholdText.replacingOccurrences(of: ",", with: ".")),
-                      value > 0 else { return }
-                storageService.addAlert(PriceAlert(symbol: symbol, condition: condition, threshold: value))
+                guard let v = thresholdForCreation else { return }
+                storageService.addAlert(PriceAlert(symbol: symbol, condition: condition, threshold: v))
                 onDismiss()
             }
             .buttonStyle(.borderedProminent)
             .pointingHandCursor()
-            .disabled(Double(thresholdText.replacingOccurrences(of: ",", with: ".")) == nil)
+            .disabled(thresholdForCreation == nil)
         }
         .padding()
         .onAppear { prefillThreshold() }
+    }
+
+    /// MA conditions need no threshold; others need a positive number.
+    private var thresholdForCreation: Double? {
+        if condition.thresholdKind == .ma { return 0 }
+        guard let v = Double(thresholdText.replacingOccurrences(of: ",", with: ".")), v > 0 else { return nil }
+        return v
     }
 
     private var thresholdLabel: String {
@@ -86,6 +98,9 @@ struct AlertEditView: View {
         case .priceAbove, .priceBelow: return "Target price"
         case .dailyChangeUp, .dailyChangeDown: return "Daily change threshold"
         case .near52WeekHigh, .near52WeekLow: return "Proximity (within %)"
+        case .priceAboveSMA200, .priceBelowSMA200: return "SMA 200"
+        case .priceAboveEMA200, .priceBelowEMA200: return "EMA 200"
+        case .priceAboveWeeklySMA200, .priceBelowWeeklySMA200: return "Weekly SMA 200"
         }
     }
 
@@ -105,6 +120,8 @@ struct AlertEditView: View {
             default:
                 thresholdText = "5"
             }
+        case .ma:
+            thresholdText = ""
         }
     }
 }

@@ -104,6 +104,10 @@ struct PortfolioWindowView: View {
         .onChange(of: storageService.showNewsTab) { _, showNews in
             if !showNews, selection == .home { navigate(to: .watchlist) }
         }
+        // Clicking an alert notification lands the user on the Alerts tab.
+        .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
+            navigate(to: .alerts)
+        }
         .onChange(of: draggingWatchlistId) { _, newValue in
             if newValue == nil { previewWatchlistIds = [] }
         }

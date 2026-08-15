@@ -2,9 +2,13 @@ import AppKit
 import Combine
 import Sparkle
 import SwiftUI
+import UserNotifications
 
 extension Notification.Name {
     static let popoverDidClose = Notification.Name("popoverDidClose")
+    /// Posted when the user clicks an alert notification; the desktop window
+    /// listens and jumps to the Alerts tab.
+    static let stockDeckAlertTapped = Notification.Name("stockDeckAlertTapped")
 }
 
 final class SparkleDelegate: NSObject, SPUUpdaterDelegate {
@@ -55,6 +59,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var tickerIndex = 0
     private var eventMonitor: Any?
+    /// Guards the `didBecomeActive` fallback so a click that already opened the
+    /// Alerts tab doesn't fire twice.
+    private var lastAlertActivationAt: Date = .distantPast
     /// When the current refresh started. Nil = no refresh in flight. Used via
     /// `ConnectionSupervisor.refreshIsBlocking` instead of a bare Bool so a
     /// refresh Task cancelled by a sleep/wake race can't leave polling wedged.
@@ -68,7 +75,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var tickerTimer: Timer?
     private var storageServiceObserver: AnyCancellable?
     private var symbolsObserver: AnyCancellable?
-    private lazy var alertMonitor = AlertMonitor(storage: storageService)
+    private lazy var alertMonitor: AlertMonitor = {
+        let monitor = AlertMonitor(storage: storageService)
+        monitor.history = { [weak stockService] symbol in
+            let svc = stockService
+            // Choose the longest daily series available for the rolling average.
+            return svc?.priceHistoryMax[symbol] ?? svc?.priceHistory[symbol] ?? []
+        }
+        return monitor
+    }()
     private lazy var portfolioMonitor = PortfolioMonitor(storage: storageService, stockService: stockService)
     let updaterViewModel = UpdaterViewModel()
 
@@ -78,6 +93,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// so crypto balances stay fresh without a manual "Sync Binance Now" tap).
     private static let binanceAutoSyncInterval: TimeInterval = 600
     private var lastBinanceAutoSync: Date?
+
+    /// Set the UN delegate before launch finishes so a notification response
+    /// delivered while the app is cold-launching (click on a delivered banner)
+    /// is captured instead of being dropped.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FontRegistration.registerFonts()
@@ -89,6 +111,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
+
+        // Cold launch from clicking a delivered notification: the system already
+        // routed the response to the delegate (set in willFinishLaunching); the
+        // `.didBecomeActive` observer below is the LSUIElement fallback in case
+        // macOS swallowed the didReceive callback on the banner click.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleBecameActive),
+            name: NSApplication.didBecomeActiveNotification, object: nil)
 
         // Menu-bar-only by default; opening the desktop window temporarily
         // promotes the app to a regular application.
@@ -140,6 +170,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await stockService.refreshAll(storageService: storageService)
             guard !Task.isCancelled else { return }
             updateMenuBarTitle()
+            await self.ensureMAAlertHistory()
             alertMonitor.check(quotes: stockService.quotes)
             portfolioMonitor.check()
             recordSnapshots()
@@ -193,6 +224,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
                     await self.stockService.refreshAll(storageService: self.storageService)
                     self.updateMenuBarTitle()
+                    await self.ensureMAAlertHistory()
                     self.alertMonitor.check(quotes: self.stockService.quotes)
                     self.portfolioMonitor.check()
                     self.recordSnapshots()
@@ -214,6 +246,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - WebSocket
+
+    /// Ensures daily price history is loaded for every MA-based alert so the
+    /// cross evaluation has data to compute the rolling average.
+    private func ensureMAAlertHistory() async {
+        for alert in storageService.alerts where alert.condition.movingAverage != nil {
+            await stockService.ensurePriceHistory(for: alert.symbol)
+        }
+    }
 
     private func startWebSocket() {
         let symbols = collectSymbols()
@@ -311,6 +351,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.stockService.refreshExchangeRates(storageService: self.storageService)
                 self.invalidateMenuBarStats()
                 self.updateMenuBarTitle()
+                await self.ensureMAAlertHistory()
                 self.alertMonitor.check(quotes: self.stockService.quotes)
                 self.portfolioMonitor.check()
                 self.recordSnapshots()
@@ -719,6 +760,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// stays put; this is the "expanded" surface over the same shared state. While
     /// the window is up the app shows a Dock icon (regular policy) so it behaves
     /// like a normal app; closing it returns to accessory (menu-bar-only) mode.
+    /// Opens (or focuses) the desktop window, then posts `.stockDeckAlertTapped`
+    /// so the Portfolio window switches to its Alerts tab.
+    func openWindowToAlerts() {
+        showPortfolioWindow()
+        // Wait until the window is on screen before asking it to navigate; the
+        // observer in PortfolioWindowView handles the timing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            _ = self
+            NotificationCenter.default.post(name: .stockDeckAlertTapped, object: nil)
+        }
+    }
+
+    @objc private func handleBecameActive() {
+        // LSUIElement (menu-bar) apps can lose the `didReceive` callback when a
+        // banner is clicked. Fallback: whenever we just became active, if a
+        // delivered alert notification is still pending on the Notification
+        // Center, treat it as a click on that alert — but only when the user
+        // did NOT just open the menu-bar popover (a real banner click never
+        // opens the popover, so that's our discriminator).
+        let now = Date()
+        guard now.timeIntervalSince(lastAlertActivationAt) > 2 else { return }
+        guard !(popover?.isShown ?? false) else { return }
+        UNUserNotificationCenter.current().getDeliveredNotifications { [weak self] delivered in
+            Task { @MainActor in
+                guard let self else { return }
+                guard !(self.popover?.isShown ?? false) else { return }
+                guard let pending = delivered.first(where: {
+                    now.timeIntervalSince($0.date) < 120 && !$0.request.content.title.isEmpty
+                }) else { return }
+                self.lastAlertActivationAt = now
+                self.openWindowToAlerts()
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [pending.request.identifier])
+            }
+        }
+    }
+
     @objc func showPortfolioWindow() {
         let reusable = portfolioWindow?.isVisible ?? false
         NSLog("[StockDeck] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
@@ -805,6 +882,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
             self.isPresentingPortfolioWindow = false
             NSLog("[StockDeck] window shown — active=\(NSApp.isActive) visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
+        }
+    }
+}
+
+// MARK: - UNUserNotificationCenterDelegate
+// Clicking a delivered alert notification opens (or focuses) the desktop
+// window and navigates it to the Alerts tab.
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        Task { @MainActor in
+            self.openWindowToAlerts()
+            completionHandler()
         }
     }
 }
