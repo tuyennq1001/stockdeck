@@ -635,9 +635,9 @@ struct WatchlistWideView: View {
                 }
             }
 
-            if !isCompact {
-                Spacer()
+            Spacer()
 
+            if !isCompact {
                 Button {
                     PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
                 } label: {
@@ -815,6 +815,7 @@ WatchRowView(row: row,
                     headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
                 }
             }
+            .frame(maxWidth: isCompact ? .infinity : nil, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(DS.card)
@@ -827,6 +828,7 @@ WatchRowView(row: row,
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
         .textCase(.uppercase)
         .contextMenu {
@@ -1312,6 +1314,7 @@ private struct WatchRowView<Menu: View>: View {
                     }
                     .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
                 }
+                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .frame(minHeight: 44)
                 .background(
@@ -1329,9 +1332,11 @@ private struct WatchRowView<Menu: View>: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
         .pointingHandCursor()
         .onHover { hover = $0 }
