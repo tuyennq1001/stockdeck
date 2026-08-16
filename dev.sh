@@ -44,8 +44,8 @@ cat > "$APP/Contents/Info.plist" << EOF
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <!-- Keep development builds isolated from stale Control Center state
-         created by older ad-hoc bundles that used com.simone.stockdeck.dev. -->
-    <string>com.simone.stockdeck.development</string>
+         created by older ad-hoc bundles. -->
+    <string>com.terry.stockdeck.development</string>
     <key>CFBundleName</key>
     <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>

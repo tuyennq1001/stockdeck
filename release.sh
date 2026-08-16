@@ -4,7 +4,7 @@ set -euo pipefail
 # --- Config ---
 SCHEME="StockDeck"
 APP_NAME="StockDeck"
-BUNDLE_ID="com.simone.stockdeck"
+BUNDLE_ID="com.terry.stockdeck"
 SIGNING_IDENTITY="Developer ID Application: Simone Ruggiero (M6TP9DBCVL)"
 ENTITLEMENTS="StockDeck.entitlements"
 NOTARY_PROFILE="notarytool"
