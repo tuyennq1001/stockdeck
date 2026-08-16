@@ -43,11 +43,13 @@ cat > "$APP/Contents/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <!-- Fresh per-bundle-ID identity so macOS 26 (Tahoe) Menu Bar permission
-         doesn't inherit a stuck hidden state from older dev incarnations
-         (com.simone.stockdeck.dev / .development). Bump the suffix any time
-         the Menu Bar toggle in System Settings no longer shows the icon. -->
-    <string>com.terry.stockdeck.development.v3</string>
+    <!-- Launch via `open` (Finder-style) so macOS 26 registers the Menu Bar item
+         reliably and keeps the process alive. Keep this bundle ID stable: the
+         Binance API credentials live in the keychain under this identity, and a
+         fresh suffix silently breaks access to them (the app re-asks for keys).
+         If the Menu Bar item gets stuck hidden, re-enable it in System Settings
+         rather than bumping the suffix. -->
+    <string>com.terry.stockdeck.development.v4</string>
     <key>CFBundleName</key>
     <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>
@@ -76,7 +78,15 @@ pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 sleep 0.5
 
 echo "Launching StockDeck DEV..."
-# By default a plain launch (menu-bar only) — the desktop window does NOT pop up
-# automatically. Pass SD_OPEN_WINDOW=1 to auto-open it after 2.5s (used for
-# deterministic screenshots of the full window).
-SD_OPEN_WINDOW=${SD_OPEN_WINDOW:-0} "$APP/Contents/MacOS/StockDeck" >/dev/null 2>&1 &
+# Launch via `open` (Finder-style): macOS 26 registers the Menu Bar item
+# correctly and keeps the process alive, which a raw binary launch does not.
+# By default the desktop window auto-opens so the app is visibly running.
+# The Menu Bar icon itself is governed by macOS 26's per-app Control Center
+# toggle (System Settings → Control Center → Menu Bar items): if it is missing
+# or hidden, enable it there; bumping Bundle ID / autosave name does not help.
+SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-1}"
+if [ "$SD_OPEN_WINDOW" = "1" ]; then
+    open "$APP" --env SD_OPEN_WINDOW=1
+else
+    open "$APP" --env SD_OPEN_WINDOW=0
+fi
