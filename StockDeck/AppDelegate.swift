@@ -125,11 +125,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // Give Control Center one stable identity across rebuilds. Without an
-        // explicit autosave name macOS 26 can retain a new tracked menu-bar
-        // item for every development bundle incarnation, then hide the current
-        // item because an older registration was disabled or removed.
-        statusItem?.autosaveName = "StockDeck.MainStatusItem.v2"
+        // macOS 26 tracks a status item's menu-bar visibility in the app's own
+        // defaults under "NSStatusItem VisibleCC <autosaveName>". A freshly
+        // created item is hidden from the menu bar until that key is set, so a
+        // brand-new identity (new bundle ID / autosave name) shows nothing. Write
+        // the key once when absent so the item appears by default; the user can
+        // still hide it later from Control Center.
+        let statusItemName = "StockDeck.MainStatusItem.v3"
+        let statusItemVisibleKey = "NSStatusItem VisibleCC \(statusItemName)"
+        if UserDefaults.standard.object(forKey: statusItemVisibleKey) == nil {
+            UserDefaults.standard.set(true, forKey: statusItemVisibleKey)
+        }
+        statusItem?.autosaveName = statusItemName
         statusItem?.isVisible = true
 
         if let button = statusItem?.button {
