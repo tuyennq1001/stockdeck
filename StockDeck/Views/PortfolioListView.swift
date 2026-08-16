@@ -949,6 +949,19 @@ struct GroupedHoldingRow: View {
         qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
     }
 
+    /// Purchase lots for this symbol, newest purchase date first. Lots without a
+    /// date sort last so they never obscure dated history.
+    private var sortedLots: [Holding] {
+        holdings.sorted { lhs, rhs in
+            switch (lhs.purchaseDate, rhs.purchaseDate) {
+            case let (l?, r?): return l > r
+            case (nil, _): return false
+            case (_, nil): return true
+            case (nil, nil): return false
+            }
+        }
+    }
+
     var body: some View {
         let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
         VStack(spacing: 0) {
@@ -1033,7 +1046,7 @@ struct GroupedHoldingRow: View {
             // Expanded Child Lots
             if isExpanded {
                 VStack(spacing: 3) {
-                    ForEach(holdings) { h in
+                    ForEach(sortedLots) { h in
                         HStack(spacing: 0) {
                             HStack(spacing: 6) {
                                 Image(systemName: "arrow.turn.down.right")
