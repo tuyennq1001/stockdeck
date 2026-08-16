@@ -43,9 +43,11 @@ cat > "$APP/Contents/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <!-- Keep development builds isolated from stale Control Center state
-         created by older ad-hoc bundles that used com.simone.stockdeck.dev. -->
-    <string>com.simone.stockdeck.development</string>
+    <!-- Fresh per-bundle-ID identity so macOS 26 (Tahoe) Menu Bar permission
+         doesn't inherit a stuck hidden state from older dev incarnations
+         (com.simone.stockdeck.dev / .development). Bump the suffix any time
+         the Menu Bar toggle in System Settings no longer shows the icon. -->
+    <string>com.terry.stockdeck.development.v3</string>
     <key>CFBundleName</key>
     <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>

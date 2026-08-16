@@ -7,7 +7,7 @@
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.simone.stockdeck</string>
+	<string>com.terry.stockdeck</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
