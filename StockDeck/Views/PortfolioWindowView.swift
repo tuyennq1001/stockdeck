@@ -41,7 +41,7 @@ struct PortfolioWindowView: View {
     @State private var showSearch = false
     @State private var addHoldingTarget: AddHoldingTarget?
     @State private var editHolding: EditTarget?
-    @State private var showNewPortfolio = false
+    @State private var showNewPortfolioAlert = false
     @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
     @State private var showNewWatchlistAlert = false
@@ -146,7 +146,17 @@ struct PortfolioWindowView: View {
             HoldingFormSheet(mode: .edit(portfolioId: target.portfolioId, holding: target.holding)) { editHolding = nil }
                 .environmentObject(stockService).environmentObject(storageService)
         }
-        .sheet(isPresented: $showNewPortfolio) { newPortfolioSheet }
+        .alert("New Portfolio", isPresented: $showNewPortfolioAlert) {
+            TextField("Portfolio name", text: $newPortfolioName)
+            Button("Cancel", role: .cancel) { newPortfolioName = "" }
+            Button("Create") {
+                let trimmed = newPortfolioName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    storageService.addPortfolio(name: trimmed)
+                }
+                newPortfolioName = ""
+            }
+        }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService) { newP in
                 selection = .portfolio(newP.id)
@@ -223,7 +233,7 @@ struct PortfolioWindowView: View {
             Button("") {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
-            Button("") { showNewPortfolio = true }.keyboardShortcut("n", modifiers: .command)
+            Button("") { showNewPortfolioAlert = true }.keyboardShortcut("n", modifiers: .command)
             // ⌘W closes just this window — StockDeck keeps living in the menu bar.
             Button("") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w", modifiers: .command)
         }
@@ -528,7 +538,7 @@ struct PortfolioWindowView: View {
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
     }
 
-    /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
+    /// "PORTFOLIOS" label with the plus button. Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -537,13 +547,17 @@ struct PortfolioWindowView: View {
                 .tracking(0.8).textCase(.uppercase)
             Spacer()
 
-            DSMenu(width: 230, sections: plusMenuSections) {
+            Button {
+                showNewPortfolioAlert = true
+            } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(DS.inkSecondary)
                     .frame(width: 20, height: 20)
             }
-            .help("New portfolio or add holding…")
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Create new portfolio…")
         }
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
         .contentShape(Rectangle())
@@ -581,17 +595,6 @@ struct PortfolioWindowView: View {
             sections.append(exportActions)
         }
         return sections
-    }
-
-    /// Sections for the sidebar "+" DSMenu.
-    private var plusMenuSections: [[DSMenuAction]] {
-        var s: [[DSMenuAction]] = [[ DSMenuAction(title: "New Portfolio…", icon: "folder.badge.plus") { showNewPortfolio = true } ]]
-        if !storageService.portfolios.isEmpty {
-            s.append(storageService.portfolios.map { p in
-                DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingTarget = AddHoldingTarget(portfolioId: p.id, symbol: nil) }
-            })
-        }
-        return s
     }
 
     private var brand: some View {
@@ -666,55 +669,7 @@ struct PortfolioWindowView: View {
         selection = destination
     }
 
-    private var newPortfolioSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New Portfolio").font(.inter(15, weight: .bold, relativeTo: .headline))
-            TextField("Portfolio name", text: $newPortfolioName)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(createPortfolio)
 
-            Divider()
-
-            Button(action: {
-                showNewPortfolio = false
-                showBinanceSheet = true
-            }) {
-                HStack {
-                    Image(systemName: "circle.hexagongrid.fill")
-                        .foregroundColor(.yellow)
-                    Text("Connect Binance (Read-Only)...")
-                        .font(.inter(12, weight: .medium, relativeTo: .body))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(8)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(6)
-            }
-            .buttonStyle(.plain)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { showNewPortfolio = false; newPortfolioName = "" }
-                Button("Create", action: createPortfolio)
-                    .buttonStyle(.borderedProminent)
-                    .tint(DS.brand)
-                    .disabled(newPortfolioName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(18)
-        .frame(width: 340)
-    }
-
-    private func createPortfolio() {
-        let name = newPortfolioName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        storageService.addPortfolio(name: name)
-        newPortfolioName = ""
-        showNewPortfolio = false
-    }
 
     // MARK: - Import / Export (reuses StorageService JSON logic)
 
