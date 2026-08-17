@@ -48,6 +48,7 @@ struct PortfolioWindowView: View {
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
+    @State private var deletePortfolioTarget: PortfolioRef? = nil
     @State private var deleteWatchlistTarget: Watchlist? = nil
     @State private var draggingWatchlistId: UUID? = nil
     /// Live display order of sidebar watchlists while dragging: no storage writes
@@ -124,8 +125,9 @@ struct PortfolioWindowView: View {
             notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
             export: { exportPortfolios([$0]) },
             delete: { id in
-                storageService.deletePortfolio(id: id)
-                if selection == .portfolio(id) { navigate(to: .portfoliosAll) }
+                if let p = storageService.portfolios.first(where: { $0.id == id }) {
+                    deletePortfolioTarget = PortfolioRef(id: p.id, name: p.name)
+                }
             }))
         .sheet(isPresented: $showSearch) {
             WatchlistSearchSheet { showSearch = false }
@@ -218,6 +220,18 @@ struct PortfolioWindowView: View {
         } message: {
             Text("Are you sure you want to delete “\(deleteWatchlistTarget?.name ?? "")”? This action cannot be undone.")
         }
+        .alert("Delete Portfolio", isPresented: Binding(get: { deletePortfolioTarget != nil }, set: { if !$0 { deletePortfolioTarget = nil } })) {
+            Button("Cancel", role: .cancel) { deletePortfolioTarget = nil }
+            Button("Delete", role: .destructive) {
+                if let p = deletePortfolioTarget {
+                    storageService.deletePortfolio(id: p.id)
+                    if selection == .portfolio(p.id) { navigate(to: .portfoliosAll) }
+                }
+                deletePortfolioTarget = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete portfolio '\(deletePortfolioTarget?.name ?? "")'? This action cannot be undone.")
+        }
         .background(keyboardShortcuts)
     }
 
@@ -288,8 +302,26 @@ struct PortfolioWindowView: View {
                                 navigate(to: .watchlist)
                             }
                             .contextMenu {
+                                Button {
+                                    storageService.selectedWatchlistId = wl.id
+                                    showSearch = true
+                                } label: {
+                                    Label("Add Symbol…", systemImage: "plus")
+                                }
                                 Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
                                     Label("Rename Watchlist…", systemImage: "pencil")
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }), idx > 0 {
+                                    let prevId = storageService.watchlists[idx - 1].id
+                                    Button { storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId) } label: {
+                                        Label("Move Up", systemImage: "arrow.up")
+                                    }
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }), idx < storageService.watchlists.count - 1 {
+                                    let nextId = storageService.watchlists[idx + 1].id
+                                    Button { storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id) } label: {
+                                        Label("Move Down", systemImage: "arrow.down")
+                                    }
                                 }
                                 if storageService.watchlists.count > 1 {
                                     Divider()
@@ -334,9 +366,6 @@ struct PortfolioWindowView: View {
                                 Button { addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) } label: {
                                     Label("Add Holding…", systemImage: "plus")
                                 }
-                                Button { importStandard() } label: {
-                                    Label("Import File…", systemImage: "square.and.arrow.down")
-                                }
                                 Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
                                     Label("Rename…", systemImage: "pencil")
                                 }
@@ -360,9 +389,8 @@ struct PortfolioWindowView: View {
                                 }
                                 Divider()
                                 Button(role: .destructive) {
-                                    storageService.deletePortfolio(id: portfolio.id)
-                                    if selection == .portfolio(portfolio.id) { navigate(to: .portfoliosAll) }
-                                } label: { Label("Delete", systemImage: "trash") }
+                                    deletePortfolioTarget = PortfolioRef(id: portfolio.id, name: portfolio.name)
+                                } label: { Label("Delete Portfolio", systemImage: "trash") }
                             }
                         }
                     }
@@ -374,14 +402,11 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
+                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
+                           selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
-            // Pinned bottom block: Import / Export, Settings, then total footer.
-            NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
-                   selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
-
             NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                    selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
                 .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
