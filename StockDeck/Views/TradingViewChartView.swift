@@ -137,10 +137,13 @@ struct TradingViewChartView: NSViewRepresentable {
     let tvSymbol: String
     /// "dark" | "light".
     let theme: String
+    /// TradingView resolution: "D", "W", or "M". Reloads the widget when it changes.
+    var interval: String = "D"
 
     final class Coordinator {
         var symbol: String = ""
         var theme: String = ""
+        var interval: String = ""
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -149,6 +152,7 @@ struct TradingViewChartView: NSViewRepresentable {
         let webView = makeWebView()
         context.coordinator.symbol = tvSymbol
         context.coordinator.theme = theme
+        context.coordinator.interval = interval
         loadChart(into: webView)
         return webView
     }
@@ -156,9 +160,10 @@ struct TradingViewChartView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         // WKWebView is opaque by default; keep the card background showing through.
         nsView.setValue(false, forKey: "drawsBackground")
-        if context.coordinator.symbol != tvSymbol || context.coordinator.theme != theme {
+        if context.coordinator.symbol != tvSymbol || context.coordinator.theme != theme || context.coordinator.interval != interval {
             context.coordinator.symbol = tvSymbol
             context.coordinator.theme = theme
+            context.coordinator.interval = interval
             loadChart(into: nsView)
         }
     }
@@ -166,6 +171,11 @@ struct TradingViewChartView: NSViewRepresentable {
     private func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        // TradingView's Advanced Chart has no way to trim its top toolbar to a
+        // subset of timeframes. Hide the stock time-scales (1m/30m/1h/D + the
+        // "Chart interval" menu) with CSS so only the Indicators button remains,
+        // while D/W/M live in our own segmented control next to the chart.
+        config.userContentController.addUserScript(intervalHideScript)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         webView.enclosingScrollView?.hasVerticalScroller = false
@@ -173,8 +183,23 @@ struct TradingViewChartView: NSViewRepresentable {
         return webView
     }
 
+    /// CSS that hides TradingView's timeframe buttons but keeps the Indicators
+    /// entry point. The interval menu is also hidden so users can't reach other
+    /// time scales through the dropdown; D/W/M reloads handle the rest.
+    private var intervalHideScript: WKUserScript {
+        let css = #"""
+        button[data-value="1"],
+        button[data-value="30"],
+        button[data-value="60"],
+        button[data-value="1D"] { display: none !important; }
+        button[aria-label="Chart interval"] { display: none !important; }
+        """#
+        let source = #"const s = document.createElement('style'); s.id = 'stockdeck-interval-hide'; s.textContent = `"# + css + #"`; document.head.appendChild(s);"#
+        return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+    }
+
     private func loadChart(into webView: WKWebView) {
-        let config = Self.configJSON(symbol: tvSymbol, theme: theme)
+        let config = Self.configJSON(symbol: tvSymbol, theme: theme, interval: interval)
         // Build the URL by hand: URLComponents would re-encode the already
         // percent-encoded fragment and turn "%7B" into "%257B".
         let fragment = config.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? config
@@ -202,14 +227,13 @@ struct TradingViewChartView: NSViewRepresentable {
         "RSI@tv-basicstudies",
     ]
 
-    private static func configJSON(symbol: String, theme: String) -> String {
+    private static func configJSON(symbol: String, theme: String, interval: String) -> String {
         let studies = defaultStudies.map { "\"\($0)\"" }.joined(separator: ", ")
         return """
         {
           "autosize": true,
           "symbol": "\(symbol)",
-          "interval": "D",
-          "time_frames": ["D", "W", "M"],
+          "interval": "\(interval)",
           "timezone": "Etc/UTC",
           "theme": "\(theme)",
           "style": "1",
@@ -220,8 +244,8 @@ struct TradingViewChartView: NSViewRepresentable {
           "calendar": false,
           "hide_top_toolbar": false,
           "hide_side_toolbar": true,
-          "hide_legend": true,
-          "withdateranges": true,
+          "hide_legend": false,
+          "withdateranges": false,
           "studies": [\(studies)],
           "support_host": "https://www.tradingview.com"
         }
