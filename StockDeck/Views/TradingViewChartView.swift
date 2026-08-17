@@ -183,16 +183,13 @@ struct TradingViewChartView: NSViewRepresentable {
         return webView
     }
 
-    /// CSS that hides TradingView's timeframe buttons but keeps the Indicators
-    /// entry point. The interval menu is also hidden so users can't reach other
-    /// time scales through the dropdown; D/W/M reloads handle the rest.
+    /// CSS that hides unwanted intraday timeframe buttons (1m, 30m, 60m) so only
+    /// the favorite daily/weekly/monthly scales and Indicators entry point remain.
     private var intervalHideScript: WKUserScript {
         let css = #"""
         button[data-value="1"],
         button[data-value="30"],
-        button[data-value="60"],
-        button[data-value="1D"] { display: none !important; }
-        button[aria-label="Chart interval"] { display: none !important; }
+        button[data-value="60"] { display: none !important; }
         """#
         let source = #"const s = document.createElement('style'); s.id = 'stockdeck-interval-hide'; s.textContent = `"# + css + #"`; document.head.appendChild(s);"#
         return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -247,7 +244,10 @@ struct TradingViewChartView: NSViewRepresentable {
           "hide_legend": false,
           "withdateranges": false,
           "studies": [\(studies)],
-          "support_host": "https://www.tradingview.com"
+          "support_host": "https://www.tradingview.com",
+          "favorites": {
+            "intervals": ["1D", "1W", "1M"]
+          }
         }
         """
     }
