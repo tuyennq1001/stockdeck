@@ -199,6 +199,13 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// Default chart style for holding / quote charts: "line" (native line
+    /// chart) or "tradingview" (embedded TradingView widget). The style picker
+    /// on each chart still lets the user switch on the fly.
+    @Published var defaultChartStyle: String = "line" {
+        didSet { scheduleSave() }
+    }
+
     /// Issue #8.2: show the human-readable name (e.g. "S&P 500") instead of the
     /// raw symbol ("^GSPC") in the menu bar ticker. Off keeps the bar compact.
     @Published var tickerShowName: Bool = false {
@@ -1314,6 +1321,7 @@ class StorageService: ObservableObject {
         menuBarHidePercent = false
         tickerShowName = false
         advancedPositions = false
+        defaultChartStyle = "line"
         watchlistSort = "manual"
         appLanguage = "en"
         fontSizeLevel = 9
@@ -1409,6 +1417,7 @@ class StorageService: ObservableObject {
         var symbolExchange: [String: String]?
         var appLanguage: String?
         var advancedPositions: Bool?
+        var defaultChartStyle: String?
         var appearanceRaw: String?
         var showNewsTab: Bool?
         var aiChatSections: [AIChatSection]?
@@ -1437,7 +1446,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1531,6 +1540,7 @@ class StorageService: ObservableObject {
             menuBarHidePercent = decoded.menuBarHidePercent ?? false
             tickerShowName = decoded.tickerShowName ?? false
             advancedPositions = decoded.advancedPositions ?? false
+            defaultChartStyle = decoded.defaultChartStyle ?? "line"
             watchlistSort = decoded.watchlistSort ?? "manual"
             symbolType = decoded.symbolType ?? [:]
             symbolExchange = decoded.symbolExchange ?? [:]

@@ -209,6 +209,7 @@ struct TradingViewChartView: NSViewRepresentable {
           "autosize": true,
           "symbol": "\(symbol)",
           "interval": "D",
+          "time_frames": ["D", "W", "M"],
           "timezone": "Etc/UTC",
           "theme": "\(theme)",
           "style": "1",

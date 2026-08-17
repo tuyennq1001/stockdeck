@@ -211,6 +211,12 @@ struct PriceChartCard: View {
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
             if chartRange == .all { await stockService.ensurePriceHistoryMax(for: symbol) }
         }
+        .onAppear {
+            chartStyle = ChartStyle(rawValue: storageService.defaultChartStyle) ?? .line
+        }
+        .onChange(of: storageService.defaultChartStyle) { _, newValue in
+            chartStyle = ChartStyle(rawValue: newValue) ?? .line
+        }
     }
 
     private var rangePicker: some View {
@@ -237,9 +243,9 @@ struct PriceChartCard: View {
 
             Button(action: { chartStyle = .tradingview }) {
                 HStack(spacing: 5) {
-                    Text("TV")
+                    Text("Trading")
                         .font(.inter(11, weight: .bold, relativeTo: .caption))
-                    Text("Chart")
+                    Text("View")
                         .font(.inter(11, weight: .semibold, relativeTo: .caption))
                 }
                 .foregroundStyle(chartStyle == .tradingview ? .white : DS.inkSecondary)
