@@ -53,18 +53,8 @@ struct PriceChartCard: View {
         case tradingview
     }
 
-    /// Time scales offered on the TradingView chart. The widget's own toolbar is
-    /// trimmed to just the Indicators button, so these are the only resolutions
-    /// the user can pick.
-    enum TVInterval: String, CaseIterable {
-        case day = "D"
-        case week = "W"
-        case month = "M"
-    }
-
     @State private var chartRange: ChartRange = .month
     @State private var chartStyle: ChartStyle = .line
-    @State private var tvInterval: TVInterval = .day
     @State private var hoverPoint: PricePoint?
     @Environment(\.colorScheme) private var colorScheme
 
@@ -212,12 +202,6 @@ struct PriceChartCard: View {
                             .padding(.leading, 12).padding(.bottom, 16)
                     }
                 }
-                .overlay(alignment: .bottomLeading) {
-                    if chartStyle == .tradingview && tradingViewSymbol != nil {
-                        tvIntervalPicker
-                            .padding(.leading, 12).padding(.bottom, 16)
-                    }
-                }
                 .frame(height: 500)
         }
         .padding(DS.pad)
@@ -237,10 +221,6 @@ struct PriceChartCard: View {
 
     private var rangePicker: some View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
-    }
-
-    private var tvIntervalPicker: some View {
-        SegmentedRangePicker(options: TVInterval.allCases, label: \.rawValue, selection: $tvInterval)
     }
 
     private var stylePicker: some View {
@@ -287,10 +267,10 @@ struct PriceChartCard: View {
             if let tvSymbol = tradingViewSymbol {
                 TradingViewChartView(tvSymbol: tvSymbol,
                                      theme: colorScheme == .dark ? "dark" : "light",
-                                     interval: tvInterval.rawValue)
+                                     interval: "D")
                     // Force a brand-new web view per symbol so switching stocks
                     // can never leave the previous symbol's chart on screen.
-                    .id("\(tvSymbol)-\(tvInterval.rawValue)")
+                    .id(tvSymbol)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.horizontal, DS.pad)
                     .padding(.bottom, 10)

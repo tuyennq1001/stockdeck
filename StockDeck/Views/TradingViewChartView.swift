@@ -171,10 +171,8 @@ struct TradingViewChartView: NSViewRepresentable {
     private func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
-        // TradingView's Advanced Chart has no way to trim its top toolbar to a
-        // subset of timeframes. Hide the stock time-scales (1m/30m/1h/D + the
-        // "Chart interval" menu) with CSS so only the Indicators button remains,
-        // while D/W/M live in our own segmented control next to the chart.
+        // Inject favorite intervals into localStorage before TradingView boots
+        config.userContentController.addUserScript(favoriteIntervalsScript)
         config.userContentController.addUserScript(intervalHideScript)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
@@ -183,16 +181,43 @@ struct TradingViewChartView: NSViewRepresentable {
         return webView
     }
 
-    /// CSS that hides TradingView's timeframe buttons but keeps the Indicators
-    /// entry point. The interval menu is also hidden so users can't reach other
-    /// time scales through the dropdown; D/W/M reloads handle the rest.
+    /// Injects default favorite intervals (1D, 1W, 1M) directly into TradingView's
+    /// localStorage at document start, overriding any old/intraday defaults.
+    private var favoriteIntervalsScript: WKUserScript {
+        let source = #"""
+        (function() {
+            try {
+                const favs = JSON.stringify(["1D", "1W", "1M"]);
+                const keys = [
+                    "IntervalWidget.quicks",
+                    "tradingview.IntervalWidget.quicks",
+                    "IntervalWidget.favorite",
+                    "tradingview.IntervalWidget.favorite",
+                    "IntervalWidget.favorites",
+                    "tradingview.IntervalWidget.favorites",
+                    "tradingview.chart.favorite.intervals",
+                    "tradingview.favorite.intervals",
+                    "tradingview.favoriteIntervals",
+                    "chart.favorite.intervals",
+                    "tv.favoriteIntervals",
+                    "Intervals.favorites"
+                ];
+                for (let i = 0; i < keys.length; i++) {
+                    localStorage.setItem(keys[i], favs);
+                }
+            } catch(e) {}
+        })();
+        """#
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+    }
+
+    /// CSS that hides unwanted intraday timeframe buttons (1m, 30m, 60m) so only
+    /// the favorite daily/weekly/monthly scales and Indicators entry point remain.
     private var intervalHideScript: WKUserScript {
         let css = #"""
         button[data-value="1"],
         button[data-value="30"],
-        button[data-value="60"],
-        button[data-value="1D"] { display: none !important; }
-        button[aria-label="Chart interval"] { display: none !important; }
+        button[data-value="60"] { display: none !important; }
         """#
         let source = #"const s = document.createElement('style'); s.id = 'stockdeck-interval-hide'; s.textContent = `"# + css + #"`; document.head.appendChild(s);"#
         return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -247,7 +272,10 @@ struct TradingViewChartView: NSViewRepresentable {
           "hide_legend": false,
           "withdateranges": false,
           "studies": [\(studies)],
-          "support_host": "https://www.tradingview.com"
+          "support_host": "https://www.tradingview.com",
+          "favorites": {
+            "intervals": ["1D", "1W", "1M"]
+          }
         }
         """
     }
