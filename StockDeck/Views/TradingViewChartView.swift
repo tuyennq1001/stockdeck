@@ -211,13 +211,19 @@ struct TradingViewChartView: NSViewRepresentable {
         return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
     }
 
-    /// CSS that hides unwanted intraday timeframe buttons (1m, 30m, 60m) so only
-    /// the favorite daily/weekly/monthly scales and Indicators entry point remain.
+    /// CSS that hides unwanted intraday timeframe buttons (1m, 30m, 60m) and removes
+    /// opaque/grey background boxes behind the chart legend (OHLC, indicators, volume).
     private var intervalHideScript: WKUserScript {
         let css = #"""
         button[data-value="1"],
         button[data-value="30"],
         button[data-value="60"] { display: none !important; }
+        [class*="legend"], [class*="legend"] *,
+        [class*="sources-"], [class*="sources-"] *,
+        [class*="values-"], [class*="values-"] * {
+            background-color: transparent !important;
+            background: transparent !important;
+        }
         """#
         let source = #"const s = document.createElement('style'); s.id = 'stockdeck-interval-hide'; s.textContent = `"# + css + #"`; document.head.appendChild(s);"#
         return WKUserScript(source: source, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -275,6 +281,10 @@ struct TradingViewChartView: NSViewRepresentable {
           "support_host": "https://www.tradingview.com",
           "favorites": {
             "intervals": ["1D", "1W", "1M"]
+          },
+          "overrides": {
+            "paneProperties.legendProperties.showBackground": false,
+            "paneProperties.legendProperties.backgroundTransparency": 100
           }
         }
         """
