@@ -16,7 +16,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         case .price: return "Price"
         case .ext: return "Ext"
         case .today: return "Today %"
-        case .todayChange: return "Today Change"
+        case .todayChange: return "Change"
         case .oneMonth: return "1M %"
         case .threeMonths: return "3M %"
         case .ytd: return "YTD %"
@@ -55,7 +55,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         category == .chart
     }
 
-    static let defaultSelection: [WatchlistMetric] = [.price, .ext, .today, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
+    static let defaultSelection: [WatchlistMetric] = [.price, .ext, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
 }
 
 enum WatchlistMetricCategory: String, CaseIterable, Identifiable {
