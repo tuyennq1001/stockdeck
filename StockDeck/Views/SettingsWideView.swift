@@ -244,6 +244,11 @@ struct SettingsWideView: View {
             SettingToggle("Extended hours (Pre/Post)",
                           caption: "Show pre-market and after-hours prices",
                           isOn: $storageService.showExtendedHours)
+            SettingDivider()
+            SettingRow("Default chart", caption: "Style used when opening a stock chart") {
+                DSPicker(options: [("line", "Line chart"), ("tradingview", "Trading View")],
+                         selection: $storageService.defaultChartStyle, width: 160)
+            }
         }
     }
 

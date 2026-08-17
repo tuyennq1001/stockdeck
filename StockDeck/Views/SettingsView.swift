@@ -148,6 +148,14 @@ struct SettingsView: View {
                     Toggle("Show extended hours (Pre/Post)", isOn: $storageService.showExtendedHours)
                         .toggleStyle(.switch)
                     caption("Show pre-market and after-hours prices")
+
+                    subHeader("Default chart")
+                    Picker("Default chart", selection: $storageService.defaultChartStyle) {
+                        Text("Line chart").tag("line")
+                        Text("Trading View").tag("tradingview")
+                    }
+                    .pickerStyle(.menu)
+                    caption("Default style when opening a stock chart")
                 }
 
                 // MARK: - AI Review
