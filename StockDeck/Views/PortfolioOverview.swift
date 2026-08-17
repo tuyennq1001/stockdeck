@@ -334,39 +334,13 @@ struct PortfolioOverview: View {
             .sorted { $0.date < $1.date }
     }
 
-    private var filteredSeries: [PortfolioSnapshot] {
-        let baseSeries: [PortfolioSnapshot] = {
-            if let days = chartRange.days,
-               let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
-                return series.filter { $0.date >= cutoff }
-            } else if chartRange == .all {
-                if let purchaseDate = earliestPurchaseDate {
-                    let cutoff = Calendar.current.startOfDay(for: purchaseDate)
-                    let filtered = series.filter { $0.date >= cutoff }
-                    if !filtered.isEmpty { return filtered }
-                }
-                if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
-                    return series.filter { $0.date >= cutoff5Y }
-                }
-            }
-            return series
-        }()
-
-        let currentVal = totalValue
-        guard currentVal > 0 else { return baseSeries }
-        return baseSeries.filter { snap in
-            let ratio = snap.totalValue / currentVal
-            return ratio >= 0.25 && ratio <= 4.0
-        }
-    }
-
-    /// Builds an estimated value curve from a given per-symbol price history
+    /// Builds a market value curve from a given per-symbol price history
     /// (daily / hourly / 5-min) × current positions, in the preferred currency.
     private func valueSeries(from histBySymbol: [String: [PricePoint]]) -> [ValuePoint] {
         viewModel.valueSeries(from: histBySymbol)
     }
 
-    /// Daily estimate (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
+    /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
     private var estimatedSeries: [ValuePoint] {
         let useMax = (chartRange == .all || chartRange == .threeYears || chartRange == .fiveYears)
         return valueSeries(from: useMax ? stockService.priceHistoryMax : stockService.priceHistory)
@@ -389,46 +363,13 @@ struct PortfolioOverview: View {
         return estimatedSeries
     }
 
-    /// Real daily snapshots mapped to drawable points, filtered to the range.
-    private var realSeriesPoints: [ValuePoint] {
-        filteredSeries.map { ValuePoint(date: $0.date, value: $0.totalValue) }
-    }
-
-    /// The curves actually drawn and used for period change calculations.
-    /// The estimated backfill (real Yahoo prices × current positions) is the
-    /// base line so a young portfolio still has a full-span trend; real daily
-    /// snapshots are drawn solid on top wherever they exist, giving truthful
-    /// checkpoints that the dashed estimate only approximates.
-    private var displaySeries: DisplaySeries {
-        let real = realSeriesPoints
-        let estimated: [ValuePoint] = chartRange == .week
+    /// The market value curve drawn and used for period change calculations.
+    /// Uses the unified valueSeries (real closing prices × current positions)
+    /// representing the true market value trajectory of the portfolio.
+    private var displaySeries: [ValuePoint] {
+        chartRange == .week
             ? valueSeries(from: stockService.intradayWeek)
             : estimatedFiltered
-        return DisplaySeries(estimated: estimated, real: real)
-    }
-
-    /// Minimum number of real daily snapshots before they replace the dashed
-    /// estimate on the chart / period math. A younger portfolio renders as a
-    /// single smooth estimated line with exactly one endpoint instead of a few
-    /// scattered real checkpoints at the end.
-    private static let realOverlayMinimumSnapshots = 7
-
-    /// Drawn series: dashed estimated base line plus solid real snapshots.
-    private struct DisplaySeries {
-        var estimated: [ValuePoint]
-        var real: [ValuePoint]
-
-        /// All points, for axis domain / crosshair / hover lookup.
-        var all: [ValuePoint] { estimated + real }
-
-        /// Source for the period-change math: real snapshots when they form a
-        /// trustworthy line (enough of them), else the estimated curve, which
-        /// measures market movement across the selected range.
-        var changePoints: [ValuePoint] {
-            real.count >= PortfolioOverview.realOverlayMinimumSnapshots ? real : estimated
-        }
-
-        var isEmpty: Bool { estimated.isEmpty && real.isEmpty }
     }
 
     /// Evaluates benchmark matrix once per app session (not updating real-time).
@@ -591,12 +532,12 @@ struct PortfolioOverview: View {
             periodValue = totalValue * (perfPct / 100.0)
             periodLabel = chartRange.changeLabel
         } else {
-            periodValue = PortfolioPeriodChange.value(ds.changePoints) ?? dayChangeValue
-            periodPercent = PortfolioPeriodChange.percent(ds.changePoints) ?? dayChangePercent
-            periodLabel = PortfolioPeriodChange.percent(ds.changePoints) != nil ? chartRange.changeLabel : "today"
+            periodValue = PortfolioPeriodChange.value(ds) ?? dayChangeValue
+            periodPercent = PortfolioPeriodChange.percent(ds) ?? dayChangePercent
+            periodLabel = PortfolioPeriodChange.percent(ds) != nil ? chartRange.changeLabel : "today"
         }
         
-        let cagrVal = PortfolioPeriodChange.cagr(ds.changePoints)
+        let cagrVal = PortfolioPeriodChange.cagr(ds)
         let pillText: String
         if let cagrVal {
             pillText = String(format: "%+.\(decimals)f%% %@ (%.1f%% CAGR)", periodPercent, periodLabel, cagrVal)
@@ -667,8 +608,8 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func valueDomain(_ series: DisplaySeries) -> ClosedRange<Double> {
-        let vals = series.all.map(\.value).filter(\.isFinite)
+    private func valueDomain(_ series: [ValuePoint]) -> ClosedRange<Double> {
+        let vals = series.map(\.value).filter(\.isFinite)
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
@@ -722,10 +663,8 @@ struct PortfolioOverview: View {
         }
     }
 
-    @ViewBuilder private func heroChart(_ ds: DisplaySeries) -> some View {
-        let estimated = ds.estimated
-        let real = ds.real
-        if ds.isEmpty {
+    @ViewBuilder private func heroChart(_ points: [ValuePoint]) -> some View {
+        if points.isEmpty {
             ZStack {
                 DS.cardAlt.opacity(0.6)
                 DecorativeCurve()
@@ -739,47 +678,25 @@ struct PortfolioOverview: View {
                 }
             }
         } else {
-            let periodUp = (ds.changePoints.last?.value ?? 0) >= (ds.changePoints.first?.value ?? 0)
+            let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
             let tint = periodUp ? DS.up : DS.down
-            let crosshairPoints = ds.all
             Chart {
-                if !estimated.isEmpty {
-                    ForEach(estimated) { p in
-                        AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                            .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
-                                                             startPoint: .top, endPoint: .bottom))
-                            .interpolationMethod(.monotone)
-                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
-                            .interpolationMethod(.monotone)
-                    }
+                ForEach(points) { p in
+                    AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
+                                                         startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.monotone)
+                    LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
+                        .interpolationMethod(.monotone)
                 }
-                let drawReal = real.count >= PortfolioOverview.realOverlayMinimumSnapshots
-                if drawReal && real.count >= 2 {
-                    ForEach(real) { p in
-                        LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
-                            .interpolationMethod(.monotone)
-                    }
-                }
-                if drawReal {
-                    ForEach(real) { p in
-                        PointMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                            .symbolSize(30)
-                            .foregroundStyle(tint)
-                    }
-                }
-                if drawReal, let last = real.last {
-                    PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
-                        .symbolSize(50)
-                        .foregroundStyle(tint)
-                } else if let last = estimated.last {
+                if let last = points.last {
                     PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
                         .symbolSize(50)
                         .foregroundStyle(tint)
                 }
             }
-            .chartYScale(domain: valueDomain(ds))
+            .chartYScale(domain: valueDomain(points))
             .chartYAxis {
                 AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
                     AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
@@ -799,8 +716,8 @@ struct PortfolioOverview: View {
                 }
             }
             .chartLegend(.hidden)
-            .chartOverlay { proxy in valueCrosshair(proxy, points: crosshairPoints, tint: tint) }
-            .animation(.easeInOut(duration: 0.4), value: crosshairPoints)
+            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
+            .animation(.easeInOut(duration: 0.4), value: points)
             .id(chartRange)
             .transition(.opacity.animation(.easeInOut(duration: 0.4)))
         }
