@@ -92,6 +92,41 @@ final class MonthlyPnlTests: XCTestCase {
         XCTAssertEqual(r[1].pnl ?? 0, 0, accuracy: 1e-9)
     }
 
+    func testHoldingWithoutPurchaseDateAnchorsToEarliestKnownPurchase() {
+        // A synced Binance-style balance has no purchase date (avg = NaN) — it
+        // must not fabricate P&L for months before any known purchase exists.
+        let dated = holding(symbol: "Y", qty: 5, avg: 100, purchased: month(2026, 6))
+        let undated = holding(symbol: "X", qty: 10, avg: .nan, purchased: nil)
+        let cal = Calendar.current
+        let hist = [
+            "X": [
+                PricePoint(date: cal.date(from: DateComponents(year: 2026, month: 4, day: 28))!, close: 50),
+                PricePoint(date: cal.date(from: DateComponents(year: 2026, month: 5, day: 28))!, close: 60),
+                PricePoint(date: cal.date(from: DateComponents(year: 2026, month: 6, day: 28))!, close: 70)
+            ],
+            "Y": [
+                PricePoint(date: cal.date(from: DateComponents(year: 2026, month: 5, day: 28))!, close: 100),
+                PricePoint(date: cal.date(from: DateComponents(year: 2026, month: 6, day: 28))!, close: 110)
+            ]
+        ]
+        let rates = ["X": 1.0, "Y": 1.0]
+        let r = MonthlyPnl.rows(holdings: [dated, undated], historyBySymbol: hist, rateBySymbol: rates,
+                                today: month(2026, 6), monthCount: 3)
+
+        // X is anchored to the earliest known purchase (Jun), so its price back
+        // in Apr must NOT fabricate a bar before any ownership — Apr is trimmed.
+        // May is only retained because the Jun-1 purchase falls inside its
+        // inclusive end boundary; X (NaN avg → no cost basis) and Y (bought at
+        // May's price) both contribute 0 there.
+        XCTAssertEqual(r.count, 2)
+        XCTAssertEqual(r[0].label, "Jun 2026")
+        XCTAssertEqual(r[1].label, "May 2026")
+        // Jun own P&L = X (no cost basis, 0) + Y (110-100)*5 = 50.
+        XCTAssertEqual(r[0].pnl ?? 0, 50, accuracy: 1e-9)
+        // May carries no profit (both lots anchored to Jun purchase).
+        XCTAssertEqual(r[1].pnl ?? 0, 0, accuracy: 1e-9)
+    }
+
     func testShortPositionPnlSign() {
         // Short 10 @ 100; price drops to 90 → profit +100 in that month.
         let h = [holding(qty: -10, avg: 100)]

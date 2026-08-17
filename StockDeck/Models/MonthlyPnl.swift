@@ -75,6 +75,12 @@ enum MonthlyPnl {
             return point.close
         }
 
+        // Holdings without a known purchase date (e.g. Binance balances synced
+        // without cost basis) are anchored to the earliest known purchase date
+        // of the portfolio, so their price history doesn't fabricate P&L for
+        // months before the owner actually held anything.
+        let earliestKnownPurchase = holdings.compactMap(\.purchaseDate).min()
+
         var cumulativePnl: [Date: Double] = [:]
         var cumulativeValue: [Date: Double] = [:]
         var hasData: [Date: Bool] = [:]
@@ -85,7 +91,8 @@ enum MonthlyPnl {
             var value = 0.0
             var anyData = false
             for h in holdings {
-                if let purchased = h.purchaseDate, purchased > end { continue }
+                let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
+                if let ownedFrom, ownedFrom > end { continue }
                 guard let price = price(atMonthStart: month, for: h.symbol) else { continue }
                 let scale = h.isJapaneseFund ? 10000.0 : 1.0
                 let rate = rateBySymbol[h.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0

@@ -100,6 +100,67 @@ enum MonthlyPnlCache {
     }
 }
 
+/// Session cache for the daily P&L table (same contract as `MonthlyPnlCache`).
+enum DailyPnlCache {
+    private static var cache: [String: [DailyPnlRow]] = [:]
+    private static let lock = NSLock()
+
+    static func rows(for key: String, compute: () -> [DailyPnlRow]) -> [DailyPnlRow] {
+        lock.lock()
+        if let existing = cache[key] {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let result = compute()
+        lock.lock()
+        cache[key] = result
+        lock.unlock()
+        return result
+    }
+}
+
+/// Which P&L view the portfolio overview shows: per-day (Daily, default tab) or
+/// per-month (Monthly). Raw values double as the tab labels.
+enum PnlViewMode: String, CaseIterable {
+    case daily = "Daily P&L"
+    case monthly = "Monthly P&L"
+}
+
+/// Time window for the daily P&L table: how many trailing calendar days of
+/// per-day bars to compute and render.
+enum DailyPnlRange: String, CaseIterable {
+    case threeMonths = "3M"
+    case sixMonths = "6M"
+    case oneYear = "1Y"
+
+    var dayCount: Int {
+        switch self {
+        case .threeMonths: return 90
+        case .sixMonths: return 180
+        case .oneYear: return 365
+        }
+    }
+}
+
+/// Time window for the monthly P&L table. `all` extends as far back as the
+/// price history actually covers, using real data only.
+enum MonthlyPnlRange: String, CaseIterable {
+    case oneYear = "1Y"
+    case threeYears = "3Y"
+    case all = "All"
+
+    /// Explicit month window, or nil for `all` (derived from real history).
+    var fixedMonthCount: Int? {
+        switch self {
+        case .oneYear: return 12
+        case .threeYears: return 36
+        case .all: return nil
+        }
+    }
+}
+
 struct PortfolioOverview: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -176,6 +237,10 @@ struct PortfolioOverview: View {
     @State private var hoveredSlice: String?
     @State private var hoverPoint: ValuePoint?
     @State private var hoveredMonth: MonthlyPnlRow?
+    @State private var hoveredDay: DailyPnlRow?
+    @State private var pnlViewMode: PnlViewMode = .daily
+    @State private var dailyPnlRange: DailyPnlRange = .oneYear
+    @State private var monthlyPnlRange: MonthlyPnlRange = .threeYears
     @State private var positionsCardWidth: CGFloat = 0
 
     init(viewModel: PortfolioViewModel) {
@@ -443,10 +508,10 @@ struct PortfolioOverview: View {
         )
     }
 
-    /// Per-month P&L bars (up to 36 months, or as many as history covers),
-    /// computed once per scope from real cost basis × price history. Keyed by
-    /// scope + holdings + rate fingerprint so a fresh scope or changed
-    /// positions recompute; quote ticks do not.
+    /// Per-month P&L bars (window per `monthlyPnlRange`; `all` extends as far
+    /// as real history covers), computed once per scope from real cost basis ×
+    /// price history. Keyed by scope + range + holdings + rate fingerprint so a
+    /// fresh scope, changed range, or changed positions recompute.
     private var monthlyPnlRows: [MonthlyPnlRow] {
         let hs = viewModel.portfolios.flatMap { $0.holdings }
         let hFingerprint = hs.map {
@@ -455,7 +520,7 @@ struct PortfolioOverview: View {
         let rateFingerprint = hs.map {
             "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
         }.joined(separator: ";")
-        let key = "\(scopeKey):\(hFingerprint):\(rateFingerprint)"
+        let key = "\(scopeKey):m:\(monthlyPnlRange.rawValue):\(hFingerprint):\(rateFingerprint)"
         return MonthlyPnlCache.rows(for: key) {
             var histBySymbol: [String: [PricePoint]] = [:]
             for h in hs {
@@ -463,12 +528,59 @@ struct PortfolioOverview: View {
                     ?? stockService.priceHistory[h.symbol]
                     ?? []
             }
-            let monthCount = MonthlyPnl.monthCount(for: histBySymbol, today: Date(), calendar: .current, maxMonths: 36)
+            // For `all`, anchor the window on the earliest real purchase date —
+            // not on the longest price history. A stock bought last year has 20
+            // years of quotes; showing those earlier months would fabricate
+            // P&L for a position that didn't exist yet. Without any purchase
+            // date (e.g. synced balances), fall back to the price-history span.
+            let monthCount: Int
+            if let fixed = monthlyPnlRange.fixedMonthCount {
+                monthCount = fixed
+            } else {
+                // `All` extends to the furthest real history: the earliest
+                // purchase date OR the earliest price history, whichever is
+                // older (capped at 240). `MonthlyPnl.rows` trims any month
+                // that carries no data, so nothing fabricated is ever shown.
+                let today = Date()
+                let calendar = Calendar.current
+                var span = 1
+                if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
+                   let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
+                    span = max(span, months + 1)
+                }
+                let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
+                monthCount = min(max(span, historySpan), 240)
+            }
             var rateBySymbol: [String: Double] = [:]
             for h in hs {
                 rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
             }
             return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        }
+    }
+
+    /// Per-day P&L bars (window per `dailyPnlRange`), the daily counterpart of
+    /// `monthlyPnlRows` — computed once per scope using the same fingerprint so
+    /// quote ticks never recompute it.
+    private var dailyPnlRows: [DailyPnlRow] {
+        let hs = viewModel.portfolios.flatMap { $0.holdings }
+        let hFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let rateFingerprint = hs.map {
+            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
+        }.joined(separator: ";")
+        let key = "\(scopeKey):d:\(dailyPnlRange.rawValue):\(hFingerprint):\(rateFingerprint)"
+        return DailyPnlCache.rows(for: key) {
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
+            }
+            var rateBySymbol: [String: Double] = [:]
+            for h in hs {
+                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            }
+            return DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: dailyPnlRange.dayCount)
         }
     }
 
@@ -487,7 +599,7 @@ struct PortfolioOverview: View {
                         heroCard
                         statRow
                         performanceMatrixCard
-                        monthlyPnlCard
+                        pnlCard
                         moneyWeightedReturnCard
                         allocationCard
                         HStack(alignment: .top, spacing: DS.gap) {
@@ -516,6 +628,8 @@ struct PortfolioOverview: View {
         .onChange(of: chartRange) { _, newRange in
             storageService.setChartRange(newRange.rawValue, for: scopeKey)
         }
+        .onChange(of: dailyPnlRange) { _, _ in hoveredDay = nil }
+        .onChange(of: monthlyPnlRange) { _, _ in hoveredMonth = nil }
         .onChange(of: scopeKey) { _, newKey in
             viewModel.scopeChanged()
             if let savedRaw = storageService.chartRange(for: newKey),
@@ -945,87 +1059,185 @@ struct PortfolioOverview: View {
         }
     }
 
-    private var monthlyPnlCard: some View {
-        Card(title: "Monthly P&L") {
-            if monthlyPnlRows.isEmpty {
-                emptyLine
-            } else {
-                Chart {
-                    ForEach(monthlyPnlRows.reversed()) { row in
-                        let isHovered = hoveredMonth?.monthStart == row.monthStart
-                        BarMark(
-                            x: .value("Month", monthAxisLabel(row.monthStart)),
-                            yStart: .value("Zero", 0),
-                            yEnd: .value("P&L", row.pnl ?? 0),
-                            width: .ratio(isHovered ? 0.82 : 0.6)
-                        )
-                        .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
-                        .opacity(isHovered ? 1.0 : 0.75)
-                        .cornerRadius(3)
-                    }
-                    RuleMark(y: .value("Zero", 0))
-                        .foregroundStyle(DS.hairline.opacity(0.6))
+    /// The combined P&L card: a "Daily P&L" / "Monthly P&L" tab (Daily first)
+    /// sharing one axis style and hover behavior. The time-range picker sits
+    /// directly beside the tab so the whole control stays compact.
+    private var pnlCard: some View {
+        Card {
+            HStack(spacing: 10) {
+                SectionLabel("P&L")
+                Spacer()
+                SegmentedRangePicker(options: PnlViewMode.allCases,
+                                     label: { $0.rawValue },
+                                     selection: $pnlViewMode)
+                switch pnlViewMode {
+                case .daily:
+                    SegmentedRangePicker(options: DailyPnlRange.allCases,
+                                         label: { $0.rawValue },
+                                         selection: $dailyPnlRange)
+                case .monthly:
+                    SegmentedRangePicker(options: MonthlyPnlRange.allCases,
+                                         label: { $0.rawValue },
+                                         selection: $monthlyPnlRange)
                 }
-                .frame(height: 170)
-                .chartYAxis {
-                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
-                        AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
-                        AxisValueLabel {
-                            if let d = v.as(Double.self) {
-                                Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
-                                    .font(DS.micro).foregroundStyle(DS.inkTertiary)
-                            }
-                        }
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: monthAxisValues) { value in
-                        if let s = value.as(String.self) {
-                            AxisValueLabel { Text(s).font(DS.micro).foregroundStyle(DS.inkTertiary) }
-                        }
-                    }
-                }
-                .chartLegend(.hidden)
-                .chartOverlay { proxy in
-                    GeometryReader { geo in
-                        if let plotAnchor = proxy.plotFrame {
-                            let plot = geo[plotAnchor]
-                            ZStack(alignment: .topLeading) {
-                                Rectangle().fill(.clear).contentShape(Rectangle())
-                                    .onContinuousHover { phase in
-                                        switch phase {
-                                        case .active(let loc):
-                                            let localX = min(max(loc.x - plot.minX, 0), plot.width)
-                                            if let label: String = proxy.value(atX: localX) {
-                                                hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
-                                            }
-                                        case .ended:
-                                            hoveredMonth = nil
-                                        }
-                                    }
-                                if let h = hoveredMonth,
-                                   let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
-                                    let cx = plot.minX + px
-                                    let pnl = h.pnl ?? 0
-                                    ChartTooltip(title: monthAxisLabel(h.monthStart),
-                                                 value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                                                 tint: DS.pnlColor(pnl))
-                                        .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                                        .allowsHitTesting(false)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Divider().overlay(DS.hairline.opacity(0.5))
-
-                Text("Real cost basis × price history — adding cash or positions doesn't inflate P&L.")
-                    .font(DS.micro)
-                    .foregroundStyle(DS.inkTertiary)
-                    .padding(.top, 6)
+            }
+            switch pnlViewMode {
+            case .daily: dailyPnlChartBody
+            case .monthly: monthlyPnlChartBody
             }
         }
+    }
+
+    @ViewBuilder private var monthlyPnlChartBody: some View {
+        if monthlyPnlRows.isEmpty {
+            emptyLine
+        } else {
+            Chart {
+                ForEach(monthlyPnlRows.reversed()) { row in
+                    let isHovered = hoveredMonth?.monthStart == row.monthStart
+                    BarMark(
+                        x: .value("Month", monthAxisLabel(row.monthStart)),
+                        yStart: .value("Zero", 0),
+                        yEnd: .value("P&L", row.pnl ?? 0),
+                        width: .ratio(isHovered ? 0.82 : 0.6)
+                    )
+                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                    .opacity(isHovered ? 1.0 : 0.75)
+                    .cornerRadius(3)
+                }
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(DS.hairline.opacity(0.6))
+            }
+            .frame(height: 170)
+            .modifier(PnlYAxis(currencySymbol: currencySymbol))
+            .modifier(PnlXAxis(values: monthAxisValues))
+            .chartLegend(.hidden)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    if let plotAnchor = proxy.plotFrame {
+                        monthOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
+                    }
+                }
+            }
+
+            Divider().overlay(DS.hairline.opacity(0.5))
+
+            Text("Real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+                .font(DS.micro)
+                .foregroundStyle(DS.inkTertiary)
+                .padding(.top, 6)
+        }
+    }
+
+    @ViewBuilder private var dailyPnlChartBody: some View {
+        if dailyPnlRows.isEmpty {
+            emptyLine
+        } else {
+            Chart {
+                ForEach(dailyPnlRows.reversed()) { row in
+                    let isHovered = hoveredDay?.date == row.date
+                    BarMark(
+                        x: .value("Day", row.label),
+                        yStart: .value("Zero", 0),
+                        yEnd: .value("P&L", row.pnl ?? 0),
+                        width: .ratio(isHovered ? 0.82 : 0.55)
+                    )
+                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                    .opacity(isHovered ? 1.0 : 0.75)
+                    .cornerRadius(2)
+                }
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(DS.hairline.opacity(0.6))
+            }
+            .frame(height: 170)
+            .modifier(PnlYAxis(currencySymbol: currencySymbol))
+            .modifier(PnlXAxis(values: dayAxisValues))
+            .chartLegend(.hidden)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    if let plotAnchor = proxy.plotFrame {
+                        dayOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
+                    }
+                }
+            }
+
+            Divider().overlay(DS.hairline.opacity(0.5))
+
+            Text("Daily P&L from real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+                .font(DS.micro)
+                .foregroundStyle(DS.inkTertiary)
+                .padding(.top, 6)
+        }
+    }
+
+    private func monthOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let loc):
+                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                        if let label: String = proxy.value(atX: localX) {
+                            hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
+                        }
+                    case .ended:
+                        hoveredMonth = nil
+                    }
+                }
+            if let h = hoveredMonth,
+               let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
+                let cx = plot.minX + px
+                let pnl = h.pnl ?? 0
+                ChartTooltip(title: monthAxisLabel(h.monthStart),
+                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                             tint: DS.pnlColor(pnl))
+                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func dayOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let loc):
+                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                        if let label: String = proxy.value(atX: localX) {
+                            hoveredDay = dailyPnlRows.first { $0.label == label }
+                        }
+                    case .ended:
+                        hoveredDay = nil
+                    }
+                }
+            if let h = hoveredDay,
+               let px = proxy.position(forX: h.label) {
+                let cx = plot.minX + px
+                let pnl = h.pnl ?? 0
+                ChartTooltip(title: h.label,
+                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                             tint: DS.pnlColor(pnl))
+                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// X-axis tick labels for the daily chart. Picks evenly spaced days so the
+    /// axis stays readable even at 365 columns (targets ~6 labels).
+    private var dayAxisValues: [String] {
+        let rows = dailyPnlRows
+        guard rows.count > 12 else {
+            return rows.map(\.label)
+        }
+        let target = 6
+        let step = max(1, (rows.count + target - 1) / target)
+        var values: [String] = []
+        for i in stride(from: 0, to: rows.count, by: step) {
+            values.append(rows[i].label)
+        }
+        return values
     }
 
     private func monthAxisLabel(_ date: Date) -> String {
@@ -1573,6 +1785,40 @@ struct PortfolioOverview: View {
 }
 
 // MARK: - Position summary row
+
+/// Shared right-side Y axis for the Daily/Monthly P&L charts.
+private struct PnlYAxis: ViewModifier {
+    let currencySymbol: String
+
+    func body(content: Content) -> some View {
+        content.chartYAxis {
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
+                AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
+                AxisValueLabel {
+                    if let d = v.as(Double.self) {
+                        Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
+                            .font(DS.micro).foregroundStyle(DS.inkTertiary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Shared sparse X axis for the Daily/Monthly P&L charts (explicit tick values).
+private struct PnlXAxis: ViewModifier {
+    let values: [String]
+
+    func body(content: Content) -> some View {
+        content.chartXAxis {
+            AxisMarks(values: values) { value in
+                if let s = value.as(String.self) {
+                    AxisValueLabel { Text(s).font(DS.micro).foregroundStyle(DS.inkTertiary) }
+                }
+            }
+        }
+    }
+}
 
 private struct CardWidthPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
