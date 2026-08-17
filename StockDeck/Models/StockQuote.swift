@@ -321,7 +321,7 @@ enum HoldingLotAggregation {
 
 struct Holding: Identifiable, Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, symbol, quantity, avgPrice, purchaseDate, leverage
+        case id, symbol, quantity, avgPrice, purchaseDate, leverage, account
     }
 
     var id: UUID
@@ -335,14 +335,20 @@ struct Holding: Identifiable, Codable {
     /// Leverage multiplier applied to P&L and exposure (1.0 = unlevered).
     /// Optional so portfolios saved before 1.7.1 decode cleanly as unlevered.
     var leverage: Double?
+    /// Source account (e.g. "NISA / 投資信託") the holding came from. Used to tell
+    /// apart identical transactions bought in different accounts, so re-importing
+    /// a cumulative trade-history file never double-counts a position. `nil` for
+    /// holdings added by hand or synced without account info.
+    var account: String?
 
-    init(id: UUID = UUID(), symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil) {
+    init(id: UUID = UUID(), symbol: String, quantity: Double, avgPrice: Double, purchaseDate: Date? = nil, leverage: Double? = nil, account: String? = nil) {
         self.id = id
         self.symbol = symbol
         self.quantity = quantity
         self.avgPrice = avgPrice
         self.purchaseDate = purchaseDate
         self.leverage = leverage
+        self.account = account
     }
 
     init(from decoder: Decoder) throws {
@@ -360,6 +366,7 @@ struct Holding: Identifiable, Codable {
         }
         purchaseDate = try container.decodeIfPresent(Date.self, forKey: .purchaseDate)
         leverage = try container.decodeIfPresent(Double.self, forKey: .leverage)
+        account = try container.decodeIfPresent(String.self, forKey: .account)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -374,6 +381,7 @@ struct Holding: Identifiable, Codable {
         }
         try container.encodeIfPresent(purchaseDate, forKey: .purchaseDate)
         try container.encodeIfPresent(leverage, forKey: .leverage)
+        try container.encodeIfPresent(account, forKey: .account)
     }
 
     /// Leverage multiplier, defaulting to 1x when unset or invalid.

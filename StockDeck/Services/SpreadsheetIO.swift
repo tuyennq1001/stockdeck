@@ -959,7 +959,7 @@ enum SpreadsheetIO {
 
         for (accountName, lots) in accountLotsMap {
             let activeHoldings = lots.filter { $0.qty > 0 }.map { lot in
-                Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date)
+                Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date, account: accountName)
             }
             if !activeHoldings.isEmpty {
                 resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: activeHoldings))

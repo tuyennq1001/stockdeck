@@ -1244,8 +1244,23 @@ class StorageService: ObservableObject {
                 symbol += ".T"
             }
 
+            // Exact fingerprint match (account + symbol + date + qty + avg price).
+            // Re-importing a cumulative trade-history file must never double-count
+            // an identical transaction; two accounts buying the same fund on the
+            // same day are kept apart by their account name.
+            let isExactDuplicate = currentHoldings.contains {
+                $0.symbol == symbol
+                    && $0.account == newH.account
+                    && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
+                    && abs($0.quantity - newH.quantity) < 1e-9
+                    && ($0.avgPrice.isNaN || newH.avgPrice.isNaN || abs($0.avgPrice - newH.avgPrice) < 1e-6)
+            }
+            if isExactDuplicate { continue }
+
             if let existingIndex = currentHoldings.firstIndex(where: {
-                $0.symbol == symbol && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
+                $0.symbol == symbol
+                    && $0.account == newH.account
+                    && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
             }) {
                 let existing = currentHoldings[existingIndex]
                 let totalQty = existing.quantity + newH.quantity
