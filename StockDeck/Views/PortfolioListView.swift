@@ -125,11 +125,11 @@ struct PortfolioListView: View {
                         Text("Symbol")
                             .frame(width: 80, alignment: .leading)
                         Text("Avg Price")
-                            .frame(width: 72, alignment: .trailing)
+                            .frame(width: 68, alignment: .trailing)
                         Text("Price")
+                            .frame(width: 74, alignment: .trailing)
+                        Text("Ext")
                             .frame(width: 72, alignment: .trailing)
-                        Text("Today %")
-                            .frame(width: 70, alignment: .trailing)
                         Text("Total P&L")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
@@ -1178,10 +1178,10 @@ struct PortfolioQuoteRow: View {
             .foregroundColor(.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 68, alignment: .trailing)
 
-            // Col 3: Price (regular closing price, compact number for large numbers/currencies)
-            HStack(spacing: 2) {
+            // Col 3: Price (2 lines: regular closing price + today % change)
+            VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     Text(StorageService.formatCompactNumber(quote.price * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price * priceRate)))
                         .font(.inter(13, relativeTo: .body).monospacedDigit())
@@ -1189,35 +1189,51 @@ struct PortfolioQuoteRow: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 } else {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 74, alignment: .trailing)
 
-            // Col 4: Chg — Today % (regular session) + Ext % (extended hours), 2 lines
+            // Col 4: Ext (2 lines: extended hours price + ext % change)
+            let extPrice: Double? = (storageService.showExtendedHours && (quote?.isExtendedHours ?? false)) ? quote?.effectivePrice : nil
+            let extPct: Double? = extPrice == nil ? nil : quote?.extendedChangePercent
+            let extLabel: String? = extPrice == nil ? nil : quote?.marketStateLabel
+
             VStack(alignment: .trailing, spacing: 1) {
-                if let quote {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                if let extPrice {
+                    Text(StorageService.formatCompactNumber(extPrice * priceRate, decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: extPrice * priceRate)))
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .foregroundColor(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 } else {
                     Text("—")
                         .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
-                if storageService.showExtendedHours, let quote, let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%@ %+.\(storageService.percentDecimals)f%%", quote.marketStateLabel, extPct))
+                if let extPct {
+                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
                         .font(.inter(9, relativeTo: .caption2).monospacedDigit())
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
+                } else {
+                    Text("—")
+                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 70, alignment: .trailing)
+            .frame(width: 72, alignment: .trailing)
 
             // Col 5: Total P&L — compact amount (K/M when large) + percent, 2 lines.
             // Fixed-size fonts (not dynamic .body) so the figures never shrink

@@ -135,13 +135,11 @@ struct WatchlistView: View {
                 .frame(width: 105, alignment: .leading)
 
                 Color.clear
-                    .frame(width: 70) // Price
+                    .frame(width: 76) // Price
                 if storageService.showAbsoluteChange {
                     Color.clear
-                        .frame(width: 80) // Change
+                        .frame(width: 70) // Change
                 }
-                Color.clear
-                    .frame(width: 70) // Today %
 
                 ProgressView()
                     .scaleEffect(0.6)
@@ -184,13 +182,11 @@ struct WatchlistView: View {
                     sortHeader("Symbol", column: .symbol)
                         .frame(width: 105, alignment: .leading)
                     sortHeader("Price", column: .price)
-                        .frame(width: 70, alignment: .trailing)
+                        .frame(width: 76, alignment: .trailing)
                     if storageService.showAbsoluteChange {
                         sortHeader("Change", column: .absoluteChange)
-                            .frame(width: 80, alignment: .trailing)
+                            .frame(width: 70, alignment: .trailing)
                     }
-                    sortHeader("Today %", column: .changePercent)
-                        .frame(width: 70, alignment: .trailing)
                     Text("Ext")
                         .font(.inter(10, weight: .medium, relativeTo: .caption))
                         .foregroundColor(.secondary)
@@ -706,19 +702,18 @@ struct QuoteRow: View {
             }
             .frame(width: 105, alignment: .leading)
 
-            // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
+            // Col 2: Price (2 lines: regular price + today % change)
             let displayPrice = quote.price
-            VStack(alignment: .trailing, spacing: 0) {
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
                     .font(.inter(12, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
-                if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    Text("\(StorageService.formatCompactNumber(low, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low))) – \(StorageService.formatCompactNumber(high, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: high)))")
-                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                }
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                    .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.semibold)
+                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
             }
-            .frame(width: 70, alignment: .trailing)
+            .frame(width: 76, alignment: .trailing)
 
             // Col 3: Change (Absolute change value, follows valueDecimals/format settings)
             if storageService.showAbsoluteChange {
@@ -728,29 +723,32 @@ struct QuoteRow: View {
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .frame(width: 80, alignment: .trailing)
+                    .frame(width: 70, alignment: .trailing)
             }
 
-            // Col 4: Today % (Percent change)
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(12, relativeTo: .body).monospacedDigit())
-                .fontWeight(.bold)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 70, alignment: .trailing)
+            // Col 4: Ext (2 lines: extended hours price + ext % change)
+            let extPrice = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
+            let extPct = extPrice == nil ? nil : quote.extendedChangePercent
+            let extLabel = extPrice == nil ? nil : quote.marketStateLabel
 
-            // Col 5: Ext (Extended hours % change)
-            VStack(alignment: .trailing, spacing: 0) {
-                if storageService.showExtendedHours,
-                   let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+            VStack(alignment: .trailing, spacing: 1) {
+                if let extPrice {
+                    Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                } else {
+                    Text("—")
+                        .font(.inter(12, relativeTo: .body).monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+                if let extPct {
+                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
+                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                 } else {
                     Text("—")
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
                         .foregroundColor(.secondary)
                 }
             }
