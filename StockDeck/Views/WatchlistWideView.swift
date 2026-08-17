@@ -63,8 +63,10 @@ struct WatchlistWideView: View {
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
-            case .price, .ext:
-                return nil
+            case .price:
+                return price
+            case .ext:
+                return extChangePercent
             case .today:
                 return changePercent
             case .todayChange:
@@ -838,7 +840,7 @@ WatchRowView(row: row,
                 Label("Customize Columns…", systemImage: "slider.horizontal.3")
             }
             Divider()
-            ForEach(WatchlistMetric.allCases) { metric in
+            ForEach(WatchlistMetric.allCases.filter { $0 != .today }) { metric in
                 Button {
                     var updated = selectedMetrics
                     if updated.contains(metric) {
@@ -1085,7 +1087,7 @@ WatchRowView(row: row,
 /// File-scope `private` = visible to both `WatchlistWideView` and `WatchRowView`.
 private enum WCol {
     static let symbol: CGFloat = 180
-    static let price: CGFloat = 104
+    static let price: CGFloat = 116
     static let ext: CGFloat = 116
     static let period: CGFloat = 68
     static let trend: CGFloat = 56
@@ -1189,7 +1191,7 @@ private struct WatchRowView<Menu: View>: View {
             switch metric {
             case .price:
                 if row.loaded {
-                    pairedCell(price: row.price, pct: nil,
+                    pairedCell(price: row.price, pct: row.changePercent,
                                label: nil, emphasised: !extendedSession)
                 } else {
                     DSSpinner(size: 12)

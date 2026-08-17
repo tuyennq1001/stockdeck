@@ -57,7 +57,7 @@ class StorageService: ObservableObject {
 
     /// All watchlists share a unified metric layout across the app.
     var watchlistMetrics: [WatchlistMetric] {
-        currentWatchlist.metrics ?? WatchlistMetric.defaultSelection
+        (currentWatchlist.metrics ?? WatchlistMetric.defaultSelection).filter { $0 != .today }
     }
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
