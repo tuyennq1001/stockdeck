@@ -171,16 +171,44 @@ struct TradingViewChartView: NSViewRepresentable {
     private func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
-        // TradingView's Advanced Chart has no way to trim its top toolbar to a
-        // subset of timeframes. Hide the stock time-scales (1m/30m/1h/D + the
-        // "Chart interval" menu) with CSS so only the Indicators button remains,
-        // while D/W/M live in our own segmented control next to the chart.
+        // Inject favorite intervals into localStorage before TradingView boots
+        config.userContentController.addUserScript(favoriteIntervalsScript)
         config.userContentController.addUserScript(intervalHideScript)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         webView.enclosingScrollView?.hasVerticalScroller = false
         webView.enclosingScrollView?.hasHorizontalScroller = false
         return webView
+    }
+
+    /// Injects default favorite intervals (1D, 1W, 1M) directly into TradingView's
+    /// localStorage at document start, overriding any old/intraday defaults.
+    private var favoriteIntervalsScript: WKUserScript {
+        let source = #"""
+        (function() {
+            try {
+                const favs = JSON.stringify(["1D", "1W", "1M"]);
+                const keys = [
+                    "IntervalWidget.quicks",
+                    "tradingview.IntervalWidget.quicks",
+                    "IntervalWidget.favorite",
+                    "tradingview.IntervalWidget.favorite",
+                    "IntervalWidget.favorites",
+                    "tradingview.IntervalWidget.favorites",
+                    "tradingview.chart.favorite.intervals",
+                    "tradingview.favorite.intervals",
+                    "tradingview.favoriteIntervals",
+                    "chart.favorite.intervals",
+                    "tv.favoriteIntervals",
+                    "Intervals.favorites"
+                ];
+                for (let i = 0; i < keys.length; i++) {
+                    localStorage.setItem(keys[i], favs);
+                }
+            } catch(e) {}
+        })();
+        """#
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: false)
     }
 
     /// CSS that hides unwanted intraday timeframe buttons (1m, 30m, 60m) so only
