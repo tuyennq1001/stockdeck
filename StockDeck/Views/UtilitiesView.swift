@@ -63,27 +63,49 @@ struct UtilitiesView: View {
         }
         .fileImporter(
             isPresented: $showFileImporter,
-            allowedContentTypes: [.json, .commaSeparatedText, UTType(filenameExtension: "xlsx") ?? .data],
-            allowsMultipleSelection: false
+            allowedContentTypes: [.json, .commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
         ) { result in
-            handleGenericFileImport(result: result)
+            switch result {
+            case .success(let url):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                handleSelectedFileURL(url)
+            case .failure(let err):
+                alertBannerMessage = "File selection error: \(err.localizedDescription)"
+            }
         }
         .fileImporter(
             isPresented: $showFundImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data],
-            allowsMultipleSelection: false
+            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
         ) { result in
-            handleFundFileImport(result: result)
+            switch result {
+            case .success(let url):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+                    pendingImportResult = res
+                } else {
+                    alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
+                }
+            case .failure(let err):
+                alertBannerMessage = "File error: \(err.localizedDescription)"
+            }
         }
         .fileImporter(
             isPresented: $showWatchlistImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data],
-            allowsMultipleSelection: false
+            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
         ) { result in
-            handleWatchlistFileImport(result: result)
+            switch result {
+            case .success(let url):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                handleWatchlistURL(url)
+            case .failure(let err):
+                alertBannerMessage = "File error: \(err.localizedDescription)"
+            }
         }
         .alert(
-            "Notification",
+            "StockDeck Notification",
             isPresented: Binding(get: { alertBannerMessage != nil }, set: { if !$0 { alertBannerMessage = nil } })
         ) {
             Button("OK", role: .cancel) { alertBannerMessage = nil }
@@ -338,6 +360,10 @@ struct UtilitiesView: View {
 
                     Button {
                         syncService.pullAndMerge(force: true)
+                        if syncService.syncStatus.contains("No data") || syncService.syncStatus.contains("not signed in") {
+                            // Prompt to pick file from iCloud Drive directly
+                            showFileImporter = true
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.down.icloud")
@@ -470,50 +496,43 @@ struct UtilitiesView: View {
 
     // MARK: - FILE IMPORT / EXPORT HANDLERS
 
-    private func handleGenericFileImport(result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
+    private func handleSelectedFileURL(_ url: URL) {
+        guard let data = try? Data(contentsOf: url) else {
+            alertBannerMessage = "Could not read file from \(url.lastPathComponent)."
+            return
+        }
 
-        // Check if it's a full AppData JSON backup or a Portfolio file
-        if let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode(StorageService.AppData.self, from: data) {
+        // 1. Try decoding as full AppData backup (JSON)
+        if let decoded = try? JSONDecoder().decode(StorageService.AppData.self, from: data) {
             let local = storageService.exportAppData()
             let merged = syncService.smartMerge(local: local, remote: decoded)
             storageService.applyAppData(merged, isFromSync: true)
             let wlCount = merged.watchlists?.count ?? 0
-            alertBannerMessage = "Successfully imported and merged backup file (\(merged.portfolios.count) portfolios, \(wlCount) watchlists)."
+            let pCount = merged.portfolios.count
+            alertBannerMessage = "Successfully imported & merged backup file (\(pCount) portfolios, \(wlCount) watchlists)!"
             Task {
                 await stockService.refreshAll(storageService: storageService)
             }
             return
         }
 
-        // Try standard portfolio parse for preview
+        // 2. Try parsing as Standard Portfolio (CSV / XLSX / JSON)
         if let res = PortfolioIO.parseStandardFile(fileURL: url, storageService: storageService) {
             pendingImportResult = res
-        } else {
-            alertBannerMessage = "Could not parse file. Please verify the CSV/JSON format."
+            return
         }
-    }
 
-    private func handleFundFileImport(result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
-
+        // 3. Try parsing as Japanese Fund (CSV / XLSX)
         if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
             pendingImportResult = res
-        } else {
-            alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
+            return
         }
+
+        // 4. Try parsing as Watchlist (CSV / XLSX / TXT)
+        handleWatchlistURL(url)
     }
 
-    private func handleWatchlistFileImport(result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
-
+    private func handleWatchlistURL(_ url: URL) {
         if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
             var msgs: [String] = []
             for (wlName, symbols) in parsed {
@@ -534,7 +553,7 @@ struct UtilitiesView: View {
                 await stockService.refreshAll(storageService: storageService)
             }
         } else {
-            alertBannerMessage = "Could not parse watchlist file or no valid symbols found."
+            alertBannerMessage = "Could not parse file. Please verify CSV/JSON/XLSX format."
         }
     }
 
