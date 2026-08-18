@@ -216,7 +216,7 @@ struct WatchlistView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .font(.inter(10, weight: .medium, relativeTo: .caption))
+        .font(.inter(12, weight: .medium, relativeTo: .caption))
         .foregroundColor(.secondary)
         .tracking(0.8)
         .textCase(.uppercase)
@@ -804,33 +804,33 @@ struct QuoteRow: View {
     private var symbolCell: some View {
         let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
         return HStack(spacing: 5) {
-            SymbolLogo(symbol: quote.symbol, size: 20)
+            SymbolLogo(symbol: quote.symbol, size: 22)
             VStack(alignment: .leading, spacing: 0) {
                 // Single stocks / ETFs keep the raw ticker as the primary label;
                 // indices, FX pairs, and futures use their conventional name.
                 Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .fontWeight(.bold)
                     .lineLimit(1)
                 if storageService.showCompanyName {
                     Text(isDisplayAsset ? quote.symbol : quote.name)
-                        .font(.inter(9, relativeTo: .caption))
+                        .font(.inter(11, relativeTo: .caption))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
         }
-        .frame(width: 110, alignment: .leading)
+        .frame(width: 115, alignment: .leading)
     }
 
     private var priceCell: some View {
         let displayPrice = quote.price
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                .font(.inter(12, relativeTo: .body).monospacedDigit())
+                .font(.inter(14, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                .font(.inter(12, relativeTo: .caption).monospacedDigit())
                 .fontWeight(.semibold)
                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
         }
@@ -839,7 +839,7 @@ struct QuoteRow: View {
     @ViewBuilder
     private var changeCell: some View {
         Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
-            .font(.inter(12, relativeTo: .body).monospacedDigit())
+            .font(.inter(14, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
             .foregroundColor(quote.isPositive ? DS.up : DS.down)
             .lineLimit(1)
@@ -854,21 +854,21 @@ struct QuoteRow: View {
         return VStack(alignment: .trailing, spacing: 1) {
             if let extPrice {
                 Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                     .foregroundColor(.primary)
             } else {
                 Text("—")
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .foregroundColor(.secondary)
             }
             if let extPct {
                 Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
-                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                    .font(.inter(11, relativeTo: .caption2).monospacedDigit())
                     .foregroundColor(extPct >= 0 ? DS.up : DS.down)
             } else {
                 Text("—")
-                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                    .font(.inter(11, relativeTo: .caption2).monospacedDigit())
                     .foregroundColor(.secondary)
             }
         }
@@ -885,7 +885,7 @@ struct QuoteRow: View {
 
             // Col 3: Price
             if storageService.showExtendedHours || storageService.showAbsoluteChange {
-                priceCell.frame(width: 78, alignment: .trailing)
+                priceCell.frame(width: 82, alignment: .trailing)
             } else {
                 priceCell.frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -893,7 +893,7 @@ struct QuoteRow: View {
             // Col 4: Change
             if storageService.showAbsoluteChange {
                 if storageService.showExtendedHours {
-                    changeCell.frame(width: 60, alignment: .trailing)
+                    changeCell.frame(width: 62, alignment: .trailing)
                 } else {
                     changeCell.frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -905,6 +905,6 @@ struct QuoteRow: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .padding(.vertical, 5.5)
     }
 }
