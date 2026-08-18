@@ -15,7 +15,6 @@ struct SettingsView: View {
     @AppStorage("settings.group.general") private var groupGeneral = true
     @AppStorage("settings.group.currency") private var groupCurrency = false
     @AppStorage("settings.group.positions") private var groupPositions = false
-    @AppStorage("settings.group.watchlist") private var groupWatchlist = false
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
@@ -219,20 +218,6 @@ struct SettingsView: View {
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
                 }
 
-                // MARK: - Watchlist Display
-                SettingsGroup(title: "Watchlist", icon: "list.bullet", isExpanded: $groupWatchlist) {
-                    Toggle("Company name", isOn: $storageService.showCompanyName)
-                        .toggleStyle(.switch)
-                    Toggle("30-day sparkline chart", isOn: $storageService.showWatchlistSparkline)
-                        .toggleStyle(.switch)
-                    Toggle("52-week range bar", isOn: $storageService.show52WeekBar)
-                        .toggleStyle(.switch)
-                    Toggle("Day range (low – high)", isOn: $storageService.showDayRange)
-                        .toggleStyle(.switch)
-                    Toggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
-                        .toggleStyle(.switch)
-                    caption("Choose which details appear in each watchlist row")
-                }
 
                 // MARK: - Menu Bar (display + colors)
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
