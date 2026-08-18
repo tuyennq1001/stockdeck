@@ -9,7 +9,36 @@ struct WatchlistWideView: View {
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
 
-    enum SortKey: Equatable { case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric) }
+    enum SortKey: Equatable {
+        case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric)
+
+        var rawString: String {
+            switch self {
+            case .order: return "order"
+            case .symbol: return "symbol"
+            case .price: return "price"
+            case .changePercent: return "changePercent"
+            case .extChangePercent: return "extChangePercent"
+            case .metric(let m): return "metric:\(m.rawValue)"
+            }
+        }
+
+        static func from(rawString: String?) -> SortKey {
+            guard let rawString else { return .order }
+            if rawString == "order" { return .order }
+            if rawString == "symbol" { return .symbol }
+            if rawString == "price" { return .price }
+            if rawString == "changePercent" { return .changePercent }
+            if rawString == "extChangePercent" { return .extChangePercent }
+            if rawString.hasPrefix("metric:") {
+                let metricRaw = String(rawString.dropFirst("metric:".count))
+                if let m = WatchlistMetric(rawValue: metricRaw) {
+                    return .metric(m)
+                }
+            }
+            return .order
+        }
+    }
 
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
@@ -46,6 +75,7 @@ struct WatchlistWideView: View {
         let name: String
         let currency: String
         let isIndex: Bool            // indices have no currency unit
+        let rate: Double             // price currency conversion rate
         let price: Double            // regular market price
         let extPrice: Double?        // pre/post-market price, if any
         let extChangePercent: Double? // pre/post-market % move vs regular close
@@ -60,6 +90,42 @@ struct WatchlistWideView: View {
         let loaded: Bool
         let quote: StockQuote?
         let marketCap: Double?         // market cap in target currency for fair cross-currency sorting
+
+        var allTimeHigh: Double? {
+            let histHigh = allTimeHistory.map(\.effectiveHigh).max()
+            let quoteHigh = max(quote?.fiftyTwoWeekHigh ?? 0, quote?.price ?? 0)
+            if let h = histHigh {
+                return max(h, quoteHigh) * rate
+            } else if quoteHigh > 0 {
+                return quoteHigh * rate
+            }
+            return nil
+        }
+
+        var allTimeLow: Double? {
+            let histLow = allTimeHistory.map(\.effectiveLow).min()
+            let qLow = quote?.fiftyTwoWeekLow != nil ? min(quote!.fiftyTwoWeekLow!, quote?.price ?? Double.greatestFiniteMagnitude) : quote?.price
+            if let l = histLow, let ql = qLow, ql > 0 {
+                return min(l, ql) * rate
+            } else if let l = histLow {
+                return l * rate
+            } else if let ql = qLow, ql > 0 {
+                return ql * rate
+            }
+            return nil
+        }
+
+        var fromAthPercent: Double? {
+            guard let ath = allTimeHigh, ath > 0, price > 0 else { return nil }
+            if price >= ath { return 0.0 }
+            return min(0.0, (price - ath) / ath * 100)
+        }
+
+        var fromAtlPercent: Double? {
+            guard let atl = allTimeLow, atl > 0, price > 0 else { return nil }
+            if price <= atl { return 0.0 }
+            return max(0.0, (price - atl) / atl * 100)
+        }
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
@@ -92,17 +158,15 @@ struct WatchlistWideView: View {
                 guard let boundary else { return nil }
                 return PriceHistory.percentChange(points: history, currentPrice: quote?.price ?? 0, since: boundary)
             case .ath:
-                return allTimeHistory.map(\.effectiveHigh).max()
+                return allTimeHigh
             case .atl:
-                return allTimeHistory.map(\.effectiveLow).min()
+                return allTimeLow
             case .marketCap:
                 return marketCap
             case .fromAth:
-                guard let ath = allTimeHistory.map(\.effectiveHigh).max(), ath > 0 else { return nil }
-                return (price - ath) / ath * 100
+                return fromAthPercent
             case .fromAtl:
-                guard let atl = allTimeHistory.map(\.effectiveLow).min(), atl > 0 else { return nil }
-                return (price - atl) / atl * 100
+                return fromAtlPercent
             case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
                 return nil
             }
@@ -136,6 +200,7 @@ struct WatchlistWideView: View {
                 name: q?.name ?? "",
                 currency: indexFlag ? "" : ((storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? ""),
                 isIndex: indexFlag,
+                rate: rate,
                 price: (q?.price ?? 0) * rate,
                 extPrice: ext,
                 extChangePercent: ext != nil ? q?.extendedChangePercent : nil,
@@ -203,8 +268,22 @@ struct WatchlistWideView: View {
         }
     }
 
+    private func loadSortFromCurrentWatchlist() {
+        let wl = storageService.currentWatchlist
+        sortKey = SortKey.from(rawString: wl.sortKey)
+        sortAsc = wl.sortAsc ?? true
+    }
+
     private func toggleSort(_ key: SortKey) {
-        if sortKey == key { sortAsc.toggle() } else { sortKey = key; sortAsc = (key == .order || key == .symbol) }
+        let newAsc: Bool
+        if sortKey == key {
+            newAsc = !sortAsc
+        } else {
+            newAsc = (key == .order || key == .symbol)
+        }
+        sortKey = key
+        sortAsc = newAsc
+        storageService.setWatchlistSort(key: key.rawString, ascending: newAsc, for: storageService.currentWatchlist.id)
     }
 
     var body: some View {
@@ -244,6 +323,10 @@ struct WatchlistWideView: View {
         }
         .onAppear {
             if previewOrder.isEmpty { previewOrder = storageService.watchlist }
+            loadSortFromCurrentWatchlist()
+        }
+        .onChange(of: storageService.selectedWatchlistId) { _, _ in
+            loadSortFromCurrentWatchlist()
         }
         .onChange(of: storageService.watchlist) { _, newList in
             // Keep the preview in sync with outside changes (add/remove/switch) —
@@ -992,6 +1075,7 @@ WatchRowView(row: row,
         if sortKey != .order || !sortAsc {
             sortKey = .order
             sortAsc = true
+            storageService.setWatchlistSort(key: SortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
         }
         guard let i = storageService.watchlist.firstIndex(of: symbol) else { return }
         let j = i + delta
@@ -1186,9 +1270,6 @@ private struct WatchRowView<Menu: View>: View {
         return PriceHistory.percentChange(points: row.history, currentPrice: row.quote?.price ?? 0, since: boundary)
     }
 
-    private var allTimeHigh: Double? { row.allTimeHistory.map(\.effectiveHigh).max() }
-    private var allTimeLow: Double? { row.allTimeHistory.map(\.effectiveLow).min() }
-
     @ViewBuilder
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
@@ -1216,13 +1297,13 @@ private struct WatchRowView<Menu: View>: View {
             case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
                 periodCell(periodChange(metric))
             case .ath:
-                priceMetric(allTimeHigh)
+                priceMetric(row.allTimeHigh)
             case .atl:
-                priceMetric(allTimeLow)
+                priceMetric(row.allTimeLow)
             case .fromAth:
-                periodCell(percentFrom(row.price, reference: allTimeHigh))
+                periodCell(row.fromAthPercent)
             case .fromAtl:
-                periodCell(percentFrom(row.price, reference: allTimeLow))
+                periodCell(row.fromAtlPercent)
             case .marketCap:
                 marketCapCell
             case .chart24h:
@@ -1274,11 +1355,6 @@ private struct WatchRowView<Menu: View>: View {
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
         }
-    }
-
-    private func percentFrom(_ price: Double, reference: Double?) -> Double? {
-        guard let reference, reference > 0 else { return nil }
-        return (price - reference) / reference * 100
     }
 
     var body: some View {

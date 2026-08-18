@@ -78,4 +78,40 @@ final class MultiWatchlistTests: XCTestCase {
         storage.setChartRange("1Y", for: "all")
         XCTAssertEqual(storage.chartRange(for: "all"), "1Y")
     }
+
+    func testWatchlistSortPersistence() {
+        let storage = createTestStorage()
+        let wl1 = storage.createWatchlist(name: "List 1")
+        let wl2 = storage.createWatchlist(name: "List 2")
+
+        storage.setWatchlistSort(key: "price", ascending: false, for: wl1.id)
+        storage.setWatchlistSort(key: "changePercent", ascending: true, for: wl2.id)
+
+        XCTAssertEqual(storage.watchlists.first(where: { $0.id == wl1.id })?.sortKey, "price")
+        XCTAssertEqual(storage.watchlists.first(where: { $0.id == wl1.id })?.sortAsc, false)
+
+        XCTAssertEqual(storage.watchlists.first(where: { $0.id == wl2.id })?.sortKey, "changePercent")
+        XCTAssertEqual(storage.watchlists.first(where: { $0.id == wl2.id })?.sortAsc, true)
+    }
+
+    func testStockChartRangePersistence() {
+        let storage = createTestStorage()
+        XCTAssertEqual(storage.lastStockChartRange, "1M")
+
+        storage.lastStockChartRange = "3M"
+        XCTAssertEqual(storage.lastStockChartRange, "3M")
+    }
+
+    func testPortfolioPositionSortPersistence() {
+        let storage = createTestStorage()
+        let pId = UUID().uuidString
+
+        XCTAssertNil(storage.positionSort(for: pId))
+
+        storage.setPositionSort(column: "pnl", ascending: true, for: pId)
+        let sort = storage.positionSort(for: pId)
+        XCTAssertNotNil(sort)
+        XCTAssertEqual(sort?.column, "pnl")
+        XCTAssertEqual(sort?.ascending, true)
+    }
 }

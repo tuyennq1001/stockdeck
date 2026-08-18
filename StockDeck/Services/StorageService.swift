@@ -6,6 +6,8 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var symbols: [String]
     /// Nil keeps imported/older watchlists on the default layout.
     var metrics: [WatchlistMetric]? = nil
+    var sortKey: String? = nil
+    var sortAsc: Bool? = nil
 }
 
 /// Where a dragged item lands relative to its drop target: before it, or after
@@ -659,6 +661,33 @@ class StorageService: ObservableObject {
 
     func setChartRange(_ rangeRaw: String, for scopeKey: String) {
         portfolioChartRanges[scopeKey] = rangeRaw
+    }
+
+    @Published var lastStockChartRange: String = "1M" {
+        didSet { scheduleSave() }
+    }
+
+    @Published var portfolioPositionSorts: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
+    func positionSort(for scopeKey: String) -> (column: String, ascending: Bool)? {
+        guard let raw = portfolioPositionSorts[scopeKey] else { return nil }
+        let parts = raw.split(separator: ":")
+        guard parts.count == 2 else { return nil }
+        return (column: String(parts[0]), ascending: parts[1] == "asc")
+    }
+
+    func setPositionSort(column: String, ascending: Bool, for scopeKey: String) {
+        portfolioPositionSorts[scopeKey] = "\(column):\(ascending ? "asc" : "desc")"
+    }
+
+    func setWatchlistSort(key: String, ascending: Bool, for watchlistId: UUID) {
+        guard let idx = watchlists.firstIndex(where: { $0.id == watchlistId }) else { return }
+        if watchlists[idx].sortKey != key || watchlists[idx].sortAsc != ascending {
+            watchlists[idx].sortKey = key
+            watchlists[idx].sortAsc = ascending
+        }
     }
 
     var lastSelectedTab: String = "Watchlist"
@@ -1442,6 +1471,8 @@ class StorageService: ObservableObject {
         var aiProvider: String?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
+        var lastStockChartRange: String?
+        var portfolioPositionSorts: [String: String]?
     }
 
     private func scheduleSave() {
@@ -1462,7 +1493,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking, lastStockChartRange: lastStockChartRange, portfolioPositionSorts: portfolioPositionSorts)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1575,6 +1606,8 @@ class StorageService: ObservableObject {
             aiProvider = decoded.aiProvider ?? "openai"
             aiWorkspacePath = decoded.aiWorkspacePath ?? ""
             aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+            lastStockChartRange = decoded.lastStockChartRange ?? "1M"
+            portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
             let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
             portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
             FontRegistration.familyName = fontFamily
