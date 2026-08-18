@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
+    @AppStorage("settings.group.icloud") private var groupiCloud = true
     @AppStorage("settings.group.about") private var groupAbout = false
 
     /// Small secondary caption used throughout the settings list.
@@ -103,6 +104,56 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     caption("Size: \(storageService.fontSizeLevel)")
+                }
+
+                // MARK: - iCloud Sync
+                SettingsGroup(title: "iCloud Sync", icon: "icloud", isExpanded: $groupiCloud) {
+                    Toggle("Enable iCloud Sync", isOn: $storageService.iCloudSyncEnabled)
+                        .toggleStyle(.switch)
+                    caption("Automatically synchronizes your watchlists, portfolios, alerts, and notes across all your Macs, iPhones, and iPads signed in to your Apple ID.")
+
+                    if storageService.iCloudSyncEnabled {
+                        Divider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Status")
+                                    .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                if let lastDate = storageService.lastiCloudSyncDate {
+                                    Text("Last synced: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Not synced yet")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Sync Now") {
+                                iCloudSyncService.shared.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        HStack(spacing: 8) {
+                            Button("Push to iCloud") {
+                                iCloudSyncService.shared.pushLocalData()
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+
+                            Text("·").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
+
+                            Button("Pull from iCloud") {
+                                iCloudSyncService.shared.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+                        }
+                        caption("Smart Merge automatically reconciles differences between this device and the cloud without losing positions or watchlists.")
+                    }
                 }
 
                 // MARK: - Currency

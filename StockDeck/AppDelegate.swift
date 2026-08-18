@@ -112,6 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
+        iCloudSyncService.shared.start()
 
         // Cold launch from clicking a delivered notification: the system already
         // routed the response to the delegate (set in willFinishLaunching); the

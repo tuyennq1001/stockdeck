@@ -135,6 +135,15 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    // MARK: - iCloud Sync
+    @Published var iCloudSyncEnabled: Bool = false {
+        didSet {
+            scheduleSave()
+            iCloudSyncService.shared.onSyncToggleChanged(enabled: iCloudSyncEnabled)
+        }
+    }
+    @Published var lastiCloudSyncDate: Date? = nil
+
     /// Typed appearance preference, tolerant of unknown persisted values.
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceRaw) ?? .default }
@@ -1429,7 +1438,7 @@ class StorageService: ObservableObject {
 
     // MARK: - Persistence
 
-    private struct AppData: Codable {
+    struct AppData: Codable {
         var watchlist: [String]
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
@@ -1478,6 +1487,174 @@ class StorageService: ObservableObject {
         var aiDeepseekThinking: Bool?
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
+        var iCloudSyncEnabled: Bool?
+        var lastiCloudSyncDate: Date?
+    }
+
+    func exportAppData() -> AppData {
+        AppData(
+            watchlist: watchlist,
+            watchlists: watchlists,
+            selectedWatchlistId: selectedWatchlistId,
+            portfolioColumns: portfolioColumns?.map(\.rawValue),
+            portfolios: portfolios,
+            preferredCurrency: preferredCurrency,
+            stockPriceCurrency: stockPriceCurrency,
+            showExtendedHours: showExtendedHours,
+            menuBarDisplay: menuBarDisplay,
+            isinMap: isinMap,
+            fontSizeLevel: fontSizeLevel,
+            fontFamily: fontFamily,
+            alerts: alerts,
+            symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes,
+            showCompanyName: showCompanyName,
+            showWatchlistSparkline: showWatchlistSparkline,
+            showDayRange: showDayRange,
+            show52WeekBar: show52WeekBar,
+            showAbsoluteChange: showAbsoluteChange,
+            portfolioNotifications: portfolioNotifications,
+            portfolioSnapshots: portfolioSnapshots,
+            portfolioChartRanges: portfolioChartRanges,
+            discordWebhookURL: discordWebhookURL,
+            discordEnabled: discordEnabled,
+            gainColorHex: gainColorHex,
+            lossColorHex: lossColorHex,
+            menuBarUseSystemColor: menuBarUseSystemColor,
+            percentTwoDecimals: nil,
+            percentDecimals: percentDecimals,
+            valueDecimals: valueDecimals,
+            menuBarHidePercent: menuBarHidePercent,
+            tickerShowName: tickerShowName,
+            watchlistSort: watchlistSort,
+            symbolType: symbolType,
+            symbolExchange: symbolExchange,
+            appLanguage: appLanguage,
+            advancedPositions: advancedPositions,
+            defaultChartStyle: defaultChartStyle,
+            appearanceRaw: appearanceRaw,
+            showNewsTab: showNewsTab,
+            aiChatSections: aiChatSections,
+            aiBaseURL: aiBaseURL,
+            aiModel: aiModel,
+            aiProvider: aiProvider,
+            aiWorkspacePath: aiWorkspacePath,
+            aiDeepseekThinking: aiDeepseekThinking,
+            lastStockChartRange: lastStockChartRange,
+            portfolioPositionSorts: portfolioPositionSorts,
+            iCloudSyncEnabled: iCloudSyncEnabled,
+            lastiCloudSyncDate: lastiCloudSyncDate
+        )
+    }
+
+    func applyAppData(_ decoded: AppData, isFromSync: Bool = false) {
+        if isFromSync {
+            isLoading = true
+        }
+        if let wls = decoded.watchlists, !wls.isEmpty {
+            var seenNames = Set<String>()
+            var cleaned: [Watchlist] = []
+            for wl in wls {
+                let trimmed = wl.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = trimmed.lowercased()
+                if !wl.symbols.isEmpty {
+                    if !seenNames.contains(key) {
+                        cleaned.append(wl)
+                        seenNames.insert(key)
+                    }
+                } else if !seenNames.contains(key) && !key.starts(with: "list ") {
+                    cleaned.append(wl)
+                    seenNames.insert(key)
+                }
+            }
+            watchlists = cleaned.isEmpty ? wls : cleaned
+            if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
+                selectedWatchlistId = selId
+            } else {
+                selectedWatchlistId = watchlists.first?.id
+            }
+        } else if !decoded.watchlist.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: decoded.watchlist)
+            watchlists = [def]
+            selectedWatchlistId = def.id
+        } else if watchlists.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+            watchlists = [def]
+        }
+        portfolios = decoded.portfolios.map { p in
+            var updated = p
+            if updated.isReadOnly {
+                updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
+            } else {
+                updated.holdings = updated.holdings.map { h in
+                    var newH = h
+                    if newH.symbol.hasSuffix("-USD") {
+                        let base = String(newH.symbol.dropLast(4))
+                        if !StorageService.isStandardCryptoSymbol(base) {
+                            newH.symbol = base
+                        }
+                    }
+                    return newH
+                }
+            }
+            return updated
+        }
+        preferredCurrency = decoded.preferredCurrency ?? "EUR"
+        stockPriceCurrency = decoded.stockPriceCurrency ?? ""
+        showExtendedHours = decoded.showExtendedHours ?? true
+        menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
+        isinMap = decoded.isinMap ?? [:]
+        alerts = decoded.alerts ?? []
+        symbolNotes = decoded.symbolNotes ?? [:]
+        portfolioNotifications = decoded.portfolioNotifications ?? [:]
+        portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
+        portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
+        discordWebhookURL = decoded.discordWebhookURL ?? ""
+        discordEnabled = decoded.discordEnabled ?? false
+        gainColorHex = decoded.gainColorHex ?? ""
+        lossColorHex = decoded.lossColorHex ?? ""
+        menuBarUseSystemColor = decoded.menuBarUseSystemColor ?? false
+        percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)
+        valueDecimals = decoded.valueDecimals ?? -1
+        menuBarHidePercent = decoded.menuBarHidePercent ?? false
+        tickerShowName = decoded.tickerShowName ?? false
+        advancedPositions = decoded.advancedPositions ?? false
+        defaultChartStyle = decoded.defaultChartStyle ?? "line"
+        watchlistSort = decoded.watchlistSort ?? "manual"
+        symbolType = decoded.symbolType ?? [:]
+        symbolExchange = decoded.symbolExchange ?? [:]
+        appLanguage = decoded.appLanguage ?? "en"
+        showCompanyName = decoded.showCompanyName ?? true
+        showWatchlistSparkline = decoded.showWatchlistSparkline ?? true
+        showDayRange = decoded.showDayRange ?? true
+        show52WeekBar = decoded.show52WeekBar ?? true
+        showAbsoluteChange = decoded.showAbsoluteChange ?? false
+        fontSizeLevel = decoded.fontSizeLevel ?? 9
+        fontFamily = decoded.fontFamily ?? "Inter Variable"
+        appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
+        showNewsTab = decoded.showNewsTab ?? true
+        aiChatSections = decoded.aiChatSections ?? []
+        aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
+        aiModel = decoded.aiModel ?? "gpt-4o-mini"
+        aiProvider = decoded.aiProvider ?? "openai"
+        aiWorkspacePath = decoded.aiWorkspacePath ?? ""
+        aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+        lastStockChartRange = decoded.lastStockChartRange ?? "1M"
+        portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
+        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+        portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
+        if let syncEnabled = decoded.iCloudSyncEnabled {
+            iCloudSyncEnabled = syncEnabled
+        }
+        if let syncDate = decoded.lastiCloudSyncDate {
+            lastiCloudSyncDate = syncDate
+        }
+        FontRegistration.familyName = fontFamily
+        FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
+
+        if isFromSync {
+            isLoading = false
+            performSave()
+        }
     }
 
     private func scheduleSave() {
@@ -1487,18 +1664,19 @@ class StorageService: ObservableObject {
             try? await Task.sleep(nanoseconds: 100_000_000)
             guard !Task.isCancelled else { return }
             self.performSave()
+            if self.iCloudSyncEnabled {
+                iCloudSyncService.shared.schedulePush()
+            }
         }
     }
 
     private func performSave() {
-        // Backup the existing file before overwriting, so a crash or bug can't
-        // destroy all user data without a recovery path.
         let bakURL = fileURL.appendingPathExtension("bak")
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showWatchlistSparkline: showWatchlistSparkline, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking, lastStockChartRange: lastStockChartRange, portfolioPositionSorts: portfolioPositionSorts)
+        let data = exportAppData()
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1511,6 +1689,9 @@ class StorageService: ObservableObject {
         saveTask?.cancel()
         saveTask = nil
         performSave()
+        if iCloudSyncEnabled {
+            iCloudSyncService.shared.pushLocalData()
+        }
     }
 
     private func load() {
@@ -1518,110 +1699,8 @@ class StorageService: ObservableObject {
         do {
             let data = try Data(contentsOf: fileURL)
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
-            if let wls = decoded.watchlists, !wls.isEmpty {
-                // Deduplicate watchlists by name/ID and strip leftover empty test lists
-                var seenNames = Set<String>()
-                var cleaned: [Watchlist] = []
-                for wl in wls {
-                    let trimmed = wl.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let key = trimmed.lowercased()
-                    if !wl.symbols.isEmpty {
-                        if !seenNames.contains(key) {
-                            cleaned.append(wl)
-                            seenNames.insert(key)
-                        }
-                    } else if !seenNames.contains(key) && !key.starts(with: "list ") {
-                        cleaned.append(wl)
-                        seenNames.insert(key)
-                    }
-                }
-                watchlists = cleaned.isEmpty ? wls : cleaned
-                if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
-                    selectedWatchlistId = selId
-                } else {
-                    selectedWatchlistId = watchlists.first?.id
-                }
-            } else if !decoded.watchlist.isEmpty {
-                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: decoded.watchlist)
-                watchlists = [def]
-                selectedWatchlistId = def.id
-            } else {
-                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
-                watchlists = [def]
-            }
-            portfolios = decoded.portfolios.map { p in
-                var updated = p
-                if updated.isReadOnly {
-                    // Keep holdings with and without a known cost basis separate
-                    // (a Spot-reconstructed portion vs. an untracked remainder of
-                    // the same symbol) so partial cost basis survives a reload.
-                    updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
-                } else {
-                    // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
-                    updated.holdings = updated.holdings.map { h in
-                        var newH = h
-                        if newH.symbol.hasSuffix("-USD") {
-                            let base = String(newH.symbol.dropLast(4))
-                            if !StorageService.isStandardCryptoSymbol(base) {
-                                newH.symbol = base
-                            }
-                        }
-                        return newH
-                    }
-                }
-                return updated
-            }
-            preferredCurrency = decoded.preferredCurrency ?? "EUR"
-            stockPriceCurrency = decoded.stockPriceCurrency ?? ""
-            showExtendedHours = decoded.showExtendedHours ?? true
-            menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
-            isinMap = decoded.isinMap ?? [:]
-            alerts = decoded.alerts ?? []
-            symbolNotes = decoded.symbolNotes ?? [:]
-            portfolioNotifications = decoded.portfolioNotifications ?? [:]
-            portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
-            portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
-            discordWebhookURL = decoded.discordWebhookURL ?? ""
-            discordEnabled = decoded.discordEnabled ?? false
-            gainColorHex = decoded.gainColorHex ?? ""
-            lossColorHex = decoded.lossColorHex ?? ""
-            menuBarUseSystemColor = decoded.menuBarUseSystemColor ?? false
-            // #10: migrate the old on/off toggle (2 vs 1) to the free decimal count.
-            percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)
-            valueDecimals = decoded.valueDecimals ?? -1
-            menuBarHidePercent = decoded.menuBarHidePercent ?? false
-            tickerShowName = decoded.tickerShowName ?? false
-            advancedPositions = decoded.advancedPositions ?? false
-            defaultChartStyle = decoded.defaultChartStyle ?? "line"
-            watchlistSort = decoded.watchlistSort ?? "manual"
-            symbolType = decoded.symbolType ?? [:]
-            symbolExchange = decoded.symbolExchange ?? [:]
-            appLanguage = decoded.appLanguage ?? "en"
-            showCompanyName = decoded.showCompanyName ?? true
-            showWatchlistSparkline = decoded.showWatchlistSparkline ?? true
-            showDayRange = decoded.showDayRange ?? true
-            show52WeekBar = decoded.show52WeekBar ?? true
-            showAbsoluteChange = decoded.showAbsoluteChange ?? false
-            fontSizeLevel = decoded.fontSizeLevel ?? 9
-            fontFamily = decoded.fontFamily ?? "Inter Variable"
-            appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
-            showNewsTab = decoded.showNewsTab ?? true
-            aiChatSections = decoded.aiChatSections ?? []
-            aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
-            aiModel = decoded.aiModel ?? "gpt-4o-mini"
-            aiProvider = decoded.aiProvider ?? "openai"
-            aiWorkspacePath = decoded.aiWorkspacePath ?? ""
-            aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
-            lastStockChartRange = decoded.lastStockChartRange ?? "1M"
-            portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
-            let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
-            portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
-            FontRegistration.familyName = fontFamily
-            FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
+            applyAppData(decoded, isFromSync: false)
         } catch {
-            // The file exists but couldn't be decoded (schema change, corruption, etc.).
-            // Rename it so the original data is preserved for recovery, and set a flag
-            // that blocks any automatic save from overwriting the renamed backup.
             decodeFailure = true
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd-HHmmss"
