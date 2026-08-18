@@ -214,8 +214,8 @@ struct WatchlistWideView: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     table
-                        .frame(width: activeDetailSymbol != nil ? 190 : nil)
-                        .frame(maxWidth: activeDetailSymbol != nil ? 190 : .infinity, maxHeight: .infinity)
+                        .frame(width: activeDetailSymbol != nil ? 350 : nil)
+                        .frame(maxWidth: activeDetailSymbol != nil ? 350 : .infinity, maxHeight: .infinity)
 
                     if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
                         Divider().overlay(DS.hairline)
@@ -562,7 +562,7 @@ struct WatchlistWideView: View {
                 ScrollView(.horizontal, showsIndicators: true) {
                     ZStack(alignment: .topLeading) {
                         tableContents
-                            .frame(width: tableWidth)
+                            .frame(width: tableWidth, alignment: .leading)
                         // Track horizontal scroll offset from scroll content frame
                         GeometryReader { geo in
                             Color.clear.preference(
@@ -582,9 +582,10 @@ struct WatchlistWideView: View {
     }
 
     private var tableWidth: CGFloat {
-        let base = 22 + 24 + WCol.symbol
-        let metricWidth = selectedMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let columns = 2 + selectedMetrics.count
+        let base = 22 + 24 + WCol.symbol + WCol.price
+        let otherMetrics = selectedMetrics.filter { $0 != .price }
+        let metricWidth = otherMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
+        let columns = 4 + otherMetrics.count
         return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
     }
 
@@ -808,24 +809,27 @@ WatchRowView(row: row,
 
     private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
+            // Frozen columns: select all + rank (#) + symbol + price
             HStack(spacing: WCol.spacing) {
                 selectAllButton
                 Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
                 if isCompact {
                     headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
+                    headerCell("Price", .price, width: 96, align: .trailing, help: "Sort by price")
                 } else {
                     headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
+                    headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
                 }
             }
             .frame(maxWidth: isCompact ? .infinity : nil, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(DS.card)
-            .offset(x: hScrollOffset)
+            .offset(x: isCompact ? 0 : hScrollOffset)
             .zIndex(1)
 
             if !isCompact {
-                ForEach(selectedMetrics) { metric in
+                ForEach(selectedMetrics.filter { $0 != .price }) { metric in
                     metricHeader(metric)
                 }
             }
@@ -840,7 +844,7 @@ WatchRowView(row: row,
                 Label("Customize Columns…", systemImage: "slider.horizontal.3")
             }
             Divider()
-            ForEach(WatchlistMetric.allCases.filter { $0 != .today }) { metric in
+            ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price }) { metric in
                 Button {
                     var updated = selectedMetrics
                     if updated.contains(metric) {
@@ -1280,7 +1284,7 @@ private struct WatchRowView<Menu: View>: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                // Frozen columns: position + symbol, with opaque white background & zIndex
+                // Frozen columns: position + symbol + price, with opaque background & zIndex
                 HStack(spacing: WCol.spacing) {
                     // Checkbox: toggling selection must not open the detail pane,
                     // so it swallows the tap with a high-priority gesture.
@@ -1314,7 +1318,21 @@ private struct WatchRowView<Menu: View>: View {
                             }
                         }
                     }
+                    .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                     .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
+
+                    if compact {
+                        if row.loaded {
+                            pairedCell(price: row.price, pct: row.changePercent,
+                                       label: nil, emphasised: !extendedSession)
+                                .frame(width: 96, alignment: .trailing)
+                        } else {
+                            DSSpinner(size: 12)
+                                .frame(width: 96, alignment: .trailing)
+                        }
+                    } else {
+                        metricCell(.price)
+                    }
                 }
                 .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                 .padding(.horizontal, 14).padding(.vertical, 9)
@@ -1325,11 +1343,11 @@ private struct WatchRowView<Menu: View>: View {
                         else { DS.card }
                     }
                 )
-                .offset(x: hScrollOffset)
+                .offset(x: compact ? 0 : hScrollOffset)
                 .zIndex(1)
 
                 if !compact {
-                    ForEach(metrics) { metric in
+                    ForEach(metrics.filter { $0 != .price }) { metric in
                         metricCell(metric)
                     }
                 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Optional columns a user can add to a watchlist. Rank and symbol stay fixed;
+/// Optional columns a user can add to a watchlist. Rank, symbol, and price stay fixed;
 /// this list controls the investment metrics that follow them.
 enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     case price, ext
@@ -55,7 +55,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         category == .chart
     }
 
-    static let defaultSelection: [WatchlistMetric] = [.price, .ext, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
+    static let defaultSelection: [WatchlistMetric] = [.ext, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
 }
 
 enum WatchlistMetricCategory: String, CaseIterable, Identifiable {

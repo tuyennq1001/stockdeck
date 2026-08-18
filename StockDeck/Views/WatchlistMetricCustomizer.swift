@@ -14,11 +14,11 @@ enum MetricPreset: String, CaseIterable, Identifiable {
         case .custom:
             return WatchlistMetric.defaultSelection
         case .defaultPreset:
-            return [.price, .todayChange, .oneMonth, .threeMonths, .chart7d]
+            return [.ext, .todayChange, .oneMonth, .threeMonths, .chart7d]
         case .overview:
-            return [.price, .todayChange, .oneMonth, .oneYear, .ath, .chart7d]
+            return [.ext, .todayChange, .oneMonth, .oneYear, .ath, .chart7d]
         case .technical:
-            return [.price, .ext, .todayChange, .ytd, .ath, .fromAth, .atl, .fromAtl, .chart30d]
+            return [.ext, .todayChange, .ytd, .ath, .fromAth, .atl, .fromAtl, .chart30d]
         }
     }
 }
@@ -254,7 +254,7 @@ struct WatchlistMetricCustomizer: View {
                 .padding(.top, 6)
 
             FlowLayout(spacing: 8) {
-                ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0.category == category }) { metric in
+                ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price && $0.category == category }) { metric in
                     let isSelected = metrics.contains(metric)
                     Button {
                         withAnimation(.spring(response: 0.2)) {
