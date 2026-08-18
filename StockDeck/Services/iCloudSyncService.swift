@@ -14,6 +14,11 @@ final class iCloudSyncService: ObservableObject {
     @Published var syncStatus: String = "Idle"
     @Published var isSyncing: Bool = false
 
+    /// Checks if the user is currently signed in to an Apple ID / iCloud account on this device
+    var isiCloudAvailable: Bool {
+        FileManager.default.ubiquityIdentityToken != nil
+    }
+
     private let deviceId: String
     private var pushDebounceTask: Task<Void, Never>?
     private var isStarted = false
@@ -62,9 +67,9 @@ final class iCloudSyncService: ObservableObject {
         }
     }
 
+    /// Called when user toggles the sync switch
     func onSyncToggleChanged(enabled: Bool) {
         if enabled {
-            store.synchronize()
             pullAndMerge(force: true)
         }
     }
@@ -98,7 +103,11 @@ final class iCloudSyncService: ObservableObject {
 
         let date = Date()
         self.lastSyncDate = date
-        self.syncStatus = success ? "Synced" : "Sync Failed"
+        if !isiCloudAvailable {
+            self.syncStatus = "Saved locally (iCloud not signed in)"
+        } else {
+            self.syncStatus = success ? "Uploaded to iCloud" : "Upload Failed"
+        }
         StorageService.shared.lastiCloudSyncDate = date
         isSyncing = false
     }
@@ -110,8 +119,11 @@ final class iCloudSyncService: ObservableObject {
 
         guard let remoteData = store.data(forKey: kSyncPayloadKey),
               let _ = store.object(forKey: kSyncTimestampKey) as? Double else {
-            // No remote data on iCloud yet -> push local data as the cloud baseline
-            pushLocalData()
+            if !isiCloudAvailable {
+                self.syncStatus = "iCloud not signed in on this device"
+            } else {
+                self.syncStatus = "No data found on iCloud"
+            }
             isSyncing = false
             return
         }
@@ -124,6 +136,7 @@ final class iCloudSyncService: ObservableObject {
         }
 
         guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteData) else {
+            self.syncStatus = "Cloud data format error"
             isSyncing = false
             return
         }

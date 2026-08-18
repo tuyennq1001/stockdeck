@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
+    @ObservedObject private var syncService = iCloudSyncService.shared
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
 
@@ -114,12 +115,29 @@ struct SettingsView: View {
                     if storageService.iCloudSyncEnabled {
                         Divider()
 
+                        if !syncService.isiCloudAvailable {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                    .font(.system(size: 13))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("iCloud Not Signed In")
+                                        .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                    Text("This device is not signed in to an Apple ID. Please sign in to iCloud in system Settings to enable sync.")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+                        }
+
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Status")
+                                Text("Status: \(syncService.syncStatus)")
                                     .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
-                                if let lastDate = storageService.lastiCloudSyncDate {
-                                    Text("Last synced: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                if let lastDate = syncService.lastSyncDate {
+                                    Text("Last attempt: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
                                         .font(.inter(10, relativeTo: .caption))
                                         .foregroundColor(.secondary)
                                 } else {
@@ -129,16 +147,17 @@ struct SettingsView: View {
                                 }
                             }
                             Spacer()
-                            Button("Sync Now") {
-                                iCloudSyncService.shared.pullAndMerge(force: true)
+                            Button(syncService.isSyncing ? "Syncing…" : "Sync Now") {
+                                syncService.pullAndMerge(force: true)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .disabled(syncService.isSyncing)
                         }
 
                         HStack(spacing: 8) {
                             Button("Push to iCloud") {
-                                iCloudSyncService.shared.pushLocalData()
+                                syncService.pushLocalData()
                             }
                             .buttonStyle(.borderless)
                             .font(.inter(10, relativeTo: .caption))
@@ -146,7 +165,7 @@ struct SettingsView: View {
                             Text("·").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
 
                             Button("Pull from iCloud") {
-                                iCloudSyncService.shared.pullAndMerge(force: true)
+                                syncService.pullAndMerge(force: true)
                             }
                             .buttonStyle(.borderless)
                             .font(.inter(10, relativeTo: .caption))
