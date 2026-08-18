@@ -35,7 +35,6 @@ struct SettingsWideView: View {
                     }
                     VStack(alignment: .leading, spacing: DS.gap) {
                         tradingCard
-                        watchlistCard
                         notificationsCard
                         appearanceCard
                         aboutCard
@@ -317,19 +316,6 @@ struct SettingsWideView: View {
         }
     }
 
-    private var watchlistCard: some View {
-        SettingsCard(title: "Watchlist row details") {
-            SettingToggle("Company name", isOn: $storageService.showCompanyName)
-            SettingDivider()
-            SettingToggle("30-day sparkline chart", isOn: $storageService.showWatchlistSparkline)
-            SettingDivider()
-            SettingToggle("52-week range bar", isOn: $storageService.show52WeekBar)
-            SettingDivider()
-            SettingToggle("Day range (low – high)", isOn: $storageService.showDayRange)
-            SettingDivider()
-            SettingToggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
-        }
-    }
 
     private var menuBarCard: some View {
         SettingsCard(title: "Menu bar") {
