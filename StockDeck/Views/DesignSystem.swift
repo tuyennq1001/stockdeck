@@ -1105,34 +1105,42 @@ struct NavRow: View {
 
 // MARK: - Hand cursor extension
 
-private struct PointingHandCursorView: NSViewRepresentable {
-    func makeNSView(context: Context) -> HandCursorNSView {
-        HandCursorNSView()
+@MainActor
+enum CursorManager {
+    private static var activeCount = 0
+    private static var isPushed = false
+
+    static func update(inside: Bool) {
+        if inside {
+            activeCount += 1
+            if !isPushed {
+                NSCursor.pointingHand.push()
+                isPushed = true
+            }
+        } else {
+            activeCount = max(0, activeCount - 1)
+            if activeCount == 0 && isPushed {
+                NSCursor.pop()
+                isPushed = false
+            }
+        }
     }
 
-    func updateNSView(_ nsView: HandCursorNSView, context: Context) {
-        nsView.window?.invalidateCursorRects(for: nsView)
-    }
-}
-
-private final class HandCursorNSView: NSView {
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
+    static func reset() {
+        if isPushed {
+            NSCursor.pop()
+            isPushed = false
+        }
+        activeCount = 0
     }
 }
 
 extension View {
     /// Shows the pointing hand cursor when hovering over interactive elements.
     func pointingHandCursor() -> some View {
-        self.overlay(
-            PointingHandCursorView()
-                .allowsHitTesting(false)
-        )
+        self.onHover { inside in
+            CursorManager.update(inside: inside)
+        }
     }
 }
 
