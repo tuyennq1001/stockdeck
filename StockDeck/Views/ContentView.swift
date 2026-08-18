@@ -4,6 +4,7 @@ enum Tab: String, CaseIterable {
     case home = "Home"
     case watchlist = "Watchlist"
     case portfolios = "Portfolios"
+    case utilities = "Utilities"
     case settings = "Settings"
 }
 
@@ -13,6 +14,7 @@ extension Tab {
         case .home: return "newspaper"
         case .watchlist: return "list.bullet"
         case .portfolios: return "briefcase"
+        case .utilities: return "wrench.and.screwdriver"
         case .settings: return "gear"
         }
     }
@@ -21,7 +23,7 @@ extension Tab {
     /// opt-out — when hidden, Watchlist leads. Single source of truth so the tab
     /// bar, the content switch and the restored-selection logic never disagree.
     static func visible(showNews: Bool) -> [Tab] {
-        let all: [Tab] = [.home, .watchlist, .portfolios, .settings]
+        let all: [Tab] = [.home, .watchlist, .portfolios, .utilities, .settings]
         return showNews ? all : all.filter { $0 != .home }
     }
 
@@ -257,6 +259,8 @@ struct ContentView: View {
                     WatchlistView(showSearch: $showSearch)
                 case .portfolios:
                     PortfolioListView()
+                case .utilities:
+                    UtilitiesView()
                 case .settings:
                     SettingsView()
                 }
