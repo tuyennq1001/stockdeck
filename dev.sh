@@ -70,7 +70,7 @@ SIGN_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Develo
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
-codesign --deep --sign "${SIGN_IDENTITY}" --entitlements StockDeck.entitlements --force "$APP" 2>/dev/null || codesign --deep --sign - --entitlements StockDeck.entitlements --force "$APP" 2>/dev/null
+codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
 
 echo "Killing old StockDeck process instances..."
 pkill -9 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true

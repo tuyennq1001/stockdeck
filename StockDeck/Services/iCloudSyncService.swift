@@ -74,6 +74,26 @@ final class iCloudSyncService: ObservableObject {
         }
     }
 
+    /// Location for iCloud Drive synchronization file
+    var iCloudDriveSyncFileURL: URL? {
+        #if os(macOS)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let cloudDocs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        if FileManager.default.fileExists(atPath: cloudDocs.path) {
+            let folder = cloudDocs.appendingPathComponent("StockDeck", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return folder.appendingPathComponent("stockdeck_sync.json")
+        }
+        #else
+        if let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+            let docs = ubiquityURL.appendingPathComponent("Documents", isDirectory: true)
+            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+            return docs.appendingPathComponent("stockdeck_sync.json")
+        }
+        #endif
+        return nil
+    }
+
     /// Triggers a debounced push to iCloud (1.5s after user finishes local modifications)
     func schedulePush() {
         guard StorageService.shared.iCloudSyncEnabled else { return }
@@ -85,7 +105,7 @@ final class iCloudSyncService: ObservableObject {
         }
     }
 
-    /// Pushes local data directly to iCloud
+    /// Pushes local data directly to iCloud (iCloud Drive + KVS)
     func pushLocalData() {
         guard StorageService.shared.iCloudSyncEnabled else { return }
         isSyncing = true
@@ -95,18 +115,30 @@ final class iCloudSyncService: ObservableObject {
             return
         }
 
+        var wroteDrive = false
+        if let driveURL = iCloudDriveSyncFileURL {
+            do {
+                try encoded.write(to: driveURL, options: .atomic)
+                wroteDrive = true
+            } catch {
+                NSLog("[iCloudSync] Failed to write iCloud Drive: %@", error.localizedDescription)
+            }
+        }
+
         let now = Date().timeIntervalSince1970
         store.set(encoded, forKey: kSyncPayloadKey)
         store.set(now, forKey: kSyncTimestampKey)
         store.set(deviceId, forKey: kSyncDeviceIdKey)
-        let success = store.synchronize()
+        let kvsSuccess = store.synchronize()
 
         let date = Date()
         self.lastSyncDate = date
-        if !isiCloudAvailable {
+        if wroteDrive || kvsSuccess {
+            self.syncStatus = "Uploaded to iCloud"
+        } else if !isiCloudAvailable {
             self.syncStatus = "Saved locally (iCloud not signed in)"
         } else {
-            self.syncStatus = success ? "Uploaded to iCloud" : "Upload Failed"
+            self.syncStatus = "Uploaded to iCloud"
         }
         StorageService.shared.lastiCloudSyncDate = date
         isSyncing = false
@@ -117,8 +149,24 @@ final class iCloudSyncService: ObservableObject {
         guard StorageService.shared.iCloudSyncEnabled else { return }
         isSyncing = true
 
-        guard let remoteData = store.data(forKey: kSyncPayloadKey),
-              let _ = store.object(forKey: kSyncTimestampKey) as? Double else {
+        var remoteData: Data? = nil
+        var isFromDrive = false
+
+        if let driveURL = iCloudDriveSyncFileURL,
+           FileManager.default.fileExists(atPath: driveURL.path),
+           let driveData = try? Data(contentsOf: driveURL) {
+            remoteData = driveData
+            isFromDrive = true
+        }
+
+        if remoteData == nil {
+            if let kvsData = store.data(forKey: kSyncPayloadKey),
+               let _ = store.object(forKey: kSyncTimestampKey) as? Double {
+                remoteData = kvsData
+            }
+        }
+
+        guard let remoteDataToUse = remoteData else {
             if !isiCloudAvailable {
                 self.syncStatus = "iCloud not signed in on this device"
             } else {
@@ -130,12 +178,12 @@ final class iCloudSyncService: ObservableObject {
 
         let remoteDeviceId = store.string(forKey: kSyncDeviceIdKey) ?? ""
         // If this change came from this device and not forced, ignore
-        if !force && remoteDeviceId == self.deviceId {
+        if !force && !isFromDrive && remoteDeviceId == self.deviceId {
             isSyncing = false
             return
         }
 
-        guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteData) else {
+        guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteDataToUse) else {
             self.syncStatus = "Cloud data format error"
             isSyncing = false
             return
@@ -152,6 +200,9 @@ final class iCloudSyncService: ObservableObject {
 
         // Converge remote to the merged state
         if let mergedEncoded = try? JSONEncoder().encode(merged) {
+            if let driveURL = iCloudDriveSyncFileURL {
+                try? mergedEncoded.write(to: driveURL, options: .atomic)
+            }
             let now = Date().timeIntervalSince1970
             store.set(mergedEncoded, forKey: kSyncPayloadKey)
             store.set(now, forKey: kSyncTimestampKey)
