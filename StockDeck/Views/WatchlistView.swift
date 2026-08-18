@@ -148,18 +148,31 @@ struct WatchlistView: View {
                         .fontWeight(.bold)
                         .lineLimit(1)
                 }
-                .frame(width: 105, alignment: .leading)
+                .frame(width: 110, alignment: .leading)
 
-                Color.clear
-                    .frame(width: 76) // Price
-                if storageService.showAbsoluteChange {
-                    Color.clear
-                        .frame(width: 70) // Change
+                if storageService.showWatchlistSparkline {
+                    Color.clear.frame(width: 64)
                 }
 
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if storageService.showExtendedHours || storageService.showAbsoluteChange {
+                    Color.clear.frame(width: 78)
+                } else {
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+
+                if storageService.showAbsoluteChange {
+                    if storageService.showExtendedHours {
+                        Color.clear.frame(width: 60)
+                    } else {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
+
+                if storageService.showExtendedHours {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 3)
@@ -169,6 +182,43 @@ struct WatchlistView: View {
                 watchlistContextMenu(symbol: symbol)
             }
         }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 0) {
+            sortHeader("Symbol", column: .symbol)
+                .frame(width: 110, alignment: .leading)
+            if storageService.showWatchlistSparkline {
+                Text("30D")
+                    .frame(width: 64, alignment: .center)
+            }
+            if storageService.showExtendedHours || storageService.showAbsoluteChange {
+                sortHeader("Price", column: .price)
+                    .frame(width: 78, alignment: .trailing)
+            } else {
+                sortHeader("Price", column: .price)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            if storageService.showAbsoluteChange {
+                if storageService.showExtendedHours {
+                    sortHeader("Change", column: .absoluteChange)
+                        .frame(width: 60, alignment: .trailing)
+                } else {
+                    sortHeader("Change", column: .absoluteChange)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            if storageService.showExtendedHours {
+                Text("Ext")
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .font(.inter(10, weight: .medium, relativeTo: .caption))
+        .foregroundColor(.secondary)
+        .tracking(0.8)
+        .textCase(.uppercase)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     var body: some View {
@@ -194,45 +244,24 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                HStack(spacing: 0) {
-                    sortHeader("Symbol", column: .symbol)
-                        .frame(width: 105, alignment: .leading)
-                    sortHeader("Price", column: .price)
-                        .frame(width: 76, alignment: .trailing)
-                    if storageService.showAbsoluteChange {
-                        sortHeader("Change", column: .absoluteChange)
-                            .frame(width: 70, alignment: .trailing)
-                    }
-                    Text("Ext")
-                        .font(.inter(10, weight: .medium, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                        .tracking(0.8)
-                        .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .font(.inter(10, weight: .medium, relativeTo: .caption))
-                .foregroundColor(.secondary)
-                .tracking(0.8)
-                .textCase(.uppercase)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                headerRow
 
                 Divider()
 
-            flatList
+                flatList
 
-            Divider()
+                Divider()
 
-            Button(action: { showSearch = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Add stock")
+                Button(action: { showSearch = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add stock")
+                    }
+                    .font(.inter(10, relativeTo: .caption))
                 }
-                .font(.inter(10, relativeTo: .caption))
-            }
-            .buttonStyle(.borderless)
-            .pointingHandCursor()
-            .padding(8)
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
+                .padding(8)
             }
         }
         .sheet(item: Binding<AddToPortfolioItem?>(
@@ -311,9 +340,20 @@ struct WatchlistView: View {
             ))
             .onAppear {
                 loadSortFromCurrentWatchlist()
+                Task {
+                    await stockService.ensureSparklines(for: storageService.watchlist)
+                }
             }
             .onChange(of: storageService.selectedWatchlistId) { _, _ in
                 loadSortFromCurrentWatchlist()
+                Task {
+                    await stockService.ensureSparklines(for: storageService.watchlist)
+                }
+            }
+            .onChange(of: storageService.watchlist) { _, newWatchlist in
+                Task {
+                    await stockService.ensureSparklines(for: newWatchlist)
+                }
             }
     }
 
@@ -699,81 +739,108 @@ struct QuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
 
+    private var symbolCell: some View {
+        let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
+        return HStack(spacing: 5) {
+            SymbolLogo(symbol: quote.symbol, size: 20)
+            VStack(alignment: .leading, spacing: 0) {
+                // Single stocks / ETFs keep the raw ticker as the primary label;
+                // indices, FX pairs, and futures use their conventional name.
+                Text(isDisplayAsset ? quote.displayName : quote.symbol)
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.bold)
+                    .lineLimit(1)
+                if storageService.showCompanyName {
+                    Text(isDisplayAsset ? quote.symbol : quote.name)
+                        .font(.inter(9, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(width: 110, alignment: .leading)
+    }
+
+    private var priceCell: some View {
+        let displayPrice = quote.price
+        return VStack(alignment: .trailing, spacing: 1) {
+            Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+                .font(.inter(12, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                .fontWeight(.semibold)
+                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+        }
+    }
+
+    @ViewBuilder
+    private var changeCell: some View {
+        Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
+            .font(.inter(12, relativeTo: .body).monospacedDigit())
+            .fontWeight(.medium)
+            .foregroundColor(quote.isPositive ? DS.up : DS.down)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+    }
+
+    private var extCell: some View {
+        let extPrice = (quote.isExtendedHours) ? quote.effectivePrice : nil
+        let extPct = extPrice == nil ? nil : quote.extendedChangePercent
+        let extLabel = extPrice == nil ? nil : quote.marketStateLabel
+
+        return VStack(alignment: .trailing, spacing: 1) {
+            if let extPrice {
+                Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            } else {
+                Text("—")
+                    .font(.inter(12, relativeTo: .body).monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            if let extPct {
+                Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
+                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                    .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+            } else {
+                Text("—")
+                    .font(.inter(9, relativeTo: .caption2).monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
+            symbolCell
 
-            // Col 1: Logo + symbol + name
-            let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
-            HStack(spacing: 5) {
-                SymbolLogo(symbol: quote.symbol, size: 20)
-                VStack(alignment: .leading, spacing: 0) {
-                    // Single stocks / ETFs keep the raw ticker as the primary label;
-                    // indices, FX pairs, and futures use their conventional name.
-                    Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                    if storageService.showCompanyName {
-                        Text(isDisplayAsset ? quote.symbol : quote.name)
-                            .font(.inter(9, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
+            // Col 2: 30D Sparkline
+            if storageService.showWatchlistSparkline {
+                Sparkline(symbol: quote.symbol, days: 30, width: 64, height: 22)
             }
-            .frame(width: 105, alignment: .leading)
 
-            // Col 2: Price (2 lines: regular price + today % change)
-            let displayPrice = quote.price
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(10, relativeTo: .caption).monospacedDigit())
-                    .fontWeight(.semibold)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+            // Col 3: Price
+            if storageService.showExtendedHours || storageService.showAbsoluteChange {
+                priceCell.frame(width: 78, alignment: .trailing)
+            } else {
+                priceCell.frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .frame(width: 76, alignment: .trailing)
 
-            // Col 3: Change (Absolute change value, follows valueDecimals/format settings)
+            // Col 4: Change
             if storageService.showAbsoluteChange {
-                Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(width: 70, alignment: .trailing)
-            }
-
-            // Col 4: Ext (2 lines: extended hours price + ext % change)
-            let extPrice = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
-            let extPct = extPrice == nil ? nil : quote.extendedChangePercent
-            let extLabel = extPrice == nil ? nil : quote.marketStateLabel
-
-            VStack(alignment: .trailing, spacing: 1) {
-                if let extPrice {
-                    Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
+                if storageService.showExtendedHours {
+                    changeCell.frame(width: 60, alignment: .trailing)
                 } else {
-                    Text("—")
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .foregroundColor(.secondary)
-                }
-                if let extPct {
-                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
-                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
-                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                } else {
-                    Text("—")
-                        .font(.inter(9, relativeTo: .caption2).monospacedDigit())
-                        .foregroundColor(.secondary)
+                    changeCell.frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+
+            // Col 5: Ext
+            if storageService.showExtendedHours {
+                extCell.frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 3)

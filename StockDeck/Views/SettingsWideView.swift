@@ -256,9 +256,11 @@ struct SettingsWideView: View {
         SettingsCard(title: "Watchlist row details") {
             SettingToggle("Company name", isOn: $storageService.showCompanyName)
             SettingDivider()
-            SettingToggle("Day range (low – high)", isOn: $storageService.showDayRange)
+            SettingToggle("30-day sparkline chart", isOn: $storageService.showWatchlistSparkline)
             SettingDivider()
             SettingToggle("52-week range bar", isOn: $storageService.show52WeekBar)
+            SettingDivider()
+            SettingToggle("Day range (low – high)", isOn: $storageService.showDayRange)
             SettingDivider()
             SettingToggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
         }
