@@ -1,5 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 enum UtilitySegment: String, CaseIterable, Identifiable {
     case alerts = "Alerts"
@@ -15,6 +20,45 @@ enum UtilitySegment: String, CaseIterable, Identifiable {
     }
 }
 
+#if os(iOS)
+@MainActor
+final class DocumentPickerCoordinator: NSObject, UIDocumentPickerDelegate {
+    let onPick: (URL) -> Void
+
+    init(onPick: @escaping (URL) -> Void) {
+        self.onPick = onPick
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else { return }
+        onPick(url)
+    }
+}
+
+private var activePickerCoordinator: DocumentPickerCoordinator?
+
+@MainActor
+func presentNativeDocumentPicker(allowedContentTypes: [UTType], onPick: @escaping (URL) -> Void) {
+    guard let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+          let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
+          let rootVC = keyWindow.rootViewController else {
+        return
+    }
+
+    var topVC = rootVC
+    while let presented = topVC.presentedViewController {
+        topVC = presented
+    }
+
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedContentTypes, asCopy: true)
+    let coordinator = DocumentPickerCoordinator(onPick: onPick)
+    activePickerCoordinator = coordinator
+    picker.delegate = coordinator
+    picker.allowsMultipleSelection = false
+    topVC.present(picker, animated: true)
+}
+#endif
+
 struct UtilitiesView: View {
     @ObservedObject private var storageService = StorageService.shared
     @ObservedObject private var syncService = iCloudSyncService.shared
@@ -23,11 +67,6 @@ struct UtilitiesView: View {
     @State private var selectedSegment: UtilitySegment = .alerts
     @State private var showAddAlertSheet = false
     @State private var editingAlert: PriceAlert? = nil
-
-    // Import / Export states
-    @State private var showFileImporter = false
-    @State private var showFundImporter = false
-    @State private var showWatchlistImporter = false
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var alertBannerMessage: String? = nil
 
@@ -60,49 +99,6 @@ struct UtilitiesView: View {
                 }
             )
             .environmentObject(storageService)
-        }
-        .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: [.json, .commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        ) { result in
-            switch result {
-            case .success(let url):
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                handleSelectedFileURL(url)
-            case .failure(let err):
-                alertBannerMessage = "File selection error: \(err.localizedDescription)"
-            }
-        }
-        .fileImporter(
-            isPresented: $showFundImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        ) { result in
-            switch result {
-            case .success(let url):
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
-                    pendingImportResult = res
-                } else {
-                    alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
-                }
-            case .failure(let err):
-                alertBannerMessage = "File error: \(err.localizedDescription)"
-            }
-        }
-        .fileImporter(
-            isPresented: $showWatchlistImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        ) { result in
-            switch result {
-            case .success(let url):
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                handleWatchlistURL(url)
-            case .failure(let err):
-                alertBannerMessage = "File error: \(err.localizedDescription)"
-            }
         }
         .alert(
             "StockDeck Notification",
@@ -338,7 +334,7 @@ struct UtilitiesView: View {
                     }
                     Spacer()
                     Button(syncService.isSyncing ? "Syncing…" : "Sync Now") {
-                        syncService.pullAndMerge(force: true)
+                        triggerSyncNow()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -359,11 +355,7 @@ struct UtilitiesView: View {
                     .controlSize(.small)
 
                     Button {
-                        syncService.pullAndMerge(force: true)
-                        if syncService.syncStatus.contains("No data") || syncService.syncStatus.contains("not signed in") {
-                            // Prompt to pick file from iCloud Drive directly
-                            showFileImporter = true
-                        }
+                        triggerPull()
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.down.icloud")
@@ -400,7 +392,7 @@ struct UtilitiesView: View {
 
             VStack(spacing: 8) {
                 Button {
-                    showFileImporter = true
+                    pickAnyFile()
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down")
@@ -454,7 +446,7 @@ struct UtilitiesView: View {
 
             VStack(spacing: 8) {
                 Button {
-                    showFundImporter = true
+                    pickFundFile()
                 } label: {
                     HStack {
                         Text("🇯🇵")
@@ -471,7 +463,7 @@ struct UtilitiesView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    showWatchlistImporter = true
+                    pickWatchlistFile()
                 } label: {
                     HStack {
                         Image(systemName: "list.bullet.rectangle")
@@ -492,6 +484,78 @@ struct UtilitiesView: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14).fill(DS.card))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(DS.hairline, lineWidth: 0.5))
+    }
+
+    // MARK: - ACTIONS & FILE PICKING
+
+    private func triggerSyncNow() {
+        syncService.pullAndMerge(force: true)
+        if syncService.syncStatus.contains("No data") || syncService.syncStatus.contains("not signed in") {
+            pickAnyFile()
+        }
+    }
+
+    private func triggerPull() {
+        syncService.pullAndMerge(force: true)
+        if syncService.syncStatus.contains("No data") || syncService.syncStatus.contains("not signed in") {
+            pickAnyFile()
+        }
+    }
+
+    private func pickAnyFile() {
+        let types: [UTType] = [.json, .commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
+        #if os(iOS)
+        presentNativeDocumentPicker(allowedContentTypes: types) { url in
+            handleSelectedFileURL(url)
+        }
+        #elseif os(macOS)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = types
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            handleSelectedFileURL(url)
+        }
+        #endif
+    }
+
+    private func pickFundFile() {
+        let types: [UTType] = [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
+        #if os(iOS)
+        presentNativeDocumentPicker(allowedContentTypes: types) { url in
+            if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+                pendingImportResult = res
+            } else {
+                alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
+            }
+        }
+        #elseif os(macOS)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = types
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+                pendingImportResult = res
+            } else {
+                alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
+            }
+        }
+        #endif
+    }
+
+    private func pickWatchlistFile() {
+        let types: [UTType] = [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
+        #if os(iOS)
+        presentNativeDocumentPicker(allowedContentTypes: types) { url in
+            handleWatchlistURL(url)
+        }
+        #elseif os(macOS)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = types
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            handleWatchlistURL(url)
+        }
+        #endif
     }
 
     // MARK: - FILE IMPORT / EXPORT HANDLERS
@@ -565,8 +629,8 @@ struct UtilitiesView: View {
 
         #if os(iOS)
         let av = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
+        if let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController ?? windowScene.windows.first?.rootViewController {
             rootVC.present(av, animated: true, completion: nil)
         }
         #elseif os(macOS)
