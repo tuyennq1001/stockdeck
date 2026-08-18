@@ -1105,15 +1105,41 @@ struct NavRow: View {
 
 // MARK: - Hand cursor extension
 
+@MainActor
+enum CursorManager {
+    private static var activeCount = 0
+    private static var isPushed = false
+
+    static func update(inside: Bool) {
+        if inside {
+            activeCount += 1
+            if !isPushed {
+                NSCursor.pointingHand.push()
+                isPushed = true
+            }
+        } else {
+            activeCount = max(0, activeCount - 1)
+            if activeCount == 0 && isPushed {
+                NSCursor.pop()
+                isPushed = false
+            }
+        }
+    }
+
+    static func reset() {
+        if isPushed {
+            NSCursor.pop()
+            isPushed = false
+        }
+        activeCount = 0
+    }
+}
+
 extension View {
     /// Shows the pointing hand cursor when hovering over interactive elements.
     func pointingHandCursor() -> some View {
         self.onHover { inside in
-            if inside {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
+            CursorManager.update(inside: inside)
         }
     }
 }

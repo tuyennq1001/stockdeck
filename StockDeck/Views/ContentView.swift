@@ -111,6 +111,7 @@ struct ContentView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Environment(\.openWindowAction) private var openWindowAction
+    @Namespace private var tabAnimation
     @State private var selectedTab: Tab = .watchlist
     @State private var showSearch = false
     @State private var addHoldingPortfolioId: UUID?
@@ -229,13 +230,18 @@ struct ContentView: View {
             .padding(.vertical, 10)
 
             // Tab picker with pointer cursor for tabs
-            HStack(spacing: 4) {
+            HStack(spacing: 0) {
                 if storageService.showNewsTab {
                     tabButton("Home", tab: .home)
                 }
                 tabButton("Watchlist", tab: .watchlist)
                 tabButton("Portfolios", tab: .portfolios)
             }
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
@@ -267,16 +273,26 @@ struct ContentView: View {
     }
 
     private func tabButton(_ title: String, tab: Tab) -> some View {
-        Button(action: { selectedTab = tab }) {
+        let isSelected = selectedTab == tab
+        return Button(action: {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedTab = tab
+            }
+        }) {
             Text(title)
-                .font(.inter(11, weight: selectedTab == tab ? .semibold : .medium, relativeTo: .caption))
-                .foregroundStyle(selectedTab == tab ? DS.ink : DS.inkSecondary)
+                .font(.inter(11, weight: isSelected ? .semibold : .medium, relativeTo: .caption))
+                .foregroundStyle(isSelected ? DS.ink : DS.inkSecondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(selectedTab == tab ? DS.cardAlt : Color.clear)
-                )
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(DS.card)
+                            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                            .matchedGeometryEffect(id: "popoverTabSelection", in: tabAnimation)
+                    }
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointingHandCursor()

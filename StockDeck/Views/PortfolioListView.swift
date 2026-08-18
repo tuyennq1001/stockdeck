@@ -288,6 +288,7 @@ struct PortfolioListView: View {
                                 Capsule()
                                     .fill(isAllSelected ? DS.brand : Color.primary.opacity(0.06))
                             )
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
@@ -322,6 +323,7 @@ struct PortfolioListView: View {
                                         Capsule()
                                             .fill(selected ? DS.brand : Color.primary.opacity(0.06))
                                     )
+                                    .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                             .pointingHandCursor()

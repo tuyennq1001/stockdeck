@@ -191,6 +191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["SD_OPEN_WINDOW"] == "1" {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
+                guard !(self.popover?.isShown ?? false) else { return }
                 self.showPortfolioWindow()
             }
         }
@@ -925,6 +926,7 @@ extension AppDelegate: NSWindowDelegate {
 
 extension AppDelegate: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
+        CursorManager.reset()
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
