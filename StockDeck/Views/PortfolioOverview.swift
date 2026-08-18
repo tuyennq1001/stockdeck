@@ -264,13 +264,29 @@ struct PortfolioOverview: View {
         return result
     }
 
+    private func loadPositionSort(for key: String) {
+        if let saved = storageService.positionSort(for: key),
+           let col = PositionSortColumn(rawValue: saved.column) {
+            sortColumn = col
+            sortAscending = saved.ascending
+        } else {
+            sortColumn = .weight
+            sortAscending = false
+        }
+    }
+
+    private func setPositionSort(_ column: PositionSortColumn, ascending: Bool) {
+        sortColumn = column
+        sortAscending = ascending
+        storageService.setPositionSort(column: column.rawValue, ascending: ascending, for: scopeKey)
+    }
+
     private func sortHeader(_ title: String, column: PositionSortColumn) -> some View {
         Button(action: {
             if sortColumn == column {
-                sortAscending.toggle()
+                setPositionSort(column, ascending: !sortAscending)
             } else {
-                sortColumn = column
-                sortAscending = (column == .symbol)
+                setPositionSort(column, ascending: (column == .symbol))
             }
         }) {
             HStack(spacing: 3) {
@@ -565,6 +581,7 @@ struct PortfolioOverview: View {
                let range = ChartRange(rawValue: savedRaw) {
                 chartRange = range
             }
+            loadPositionSort(for: scopeKey)
         }
         .onChange(of: chartRange) { _, newRange in
             storageService.setChartRange(newRange.rawValue, for: scopeKey)
@@ -579,6 +596,7 @@ struct PortfolioOverview: View {
             } else {
                 chartRange = .all
             }
+            loadPositionSort(for: newKey)
         }
         .task(id: symbols) {
             // On window open: only the daily 10y series per symbol (the base the

@@ -25,8 +25,24 @@ struct WatchlistView: View {
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
 
-    enum SortColumn {
+    enum SortColumn: String {
         case manual, symbol, price, absoluteChange, changePercent
+    }
+
+    private func loadSortFromCurrentWatchlist() {
+        let wl = storageService.currentWatchlist
+        if let raw = wl.sortKey, let col = SortColumn(rawValue: raw) {
+            sortColumn = col
+        } else {
+            sortColumn = .manual
+        }
+        sortAscending = wl.sortAsc ?? true
+    }
+
+    private func setSort(_ col: SortColumn, ascending: Bool) {
+        sortColumn = col
+        sortAscending = ascending
+        storageService.setWatchlistSort(key: col.rawValue, ascending: ascending, for: storageService.currentWatchlist.id)
     }
 
     var sortedSymbols: [String] {
@@ -293,6 +309,12 @@ struct WatchlistView: View {
             .onDrop(of: [.text], delegate: WatchlistCommitDelegate(
                 onCommit: { commitSymbolPreview() }
             ))
+            .onAppear {
+                loadSortFromCurrentWatchlist()
+            }
+            .onChange(of: storageService.selectedWatchlistId) { _, _ in
+                loadSortFromCurrentWatchlist()
+            }
     }
 
     /// The watchlist tabs in order: the local drag preview while dragging, else the
@@ -399,10 +421,9 @@ struct WatchlistView: View {
     private func sortHeader(_ title: String, column: SortColumn) -> some View {
         Button(action: {
             if sortColumn == column {
-                sortAscending.toggle()
+                setSort(column, ascending: !sortAscending)
             } else {
-                sortColumn = column
-                sortAscending = (column == .manual || column == .symbol)
+                setSort(column, ascending: (column == .manual || column == .symbol))
             }
         }) {
             HStack(spacing: 2) {

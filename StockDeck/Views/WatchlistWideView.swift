@@ -9,7 +9,36 @@ struct WatchlistWideView: View {
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
 
-    enum SortKey: Equatable { case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric) }
+    enum SortKey: Equatable {
+        case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric)
+
+        var rawString: String {
+            switch self {
+            case .order: return "order"
+            case .symbol: return "symbol"
+            case .price: return "price"
+            case .changePercent: return "changePercent"
+            case .extChangePercent: return "extChangePercent"
+            case .metric(let m): return "metric:\(m.rawValue)"
+            }
+        }
+
+        static func from(rawString: String?) -> SortKey {
+            guard let rawString else { return .order }
+            if rawString == "order" { return .order }
+            if rawString == "symbol" { return .symbol }
+            if rawString == "price" { return .price }
+            if rawString == "changePercent" { return .changePercent }
+            if rawString == "extChangePercent" { return .extChangePercent }
+            if rawString.hasPrefix("metric:") {
+                let metricRaw = String(rawString.dropFirst("metric:".count))
+                if let m = WatchlistMetric(rawValue: metricRaw) {
+                    return .metric(m)
+                }
+            }
+            return .order
+        }
+    }
 
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
@@ -203,8 +232,22 @@ struct WatchlistWideView: View {
         }
     }
 
+    private func loadSortFromCurrentWatchlist() {
+        let wl = storageService.currentWatchlist
+        sortKey = SortKey.from(rawString: wl.sortKey)
+        sortAsc = wl.sortAsc ?? true
+    }
+
     private func toggleSort(_ key: SortKey) {
-        if sortKey == key { sortAsc.toggle() } else { sortKey = key; sortAsc = (key == .order || key == .symbol) }
+        let newAsc: Bool
+        if sortKey == key {
+            newAsc = !sortAsc
+        } else {
+            newAsc = (key == .order || key == .symbol)
+        }
+        sortKey = key
+        sortAsc = newAsc
+        storageService.setWatchlistSort(key: key.rawString, ascending: newAsc, for: storageService.currentWatchlist.id)
     }
 
     var body: some View {
@@ -244,6 +287,10 @@ struct WatchlistWideView: View {
         }
         .onAppear {
             if previewOrder.isEmpty { previewOrder = storageService.watchlist }
+            loadSortFromCurrentWatchlist()
+        }
+        .onChange(of: storageService.selectedWatchlistId) { _, _ in
+            loadSortFromCurrentWatchlist()
         }
         .onChange(of: storageService.watchlist) { _, newList in
             // Keep the preview in sync with outside changes (add/remove/switch) —
@@ -992,6 +1039,7 @@ WatchRowView(row: row,
         if sortKey != .order || !sortAsc {
             sortKey = .order
             sortAsc = true
+            storageService.setWatchlistSort(key: SortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
         }
         guard let i = storageService.watchlist.firstIndex(of: symbol) else { return }
         let j = i + delta

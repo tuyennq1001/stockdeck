@@ -7,3 +7,8 @@
 - Trong bảng vị thế (Positions Table / Positions Card), các cột **Cost basis**, **Market Value**, và **P&L** của mỗi vị thế **bắt buộc dùng nguyên đồng tiền gốc (Native Currency)** của symbol đó (ví dụ: `₫` / VND cho mã Việt Nam, `$` / USD cho mã Mỹ, `¥` / JPY cho mã Nhật), **không được tự động quy đổi (convert)** sang đồng tiền ưu tiên danh mục (`preferredCurrency`).
 - Chỉ quy đổi (convert) theo tỷ giá FX rate sang `preferredCurrency` đối với các con số **thống kê tổng quát chung** của Portfolio (như Portfolio Total Value, Total Cost, Total P&L, Hero Card...).
 
+## Cân Nhắc Kỹ Hiệu Năng Trước Khi Sửa Code (Performance First Consideration)
+- Trước khi thực hiện bất kỳ thay đổi nào trong codebase (đặc biệt là quản lý state, tính toán dữ liệu, vòng lặp re-render hoặc lưu trữ I/O), **bắt buộc phải phân tích và đánh giá kỹ lưỡng ảnh hưởng đến hiệu năng** (CPU, Memory, Network Requests, Render latency / Frame rate).
+- Đảm bảo các giải pháp kỹ thuật luôn tối ưu tài nguyên, không gây giật lag (zero UI frame drops), không gây re-render thừa và tận dụng tối đa cơ chế in-memory cache / debounced I/O.
+
+

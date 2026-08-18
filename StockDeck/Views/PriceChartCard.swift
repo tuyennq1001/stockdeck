@@ -213,9 +213,15 @@ struct PriceChartCard: View {
         }
         .onAppear {
             chartStyle = ChartStyle(rawValue: storageService.defaultChartStyle) ?? .line
+            if let savedRange = ChartRange(rawValue: storageService.lastStockChartRange) {
+                chartRange = savedRange
+            }
         }
         .onChange(of: storageService.defaultChartStyle) { _, newValue in
             chartStyle = ChartStyle(rawValue: newValue) ?? .line
+        }
+        .onChange(of: chartRange) { _, newRange in
+            storageService.lastStockChartRange = newRange.rawValue
         }
     }
 
