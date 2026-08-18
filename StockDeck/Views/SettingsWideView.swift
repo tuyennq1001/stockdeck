@@ -27,6 +27,7 @@ struct SettingsWideView: View {
                 HStack(alignment: .top, spacing: DS.gap) {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         generalCard
+                        iCloudSyncCard
                         aiReviewCard
                         menuBarCard
                         let withNotifs = storageService.portfolios.filter { !storageService.notifications(for: $0.id).isEmpty }
@@ -81,6 +82,69 @@ struct SettingsWideView: View {
                         stockService.exchangeRates.removeAll()
                         Task { await stockService.refreshAll(storageService: storageService) }
                     }
+            }
+        }
+    }
+
+    private var iCloudSyncCard: some View {
+        SettingsCard(title: "iCloud Sync") {
+            SettingToggle("Enable iCloud Sync",
+                          caption: "Automatically syncs watchlists, portfolios, alerts, and notes across your Macs, iPhones, and iPads via iCloud",
+                          isOn: $storageService.iCloudSyncEnabled)
+
+            if storageService.iCloudSyncEnabled {
+                SettingDivider()
+                SettingRow("Status", caption: "Sync state with Apple iCloud") {
+                    HStack(spacing: 8) {
+                        if let lastDate = storageService.lastiCloudSyncDate {
+                            Text("Last synced: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkSecondary)
+                        } else {
+                            Text("Not synced yet")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+
+                        Button {
+                            iCloudSyncService.shared.pullAndMerge(force: true)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 10))
+                                Text("Sync Now")
+                                    .font(DS.label)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 6).stroke(DS.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                    }
+                }
+                SettingDivider()
+                SettingRow("Manual Actions", caption: "Smart Merge combines cloud and local data without losing positions") {
+                    HStack(spacing: 8) {
+                        Button("Push to iCloud") {
+                            iCloudSyncService.shared.pushLocalData()
+                        }
+                        .buttonStyle(.plain)
+                        .font(DS.micro)
+                        .foregroundStyle(DS.brand)
+                        .pointingHandCursor()
+
+                        Text("·").font(DS.micro).foregroundStyle(DS.inkTertiary)
+
+                        Button("Pull from iCloud") {
+                            iCloudSyncService.shared.pullAndMerge(force: true)
+                        }
+                        .buttonStyle(.plain)
+                        .font(DS.micro)
+                        .foregroundStyle(DS.brand)
+                        .pointingHandCursor()
+                    }
+                }
             }
         }
     }

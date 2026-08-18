@@ -135,11 +135,17 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    private var isSharedInstance: Bool {
+        !isCustomStorage
+    }
+
     // MARK: - iCloud Sync
     @Published var iCloudSyncEnabled: Bool = false {
         didSet {
             scheduleSave()
-            iCloudSyncService.shared.onSyncToggleChanged(enabled: iCloudSyncEnabled)
+            if isSharedInstance && !isLoading {
+                iCloudSyncService.shared.onSyncToggleChanged(enabled: iCloudSyncEnabled)
+            }
         }
     }
     @Published var lastiCloudSyncDate: Date? = nil
@@ -892,17 +898,22 @@ class StorageService: ObservableObject {
     }
 
     private let fileURL: URL
+    private let isCustomStorage: Bool
     private var isLoading = false
     private var decodeFailure = false
     private var saveTask: Task<Void, Never>?
 
     init(fileURL: URL? = nil) {
+        self.isCustomStorage = (fileURL != nil)
         if let customURL = fileURL {
             self.fileURL = customURL
         } else {
             guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
                 let fallback = FileManager.default.temporaryDirectory
                 self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
+                isLoading = true
+                load()
+                isLoading = false
                 return
             }
             let dirName = "StockDeck"
@@ -1664,7 +1675,7 @@ class StorageService: ObservableObject {
             try? await Task.sleep(nanoseconds: 100_000_000)
             guard !Task.isCancelled else { return }
             self.performSave()
-            if self.iCloudSyncEnabled {
+            if self.isSharedInstance && self.iCloudSyncEnabled {
                 iCloudSyncService.shared.schedulePush()
             }
         }
@@ -1689,7 +1700,7 @@ class StorageService: ObservableObject {
         saveTask?.cancel()
         saveTask = nil
         performSave()
-        if iCloudSyncEnabled {
+        if isSharedInstance && iCloudSyncEnabled {
             iCloudSyncService.shared.pushLocalData()
         }
     }
