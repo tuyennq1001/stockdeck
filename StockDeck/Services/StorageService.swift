@@ -1406,6 +1406,22 @@ class StorageService: ObservableObject {
         aiDeepseekThinking = false
     }
 
+    /// Completely wipes all portfolios, watchlists, alerts, and settings back to a clean slate.
+    func clearAllAppData() {
+        portfolios = []
+        watchlists = [Watchlist(id: UUID(), name: "Watchlist", symbols: [])]
+        selectedWatchlistId = watchlists.first?.id
+        watchlist = []
+        alerts = []
+        symbolNotes = [:]
+        portfolioNotifications = [:]
+        portfolioSnapshots = [:]
+        portfolioChartRanges = [:]
+        portfolioPositionSorts = [:]
+        resetToDefaults()
+        saveNow()
+    }
+
     // MARK: - Export / Import
 
     struct PortfolioExport: Codable {

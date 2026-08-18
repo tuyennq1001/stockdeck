@@ -68,6 +68,9 @@ struct UtilitiesView: View {
     @State private var showAddAlertSheet = false
     @State private var editingAlert: PriceAlert? = nil
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
+    @State private var pendingBackupData: StorageService.AppData? = nil
+    @State private var showRestoreConfirmation = false
+    @State private var showResetConfirmation = false
     @State private var alertBannerMessage: String? = nil
 
     var body: some View {
@@ -99,6 +102,38 @@ struct UtilitiesView: View {
                 }
             )
             .environmentObject(storageService)
+        }
+        .confirmationDialog(
+            "Restore Backup File",
+            isPresented: $showRestoreConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Restore & Replace All (Clean)", role: .destructive) {
+                if let backup = pendingBackupData {
+                    executeCleanRestore(backup)
+                }
+            }
+            Button("Smart Merge with Existing") {
+                if let backup = pendingBackupData {
+                    executeSmartMerge(backup)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                pendingBackupData = nil
+            }
+        } message: {
+            Text("How would you like to apply this backup?\n'Replace All' will replace current data with the exact Mac backup (no duplicates).")
+        }
+        .alert(
+            "Reset All App Data?",
+            isPresented: $showResetConfirmation
+        ) {
+            Button("Reset Everything", role: .destructive) {
+                executeResetAll()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will delete all portfolios, watchlists, alerts, and custom notes on this device to give you a clean slate.")
         }
         .alert(
             "StockDeck Notification",
@@ -286,6 +321,9 @@ struct UtilitiesView: View {
 
                 // Card 3: Specialized Imports & Samples
                 templatesCard
+
+                // Card 4: Reset & Clean Slate
+                dangerZoneCard
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -486,6 +524,41 @@ struct UtilitiesView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(DS.hairline, lineWidth: 0.5))
     }
 
+    private var dangerZoneCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.red)
+                    .font(.system(size: 15))
+                Text("Reset Data")
+                    .font(.inter(14, weight: .bold, relativeTo: .headline))
+                    .foregroundColor(.red)
+            }
+
+            Text("Clear all portfolios, watchlists, alerts, and settings to start with a fresh slate before importing.")
+                .font(.inter(11, relativeTo: .caption))
+                .foregroundColor(.secondary)
+
+            Button(role: .destructive) {
+                showResetConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash.fill")
+                    Text("Reset & Clear All Data")
+                        .font(.inter(12, weight: .semibold, relativeTo: .body))
+                }
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14).fill(DS.card))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.red.opacity(0.3), lineWidth: 0.8))
+    }
+
     // MARK: - ACTIONS & FILE PICKING
 
     private func triggerSyncNow() {
@@ -568,15 +641,8 @@ struct UtilitiesView: View {
 
         // 1. Try decoding as full AppData backup (JSON)
         if let decoded = try? JSONDecoder().decode(StorageService.AppData.self, from: data) {
-            let local = storageService.exportAppData()
-            let merged = syncService.smartMerge(local: local, remote: decoded)
-            storageService.applyAppData(merged, isFromSync: true)
-            let wlCount = merged.watchlists?.count ?? 0
-            let pCount = merged.portfolios.count
-            alertBannerMessage = "Successfully imported & merged backup file (\(pCount) portfolios, \(wlCount) watchlists)!"
-            Task {
-                await stockService.refreshAll(storageService: storageService)
-            }
+            pendingBackupData = decoded
+            showRestoreConfirmation = true
             return
         }
 
@@ -594,6 +660,38 @@ struct UtilitiesView: View {
 
         // 4. Try parsing as Watchlist (CSV / XLSX / TXT)
         handleWatchlistURL(url)
+    }
+
+    private func executeCleanRestore(_ backup: StorageService.AppData) {
+        storageService.applyAppData(backup, isFromSync: true)
+        let wlCount = backup.watchlists?.count ?? 0
+        let pCount = backup.portfolios.count
+        alertBannerMessage = "Successfully restored & replaced all data (\(pCount) portfolios, \(wlCount) watchlists)!"
+        pendingBackupData = nil
+        Task {
+            await stockService.refreshAll(storageService: storageService)
+        }
+    }
+
+    private func executeSmartMerge(_ backup: StorageService.AppData) {
+        let local = storageService.exportAppData()
+        let merged = syncService.smartMerge(local: local, remote: backup)
+        storageService.applyAppData(merged, isFromSync: true)
+        let wlCount = merged.watchlists?.count ?? 0
+        let pCount = merged.portfolios.count
+        alertBannerMessage = "Successfully merged backup file (\(pCount) portfolios, \(wlCount) watchlists)!"
+        pendingBackupData = nil
+        Task {
+            await stockService.refreshAll(storageService: storageService)
+        }
+    }
+
+    private func executeResetAll() {
+        storageService.clearAllAppData()
+        alertBannerMessage = "All app data has been reset to a clean state."
+        Task {
+            await stockService.refreshAll(storageService: storageService)
+        }
     }
 
     private func handleWatchlistURL(_ url: URL) {
