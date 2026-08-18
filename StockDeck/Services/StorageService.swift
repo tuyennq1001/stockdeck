@@ -110,13 +110,16 @@ class StorageService: ObservableObject {
     @Published var showCompanyName: Bool = true {
         didSet { scheduleSave() }
     }
+    @Published var showWatchlistSparkline: Bool = true {
+        didSet { scheduleSave() }
+    }
     @Published var showDayRange: Bool = true {
         didSet { scheduleSave() }
     }
     @Published var show52WeekBar: Bool = true {
         didSet { scheduleSave() }
     }
-    @Published var showAbsoluteChange: Bool = true {
+    @Published var showAbsoluteChange: Bool = false {
         didSet { scheduleSave() }
     }
 
@@ -1354,9 +1357,10 @@ class StorageService: ObservableObject {
         stockPriceCurrency = ""
         showExtendedHours = true
         showCompanyName = true
+        showWatchlistSparkline = true
         showDayRange = true
         show52WeekBar = true
-        showAbsoluteChange = true
+        showAbsoluteChange = false
         menuBarDisplay = "pnl"
         gainColorHex = ""
         lossColorHex = ""
@@ -1441,6 +1445,7 @@ class StorageService: ObservableObject {
         var alerts: [PriceAlert]?
         var symbolNotes: [String: [SymbolNote]]?
         var showCompanyName: Bool?
+        var showWatchlistSparkline: Bool?
         var showDayRange: Bool?
         var show52WeekBar: Bool?
         var showAbsoluteChange: Bool?
@@ -1493,7 +1498,7 @@ class StorageService: ObservableObject {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking, lastStockChartRange: lastStockChartRange, portfolioPositionSorts: portfolioPositionSorts)
+        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showWatchlistSparkline: showWatchlistSparkline, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, defaultChartStyle: defaultChartStyle, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking, lastStockChartRange: lastStockChartRange, portfolioPositionSorts: portfolioPositionSorts)
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1593,9 +1598,10 @@ class StorageService: ObservableObject {
             symbolExchange = decoded.symbolExchange ?? [:]
             appLanguage = decoded.appLanguage ?? "en"
             showCompanyName = decoded.showCompanyName ?? true
+            showWatchlistSparkline = decoded.showWatchlistSparkline ?? true
             showDayRange = decoded.showDayRange ?? true
             show52WeekBar = decoded.show52WeekBar ?? true
-            showAbsoluteChange = decoded.showAbsoluteChange ?? true
+            showAbsoluteChange = decoded.showAbsoluteChange ?? false
             fontSizeLevel = decoded.fontSizeLevel ?? 9
             fontFamily = decoded.fontFamily ?? "Inter Variable"
             appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue

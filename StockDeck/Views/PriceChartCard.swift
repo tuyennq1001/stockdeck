@@ -373,6 +373,8 @@ struct Sparkline: View {
     @ObservedObject private var stockService = StockService.shared
     let symbol: String
     var days: Int = 30
+    var width: CGFloat? = 64
+    var height: CGFloat? = 22
 
     private var points: [PricePoint] {
         guard let all = stockService.watchlistHistory[symbol],
@@ -399,7 +401,7 @@ struct Sparkline: View {
                 Capsule().fill(DS.cardAlt).frame(height: 2)
             }
         }
-        .frame(width: 64, height: 22)
+        .frame(width: width, height: height)
         // History is filled by the watchlist's batched spark request, so no
         // per-row fetch here (that would be one request per symbol).
     }

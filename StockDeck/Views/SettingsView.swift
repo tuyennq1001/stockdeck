@@ -223,9 +223,11 @@ struct SettingsView: View {
                 SettingsGroup(title: "Watchlist", icon: "list.bullet", isExpanded: $groupWatchlist) {
                     Toggle("Company name", isOn: $storageService.showCompanyName)
                         .toggleStyle(.switch)
-                    Toggle("Day range (low – high)", isOn: $storageService.showDayRange)
+                    Toggle("30-day sparkline chart", isOn: $storageService.showWatchlistSparkline)
                         .toggleStyle(.switch)
                     Toggle("52-week range bar", isOn: $storageService.show52WeekBar)
+                        .toggleStyle(.switch)
+                    Toggle("Day range (low – high)", isOn: $storageService.showDayRange)
                         .toggleStyle(.switch)
                     Toggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
                         .toggleStyle(.switch)
