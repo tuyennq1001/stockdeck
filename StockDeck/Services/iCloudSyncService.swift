@@ -306,6 +306,65 @@ final class iCloudSyncService: ObservableObject {
         }
         merged.symbolNotes = combinedNotes
 
+        // 5. Merge User Preferences & Settings
+        if let rc = remote.preferredCurrency, !rc.isEmpty {
+            merged.preferredCurrency = rc
+        }
+        if let sc = remote.stockPriceCurrency, !sc.isEmpty {
+            merged.stockPriceCurrency = sc
+        }
+        if let exh = remote.showExtendedHours {
+            merged.showExtendedHours = exh
+        }
+        if let gColor = remote.gainColorHex, !gColor.isEmpty {
+            merged.gainColorHex = gColor
+        }
+        if let lColor = remote.lossColorHex, !lColor.isEmpty {
+            merged.lossColorHex = lColor
+        }
+        if let pDec = remote.percentDecimals {
+            merged.percentDecimals = pDec
+        }
+        if let vDec = remote.valueDecimals {
+            merged.valueDecimals = vDec
+        }
+        if let adv = remote.advancedPositions {
+            merged.advancedPositions = adv
+        }
+        if let dcs = remote.defaultChartStyle {
+            merged.defaultChartStyle = dcs
+        }
+        if let lang = remote.appLanguage {
+            merged.appLanguage = lang
+        }
+        if let cols = remote.portfolioColumns {
+            merged.portfolioColumns = cols
+        }
+        if let fSize = remote.fontSizeLevel {
+            merged.fontSizeLevel = fSize
+        }
+        if let fontF = remote.fontFamily {
+            merged.fontFamily = fontF
+        }
+        if let sName = remote.showCompanyName {
+            merged.showCompanyName = sName
+        }
+        if let sSpark = remote.showWatchlistSparkline {
+            merged.showWatchlistSparkline = sSpark
+        }
+        if let sDay = remote.showDayRange {
+            merged.showDayRange = sDay
+        }
+        if let s52 = remote.show52WeekBar {
+            merged.show52WeekBar = s52
+        }
+        if let sAbs = remote.showAbsoluteChange {
+            merged.showAbsoluteChange = sAbs
+        }
+        if let sNews = remote.showNewsTab {
+            merged.showNewsTab = sNews
+        }
+
         return merged
     }
 }
