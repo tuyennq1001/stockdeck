@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 /// Desktop Alerts page (under Utilities): a table of every price alert with
@@ -303,3 +304,4 @@ struct AlertsWideView: View {
         }
     }
 }
+#endif

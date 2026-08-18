@@ -14,9 +14,9 @@ struct PortfolioListView: View {
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
     @State private var draggingPortfolioId: UUID? = nil
-    /// Live display order of the portfolio tabs while dragging: no storage writes
-    /// during the drag — the final order is committed once on drop.
     @State private var previewPortfolioIds: [UUID] = []
+    @State private var showStandardFileImporter = false
+    @State private var showJapaneseFundFileImporter = false
 
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
@@ -235,6 +235,40 @@ struct PortfolioListView: View {
             }
             .environmentObject(stockService)
             .environmentObject(storageService)
+        }
+        .fileImporter(
+            isPresented: $showStandardFileImporter,
+            allowedContentTypes: [.commaSeparatedText, .plainText, .json, UTType(filenameExtension: "xlsx") ?? .data, .data]
+        ) { result in
+            switch result {
+            case .success(let url):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                if let res = PortfolioIO.parseStandardFile(fileURL: url, storageService: storageService) {
+                    self.pendingImportResult = res
+                } else {
+                    self.importAlert = "Invalid file format or empty portfolio file."
+                }
+            case .failure(let error):
+                self.importAlert = "Failed to open file: \(error.localizedDescription)"
+            }
+        }
+        .fileImporter(
+            isPresented: $showJapaneseFundFileImporter,
+            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
+        ) { result in
+            switch result {
+            case .success(let url):
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+                    self.pendingImportResult = res
+                } else {
+                    self.importAlert = "Could not parse 投資信託 file or no valid trades found."
+                }
+            case .failure(let error):
+                self.importAlert = "Failed to open file: \(error.localizedDescription)"
+            }
         }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
@@ -497,35 +531,49 @@ struct PortfolioListView: View {
     }
 
     private func exportPortfolios(_ portfolios: [Portfolio]) {
+        #if os(macOS)
         PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: true)
+        #endif
     }
 
     private func importStandard() {
+        #if os(macOS)
         PortfolioIO.pickAndParseStandard(storageService: storageService, restoreActivationPolicy: true, onParsed: { result in
             self.pendingImportResult = result
         }, onAlert: { message in
             self.importAlert = message
         })
+        #else
+        showStandardFileImporter = true
+        #endif
     }
 
     private func importJapaneseFunds() {
+        #if os(macOS)
         PortfolioIO.pickAndParseJapaneseFunds(restoreActivationPolicy: true, onParsed: { result in
             self.pendingImportResult = result
         }, onAlert: { message in
             self.importAlert = message
         })
+        #else
+        showJapaneseFundFileImporter = true
+        #endif
     }
 
     private func downloadSampleFile() {
+        #if os(macOS)
         PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
+        #endif
     }
 
     private func downloadJapaneseFundSampleFile() {
+        #if os(macOS)
         PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
+        #endif
     }
 
     private func createPortfolio() {
@@ -567,7 +615,9 @@ struct PortfolioSection: View {
     }
 
     private func exportSingle() {
+        #if os(macOS)
         PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
+        #endif
     }
 
     private var currSymbol: String {

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 /// Desktop AI Review tab: a conversation pane that lets the user chat with an
@@ -553,3 +554,4 @@ private struct MarkdownText: View {
         return result.characters.isEmpty ? attributed : result
     }
 }
+#endif

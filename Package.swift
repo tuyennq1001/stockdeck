@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "StockDeck",
     defaultLocalization: "en",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.28.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
@@ -14,7 +14,7 @@ let package = Package(
             name: "StockDeck",
             dependencies: [
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-                .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
             ],
             path: "StockDeck",
             resources: [

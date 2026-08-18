@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import Foundation
 
 /// Downloads and caches official company logos for Vietnamese-listed symbols.
@@ -90,6 +94,7 @@ final class LogoCache {
 
     /// Renders an SVG logo into a square PNG bitmap.
     private func renderPNG(svgData: Data, size: CGFloat) -> Data? {
+        #if os(macOS)
         guard let source = NSImage(data: svgData) else { return nil }
         let canvas = NSImage(size: NSSize(width: size, height: size))
         canvas.lockFocus()
@@ -101,6 +106,14 @@ final class LogoCache {
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else { return nil }
         return png
+        #else
+        guard let source = UIImage(data: svgData) else { return nil }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+        let img = renderer.image { _ in
+            source.draw(in: CGRect(origin: .zero, size: CGSize(width: size, height: size)))
+        }
+        return img.pngData()
+        #endif
     }
 
     private let browserUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"

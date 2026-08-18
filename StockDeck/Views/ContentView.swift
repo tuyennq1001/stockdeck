@@ -107,6 +107,7 @@ extension EnvironmentValues {
     }
 }
 
+#if os(macOS)
 struct ContentView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -298,3 +299,4 @@ struct ContentView: View {
         .pointingHandCursor()
     }
 }
+#endif

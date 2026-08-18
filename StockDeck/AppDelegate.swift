@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Combine
 import Sparkle
@@ -111,6 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
+        iCloudSyncService.shared.start()
 
         // Cold launch from clicking a delivered notification: the system already
         // routed the response to the delegate (set in willFinishLaunching); the
@@ -940,3 +942,16 @@ extension AppDelegate: NSPopoverDelegate {
         NotificationCenter.default.post(name: .popoverDidClose, object: nil)
     }
 }
+#else
+import SwiftUI
+
+extension Notification.Name {
+    static let popoverDidClose = Notification.Name("popoverDidClose")
+    static let stockDeckAlertTapped = Notification.Name("stockDeckAlertTapped")
+}
+
+final class UpdaterViewModel: ObservableObject {
+    @Published var canCheckForUpdates = false
+    func checkForUpdates() {}
+}
+#endif

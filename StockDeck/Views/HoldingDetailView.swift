@@ -11,7 +11,7 @@ struct HoldingDetailView: View {
     @Environment(\.addHoldingAction) private var addHoldingAction
     @Environment(\.editHoldingAction) private var editHoldingAction
     let portfolioId: UUID
-    let scope: PortfolioWindowView.Scope
+    let scope: PortfolioScope
     let holding: Holding
     let quote: StockQuote
 

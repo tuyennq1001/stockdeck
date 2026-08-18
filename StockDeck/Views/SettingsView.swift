@@ -1,5 +1,7 @@
+#if os(macOS)
 import AppKit
 import Sparkle
+#endif
 import SwiftUI
 
 struct SettingsView: View {
@@ -15,10 +17,10 @@ struct SettingsView: View {
     @AppStorage("settings.group.general") private var groupGeneral = true
     @AppStorage("settings.group.currency") private var groupCurrency = false
     @AppStorage("settings.group.positions") private var groupPositions = false
-    @AppStorage("settings.group.watchlist") private var groupWatchlist = false
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
+    @AppStorage("settings.group.icloud") private var groupiCloud = true
     @AppStorage("settings.group.about") private var groupAbout = false
 
     /// Small secondary caption used throughout the settings list.
@@ -37,6 +39,7 @@ struct SettingsView: View {
     }
 
     private func chooseWorkspaceFolder() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -46,6 +49,7 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             storageService.aiWorkspacePath = url.path
         }
+        #endif
     }
 
     var body: some View {
@@ -99,6 +103,56 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     caption("Size: \(storageService.fontSizeLevel)")
+                }
+
+                // MARK: - iCloud Sync
+                SettingsGroup(title: "iCloud Sync", icon: "icloud", isExpanded: $groupiCloud) {
+                    Toggle("Enable iCloud Sync", isOn: $storageService.iCloudSyncEnabled)
+                        .toggleStyle(.switch)
+                    caption("Automatically synchronizes your watchlists, portfolios, alerts, and notes across all your Macs, iPhones, and iPads signed in to your Apple ID.")
+
+                    if storageService.iCloudSyncEnabled {
+                        Divider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Status")
+                                    .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                if let lastDate = storageService.lastiCloudSyncDate {
+                                    Text("Last synced: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Not synced yet")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Sync Now") {
+                                iCloudSyncService.shared.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        HStack(spacing: 8) {
+                            Button("Push to iCloud") {
+                                iCloudSyncService.shared.pushLocalData()
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+
+                            Text("·").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
+
+                            Button("Pull from iCloud") {
+                                iCloudSyncService.shared.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+                        }
+                        caption("Smart Merge automatically reconciles differences between this device and the cloud without losing positions or watchlists.")
+                    }
                 }
 
                 // MARK: - Currency
@@ -219,20 +273,6 @@ struct SettingsView: View {
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
                 }
 
-                // MARK: - Watchlist Display
-                SettingsGroup(title: "Watchlist", icon: "list.bullet", isExpanded: $groupWatchlist) {
-                    Toggle("Company name", isOn: $storageService.showCompanyName)
-                        .toggleStyle(.switch)
-                    Toggle("30-day sparkline chart", isOn: $storageService.showWatchlistSparkline)
-                        .toggleStyle(.switch)
-                    Toggle("52-week range bar", isOn: $storageService.show52WeekBar)
-                        .toggleStyle(.switch)
-                    Toggle("Day range (low – high)", isOn: $storageService.showDayRange)
-                        .toggleStyle(.switch)
-                    Toggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
-                        .toggleStyle(.switch)
-                    caption("Choose which details appear in each watchlist row")
-                }
 
                 // MARK: - Menu Bar (display + colors)
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
@@ -296,6 +336,7 @@ struct SettingsView: View {
                     }
 
                     subHeader("Colors")
+                    #if os(macOS)
                     ColorPicker("Gain color", selection: Binding(
                         get: { Color(nsColor: storageService.gainColor) },
                         set: { storageService.gainColorHex = $0.hexString }
@@ -304,6 +345,16 @@ struct SettingsView: View {
                         get: { Color(nsColor: storageService.lossColor) },
                         set: { storageService.lossColorHex = $0.hexString }
                     ))
+                    #else
+                    ColorPicker("Gain color", selection: Binding(
+                        get: { Color(uiColor: storageService.gainColor) },
+                        set: { storageService.gainColorHex = $0.hexString }
+                    ))
+                    ColorPicker("Loss color", selection: Binding(
+                        get: { Color(uiColor: storageService.lossColor) },
+                        set: { storageService.lossColorHex = $0.hexString }
+                    ))
+                    #endif
                     Button("Reset to default green/red") {
                         storageService.gainColorHex = ""
                         storageService.lossColorHex = ""
@@ -373,6 +424,7 @@ struct SettingsView: View {
 
                 // MARK: - About & Data (updates, sponsor, reset)
                 SettingsGroup(title: "About & Data", icon: "info.circle", isExpanded: $groupAbout) {
+                    #if os(macOS)
                     subHeader("Updates")
                     Button("Check for Updates...") {
                         NSApp.setActivationPolicy(.regular)
@@ -380,13 +432,18 @@ struct SettingsView: View {
                         updaterViewModel.checkForUpdates()
                     }
                     .disabled(!updaterViewModel.canCheckForUpdates)
+                    #endif
 
                     subHeader("Enjoying StockDeck?")
                     caption("StockDeck is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")
                     HStack(spacing: 8) {
                         Button {
                             if let url = URL(string: "https://github.com/sponsors/tuyennq1001") {
+                                #if os(macOS)
                                 NSWorkspace.shared.open(url)
+                                #else
+                                UIApplication.shared.open(url)
+                                #endif
                             }
                         } label: {
                             Label("Become a Sponsor", systemImage: "heart.fill")
@@ -397,7 +454,11 @@ struct SettingsView: View {
 
                         Button {
                             if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") {
+                                #if os(macOS)
                                 NSWorkspace.shared.open(url)
+                                #else
+                                UIApplication.shared.open(url)
+                                #endif
                             }
                         } label: {
                             Label("Star on GitHub", systemImage: "star.fill")
