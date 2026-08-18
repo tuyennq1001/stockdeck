@@ -4,5 +4,7 @@
 <dict>
     <key>com.apple.security.network.client</key>
     <true/>
+    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
+    <string>$(TeamIdentifierPrefix)com.terry.stockdeck</string>
 </dict>
 </plist>
