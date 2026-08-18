@@ -292,6 +292,7 @@ struct ContentView: View {
                             .matchedGeometryEffect(id: "popoverTabSelection", in: tabAnimation)
                     }
                 }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointingHandCursor()

@@ -400,6 +400,7 @@ struct WatchlistView: View {
                                         Capsule()
                                             .fill(selected ? DS.brand : Color.primary.opacity(0.06))
                                     )
+                                    .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                             .pointingHandCursor()
@@ -441,6 +442,7 @@ struct WatchlistView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Capsule().fill(DS.brand.opacity(0.12)))
+                            .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
@@ -473,6 +475,7 @@ struct WatchlistView: View {
                         .font(.inter(8, relativeTo: .caption2))
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointingHandCursor()

@@ -84,7 +84,7 @@ echo "Launching StockDeck DEV..."
 # The Menu Bar icon itself is governed by macOS 26's per-app Control Center
 # toggle (System Settings → Control Center → Menu Bar items): if it is missing
 # or hidden, enable it there; bumping Bundle ID / autosave name does not help.
-SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-1}"
+SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-0}"
 if [ "$SD_OPEN_WINDOW" = "1" ]; then
     open "$APP" --env SD_OPEN_WINDOW=1
 else
