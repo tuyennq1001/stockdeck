@@ -880,15 +880,15 @@ struct HoldingRow: View {
         HStack(spacing: 0) {
             // Col 1: Ticker + Qty@Avg
             HStack(spacing: 6) {
-                SymbolLogo(symbol: holding.symbol, size: 22)
+                SymbolLogo(symbol: holding.symbol, size: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 3) {
                         Text(StockService.beautifiedSymbol(holding.symbol))
-                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .font(.inter(15, relativeTo: .body).monospacedDigit())
                             .fontWeight(.bold)
                         if holding.isShort {
                             Text("SHORT")
-                                .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                                .font(.inter(9, weight: .bold, relativeTo: .caption2))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 3)
                                 .padding(.vertical, 1)
@@ -896,7 +896,7 @@ struct HoldingRow: View {
                         }
                         if holding.effectiveLeverage != 1 {
                             Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
-                                .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                                .font(.inter(9, weight: .bold, relativeTo: .caption2))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 3)
                                 .padding(.vertical, 1)
@@ -904,13 +904,13 @@ struct HoldingRow: View {
                         }
                     }
                     Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
             }
-            .frame(width: 120, alignment: .leading)
+            .frame(width: 125, alignment: .leading)
 
             if let quote {
                 let assetCurr = stockService.detectedCurrency(for: holding.symbol)
@@ -920,11 +920,11 @@ struct HoldingRow: View {
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
                     Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(15, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                         Text(quote.marketStateLabel)
-                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                             .foregroundColor(.white)
                             .padding(.horizontal, 3)
                             .padding(.vertical, 1)
@@ -946,20 +946,20 @@ struct HoldingRow: View {
                 let dec = storageService.amountDecimals
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(.inter(15, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
-                        .font(.inter(10, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                 }
-                .frame(width: 120, alignment: .trailing)
+                .frame(width: 125, alignment: .trailing)
             } else {
                 Spacer()
                 ProgressView()
                     .scaleEffect(0.5)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 5)
         .contextMenu(isReadOnly ? nil : ContextMenu {
             Button(role: .destructive) {
                 confirmDeleteHolding = (holding, portfolioId)

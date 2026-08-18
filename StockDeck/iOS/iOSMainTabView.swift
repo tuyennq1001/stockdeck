@@ -83,6 +83,16 @@ struct iOSMainTabView: View {
             .tag(Tab.portfolios)
 
             NavigationStack {
+                UtilitiesView()
+                    .navigationTitle("Utilities")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem {
+                Label("Utilities", systemImage: Tab.utilities.icon)
+            }
+            .tag(Tab.utilities)
+
+            NavigationStack {
                 SettingsView()
                     .navigationTitle("Settings")
                     .navigationBarTitleDisplayMode(.inline)

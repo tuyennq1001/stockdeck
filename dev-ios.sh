@@ -105,6 +105,9 @@ fi
 
 open -a Simulator || true
 
+echo "Terminating previous instance of $BUNDLE_ID..."
+xcrun simctl terminate "$TARGET_DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+
 echo "Installing $APP on simulator..."
 xcrun simctl install "$TARGET_DEVICE" "$APP"
 

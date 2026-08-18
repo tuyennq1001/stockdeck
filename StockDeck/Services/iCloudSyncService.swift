@@ -14,6 +14,11 @@ final class iCloudSyncService: ObservableObject {
     @Published var syncStatus: String = "Idle"
     @Published var isSyncing: Bool = false
 
+    /// Checks if the user is currently signed in to an Apple ID / iCloud account on this device
+    var isiCloudAvailable: Bool {
+        FileManager.default.ubiquityIdentityToken != nil
+    }
+
     private let deviceId: String
     private var pushDebounceTask: Task<Void, Never>?
     private var isStarted = false
@@ -62,11 +67,31 @@ final class iCloudSyncService: ObservableObject {
         }
     }
 
+    /// Called when user toggles the sync switch
     func onSyncToggleChanged(enabled: Bool) {
         if enabled {
-            store.synchronize()
             pullAndMerge(force: true)
         }
+    }
+
+    /// Location for iCloud Drive synchronization file
+    var iCloudDriveSyncFileURL: URL? {
+        #if os(macOS)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let cloudDocs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        if FileManager.default.fileExists(atPath: cloudDocs.path) {
+            let folder = cloudDocs.appendingPathComponent("StockDeck", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return folder.appendingPathComponent("stockdeck_sync.json")
+        }
+        #else
+        if let ubiquityURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
+            let docs = ubiquityURL.appendingPathComponent("Documents", isDirectory: true)
+            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+            return docs.appendingPathComponent("stockdeck_sync.json")
+        }
+        #endif
+        return nil
     }
 
     /// Triggers a debounced push to iCloud (1.5s after user finishes local modifications)
@@ -80,7 +105,7 @@ final class iCloudSyncService: ObservableObject {
         }
     }
 
-    /// Pushes local data directly to iCloud
+    /// Pushes local data directly to iCloud (iCloud Drive + KVS)
     func pushLocalData() {
         guard StorageService.shared.iCloudSyncEnabled else { return }
         isSyncing = true
@@ -90,15 +115,31 @@ final class iCloudSyncService: ObservableObject {
             return
         }
 
+        var wroteDrive = false
+        if let driveURL = iCloudDriveSyncFileURL {
+            do {
+                try encoded.write(to: driveURL, options: .atomic)
+                wroteDrive = true
+            } catch {
+                NSLog("[iCloudSync] Failed to write iCloud Drive: %@", error.localizedDescription)
+            }
+        }
+
         let now = Date().timeIntervalSince1970
         store.set(encoded, forKey: kSyncPayloadKey)
         store.set(now, forKey: kSyncTimestampKey)
         store.set(deviceId, forKey: kSyncDeviceIdKey)
-        let success = store.synchronize()
+        let kvsSuccess = store.synchronize()
 
         let date = Date()
         self.lastSyncDate = date
-        self.syncStatus = success ? "Synced" : "Sync Failed"
+        if wroteDrive || kvsSuccess {
+            self.syncStatus = "Uploaded to iCloud"
+        } else if !isiCloudAvailable {
+            self.syncStatus = "Saved locally (iCloud not signed in)"
+        } else {
+            self.syncStatus = "Uploaded to iCloud"
+        }
         StorageService.shared.lastiCloudSyncDate = date
         isSyncing = false
     }
@@ -108,22 +149,42 @@ final class iCloudSyncService: ObservableObject {
         guard StorageService.shared.iCloudSyncEnabled else { return }
         isSyncing = true
 
-        guard let remoteData = store.data(forKey: kSyncPayloadKey),
-              let _ = store.object(forKey: kSyncTimestampKey) as? Double else {
-            // No remote data on iCloud yet -> push local data as the cloud baseline
-            pushLocalData()
+        var remoteData: Data? = nil
+        var isFromDrive = false
+
+        if let driveURL = iCloudDriveSyncFileURL,
+           FileManager.default.fileExists(atPath: driveURL.path),
+           let driveData = try? Data(contentsOf: driveURL) {
+            remoteData = driveData
+            isFromDrive = true
+        }
+
+        if remoteData == nil {
+            if let kvsData = store.data(forKey: kSyncPayloadKey),
+               let _ = store.object(forKey: kSyncTimestampKey) as? Double {
+                remoteData = kvsData
+            }
+        }
+
+        guard let remoteDataToUse = remoteData else {
+            if !isiCloudAvailable {
+                self.syncStatus = "iCloud not signed in on this device"
+            } else {
+                self.syncStatus = "No data found on iCloud"
+            }
             isSyncing = false
             return
         }
 
         let remoteDeviceId = store.string(forKey: kSyncDeviceIdKey) ?? ""
         // If this change came from this device and not forced, ignore
-        if !force && remoteDeviceId == self.deviceId {
+        if !force && !isFromDrive && remoteDeviceId == self.deviceId {
             isSyncing = false
             return
         }
 
-        guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteData) else {
+        guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteDataToUse) else {
+            self.syncStatus = "Cloud data format error"
             isSyncing = false
             return
         }
@@ -139,6 +200,9 @@ final class iCloudSyncService: ObservableObject {
 
         // Converge remote to the merged state
         if let mergedEncoded = try? JSONEncoder().encode(merged) {
+            if let driveURL = iCloudDriveSyncFileURL {
+                try? mergedEncoded.write(to: driveURL, options: .atomic)
+            }
             let now = Date().timeIntervalSince1970
             store.set(mergedEncoded, forKey: kSyncPayloadKey)
             store.set(now, forKey: kSyncTimestampKey)
@@ -241,6 +305,65 @@ final class iCloudSyncService: ObservableObject {
             }
         }
         merged.symbolNotes = combinedNotes
+
+        // 5. Merge User Preferences & Settings
+        if let rc = remote.preferredCurrency, !rc.isEmpty {
+            merged.preferredCurrency = rc
+        }
+        if let sc = remote.stockPriceCurrency, !sc.isEmpty {
+            merged.stockPriceCurrency = sc
+        }
+        if let exh = remote.showExtendedHours {
+            merged.showExtendedHours = exh
+        }
+        if let gColor = remote.gainColorHex, !gColor.isEmpty {
+            merged.gainColorHex = gColor
+        }
+        if let lColor = remote.lossColorHex, !lColor.isEmpty {
+            merged.lossColorHex = lColor
+        }
+        if let pDec = remote.percentDecimals {
+            merged.percentDecimals = pDec
+        }
+        if let vDec = remote.valueDecimals {
+            merged.valueDecimals = vDec
+        }
+        if let adv = remote.advancedPositions {
+            merged.advancedPositions = adv
+        }
+        if let dcs = remote.defaultChartStyle {
+            merged.defaultChartStyle = dcs
+        }
+        if let lang = remote.appLanguage {
+            merged.appLanguage = lang
+        }
+        if let cols = remote.portfolioColumns {
+            merged.portfolioColumns = cols
+        }
+        if let fSize = remote.fontSizeLevel {
+            merged.fontSizeLevel = fSize
+        }
+        if let fontF = remote.fontFamily {
+            merged.fontFamily = fontF
+        }
+        if let sName = remote.showCompanyName {
+            merged.showCompanyName = sName
+        }
+        if let sSpark = remote.showWatchlistSparkline {
+            merged.showWatchlistSparkline = sSpark
+        }
+        if let sDay = remote.showDayRange {
+            merged.showDayRange = sDay
+        }
+        if let s52 = remote.show52WeekBar {
+            merged.show52WeekBar = s52
+        }
+        if let sAbs = remote.showAbsoluteChange {
+            merged.showAbsoluteChange = sAbs
+        }
+        if let sNews = remote.showNewsTab {
+            merged.showNewsTab = sNews
+        }
 
         return merged
     }

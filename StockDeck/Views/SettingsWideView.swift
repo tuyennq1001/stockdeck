@@ -10,6 +10,7 @@ struct SettingsWideView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
+    @ObservedObject private var syncService = iCloudSyncService.shared
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
     @FocusState private var webhookFocused: Bool
@@ -93,10 +94,31 @@ struct SettingsWideView: View {
 
             if storageService.iCloudSyncEnabled {
                 SettingDivider()
-                SettingRow("Status", caption: "Sync state with Apple iCloud") {
+
+                if !syncService.isiCloudAvailable {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DS.gold)
+                            .font(.system(size: 14))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("iCloud Not Signed In")
+                                .font(DS.bodyStrong)
+                                .foregroundStyle(DS.ink)
+                            Text("This device is not signed in to an Apple ID. Please sign in to iCloud in system Settings to enable sync.")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkSecondary)
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(DS.gold.opacity(0.12)))
+
+                    SettingDivider()
+                }
+
+                SettingRow("Status", caption: syncService.syncStatus) {
                     HStack(spacing: 8) {
-                        if let lastDate = storageService.lastiCloudSyncDate {
-                            Text("Last synced: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                        if let lastDate = syncService.lastSyncDate {
+                            Text("Last attempt: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
                                 .font(DS.micro)
                                 .foregroundStyle(DS.inkSecondary)
                         } else {
@@ -106,12 +128,12 @@ struct SettingsWideView: View {
                         }
 
                         Button {
-                            iCloudSyncService.shared.pullAndMerge(force: true)
+                            syncService.pullAndMerge(force: true)
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.system(size: 10))
-                                Text("Sync Now")
+                                Text(syncService.isSyncing ? "Syncing…" : "Sync Now")
                                     .font(DS.label)
                             }
                             .padding(.horizontal, 8)
@@ -120,13 +142,14 @@ struct SettingsWideView: View {
                         }
                         .buttonStyle(.plain)
                         .pointingHandCursor()
+                        .disabled(syncService.isSyncing)
                     }
                 }
                 SettingDivider()
                 SettingRow("Manual Actions", caption: "Smart Merge combines cloud and local data without losing positions") {
                     HStack(spacing: 8) {
                         Button("Push to iCloud") {
-                            iCloudSyncService.shared.pushLocalData()
+                            syncService.pushLocalData()
                         }
                         .buttonStyle(.plain)
                         .font(DS.micro)
@@ -136,7 +159,7 @@ struct SettingsWideView: View {
                         Text("·").font(DS.micro).foregroundStyle(DS.inkTertiary)
 
                         Button("Pull from iCloud") {
-                            iCloudSyncService.shared.pullAndMerge(force: true)
+                            syncService.pullAndMerge(force: true)
                         }
                         .buttonStyle(.plain)
                         .font(DS.micro)
