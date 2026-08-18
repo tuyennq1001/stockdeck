@@ -140,12 +140,8 @@ struct SearchView: View {
                     .listRowBackground(
                         Color(nsColor: NSColor(calibratedWhite: 0.5, alpha: 0.0))
                     )
+                    .pointingHandCursor()
                     .onHover { inside in
-                        if inside {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
-                        }
                         hoveredSymbol = inside ? result.id : nil
                     }
                     .listRowBackground(

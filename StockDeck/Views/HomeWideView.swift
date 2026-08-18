@@ -216,9 +216,9 @@ private struct FeaturedNewsCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .onHover { inside in
             hovered = inside
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
         .help(article.title)
     }
@@ -306,9 +306,9 @@ private struct NewsCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
         .onHover { inside in
             hovered = inside
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
         .help(article.title)
     }

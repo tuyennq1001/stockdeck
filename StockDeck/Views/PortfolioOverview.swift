@@ -2051,9 +2051,9 @@ private struct PositionSummaryRow: View {
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
         .animation(.easeOut(duration: 0.15), value: hovered)
         .contentShape(Rectangle())
+        .pointingHandCursor()
         .onHover { inside in
             hovered = inside
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
         }
     }
 }
