@@ -4,6 +4,7 @@ import Security
 struct KeychainService {
     static let serviceName = "com.stockdeck.app.binance"
 
+    #if os(macOS)
     /// Explicit ACL that always allows the current app bundle itself to read
     /// the item without a prompt, so credentials survive dev rebuilds that
     /// keep the same bundle ID. (macOS 26 launch-through-`open` relaunches can
@@ -17,6 +18,7 @@ struct KeychainService {
         let accessStatus = SecAccessCreate(serviceName as CFString, [trustedApp] as CFArray, &access)
         return accessStatus == errSecSuccess ? access : nil
     }
+    #endif
 
     static func save(key: String, data: Data) -> Bool {
         var query: [String: Any] = [
@@ -26,9 +28,11 @@ struct KeychainService {
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
+        #if os(macOS)
         if let access = makeSelfAccess() {
             query[kSecAttrAccessControl as String] = access
         }
+        #endif
 
         SecItemDelete(query as CFDictionary)
         let status = SecItemAdd(query as CFDictionary, nil)

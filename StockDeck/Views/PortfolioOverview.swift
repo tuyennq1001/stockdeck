@@ -247,7 +247,7 @@ struct PortfolioOverview: View {
         self.viewModel = viewModel
     }
 
-    var scope: PortfolioWindowView.Scope { viewModel.scope }
+    var scope: PortfolioScope { viewModel.scope }
 
     private var insertionOrderedSymbols: [String] {
         var seen = Set<String>()

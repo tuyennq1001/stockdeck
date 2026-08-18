@@ -137,9 +137,6 @@ struct SearchView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(
-                        Color(nsColor: NSColor(calibratedWhite: 0.5, alpha: 0.0))
-                    )
                     .pointingHandCursor()
                     .onHover { inside in
                         hoveredSymbol = inside ? result.id : nil
