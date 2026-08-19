@@ -124,7 +124,7 @@ struct PortfolioListView: View {
                     HStack(spacing: 0) {
                         Text("Symbol")
                             .frame(width: 80, alignment: .leading)
-                        Text("Avg Price")
+                        Text("Cost")
                             .frame(width: 68, alignment: .trailing)
                         Text("Price")
                             .frame(width: 74, alignment: .trailing)
@@ -435,10 +435,11 @@ struct PortfolioListView: View {
     struct GlobalPosition: Identifiable {
         let id: String            // symbol
         let avgPrice: Double      // weighted avg buy price, in the price currency
+        let cost: Double          // total cost in native currency
         let priceSymbol: String
         let hasCostBasis: Bool    // whether any holding for this symbol has a known cost basis
         let pct: Double           // price return vs. avg (position-direction aware)
-        let pnl: Double           // total P&L in preferred currency
+        let pnl: Double           // total P&L in native currency
         let currentPrice: Double
         let priceChangePercent: Double
         let extPrice: Double?
@@ -521,7 +522,7 @@ struct PortfolioListView: View {
             let extPrice: Double? = (quote?.isExtendedHours == true) ? quote?.alertPrice : nil
             let extChangePercent: Double? = (quote?.isExtendedHours == true) ? quote?.extendedChangePercent : nil
 
-            return GlobalPosition(id: symbol, avgPrice: avg, priceSymbol: nativeSymbol, hasCostBasis: hasCostBasis,
+            return GlobalPosition(id: symbol, avgPrice: avg, cost: nativeCst, priceSymbol: nativeSymbol, hasCostBasis: hasCostBasis,
                                   pct: pct, pnl: nativePnl,
                                   currentPrice: price, priceChangePercent: quote?.changePercent ?? 0,
                                   extPrice: extPrice, extChangePercent: extChangePercent,
@@ -1222,17 +1223,28 @@ struct PortfolioQuoteRow: View {
             }
             .frame(width: 80, alignment: .leading)
 
-            // Col 2: Avg Price (compact number for large numbers/currencies)
-            Text(StorageService.formatCompactNumber(
-                globalPos.avgPrice,
-                decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: globalPos.avgPrice)
-            ))
-            .font(.inter(14, relativeTo: .body).monospacedDigit())
-            .fontWeight(.medium)
-            .foregroundColor(.primary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .frame(width: 68, alignment: .trailing)
+            // Col 2: Cost (compact amount in native currency)
+            if globalPos.hasCostBasis {
+                Text(StorageService.formatCompactAmount(
+                    globalPos.cost,
+                    symbol: globalPos.priceSymbol,
+                    signed: false,
+                    decimals: storageService.amountDecimals
+                ))
+                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: 68, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(.inter(14, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .frame(width: 68, alignment: .trailing)
+            }
 
             // Col 3: Price (2 lines: regular closing price + today % change)
             VStack(alignment: .trailing, spacing: 1) {
