@@ -197,7 +197,7 @@ struct PriceChartCard: View {
             // mode has its own ranges, so no overlay is drawn there.
             chart
                 .overlay(alignment: .bottomLeading) {
-                    if chartStyle == .line && (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
+                    if (chartStyle == .line || tradingViewSymbol == nil) && (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
                         rangePicker
                             .padding(.leading, 12).padding(.bottom, 16)
                     }
@@ -229,67 +229,57 @@ struct PriceChartCard: View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
     }
 
-    private var stylePicker: some View {
-        HStack(spacing: 4) {
-            Button(action: { chartStyle = .line }) {
-                HStack(spacing: 5) {
-                    Image(systemName: "line.uptrend.xyaxis")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Line")
-                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
+    @ViewBuilder private var stylePicker: some View {
+        if tradingViewSymbol != nil {
+            HStack(spacing: 4) {
+                Button(action: { chartStyle = .line }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "line.uptrend.xyaxis")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Line")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    }
+                    .foregroundStyle(chartStyle == .line ? .white : DS.inkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(chartStyle == .line ? DS.brand : Color.clear))
                 }
-                .foregroundStyle(chartStyle == .line ? .white : DS.inkSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(chartStyle == .line ? DS.brand : Color.clear))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("Line chart")
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Line chart")
 
-            Button(action: { chartStyle = .tradingview }) {
-                HStack(spacing: 5) {
-                    Text("Trading")
-                        .font(.inter(11, weight: .bold, relativeTo: .caption))
-                    Text("View")
-                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                Button(action: { chartStyle = .tradingview }) {
+                    HStack(spacing: 5) {
+                        Text("Trading")
+                            .font(.inter(11, weight: .bold, relativeTo: .caption))
+                        Text("View")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    }
+                    .foregroundStyle(chartStyle == .tradingview ? .white : DS.inkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(chartStyle == .tradingview ? DS.brand : Color.clear))
                 }
-                .foregroundStyle(chartStyle == .tradingview ? .white : DS.inkSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(chartStyle == .tradingview ? DS.brand : Color.clear))
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("TradingView chart")
             }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .disabled(tradingViewSymbol == nil)
-            .help(tradingViewSymbol == nil ? "Not available on TradingView" : "TradingView chart")
+            .padding(3)
+            .background(Capsule().fill(DS.cardAlt))
         }
-        .padding(3)
-        .background(Capsule().fill(DS.cardAlt))
     }
 
     @ViewBuilder private var chart: some View {
-        if chartStyle == .tradingview {
-            if let tvSymbol = tradingViewSymbol {
-                TradingViewChartView(tvSymbol: tvSymbol,
-                                     theme: colorScheme == .dark ? "dark" : "light",
-                                     interval: "D")
-                    // Force a brand-new web view per symbol so switching stocks
-                    // can never leave the previous symbol's chart on screen.
-                    .id(tvSymbol)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .padding(.horizontal, DS.pad)
-                    .padding(.bottom, 10)
-            } else {
-                ZStack {
-                    DS.cardAlt
-                    VStack(spacing: 5) {
-                        Image(systemName: "chart.xyaxis.line").font(.system(size: 20)).foregroundStyle(DS.inkTertiary)
-                        Text("TradingView chart not available for this symbol")
-                            .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
-                    }
-                }
-            }
+        if chartStyle == .tradingview, let tvSymbol = tradingViewSymbol {
+            TradingViewChartView(tvSymbol: tvSymbol,
+                                 theme: colorScheme == .dark ? "dark" : "light",
+                                 interval: "D")
+                // Force a brand-new web view per symbol so switching stocks
+                // can never leave the previous symbol's chart on screen.
+                .id(tvSymbol)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, DS.pad)
+                .padding(.bottom, 10)
         } else if history.count >= 2 {
             let periodUp = (history.last?.close ?? 0) >= (history.first?.close ?? 0)
             let tint = periodUp ? DS.up : DS.down
