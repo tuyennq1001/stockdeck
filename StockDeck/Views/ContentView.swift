@@ -285,7 +285,7 @@ struct ContentView: View {
             }
         }) {
             Text(title)
-                .font(.inter(11, weight: isSelected ? .semibold : .medium, relativeTo: .caption))
+                .font(.inter(14, weight: isSelected ? .semibold : .medium, relativeTo: .body))
                 .foregroundStyle(isSelected ? DS.ink : DS.inkSecondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)

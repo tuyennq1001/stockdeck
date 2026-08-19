@@ -435,10 +435,10 @@ struct WatchlistView: View {
                                 }
                             }) {
                                 Text(wl.name)
-                                    .font(.inter(11, weight: selected ? .bold : .medium, relativeTo: .caption))
+                                    .font(.inter(14, weight: selected ? .bold : .medium, relativeTo: .body))
                                     .foregroundColor(selected ? .white : DS.ink)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 5)
                                     .background(
                                         Capsule()
                                             .fill(selected ? DS.brand : Color.primary.opacity(0.06))
@@ -496,10 +496,10 @@ struct WatchlistView: View {
                         }
                     } label: {
                         Image(systemName: "plus")
-                            .font(.inter(10, weight: .bold, relativeTo: .caption))
+                            .font(.inter(12, weight: .bold, relativeTo: .body))
                             .foregroundColor(DS.brand)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
                             .background(Capsule().fill(DS.brand.opacity(0.12)))
                             .contentShape(Capsule())
                     }

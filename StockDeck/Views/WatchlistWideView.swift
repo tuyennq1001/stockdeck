@@ -554,7 +554,7 @@ struct WatchlistWideView: View {
                                 }
                             }) {
                                 Text(wl.name)
-                                    .font(DS.bodyStrong)
+                                    .font(.inter(14, weight: selected ? .bold : .medium, relativeTo: .body))
                                     .foregroundStyle(selected ? .white : DS.ink)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)

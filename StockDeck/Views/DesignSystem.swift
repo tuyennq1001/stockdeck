@@ -1137,7 +1137,7 @@ struct NavRow: View {
                     .font(.system(size: 13, weight: .medium)).frame(width: 18)
                     .foregroundStyle(selected ? DS.brand : DS.inkSecondary)
                 Text(LocalizedStringKey(title))
-                    .font(.inter(12.5, weight: selected ? .semibold : .regular, relativeTo: .body))
+                    .font(.inter(14, weight: selected ? .semibold : .regular, relativeTo: .body))
                     .foregroundStyle(DS.ink)
                     .lineLimit(1)
                 Spacer(minLength: 4)
