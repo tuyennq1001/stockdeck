@@ -2,10 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 105
-    static let sparkline: CGFloat = 115
-    static let price: CGFloat = 94
-    static let change: CGFloat = 62
+    static let symbol: CGFloat = 100
+    static let sparkline: CGFloat = 72
+    static let price: CGFloat = 102
+    static let change: CGFloat = 95
 }
 
 struct WatchlistView: View {
@@ -28,61 +28,45 @@ struct WatchlistView: View {
     @State private var dropIndicator: DropIndicator<String>? = nil
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     @State private var alertSymbol: String? = nil
-    @State private var sortColumn: SortColumn = .manual
-    @State private var sortAscending: Bool = true
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
     @State private var showFileImporter: Bool = false
     @State private var importAlertMessage: String? = nil
 
-    enum SortColumn: String {
-        case manual, symbol, price, absoluteChange, changePercent
+    private var currentSortKey: WatchlistSortKey {
+        WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
     }
 
-    private func loadSortFromCurrentWatchlist() {
-        let wl = storageService.currentWatchlist
-        if let raw = wl.sortKey, let col = SortColumn(rawValue: raw) {
-            sortColumn = col
+    private var currentSortAsc: Bool {
+        storageService.currentWatchlist.sortAsc ?? true
+    }
+
+    private func setSort(_ key: WatchlistSortKey, ascending: Bool) {
+        storageService.setWatchlistSort(key: key.rawString, ascending: ascending, for: storageService.currentWatchlist.id)
+    }
+
+    private func toggleSort(_ key: WatchlistSortKey) {
+        let newAsc: Bool
+        if currentSortKey == key {
+            newAsc = !currentSortAsc
         } else {
-            sortColumn = .manual
+            newAsc = (key == .order || key == .symbol)
         }
-        sortAscending = wl.sortAsc ?? true
-    }
-
-    private func setSort(_ col: SortColumn, ascending: Bool) {
-        sortColumn = col
-        sortAscending = ascending
-        storageService.setWatchlistSort(key: col.rawValue, ascending: ascending, for: storageService.currentWatchlist.id)
+        setSort(key, ascending: newAsc)
     }
 
     var sortedSymbols: [String] {
-        if sortColumn == .manual {
-            return sortAscending ? storageService.watchlist : Array(storageService.watchlist.reversed())
-        }
-        return storageService.watchlist.sorted { a, b in
-            let qa = stockService.quotes[a]
-            let qb = stockService.quotes[b]
-            let result: Bool
-            switch sortColumn {
-            case .manual:
-                result = true
-            case .symbol:
-                result = a.localizedCompare(b) == .orderedAscending
-            case .price:
-                let pa = qa?.price ?? 0
-                let pb = qb?.price ?? 0
-                result = pa < pb
-            case .absoluteChange:
-                let ca = qa?.change ?? 0
-                let cb = qb?.change ?? 0
-                result = ca < cb
-            case .changePercent:
-                let ca = qa?.changePercent ?? 0
-                let cb = qb?.changePercent ?? 0
-                result = ca < cb
-            }
-            return sortAscending ? result : !result
-        }
+        StorageService.sortWatchlistSymbols(
+            storageService.watchlist,
+            key: currentSortKey,
+            ascending: currentSortAsc,
+            quotes: stockService.quotes,
+            history: stockService.watchlistHistory,
+            priceHistoryMax: stockService.priceHistoryMax,
+            priceRate: { stockService.priceRate(from: $0) },
+            rate: { stockService.rate(from: $0) },
+            showExtendedHours: storageService.showExtendedHours
+        )
     }
 
     var filteredSymbols: [String] { sortedSymbols }
@@ -106,17 +90,15 @@ struct WatchlistView: View {
                         draggingId: $draggingSymbol,
                         isHorizontal: false,
                         makeDragItem: {
-                            if sortColumn != .manual || !sortAscending {
-                                sortColumn = .manual
-                                sortAscending = true
+                            if currentSortKey != .order || !currentSortAsc {
+                                setSort(.order, ascending: true)
                             }
                             if previewSymbolOrder.isEmpty { previewSymbolOrder = storageService.watchlist }
                             return NSItemProvider(object: symbol as NSString)
                         },
                         onMove: { src, tgt, placement in
-                            if sortColumn != .manual || !sortAscending {
-                                sortColumn = .manual
-                                sortAscending = true
+                            if currentSortKey != .order || !currentSortAsc {
+                                setSort(.order, ascending: true)
                             }
                             moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
                         },
@@ -196,14 +178,14 @@ struct WatchlistView: View {
             if storageService.showAbsoluteChange {
                 sortHeader("Price", column: .price)
                     .frame(width: WatchlistCol.price, alignment: .trailing)
-                sortHeader("Change", column: .absoluteChange)
+                sortHeader("Change", column: .metric(.todayChange))
                     .frame(width: WatchlistCol.change, alignment: .trailing)
             } else {
                 sortHeader("Price", column: .price)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .font(.inter(12, weight: .medium, relativeTo: .caption))
+        .font(.inter(11, weight: .medium, relativeTo: .caption))
         .foregroundColor(.secondary)
         .tracking(0.8)
         .textCase(.uppercase)
@@ -329,13 +311,11 @@ struct WatchlistView: View {
                 onCommit: { commitSymbolPreview() }
             ))
             .onAppear {
-                loadSortFromCurrentWatchlist()
                 Task {
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
             }
             .onChange(of: storageService.selectedWatchlistId) { _, _ in
-                loadSortFromCurrentWatchlist()
                 Task {
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
@@ -506,18 +486,14 @@ struct WatchlistView: View {
     }
 
     @ViewBuilder
-    private func sortHeader(_ title: String, column: SortColumn) -> some View {
+    private func sortHeader(_ title: String, column: WatchlistSortKey) -> some View {
         Button(action: {
-            if sortColumn == column {
-                setSort(column, ascending: !sortAscending)
-            } else {
-                setSort(column, ascending: (column == .manual || column == .symbol))
-            }
+            toggleSort(column)
         }) {
             HStack(spacing: 2) {
                 Text(title)
-                if sortColumn == column {
-                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                if currentSortKey == column {
+                    Image(systemName: currentSortAsc ? "chevron.up" : "chevron.down")
                         .font(.inter(8, relativeTo: .caption2))
                 }
             }
@@ -566,9 +542,8 @@ struct WatchlistView: View {
         if let idx = storageService.watchlist.firstIndex(of: symbol) {
             Divider()
             Button {
-                if sortColumn != .manual || !sortAscending {
-                    sortColumn = .manual
-                    sortAscending = true
+                if currentSortKey != .order || !currentSortAsc {
+                    setSort(.order, ascending: true)
                 }
                 moveSymbolInWatchlist(symbol, by: -1)
             } label: {
@@ -577,9 +552,8 @@ struct WatchlistView: View {
             .disabled(idx == 0)
 
             Button {
-                if sortColumn != .manual || !sortAscending {
-                    sortColumn = .manual
-                    sortAscending = true
+                if currentSortKey != .order || !currentSortAsc {
+                    setSort(.order, ascending: true)
                 }
                 moveSymbolInWatchlist(symbol, by: 1)
             } label: {
@@ -791,17 +765,17 @@ struct QuoteRow: View {
     private var symbolCell: some View {
         let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
         return HStack(spacing: 5) {
-            SymbolLogo(symbol: quote.symbol, size: 22)
+            SymbolLogo(symbol: quote.symbol, size: 20)
             VStack(alignment: .leading, spacing: 0) {
                 // Single stocks / ETFs keep the raw ticker as the primary label;
                 // indices, FX pairs, and futures use their conventional name.
                 Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
+                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                     .fontWeight(.bold)
                     .lineLimit(1)
                 if storageService.showCompanyName {
                     Text(isDisplayAsset ? quote.symbol : quote.name)
-                        .font(.inter(11, relativeTo: .caption))
+                        .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -818,19 +792,19 @@ struct QuoteRow: View {
 
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
             if let extPct {
                 HStack(spacing: 2) {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     Text("·")
-                        .font(.inter(10.5, relativeTo: .caption2))
+                        .font(.inter(10, relativeTo: .caption2))
                         .foregroundColor(.secondary)
                     Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
-                        .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                 }
@@ -838,7 +812,7 @@ struct QuoteRow: View {
                 .minimumScaleFactor(0.8)
             } else {
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                     .fontWeight(.semibold)
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
@@ -852,7 +826,7 @@ struct QuoteRow: View {
         let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
         let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
         Text((quote.change >= 0 ? "+" : "") + formatted)
-            .font(.inter(14, relativeTo: .body).monospacedDigit())
+            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
             .foregroundColor(quote.isPositive ? DS.up : DS.down)
             .lineLimit(1)
@@ -865,7 +839,7 @@ struct QuoteRow: View {
 
             // Col 2: 30D Sparkline
             if storageService.showWatchlistSparkline {
-                Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 22)
+                Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 20)
             }
 
             // Col 3: Price & Col 4: Change
@@ -877,6 +851,6 @@ struct QuoteRow: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 5.5)
+        .padding(.vertical, 4.5)
     }
 }
