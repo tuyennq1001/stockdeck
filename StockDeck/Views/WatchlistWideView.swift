@@ -10,46 +10,19 @@ struct WatchlistWideView: View {
     @EnvironmentObject var storageService: StorageService
     @Binding var showSearch: Bool
 
-    enum SortKey: Equatable {
-        case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric)
-
-        var rawString: String {
-            switch self {
-            case .order: return "order"
-            case .symbol: return "symbol"
-            case .price: return "price"
-            case .changePercent: return "changePercent"
-            case .extChangePercent: return "extChangePercent"
-            case .metric(let m): return "metric:\(m.rawValue)"
-            }
-        }
-
-        static func from(rawString: String?) -> SortKey {
-            guard let rawString else { return .order }
-            if rawString == "order" { return .order }
-            if rawString == "symbol" { return .symbol }
-            if rawString == "price" { return .price }
-            if rawString == "changePercent" { return .changePercent }
-            if rawString == "extChangePercent" { return .extChangePercent }
-            if rawString.hasPrefix("metric:") {
-                let metricRaw = String(rawString.dropFirst("metric:".count))
-                if let m = WatchlistMetric(rawValue: metricRaw) {
-                    return .metric(m)
-                }
-            }
-            return .order
-        }
-    }
+    typealias SortKey = WatchlistSortKey
 
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
     @State private var draggingWatchlistId: UUID? = nil
-    // Default to the manual "as added" order so Move Up/Down is meaningful;
-    // clicking a column header re-sorts by that column (toggles direction).
-    @State private var sortKey: SortKey = .order
-    @State private var sortAsc = true
+    private var sortKey: WatchlistSortKey {
+        WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
+    }
+    private var sortAsc: Bool {
+        storageService.currentWatchlist.sortAsc ?? true
+    }
     @State private var draggingSymbol: String? = nil
     /// The full set of symbols travelling during a drag. When the dragged row is
     /// part of a multi-selection this is the whole selection (TradingView-style
@@ -239,51 +212,30 @@ struct WatchlistWideView: View {
 
     private func sortedRows() -> [WatchRow] {
         let base = rows
-        let asc = sortAsc
-        func by<T: Comparable>(_ key: (WatchRow) -> T) -> [WatchRow] {
-            base.sorted { asc ? key($0) < key($1) : key($0) > key($1) }
-        }
-        func byOptional(_ key: (WatchRow) -> Double?) -> [WatchRow] {
-            base.sorted { lhs, rhs in
-                switch (key(lhs), key(rhs)) {
-                case let (l?, r?) where l != r: return asc ? l < r : l > r
-                case (_?, nil): return true
-                case (nil, _?): return false
-                default: return lhs.order < rhs.order
-                }
-            }
-        }
-        switch sortKey {
-        case .order:         return asc ? base : base.reversed()
-        case .symbol:        return by { $0.symbol }
-        case .price:         return by { $0.price }
-        case .changePercent: return by { $0.changePercent }
-        case .extChangePercent:
-            // The After-hrs column is hidden when Extended Hours is off, so its
-            // sort key would be stranded — fall back to the manual order.
-            guard storageService.showExtendedHours else { return asc ? base : base.reversed() }
-            // Sort by the pre/post-market % move, not the raw extended price.
-            // Rows without an extended-hours quote sink to the bottom either way.
-            return StorageService.sortedByExtendedPercent(base, ascending: asc) { $0.extChangePercent }
-        case .metric(let m): return byOptional { $0.metricValue(for: m) }
-        }
+        let sortedSymbols = StorageService.sortWatchlistSymbols(
+            base.map(\.symbol),
+            key: sortKey,
+            ascending: sortAsc,
+            quotes: stockService.quotes,
+            history: stockService.watchlistHistory,
+            priceHistoryMax: stockService.priceHistoryMax,
+            priceRate: { stockService.priceRate(from: $0) },
+            rate: { stockService.rate(from: $0) },
+            showExtendedHours: storageService.showExtendedHours
+        )
+        let rowsBySymbol = Dictionary(uniqueKeysWithValues: base.map { ($0.symbol, $0) })
+        return sortedSymbols.compactMap { rowsBySymbol[$0] }
     }
 
-    private func loadSortFromCurrentWatchlist() {
-        let wl = storageService.currentWatchlist
-        sortKey = SortKey.from(rawString: wl.sortKey)
-        sortAsc = wl.sortAsc ?? true
-    }
-
-    private func toggleSort(_ key: SortKey) {
+    private func toggleSort(_ key: WatchlistSortKey) {
+        let currentKey = sortKey
+        let currentAsc = sortAsc
         let newAsc: Bool
-        if sortKey == key {
-            newAsc = !sortAsc
+        if currentKey == key {
+            newAsc = !currentAsc
         } else {
             newAsc = (key == .order || key == .symbol)
         }
-        sortKey = key
-        sortAsc = newAsc
         storageService.setWatchlistSort(key: key.rawString, ascending: newAsc, for: storageService.currentWatchlist.id)
     }
 
@@ -324,10 +276,6 @@ struct WatchlistWideView: View {
         }
         .onAppear {
             if previewOrder.isEmpty { previewOrder = storageService.watchlist }
-            loadSortFromCurrentWatchlist()
-        }
-        .onChange(of: storageService.selectedWatchlistId) { _, _ in
-            loadSortFromCurrentWatchlist()
         }
         .onChange(of: storageService.watchlist) { _, newList in
             // Keep the preview in sync with outside changes (add/remove/switch) —
@@ -786,8 +734,7 @@ struct WatchlistWideView: View {
                         },
                         onMove: { src, tgt, placement in
                             if sortKey != .order || !sortAsc {
-                                sortKey = .order
-                                sortAsc = true
+                                storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
                             }
                             moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
                                                beforeOrAfter: tgt, placement: placement)
@@ -1074,9 +1021,7 @@ WatchRowView(row: row,
     /// Moves a symbol up/down in the manual watchlist order (persisted).
     private func move(_ symbol: String, by delta: Int) {
         if sortKey != .order || !sortAsc {
-            sortKey = .order
-            sortAsc = true
-            storageService.setWatchlistSort(key: SortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
+            storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
         }
         guard let i = storageService.watchlist.firstIndex(of: symbol) else { return }
         let j = i + delta

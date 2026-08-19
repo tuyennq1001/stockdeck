@@ -837,6 +837,145 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Canonical watchlist sorting method shared across Desktop and Popover views.
+    /// Guarantees 100% identical row ordering, FX conversion, missing-data handling,
+    /// and stable tie-breaking across the entire app.
+    nonisolated static func sortWatchlistSymbols(
+        _ symbols: [String],
+        key: WatchlistSortKey,
+        ascending: Bool,
+        quotes: [String: StockQuote],
+        history: [String: [PricePoint]] = [:],
+        priceHistoryMax: [String: [PricePoint]] = [:],
+        priceRate: (String) -> Double = { _ in 1.0 },
+        rate: (String) -> Double = { _ in 1.0 },
+        showExtendedHours: Bool = true
+    ) -> [String] {
+        if key == .order {
+            return ascending ? symbols : Array(symbols.reversed())
+        }
+        if key == .symbol {
+            return symbols.sorted { ascending ? $0.localizedCompare($1) == .orderedAscending : $0.localizedCompare($1) == .orderedDescending }
+        }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let monthStart = calendar.date(byAdding: .month, value: -1, to: now)
+        let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now)
+        let sixMonthStart = calendar.date(byAdding: .month, value: -6, to: now)
+        let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now))
+        let oneYearStart = calendar.date(byAdding: .year, value: -1, to: now)
+        let twoYearStart = calendar.date(byAdding: .year, value: -2, to: now)
+        let threeYearStart = calendar.date(byAdding: .year, value: -3, to: now)
+        let fiveYearStart = calendar.date(byAdding: .year, value: -5, to: now)
+
+        func value(for symbol: String) -> Double? {
+            let q = quotes[symbol]
+            let pRate = q.map { priceRate($0.currency) } ?? 1
+            let mRate = q.map { rate($0.currency) } ?? 1
+            let hist = history[symbol] ?? []
+            let histMax = priceHistoryMax[symbol] ?? []
+            let regularPrice = q?.price ?? 0
+
+            switch key {
+            case .order, .symbol:
+                return nil
+            case .price:
+                return q != nil ? regularPrice * pRate : nil
+            case .changePercent:
+                return q?.changePercent
+            case .extChangePercent:
+                guard showExtendedHours, let q, q.isExtendedHours else { return nil }
+                return q.extendedChangePercent
+            case .metric(let m):
+                switch m {
+                case .price:
+                    return q != nil ? regularPrice * pRate : nil
+                case .ext:
+                    guard showExtendedHours, let q, q.isExtendedHours else { return nil }
+                    return q.extendedChangePercent
+                case .today:
+                    return q?.changePercent
+                case .todayChange:
+                    return q.map { $0.change * pRate }
+                case .oneMonth:
+                    return monthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .threeMonths:
+                    return threeMonthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .sixMonths:
+                    return sixMonthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .ytd:
+                    return yearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .oneYear:
+                    return oneYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .twoYears:
+                    return twoYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .threeYears:
+                    return threeYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .fiveYears:
+                    return fiveYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .ath:
+                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
+                    if let h = histHigh { return max(h, quoteHigh) * pRate }
+                    if quoteHigh > 0 { return quoteHigh * pRate }
+                    return nil
+                case .atl:
+                    let histLow = histMax.map(\.effectiveLow).min()
+                    let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
+                    if let l = histLow, let ql = qLow, ql > 0 { return min(l, ql) * pRate }
+                    if let l = histLow { return l * pRate }
+                    if let ql = qLow, ql > 0 { return ql * pRate }
+                    return nil
+                case .fromAth:
+                    let ath: Double?
+                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
+                    if let h = histHigh { ath = max(h, quoteHigh) * pRate }
+                    else if quoteHigh > 0 { ath = quoteHigh * pRate }
+                    else { ath = nil }
+                    guard let ath, ath > 0, regularPrice > 0 else { return nil }
+                    let priceConverted = regularPrice * pRate
+                    if priceConverted >= ath { return 0.0 }
+                    return min(0.0, (priceConverted - ath) / ath * 100)
+                case .fromAtl:
+                    let atl: Double?
+                    let histLow = histMax.map(\.effectiveLow).min()
+                    let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
+                    if let l = histLow, let ql = qLow, ql > 0 { atl = min(l, ql) * pRate }
+                    else if let l = histLow { atl = l * pRate }
+                    else if let ql = qLow, ql > 0 { atl = ql * pRate }
+                    else { atl = nil }
+                    guard let atl, atl > 0, regularPrice > 0 else { return nil }
+                    let priceConverted = regularPrice * pRate
+                    if priceConverted <= atl { return 0.0 }
+                    return max(0.0, (priceConverted - atl) / atl * 100)
+                case .marketCap:
+                    return q?.marketCap.map { $0 * mRate }
+                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+                    return nil
+                }
+            }
+        }
+
+        let symbolOrder = Dictionary(uniqueKeysWithValues: symbols.enumerated().map { ($0.element, $0.offset) })
+
+        return symbols.sorted { lhs, rhs in
+            let lv = value(for: lhs)
+            let rv = value(for: rhs)
+            switch (lv, rv) {
+            case let (l?, r?) where l != r:
+                return ascending ? l < r : l > r
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                return (symbolOrder[lhs] ?? 0) < (symbolOrder[rhs] ?? 0)
+            }
+        }
+    }
+
     nonisolated static func currencySymbol(for code: String) -> String {
         switch code {
         case "EUR": return "€"
