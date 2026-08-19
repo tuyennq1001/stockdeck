@@ -12,21 +12,40 @@ enum TradingViewSymbol {
         let s = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
         let upper = s.uppercased()
 
-        // Japanese mutual funds trade off-exchange on intramarkets; TradingView
-        // has no series for them, so never try.
-        if StockService.isJapaneseMutualFund(s) { return nil }
+        // Japanese assets (mutual funds, stocks, ETFs, indices):
+        // TradingView's embedded widget displays "This symbol is only available on TradingView"
+        // for all TSE/Japanese symbols due to exchange licensing restrictions.
+        // Therefore, return nil so the UI cleanly hides TradingView and uses Native Line Chart.
+        if StockService.isJapaneseMutualFund(s) ||
+           StockService.isJapaneseStock(s) ||
+           upper.hasSuffix(".T") ||
+           upper.hasSuffix(".JP") ||
+           ["TSE", "TYO", "JPX", "TOKYO"].contains(exchange.uppercased()) ||
+           ["^N225", "N225", "NIKKEI", "NIKKEI225", "^TOPX", "TOPX", "TOPIX"].contains(upper) {
+            return nil
+        }
 
-        // Market indices.
+        // Vietnamese assets (stocks, indices):
+        // TradingView's embedded widget displays "This symbol is only available on TradingView"
+        // for all HOSE/HNX/UPCOM symbols due to exchange licensing restrictions.
+        // Therefore, return nil so the UI cleanly hides TradingView and uses Native Line Chart.
+        if StockService.isVietnameseStock(s, exchange: exchange) ||
+           upper.hasSuffix(".VN") ||
+           upper.hasSuffix(".HM") ||
+           upper.hasSuffix(".HN") ||
+           ["HOSE", "HNX", "UPCOM"].contains(exchange.uppercased()) ||
+           ["^VNINDEX.VN", "^VNINDEX", "VNINDEX", "VNINDEX.VN", "VN-INDEX", "^VN30", "VN30", "^HNX", "^HNXINDEX", "HNX", "HNXINDEX", "^UPCOM"].contains(upper) {
+            return nil
+        }
+
+        // Market indices with '^' prefix (e.g. ^GSPC, ^DJI, ^IXIC).
         if s.hasPrefix("^") {
             let indices: [String: String] = [
                 "^GSPC": "INDEX:SPX",
                 "^DJI": "INDEX:DJI",
                 "^IXIC": "INDEX:IXIC",
-                "^N225": "INDEX:NKY",
-                "^TOPX": "INDEX:TPX",
                 "^KS11": "INDEX:KOSPI",
                 "^KOSDAQ": "INDEX:KOSDAQ",
-                "^VNINDEX.VN": "INDEX:VNI",
                 "^HSI": "INDEX:HSI",
                 "^STI": "INDEX:STI",
                 "^AXJO": "INDEX:AS51",
@@ -39,6 +58,21 @@ enum TradingViewSymbol {
                 "^VIX": "CBOE:VIX",
             ]
             return indices[upper]
+        }
+
+        // Common index aliases without '^' prefix (e.g. SPX, DJI).
+        let indexAliases: [String: String] = [
+            "SPX": "INDEX:SPX",
+            "GSPC": "INDEX:SPX",
+            "DJI": "INDEX:DJI",
+            "IXIC": "INDEX:IXIC",
+            "KS11": "INDEX:KOSPI",
+            "KOSPI": "INDEX:KOSPI",
+            "KOSDAQ": "INDEX:KOSDAQ",
+            "HSI": "INDEX:HSI",
+        ]
+        if let mapped = indexAliases[upper] {
+            return mapped
         }
 
         // FX pairs: "USDJPY=X" → "FX:USDJPY".
@@ -74,26 +108,9 @@ enum TradingViewSymbol {
             return "CRYPTO:\(base)USD"
         }
 
-        // Vietnam: always prefix the exchange (HOSE/HNX/UPCOM) — a bare ticker is
-        // ambiguous (e.g. VNM collides with the US Vietnam ETF).
-        if upper.hasSuffix(".VN") || StockService.isVietnameseStock(s, exchange: exchange) {
-            let code = upper
-                .replacingOccurrences(of: ".VN", with: "")
-                .replacingOccurrences(of: ".HM", with: "")
-                .replacingOccurrences(of: ".HN", with: "")
-            guard let exch = vnExchange(for: code, exchange: exchange) else { return nil }
-            return "\(exch):\(code)"
-        }
-
         // Hong Kong: "0700.HK" → "HKEX:0700".
         if upper.hasSuffix(".HK") {
             return "HKEX:\(String(upper.dropLast(3)))"
-        }
-
-        // Japan stocks (mutual funds already excluded above): "7203.T" → "TSE:7203".
-        if upper.hasSuffix(".T") || upper.hasSuffix(".JP") {
-            let code = upper.replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".JP", with: "")
-            return "TSE:\(code)"
         }
 
         // London: "RR.L" → "LSE:RR".
@@ -114,17 +131,6 @@ enum TradingViewSymbol {
             return "\(exch):\(cleanUS)"
         }
         return cleanUS
-    }
-
-    /// Resolves the Vietnam exchange the way the app knows it: the resolved
-    /// stored exchange first, then the popular-stocks table. `nil` when unknown,
-    /// rather than guessing HOSE.
-    private static func vnExchange(for code: String, exchange: String) -> String? {
-        let stored = exchange.uppercased()
-        if ["HOSE", "HNX", "UPCOM"].contains(stored) { return stored }
-        let known = StockService.popularVietnameseStocks
-            .first(where: { $0.symbol.uppercased() == code })?.exchange.uppercased()
-        return ["HOSE", "HNX", "UPCOM"].contains(known ?? "") ? known : nil
     }
 }
 
