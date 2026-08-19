@@ -430,7 +430,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var menuBarFontSize: CGFloat {
-        CGFloat(storageService.fontSizeLevel) + 5
+        14
     }
 
     /// Renders one watchlist slide for the menu bar ticker. Applies issue #8.2

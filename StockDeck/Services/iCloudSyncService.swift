@@ -416,9 +416,6 @@ final class iCloudSyncService: ObservableObject {
         if let cols = remote.portfolioColumns {
             merged.portfolioColumns = cols
         }
-        if let fSize = remote.fontSizeLevel {
-            merged.fontSizeLevel = fSize
-        }
         if let fontF = remote.fontFamily {
             merged.fontFamily = fontF
         }

@@ -515,13 +515,6 @@ class StorageService: ObservableObject {
         }
     }
 
-    @Published var fontSizeLevel: Int = 9 {
-        didSet {
-            FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
-            scheduleSave()
-        }
-    }
-
     @Published var fontFamily: String = "Inter Variable" {
         didSet {
             FontRegistration.familyName = fontFamily
@@ -1393,7 +1386,6 @@ class StorageService: ObservableObject {
         defaultChartStyle = "line"
         watchlistSort = "manual"
         appLanguage = "en"
-        fontSizeLevel = 9
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
         showNewsTab = true
@@ -1530,7 +1522,7 @@ class StorageService: ObservableObject {
             showExtendedHours: showExtendedHours,
             menuBarDisplay: menuBarDisplay,
             isinMap: isinMap,
-            fontSizeLevel: fontSizeLevel,
+            fontSizeLevel: nil,
             fontFamily: fontFamily,
             alerts: alerts,
             symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes,
@@ -1655,7 +1647,6 @@ class StorageService: ObservableObject {
         showDayRange = decoded.showDayRange ?? true
         show52WeekBar = decoded.show52WeekBar ?? true
         showAbsoluteChange = decoded.showAbsoluteChange ?? false
-        fontSizeLevel = decoded.fontSizeLevel ?? 9
         fontFamily = decoded.fontFamily ?? "Inter Variable"
         appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
         showNewsTab = decoded.showNewsTab ?? true
@@ -1676,7 +1667,6 @@ class StorageService: ObservableObject {
             lastiCloudSyncDate = syncDate
         }
         FontRegistration.familyName = fontFamily
-        FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
 
         if isFromSync {
             isLoading = false

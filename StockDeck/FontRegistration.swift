@@ -8,7 +8,6 @@ import SwiftUI
 
 enum FontRegistration {
     static var familyName = "Inter Variable"
-    static var sizeOffset: CGFloat = 0
 
     static let availableFonts: [(label: String, family: String)] = [
         ("Inter", "Inter Variable"),
@@ -78,8 +77,7 @@ enum FontRegistration {
 
 extension Font {
     static func inter(_ size: CGFloat, weight: Weight? = nil, relativeTo style: TextStyle = .body) -> Font {
-        let scaled = max(size + FontRegistration.sizeOffset, 6)
-        let font = Font.custom(FontRegistration.familyName, size: scaled)
+        let font = Font.custom(FontRegistration.familyName, size: size)
         if let weight { return font.weight(weight) }
         return font
     }

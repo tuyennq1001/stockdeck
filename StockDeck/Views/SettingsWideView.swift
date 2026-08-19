@@ -412,19 +412,6 @@ struct SettingsWideView: View {
                 DSPicker(options: FontRegistration.availableFonts.map { ($0.family, $0.label) },
                          selection: $storageService.fontFamily, width: 200)
             }
-            SettingDivider()
-            SettingRow("Text size") {
-                HStack(spacing: 10) {
-                    Text("A").font(.inter(10, relativeTo: .caption)).foregroundStyle(DS.inkTertiary)
-                    DSSlider(value: Binding(get: { Double(storageService.fontSizeLevel) },
-                                            set: { storageService.fontSizeLevel = Int($0) }),
-                             range: 7...13, step: 1, width: 160)
-                    Text("A").font(.inter(15, weight: .bold, relativeTo: .body)).foregroundStyle(DS.inkTertiary)
-                    Text("\(storageService.fontSizeLevel)")
-                        .font(DS.figure).foregroundStyle(DS.inkSecondary)
-                        .frame(width: 18, alignment: .trailing)
-                }
-            }
         }
     }
 

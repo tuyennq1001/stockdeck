@@ -89,19 +89,6 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    HStack {
-                        Text("A")
-                            .font(.inter(10, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                        Slider(value: Binding(
-                            get: { Double(storageService.fontSizeLevel) },
-                            set: { storageService.fontSizeLevel = Int($0) }
-                        ), in: 7...13, step: 1)
-                        Text("A")
-                            .font(.inter(18, weight: .bold, relativeTo: .title2))
-                            .foregroundColor(.secondary)
-                    }
-                    caption("Size: \(storageService.fontSizeLevel)")
                 }
 
                 // MARK: - Currency
