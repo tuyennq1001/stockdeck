@@ -86,7 +86,7 @@ echo "Launching StockDeck DEV..."
 # or hidden, enable it there; bumping Bundle ID / autosave name does not help.
 SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-0}"
 if [ "$SD_OPEN_WINDOW" = "1" ]; then
-    open "$APP" --env SD_OPEN_WINDOW=1
+    SD_OPEN_WINDOW=1 open "$APP"
 else
-    open "$APP" --env SD_OPEN_WINDOW=0
+    SD_OPEN_WINDOW=0 open "$APP"
 fi

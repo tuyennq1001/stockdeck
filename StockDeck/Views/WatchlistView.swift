@@ -2,10 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 100
-    static let sparkline: CGFloat = 72
-    static let price: CGFloat = 102
-    static let change: CGFloat = 95
+    static let symbol: CGFloat = 110
+    static let sparkline: CGFloat = 80
+    static let price: CGFloat = 94
+    static let change: CGFloat = 85
 }
 
 struct WatchlistView: View {
@@ -143,7 +143,7 @@ struct WatchlistView: View {
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
 
                 if storageService.showWatchlistSparkline {
-                    Color.clear.frame(width: WatchlistCol.sparkline)
+                    Color.clear.frame(width: WatchlistCol.sparkline).padding(.leading, 6)
                 }
 
                 if storageService.showAbsoluteChange {
@@ -173,6 +173,7 @@ struct WatchlistView: View {
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
             if storageService.showWatchlistSparkline {
                 Text("30D")
+                    .padding(.leading, 6)
                     .frame(width: WatchlistCol.sparkline, alignment: .center)
             }
             if storageService.showAbsoluteChange {
@@ -837,9 +838,10 @@ struct QuoteRow: View {
         HStack(spacing: 0) {
             symbolCell
 
-            // Col 2: 30D Sparkline
+            // Col 2: 30D Sparkline (add 6pt left padding to separate from Symbol)
             if storageService.showWatchlistSparkline {
                 Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 20)
+                    .padding(.leading, 6)
             }
 
             // Col 3: Price & Col 4: Change

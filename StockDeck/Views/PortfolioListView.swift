@@ -123,17 +123,17 @@ struct PortfolioListView: View {
                 if !globals.isEmpty {
                     HStack(spacing: 0) {
                         Text("Symbol")
-                            .frame(width: 80, alignment: .leading)
+                            .frame(width: 76, alignment: .leading)
                         Text("Cost")
-                            .frame(width: 66, alignment: .trailing)
+                            .frame(width: 58, alignment: .trailing)
                         Text("Price")
-                            .frame(width: 94, alignment: .trailing)
+                            .frame(width: 78, alignment: .trailing)
                         Text("Value")
-                            .frame(width: 72, alignment: .trailing)
+                            .frame(width: 86, alignment: .trailing)
                         Text("Total P&L")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .font(.inter(12, weight: .medium, relativeTo: .caption))
+                    .font(.inter(11, weight: .medium, relativeTo: .caption))
                     .foregroundColor(.secondary)
                     .tracking(0.8)
                     .textCase(.uppercase)
@@ -694,7 +694,7 @@ struct PortfolioSection: View {
                     Text("Value / P&L")
                         .frame(width: 120, alignment: .trailing)
                 }
-                .font(.inter(12, weight: .medium, relativeTo: .caption))
+                .font(.inter(11, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
                 .tracking(0.8)
                 .textCase(.uppercase)
@@ -890,11 +890,11 @@ struct HoldingRow: View {
         HStack(spacing: 0) {
             // Col 1: Ticker + Qty@Avg
             HStack(spacing: 6) {
-                SymbolLogo(symbol: holding.symbol, size: 24)
+                SymbolLogo(symbol: holding.symbol, size: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 3) {
                         Text(StockService.beautifiedSymbol(holding.symbol))
-                            .font(.inter(14, relativeTo: .body).monospacedDigit())
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                             .fontWeight(.bold)
                         if holding.isShort {
                             Text("SHORT")
@@ -914,7 +914,7 @@ struct HoldingRow: View {
                         }
                     }
                     Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
-                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -930,11 +930,11 @@ struct HoldingRow: View {
                 // Col 2: Price + badge
                 HStack(spacing: 3) {
                     Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
                         Text(quote.marketStateLabel)
-                            .font(.inter(10, weight: .semibold, relativeTo: .caption2))
+                            .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
                             .foregroundColor(.white)
                             .padding(.horizontal, 3)
                             .padding(.vertical, 1)
@@ -956,10 +956,10 @@ struct HoldingRow: View {
                 let dec = storageService.amountDecimals
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                     Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
-                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                         .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                 }
                 .frame(width: 125, alignment: .trailing)
@@ -969,7 +969,7 @@ struct HoldingRow: View {
                     .scaleEffect(0.5)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .contextMenu(isReadOnly ? nil : ContextMenu {
             Button(role: .destructive) {
                 confirmDeleteHolding = (holding, portfolioId)
@@ -1034,21 +1034,21 @@ struct GroupedHoldingRow: View {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(DS.brand)
-                    SymbolLogo(symbol: symbol, size: 22)
-                    VStack(alignment: .leading, spacing: 3) {
+                    SymbolLogo(symbol: symbol, size: 20)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(StockService.beautifiedSymbol(symbol))
-                            .font(.inter(14, relativeTo: .body).monospacedDigit())
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                             .fontWeight(.bold)
                             .lineLimit(1)
                         HStack(spacing: 4) {
                             Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
-                                .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                             if holdings.count > 1 {
                                 Text("\(holdings.count) lots")
-                                    .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                                    .font(.inter(8.5, weight: .semibold, relativeTo: .caption2))
                                     .foregroundColor(DS.brand)
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
@@ -1067,7 +1067,7 @@ struct GroupedHoldingRow: View {
                     // Col 2: Price (regular closing price formatted as integer)
                     HStack(spacing: 3) {
                         Text("\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
-                            .font(.inter(14, relativeTo: .body).monospacedDigit())
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -1084,10 +1084,10 @@ struct GroupedHoldingRow: View {
                     let dec = storageService.amountDecimals
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                            .font(.inter(14, relativeTo: .body).monospacedDigit())
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                             .fontWeight(.medium)
                         Text("\(StorageService.formatAmount(totalPnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
-                            .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                             .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
                     }
                     .frame(width: 120, alignment: .trailing)
@@ -1116,11 +1116,11 @@ struct GroupedHoldingRow: View {
                                     .foregroundColor(.secondary)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text("\(formatQty(h.quantity)) @ \(StorageService.formatNumber(h.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: h.symbol, price: h.avgPrice)))")
-                                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                         .fontWeight(.medium)
                                     if let date = h.purchaseDate {
                                         Text(date.formatted(date: .abbreviated, time: .omitted))
-                                            .font(.inter(10, relativeTo: .caption2))
+                                            .font(.inter(9.5, relativeTo: .caption2))
                                             .foregroundColor(.secondary)
                                     }
                                 }
@@ -1138,12 +1138,12 @@ struct GroupedHoldingRow: View {
                                 let nativeSymbol = StorageService.currencySymbol(for: curr)
 
                                 Text(StorageService.formatAmount(val, symbol: nativeSymbol, decimals: storageService.amountDecimals))
-                                    .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
                                     .foregroundColor(.secondary)
                                     .frame(width: 70, alignment: .trailing)
 
                                 Text(StorageService.formatAmount(pnl, symbol: nativeSymbol, decimals: storageService.amountDecimals, signed: true))
-                                    .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                                    .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                     .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                                     .frame(width: 70, alignment: .trailing)
                             }
@@ -1217,18 +1217,18 @@ struct PortfolioQuoteRow: View {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(titleText)
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)
                     if storageService.showCompanyName, !subTitleText.isEmpty {
                         Text(subTitleText)
-                            .font(.inter(11, relativeTo: .caption))
+                            .font(.inter(10, relativeTo: .caption))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
                 }
             }
-            .frame(width: 80, alignment: .leading)
+            .frame(width: 76, alignment: .leading)
 
             // Col 2: Cost (compact amount in native currency)
             if globalPos.hasCostBasis {
@@ -1238,19 +1238,19 @@ struct PortfolioQuoteRow: View {
                     signed: false,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 66, alignment: .trailing)
+                .frame(width: 58, alignment: .trailing)
             } else {
                 Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
+                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 66, alignment: .trailing)
+                    .frame(width: 58, alignment: .trailing)
             }
 
             // Col 3: Price (2 lines: regular closing price + today % change / ext %)
@@ -1258,7 +1258,7 @@ struct PortfolioQuoteRow: View {
                 if let quote {
                     let displayPrice = quote.price * priceRate
                     Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -1271,14 +1271,14 @@ struct PortfolioQuoteRow: View {
                     if let extPct {
                         HStack(spacing: 2) {
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                                .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                                .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                 .fontWeight(.semibold)
                                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
                             Text("·")
-                                .font(.inter(10.5, relativeTo: .caption2))
+                                .font(.inter(10, relativeTo: .caption2))
                                 .foregroundColor(.secondary)
                             Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
-                                .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                                .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                 .fontWeight(.semibold)
                                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         }
@@ -1286,7 +1286,7 @@ struct PortfolioQuoteRow: View {
                         .minimumScaleFactor(0.8)
                     } else {
                         Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                            .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                             .fontWeight(.semibold)
                             .foregroundColor(quote.isPositive ? DS.up : DS.down)
                             .lineLimit(1)
@@ -1296,7 +1296,7 @@ struct PortfolioQuoteRow: View {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 94, alignment: .trailing)
+            .frame(width: 78, alignment: .trailing)
 
             // Col 4: Value (2 lines: Market Value in native currency + Today P&L)
             VStack(alignment: .trailing, spacing: 1) {
@@ -1306,7 +1306,7 @@ struct PortfolioQuoteRow: View {
                     signed: false,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -1318,13 +1318,13 @@ struct PortfolioQuoteRow: View {
                     signed: true,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
                 .fontWeight(.semibold)
                 .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 86, alignment: .trailing)
 
             // Col 5: Total P&L — compact amount (K/M when large) + percent, 2 lines.
             // Fixed-size fonts (not dynamic .body) so the figures never shrink
@@ -1333,25 +1333,25 @@ struct PortfolioQuoteRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 if globalPos.hasCostBasis {
                     Text(StorageService.formatCompactAmount(globalPos.pnl, symbol: globalPos.priceSymbol, signed: true, decimals: storageService.amountDecimals))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 } else {
                     Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Text("—")
-                        .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
