@@ -1,6 +1,13 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum WatchlistCol {
+    static let symbol: CGFloat = 110
+    static let sparkline: CGFloat = 64
+    static let price: CGFloat = 84
+    static let change: CGFloat = 68
+}
+
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -151,21 +158,21 @@ struct WatchlistView: View {
                         .fontWeight(.bold)
                         .lineLimit(1)
                 }
-                .frame(width: 110, alignment: .leading)
+                .frame(width: WatchlistCol.symbol, alignment: .leading)
 
                 if storageService.showWatchlistSparkline {
-                    Color.clear.frame(width: 64)
+                    Color.clear.frame(width: WatchlistCol.sparkline)
                 }
 
                 if storageService.showExtendedHours || storageService.showAbsoluteChange {
-                    Color.clear.frame(width: 78)
+                    Color.clear.frame(width: WatchlistCol.price)
                 } else {
                     Color.clear.frame(maxWidth: .infinity)
                 }
 
                 if storageService.showAbsoluteChange {
                     if storageService.showExtendedHours {
-                        Color.clear.frame(width: 60)
+                        Color.clear.frame(width: WatchlistCol.change)
                     } else {
                         Color.clear.frame(maxWidth: .infinity)
                     }
@@ -190,14 +197,14 @@ struct WatchlistView: View {
     private var headerRow: some View {
         HStack(spacing: 0) {
             sortHeader("Symbol", column: .symbol)
-                .frame(width: 110, alignment: .leading)
+                .frame(width: WatchlistCol.symbol, alignment: .leading)
             if storageService.showWatchlistSparkline {
                 Text("30D")
-                    .frame(width: 64, alignment: .center)
+                    .frame(width: WatchlistCol.sparkline, alignment: .center)
             }
             if storageService.showExtendedHours || storageService.showAbsoluteChange {
                 sortHeader("Price", column: .price)
-                    .frame(width: 78, alignment: .trailing)
+                    .frame(width: WatchlistCol.price, alignment: .trailing)
             } else {
                 sortHeader("Price", column: .price)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -205,7 +212,7 @@ struct WatchlistView: View {
             if storageService.showAbsoluteChange {
                 if storageService.showExtendedHours {
                     sortHeader("Change", column: .absoluteChange)
-                        .frame(width: 60, alignment: .trailing)
+                        .frame(width: WatchlistCol.change, alignment: .trailing)
                 } else {
                     sortHeader("Change", column: .absoluteChange)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -820,7 +827,7 @@ struct QuoteRow: View {
                 }
             }
         }
-        .frame(width: 115, alignment: .leading)
+        .frame(width: WatchlistCol.symbol, alignment: .leading)
     }
 
     private var priceCell: some View {
@@ -838,7 +845,9 @@ struct QuoteRow: View {
 
     @ViewBuilder
     private var changeCell: some View {
-        Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
+        let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
+        let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
+        Text((quote.change >= 0 ? "+" : "") + formatted)
             .font(.inter(14, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
             .foregroundColor(quote.isPositive ? DS.up : DS.down)
@@ -880,12 +889,12 @@ struct QuoteRow: View {
 
             // Col 2: 30D Sparkline
             if storageService.showWatchlistSparkline {
-                Sparkline(symbol: quote.symbol, days: 30, width: 64, height: 22)
+                Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 22)
             }
 
             // Col 3: Price
             if storageService.showExtendedHours || storageService.showAbsoluteChange {
-                priceCell.frame(width: 82, alignment: .trailing)
+                priceCell.frame(width: WatchlistCol.price, alignment: .trailing)
             } else {
                 priceCell.frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -893,7 +902,7 @@ struct QuoteRow: View {
             // Col 4: Change
             if storageService.showAbsoluteChange {
                 if storageService.showExtendedHours {
-                    changeCell.frame(width: 62, alignment: .trailing)
+                    changeCell.frame(width: WatchlistCol.change, alignment: .trailing)
                 } else {
                     changeCell.frame(maxWidth: .infinity, alignment: .trailing)
                 }
