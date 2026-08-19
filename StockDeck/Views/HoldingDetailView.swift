@@ -16,6 +16,7 @@ struct HoldingDetailView: View {
     let quote: StockQuote
 
     @State private var showAlert = false
+    @State private var confirmDeleteLot: ValuedHolding? = nil
 
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
@@ -82,6 +83,25 @@ struct HoldingDetailView: View {
         .sheet(isPresented: $showAlert) {
             PriceAlertSheet(symbol: holding.symbol) { showAlert = false }
                 .environmentObject(stockService).environmentObject(storageService)
+        }
+        .alert("Delete Purchase Lot", isPresented: Binding(get: { confirmDeleteLot != nil }, set: { if !$0 { confirmDeleteLot = nil } })) {
+            Button("Cancel", role: .cancel) { confirmDeleteLot = nil }
+            Button("Delete", role: .destructive) {
+                if let target = confirmDeleteLot {
+                    let isLastLot = allHoldingsForSymbol.count <= 1
+                    storageService.removeHolding(from: target.portfolioId, holdingId: target.holding.id)
+                    if isLastLot {
+                        dismiss()
+                    }
+                }
+                confirmDeleteLot = nil
+            }
+        } message: {
+            if let target = confirmDeleteLot {
+                let dateStr = target.holding.purchaseDate.map { Self.dateFormatter.string(from: $0) } ?? "no date"
+                let qtyStr = formatQty(target.holding.quantity)
+                Text("Are you sure you want to delete this lot of \(qtyStr) shares (\(dateStr))? This action cannot be undone.")
+            }
         }
     }
 
@@ -278,7 +298,7 @@ struct HoldingDetailView: View {
                                 .help("Edit lot")
 
                                 Button {
-                                    storageService.removeHolding(from: vh.portfolioId, holdingId: vh.holding.id)
+                                    confirmDeleteLot = vh
                                 } label: {
                                     Image(systemName: "trash")
                                         .font(.system(size: 11))
