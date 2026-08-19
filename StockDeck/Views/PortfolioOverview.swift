@@ -242,6 +242,7 @@ struct PortfolioOverview: View {
     @State private var dailyPnlRange: DailyPnlRange = .oneYear
     @State private var monthlyPnlRange: MonthlyPnlRange = .threeYears
     @State private var positionsCardWidth: CGFloat = 0
+    @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
 
     init(viewModel: PortfolioViewModel) {
         self.viewModel = viewModel
@@ -575,6 +576,17 @@ struct PortfolioOverview: View {
             PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { columns in
                 storageService.setPortfolioColumns(columns)
             }
+        }
+        .alert("Delete Holding", isPresented: Binding(get: { confirmDeleteHolding != nil }, set: { if !$0 { confirmDeleteHolding = nil } })) {
+            Button("Cancel", role: .cancel) { confirmDeleteHolding = nil }
+            Button("Delete", role: .destructive) {
+                if let target = confirmDeleteHolding {
+                    storageService.removeHolding(from: target.portfolioId, holdingId: target.holding.id)
+                }
+                confirmDeleteHolding = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete \(confirmDeleteHolding?.holding.symbol ?? "")? This action cannot be undone.")
         }
         .onAppear {
             if let savedRaw = storageService.chartRange(for: scopeKey),
@@ -1606,7 +1618,7 @@ struct PortfolioOverview: View {
                                     if group.count == 1 && !isPortReadOnly {
                                         Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
                                         Button(role: .destructive) {
-                                            storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
+                                            confirmDeleteHolding = (first.holding, first.portfolioId)
                                         } label: { Label("Delete", systemImage: "trash") }
                                     }
                                 }
