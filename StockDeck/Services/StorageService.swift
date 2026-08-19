@@ -728,7 +728,8 @@ class StorageService: ObservableObject {
     /// Formats a plain number with a thousands grouping separator and locale-aware
     /// decimal separator, e.g. "1,234.56" (en) / "1.234,56" (it). Falls back to a
     /// non-grouped representation if the formatter ever fails.
-    nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent,
+                                         stripTrailingZeros: Bool = false) -> String {
         // When a numeric value is not finite, show a dash so UI cells display
         // "-" instead of "NaN" for missing/unknown data (e.g. unknown cost).
         guard value.isFinite else { return "-" }
@@ -745,7 +746,13 @@ class StorageService: ObservableObject {
         let rounded = String(format: "%.\(decimals)f", abs(value))
         let parts = rounded.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
         let intDigits = String(parts[0])
-        let fracDigits = parts.count > 1 ? String(parts[1]) : ""
+        var fracDigits = parts.count > 1 ? String(parts[1]) : ""
+
+        if stripTrailingZeros && !fracDigits.isEmpty {
+            while fracDigits.hasSuffix("0") {
+                fracDigits.removeLast()
+            }
+        }
 
         var grouped = ""
         var count = 0
@@ -755,19 +762,19 @@ class StorageService: ObservableObject {
             count += 1
         }
         var result = String(grouped.reversed())
-        if decimals > 0 { result += decSep + fracDigits }
+        if !fracDigits.isEmpty { result += decSep + fracDigits }
         return (value < 0 ? "-" : "") + result
     }
 
     /// Formats an amount with the currency symbol *before* the figure, e.g.
     /// "€1,234.56", "+€820.00", "-€540.00". The sign (when shown) precedes the symbol.
     nonisolated static func formatAmount(_ value: Double, symbol: String, decimals: Int = 2, signed: Bool = false,
-                             locale: Locale = .autoupdatingCurrent) -> String {
+                                         locale: Locale = .autoupdatingCurrent, stripTrailingZeros: Bool = false) -> String {
         // When the numeric value is not finite (NaN/Inf), show a dash so the UI
         // doesn't display "NaN" for P&L or cost when a holding has unknown cost.
         guard value.isFinite else { return "-" }
         let sign = signed ? (value >= 0 ? "+" : "-") : (value < 0 ? "-" : "")
-        let magnitude = formatNumber(abs(value), decimals: decimals, locale: locale)
+        let magnitude = formatNumber(abs(value), decimals: decimals, locale: locale, stripTrailingZeros: stripTrailingZeros)
         return "\(sign)\(symbol)\(magnitude)"
     }
 
@@ -830,7 +837,7 @@ class StorageService: ObservableObject {
         }
     }
 
-    static func currencySymbol(for code: String) -> String {
+    nonisolated static func currencySymbol(for code: String) -> String {
         switch code {
         case "EUR": return "€"
         case "USD": return "$"
@@ -847,7 +854,7 @@ class StorageService: ObservableObject {
     /// Formats a number compactly with K/M suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
-    static func formatCompactNumber(_ value: Double, decimals: Int? = nil) -> String {
+    nonisolated static func formatCompactNumber(_ value: Double, decimals: Int? = nil, stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : ""
         if absVal >= 1_000_000 {
@@ -857,14 +864,15 @@ class StorageService: ObservableObject {
             let k = absVal / 1_000
             return "\(sign)\(String(format: k >= 100 ? "%.0fK" : "%.1fK", k))"
         } else {
-            return formatNumber(value, decimals: decimals ?? 0)
+            return formatNumber(value, decimals: decimals ?? 0, stripTrailingZeros: stripTrailingZeros)
         }
     }
 
     /// Formats an amount compactly with K/M suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
-    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil) -> String {
+    nonisolated static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil,
+                                                stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
         if absVal >= 1_000_000 {
@@ -876,13 +884,13 @@ class StorageService: ObservableObject {
             let formatted = String(format: k >= 100 ? "%.0fK" : "%.1fK", k)
             return "\(sign)\(symbol)\(formatted)"
         } else {
-            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed)
+            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed, stripTrailingZeros: stripTrailingZeros)
         }
     }
 
     /// Formats market capitalization in compact T/B/M scale with currency symbol.
     /// e.g. Apple → "$3.50T", Toyota → "¥45.2B", small cap → "$850M"
-    static func formatMarketCap(_ value: Double, currency: String) -> String {
+    nonisolated static func formatMarketCap(_ value: Double, currency: String) -> String {
         let absVal = abs(value)
         let currSymbol = currencySymbol(for: currency)
         if absVal >= 1_000_000_000_000 {

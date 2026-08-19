@@ -1335,11 +1335,13 @@ private struct WatchRowView<Menu: View>: View {
     }
 
     /// The absolute (signed) today's change, formatted like price (no currency
-    /// symbol), e.g. "+1.23", fixed at 2 decimals.
+    /// symbol), e.g. "+1.23", stripping redundant trailing zeros.
     @ViewBuilder
     private var todayChangeCell: some View {
         if row.loaded {
-            Text("\(row.change >= 0 ? "+" : "")\(StorageService.formatNumber(row.change, decimals: 2))")
+            let dec = priceDec(row.price)
+            let formatted = StorageService.formatNumber(row.change, decimals: dec, stripTrailingZeros: true)
+            Text("\(row.change >= 0 ? "+" : "")\(formatted)")
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.pnlColor(row.change))
                 .contentTransition(.numericText())

@@ -169,8 +169,9 @@ struct PriceChartCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     SectionLabel("Last price")
+                    let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: info.price)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(StorageService.formatAmount(info.price, symbol: priceSymbol))
+                        Text(StorageService.formatAmount(info.price, symbol: priceSymbol, decimals: dec))
                             .font(.inter(26, weight: .bold, relativeTo: .title).monospacedDigit())
                             .tracking(-0.4)
                             .foregroundStyle(DS.ink)
@@ -181,7 +182,7 @@ struct PriceChartCard: View {
                         HStack(spacing: 6) {
                             ChangePill(value: info.diff,
                                        text: String(format: "%+.\(storageService.percentDecimals)f%% \(info.label)", info.diffPct))
-                            Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, signed: true))
+                            Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, decimals: dec, signed: true, stripTrailingZeros: true))
                                 .font(DS.caption.monospacedDigit())
                                 .foregroundStyle(DS.pnlColor(info.diff))
                                 .lineLimit(1)
