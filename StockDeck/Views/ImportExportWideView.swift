@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 struct ImportExportWideView: View {
@@ -214,3 +215,4 @@ private struct TemplateCard: View {
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
     }
 }
+#endif

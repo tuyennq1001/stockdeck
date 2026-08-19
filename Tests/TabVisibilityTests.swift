@@ -13,6 +13,7 @@ final class TabVisibilityTests: XCTestCase {
         // The other tabs are always present.
         XCTAssertTrue(tabs.contains(.watchlist))
         XCTAssertTrue(tabs.contains(.portfolios))
+        XCTAssertTrue(tabs.contains(.utilities))
         XCTAssertTrue(tabs.contains(.settings))
     }
 
@@ -21,7 +22,7 @@ final class TabVisibilityTests: XCTestCase {
         XCTAssertFalse(tabs.contains(.home))
         // Watchlist becomes the leading tab.
         XCTAssertEqual(tabs.first, .watchlist)
-        XCTAssertEqual(tabs, [.watchlist, .portfolios, .settings])
+        XCTAssertEqual(tabs, [.watchlist, .portfolios, .utilities, .settings])
     }
 
     func testResolvingHiddenTabFallsBackToFirstVisible() {

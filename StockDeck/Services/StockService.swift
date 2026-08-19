@@ -124,6 +124,9 @@ class StockService: ObservableObject {
 
         let symbols = Array(Set(watchlistSymbols))
         await fetchQuotes(symbols: symbols)
+        Task {
+            await self.ensureSparklines(for: symbols)
+        }
     }
 
     /// Phase 2: load all remaining symbols + exchange rates, after the menu bar
@@ -1198,6 +1201,9 @@ class StockService: ObservableObject {
                 let symbol = String(key.dropFirst(4))
                 priceHistoryMax[symbol] = entry.points
                 priceHistoryMaxAt[symbol] = entry.fetchedAt
+            } else if key.hasPrefix("spark:"), watchlistHistory[String(key.dropFirst(6))] == nil {
+                let symbol = String(key.dropFirst(6))
+                watchlistHistory[symbol] = entry.points
             }
         }
     }
@@ -1224,6 +1230,9 @@ class StockService: ObservableObject {
             if let at = priceHistoryMaxAt[symbol] {
                 entries["max:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: at)
             }
+        }
+        for (symbol, points) in watchlistHistory where !points.isEmpty {
+            entries["spark:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: sparkFetchedAt ?? Date())
         }
         guard !entries.isEmpty, let data = try? JSONEncoder().encode(entries) else { return }
         try? data.write(to: historyCacheURL, options: .atomic)
@@ -1569,6 +1578,7 @@ class StockService: ObservableObject {
                         self.watchlistHistory["VNINDEX"] = points
                     }
                 }
+                scheduleHistoryCacheSave()
             }
         }
 
@@ -1582,6 +1592,7 @@ class StockService: ObservableObject {
                     for (symbol, points) in parsed where !points.isEmpty {
                         watchlistHistory[symbol] = points
                     }
+                    scheduleHistoryCacheSave()
                 } catch {
                 }
             }
@@ -2580,7 +2591,10 @@ enum YahooSparkParser {
                 closes: series.close ?? []
             )
             if !points.isEmpty {
+                histories[key] = points
+                histories[key.uppercased()] = points
                 histories[symbol] = points
+                histories[symbol.uppercased()] = points
             }
         }
         return histories

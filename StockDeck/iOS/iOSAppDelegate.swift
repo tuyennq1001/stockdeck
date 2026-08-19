@@ -17,6 +17,7 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         FontRegistration.registerFonts()
         NotificationManager.shared.requestAuthorization()
+        iCloudSyncService.shared.start()
 
         // Sync WebSocket subscriptions with active symbols
         symbolsObserver = Publishers.CombineLatest(storageService.$portfolios, storageService.$watchlists)

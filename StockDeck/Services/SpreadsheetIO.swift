@@ -91,6 +91,7 @@ enum SpreadsheetIO {
         try? wbRels.write(to: xlRelsDir.appendingPathComponent("workbook.xml.rels"), atomically: true, encoding: .utf8)
         try? sheet1.write(to: xlWSDir.appendingPathComponent("sheet1.xml"), atomically: true, encoding: .utf8)
 
+        #if os(macOS)
         let outFile = tmpDir.appendingPathComponent("export.xlsx")
         #if os(macOS)
         let process = Process()
@@ -255,6 +256,7 @@ enum SpreadsheetIO {
         try? wbRels.write(to: xlRelsDir.appendingPathComponent("workbook.xml.rels"), atomically: true, encoding: .utf8)
         try? sheet1.write(to: xlWSDir.appendingPathComponent("sheet1.xml"), atomically: true, encoding: .utf8)
 
+        #if os(macOS)
         let outFile = tmpDir.appendingPathComponent("sample.xlsx")
         #if os(macOS)
         let process = Process()
@@ -518,10 +520,14 @@ enum SpreadsheetIO {
 
     /// Extracts raw string rows from an .xlsx file sheet XML using Python with fallback to Swift.
     static func parseXLSXRows(fileURL: URL) -> [[String]]? {
+        #if os(macOS)
         if let rows = parseXLSXWithPython(fileURL: fileURL), !rows.isEmpty {
             return rows
         }
         return parseXLSXRowsWithSwift(fileURL: fileURL)
+        #else
+        return nil
+        #endif
     }
 
     /// Extracts portfolios from an .xlsx file for standard portfolio import.
@@ -530,6 +536,7 @@ enum SpreadsheetIO {
         return convertRowsToPortfolios(rows: rows)
     }
 
+    #if os(macOS)
     private static func parseXLSXWithPython(fileURL: URL) -> [[String]]? {
         let script = """
         import zipfile, xml.etree.ElementTree as ET, json, sys
@@ -659,6 +666,7 @@ enum SpreadsheetIO {
         }
         return convertRowsToPortfolios(rows: rows)
     }
+    #endif
 
     private static func parseSharedStringsSwift(xml: String) -> [String] {
         var result: [String] = []
@@ -975,7 +983,7 @@ enum SpreadsheetIO {
 
         for (accountName, lots) in accountLotsMap {
             let activeHoldings = lots.filter { $0.qty > 0 }.map { lot in
-                Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date)
+                Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date, account: accountName)
             }
             if !activeHoldings.isEmpty {
                 resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: activeHoldings))

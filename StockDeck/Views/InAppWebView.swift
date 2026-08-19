@@ -1,5 +1,10 @@
 import SwiftUI
 import WebKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// An article link to be opened in the in-app browser window.
 struct InAppWebLink: Identifiable {
@@ -9,7 +14,7 @@ struct InAppWebLink: Identifiable {
 
 /// WKWebView wrapped for SwiftUI. Talks to its coordinator to surface page
 /// title and back/forward state to the surrounding popup.
-struct InAppWebView: NSViewRepresentable {
+struct InAppWebView: PlatformViewRepresentable {
     let startURL: URL
 
     @Binding var title: String
@@ -21,6 +26,7 @@ struct InAppWebView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    #if os(macOS)
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -33,6 +39,20 @@ struct InAppWebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {
         DispatchQueue.main.async { controller = nsView }
     }
+    #else
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.load(URLRequest(url: startURL))
+        return webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        DispatchQueue.main.async { controller = uiView }
+    }
+    #endif
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: InAppWebView
@@ -71,6 +91,7 @@ struct InAppWebView: NSViewRepresentable {
 struct InAppWebViewPopup: View {
     let url: URL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     @State private var pageTitle = ""
     @State private var canGoBack = false
@@ -90,9 +111,13 @@ struct InAppWebViewPopup: View {
                          controller: $webController)
         }
         .background(DS.ground)
+        #if os(macOS)
         .frame(width: 800, height: 620)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
     }
 
     private var header: some View {
@@ -113,7 +138,11 @@ struct InAppWebViewPopup: View {
             if isLoading { DSSpinner(size: 11) }
 
             Button {
+                #if os(macOS)
                 NSWorkspace.shared.open(url)
+                #else
+                openURL(url)
+                #endif
             } label: {
                 Image(systemName: "safari").font(.system(size: 12, weight: .medium)).foregroundStyle(DS.inkSecondary)
             }

@@ -6,6 +6,7 @@ import Foundation
 struct NewsArticle: Identifiable, Hashable {
     let id: String            // RSS "<guid>" (unique per story)
     let title: String
+    let content: String       // 2 ~ 3 lines summary/description text
     let publisher: String
     let link: String          // Google News redirect URL; renders the article in-app
     let publishTime: Int      // Unix seconds, 0 if missing
@@ -19,11 +20,12 @@ struct NewsArticle: Identifiable, Hashable {
     var url: URL? { URL(string: link) }
     var publishedAt: Date { Date(timeIntervalSince1970: TimeInterval(publishTime)) }
 
-    init(id: String, title: String, publisher: String, link: String,
+    init(id: String, title: String, content: String = "", publisher: String, link: String,
          publishTime: Int, thumbnailURL: String?, relatedTickers: [String],
          sourceSymbol: String? = nil) {
         self.id = id
         self.title = title
+        self.content = content
         self.publisher = publisher
         self.link = link
         self.publishTime = publishTime
@@ -50,6 +52,91 @@ enum GoogleNewsRSSParser {
         parse(data).map { var a = $0; a.sourceSymbol = sourceSymbol; return a }
     }
 
+    /// Strips HTML tags and decodes common HTML entities from description text.
+    static func cleanHTML(_ html: String) -> String {
+        guard !html.isEmpty else { return "" }
+        var text = html
+        // Decode common XML/HTML entities first so tags like &lt;strong&gt; become <strong>
+        let entities = [
+            ("&quot;", "\""),
+            ("&apos;", "'"),
+            ("&#39;", "'"),
+            ("&lt;", "<"),
+            ("&gt;", ">"),
+            ("&nbsp;", " "),
+            ("&#160;", " "),
+            ("&amp;", "&")
+        ]
+        for (entity, replacement) in entities {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+        // Remove HTML tags <...>
+        text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        // Normalize multiple spaces and newlines
+        return text.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// Intelligently separates a raw RSS headline and description into a clean
+    /// Title (1-2 lines) and Content / Subtitle (2-3 lines).
+    static func splitTitleAndContent(rawTitle: String, rawDescription: String, publisher: String) -> (title: String, content: String) {
+        var title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDesc = cleanHTML(rawDescription)
+
+        // Strip trailing " - <Publisher>" from title if present
+        if !publisher.isEmpty && title.hasSuffix(" - \(publisher)") {
+            title = String(title.dropLast(" - \(publisher)".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let lastDash = title.range(of: " - ", options: .backwards) {
+            let possiblePub = String(title[lastDash.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if possiblePub.count <= 30 && !possiblePub.isEmpty {
+                title = String(title[..<lastDash.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        // If description has substantive text that is different from title and publisher
+        if !cleanDesc.isEmpty && cleanDesc != title && cleanDesc != publisher && !cleanDesc.hasPrefix(title) {
+            return (title, cleanDesc)
+        }
+
+        // Sentence punctuation splits: ". ", "? ", "! "
+        for sep in [". ", "? ", "! "] {
+            if let range = title.range(of: sep) {
+                let firstPart = String(title[..<range.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let secondPart = String(title[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if firstPart.count >= 15 && secondPart.count >= 10 {
+                    let cleanFirst = firstPart.hasSuffix(".") ? String(firstPart.dropLast()) : firstPart
+                    return (cleanFirst, secondPart)
+                }
+            }
+        }
+
+        // Colon split: e.g. "Exclusive: Apple signs major AI deal" or "Apple AI: Why Wall Street is bullish"
+        if let range = title.range(of: ": ") {
+            let prefix = String(title[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let suffix = String(title[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if prefix.count <= 15 && prefix.allSatisfy({ $0.isUppercase || $0.isWhitespace }) {
+                return (suffix, "\(prefix): Latest market coverage and insights.")
+            } else if prefix.count >= 12 && suffix.count >= 12 {
+                return (prefix, suffix)
+            }
+        }
+
+        // Dash split: " — ", " – "
+        for dash in [" — ", " – "] {
+            if let range = title.range(of: dash) {
+                let firstPart = String(title[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let secondPart = String(title[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if firstPart.count >= 12 && secondPart.count >= 12 {
+                    return (firstPart, secondPart)
+                }
+            }
+        }
+
+        // Single headline
+        return (title, cleanDesc.isEmpty || cleanDesc == title ? "" : cleanDesc)
+    }
+
     private final class ParserDelegate: NSObject, XMLParserDelegate {
         var articles: [NewsArticle] = []
 
@@ -60,6 +147,7 @@ enum GoogleNewsRSSParser {
         private var itemGuid = ""
         private var itemPubDate = ""
         private var itemSource = ""
+        private var itemDescription = ""
         private var textBuffer = ""
 
         func parser(_ parser: XMLParser, didStartElement elementName: String,
@@ -68,7 +156,7 @@ enum GoogleNewsRSSParser {
             if elementName == "item" {
                 inItem = true
                 itemTitle = ""; itemLink = ""; itemGuid = ""
-                itemPubDate = ""; itemSource = ""
+                itemPubDate = ""; itemSource = ""; itemDescription = ""
             }
             if inItem {
                 currentElement = elementName
@@ -89,13 +177,21 @@ enum GoogleNewsRSSParser {
             case "guid": itemGuid = textBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             case "pubDate": itemPubDate = textBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             case "source": itemSource = textBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            case "description": itemDescription = textBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             case "item":
                 defer { inItem = false }
                 guard !itemTitle.isEmpty, !itemLink.isEmpty else { return }
+                let publisher = itemSource
+                let (cleanTitle, content) = GoogleNewsRSSParser.splitTitleAndContent(
+                    rawTitle: itemTitle,
+                    rawDescription: itemDescription,
+                    publisher: publisher
+                )
                 articles.append(NewsArticle(
                     id: itemGuid.isEmpty ? itemLink : itemGuid,
-                    title: itemTitle,
-                    publisher: itemSource,
+                    title: cleanTitle.isEmpty ? itemTitle : cleanTitle,
+                    content: content,
+                    publisher: publisher,
                     link: itemLink,
                     publishTime: Self.unixTime(from: itemPubDate),
                     thumbnailURL: nil,

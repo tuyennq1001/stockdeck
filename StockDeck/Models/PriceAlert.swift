@@ -14,14 +14,41 @@ enum AlertCondition: String, Codable, CaseIterable {
     case near52WeekHigh
     /// Fires when the price comes within `threshold`% of the 52-week low.
     case near52WeekLow
+    /// Fires when the price crosses above the trailing 200-day simple moving average.
+    case priceAboveSMA200
+    /// Fires when the price crosses below the trailing 200-day simple moving average.
+    case priceBelowSMA200
+    /// Fires when the price crosses above the trailing 200-day exponential moving average.
+    case priceAboveEMA200
+    /// Fires when the price crosses below the trailing 200-day exponential moving average.
+    case priceBelowEMA200
+    /// Fires when the price crosses above the trailing 200-week simple moving average.
+    case priceAboveWeeklySMA200
+    /// Fires when the price crosses below the trailing 200-week simple moving average.
+    case priceBelowWeeklySMA200
 
     /// Whether the threshold is an absolute price or a percentage.
-    enum ThresholdKind { case price, percent }
+    /// MA conditions carry no user threshold: the moving average is computed
+    /// from price history at evaluation time.
+    enum ThresholdKind { case price, percent, ma }
 
     var thresholdKind: ThresholdKind {
         switch self {
         case .priceAbove, .priceBelow: return .price
         case .dailyChangeUp, .dailyChangeDown, .near52WeekHigh, .near52WeekLow: return .percent
+        case .priceAboveSMA200, .priceBelowSMA200,
+             .priceAboveEMA200, .priceBelowEMA200,
+             .priceAboveWeeklySMA200, .priceBelowWeeklySMA200: return .ma
+        }
+    }
+
+    /// The rolling-average series this condition tracks.
+    var movingAverage: MovingAverage.Kind? {
+        switch self {
+        case .priceAboveSMA200, .priceBelowSMA200: return .sma(period: 200)
+        case .priceAboveEMA200, .priceBelowEMA200: return .ema(period: 200)
+        case .priceAboveWeeklySMA200, .priceBelowWeeklySMA200: return .weeklySMA(period: 200)
+        case .priceAbove, .priceBelow, .dailyChangeUp, .dailyChangeDown, .near52WeekHigh, .near52WeekLow: return nil
         }
     }
 
@@ -34,28 +61,44 @@ enum AlertCondition: String, Codable, CaseIterable {
         case .dailyChangeDown: return "Daily change down by"
         case .near52WeekHigh: return "Near 52-week high"
         case .near52WeekLow: return "Near 52-week low"
+        case .priceAboveSMA200: return "Crosses above SMA 200"
+        case .priceBelowSMA200: return "Crosses below SMA 200"
+        case .priceAboveEMA200: return "Crosses above EMA 200"
+        case .priceBelowEMA200: return "Crosses below EMA 200"
+        case .priceAboveWeeklySMA200: return "Crosses above weekly SMA 200"
+        case .priceBelowWeeklySMA200: return "Crosses below weekly SMA 200"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .priceAbove, .dailyChangeUp, .near52WeekHigh: return "arrow.up.right"
-        case .priceBelow, .dailyChangeDown, .near52WeekLow: return "arrow.down.right"
+        case .priceAbove, .dailyChangeUp, .near52WeekHigh,
+             .priceAboveSMA200, .priceAboveEMA200, .priceAboveWeeklySMA200: return "arrow.up.right"
+        case .priceBelow, .dailyChangeDown, .near52WeekLow,
+             .priceBelowSMA200, .priceBelowEMA200, .priceBelowWeeklySMA200: return "arrow.down.right"
         }
     }
 }
 
 /// A one-shot price alert for a single symbol. After firing, `isEnabled` is set
-/// to false so it does not notify again until the user re-arms it.
+/// to false so it does not notify again until the user re-arms it. MA-based
+/// conditions (`crossing` SMA/EMA) instead stay enabled and fire each time
+/// the price moves to the other side of the rolling average, tracked by
+/// `lastPositionAboveMA`.
 struct PriceAlert: Identifiable, Codable, Equatable {
     var id: UUID
     var symbol: String
     var condition: AlertCondition
-    /// Absolute price for price conditions; a positive percent for the others.
+    /// Absolute price for price conditions; a positive percent for the others;
+    /// unused for MA conditions (the threshold is the moving average itself).
     var threshold: Double
     var isEnabled: Bool
     var createdAt: Date
     var lastTriggeredAt: Date?
+    /// Recency state for crossing MA alerts: `true` if the last evaluation
+    /// saw the price above the average, `false` if below, `nil` before the first
+    /// evaluation. A change of side fires the alert.
+    var lastPositionAboveMA: Bool?
 
     init(id: UUID = UUID(),
          symbol: String,
@@ -63,7 +106,8 @@ struct PriceAlert: Identifiable, Codable, Equatable {
          threshold: Double,
          isEnabled: Bool = true,
          createdAt: Date = Date(),
-         lastTriggeredAt: Date? = nil) {
+         lastTriggeredAt: Date? = nil,
+         lastPositionAboveMA: Bool? = nil) {
         self.id = id
         self.symbol = symbol
         self.condition = condition
@@ -71,6 +115,7 @@ struct PriceAlert: Identifiable, Codable, Equatable {
         self.isEnabled = isEnabled
         self.createdAt = createdAt
         self.lastTriggeredAt = lastTriggeredAt
+        self.lastPositionAboveMA = lastPositionAboveMA
     }
 }
 
@@ -104,6 +149,12 @@ enum AlertEvaluator {
         case .near52WeekLow:
             guard let low = fiftyTwoWeekLow, low > 0 else { return false }
             return price <= low * (1 + threshold / 100)
+        // MA conditions are evaluated separately (crossing logic in `MovingAverage`)
+        // and never pass through this fixed-threshold path.
+        case .priceAboveSMA200, .priceBelowSMA200,
+             .priceAboveEMA200, .priceBelowEMA200,
+             .priceAboveWeeklySMA200, .priceBelowWeeklySMA200:
+            return false
         }
     }
 
@@ -124,6 +175,14 @@ enum AlertEvaluator {
 
     /// Human-readable summary, e.g. "Price rises above 200.00" — used in the UI.
     static func describe(_ alert: PriceAlert, currencySymbol: String) -> String {
+        switch alert.condition {
+        case .priceAboveSMA200, .priceBelowSMA200,
+             .priceAboveEMA200, .priceBelowEMA200,
+             .priceAboveWeeklySMA200, .priceBelowWeeklySMA200:
+            return alert.condition.label
+        default:
+            break
+        }
         switch alert.condition.thresholdKind {
         case .price:
             return "\(alert.condition.label) \(currencySymbol)\(StorageService.formatNumber(alert.threshold, decimals: 2))"
@@ -134,6 +193,79 @@ enum AlertEvaluator {
             default:
                 return "\(alert.condition.label) \(String(format: "%.1f", alert.threshold))%"
             }
+        case .ma:
+            return alert.condition.label
         }
+    }
+}
+
+/// Pure rolling-average math over daily (or weekly-resampled) closes, plus the
+/// cross detection that drives MA-based alerts. Unit under test.
+enum MovingAverage {
+    enum Kind: Equatable {
+        case sma(period: Int)
+        case ema(period: Int)
+        case weeklySMA(period: Int)
+    }
+
+    static func value(kind: Kind, points: [PricePoint]) -> Double? {
+        let daily = points.map(\.close)
+        switch kind {
+        case .sma(let period):
+            return sma(daily, period: period)
+        case .ema(let period):
+            return ema(daily, period: period)
+        case .weeklySMA(let period):
+            return sma(weeklyCloses(from: points), period: period)
+        }
+    }
+
+    /// Simple moving average over the last `period` closes. Nil when insufficient.
+    static func sma(_ closes: [Double], period: Int) -> Double? {
+        guard period > 0, closes.count >= period else { return nil }
+        let window = closes.suffix(period)
+        return window.reduce(0, +) / Double(period)
+    }
+
+    /// Exponential moving average with smoothing factor 2/(period+1), seeded
+    /// with the first close and traversed chronologically. Nil when insufficient.
+    static func ema(_ closes: [Double], period: Int) -> Double? {
+        guard period > 0, !closes.isEmpty else { return nil }
+        let k = 2.0 / Double(period + 1)
+        var emaValue = closes[0]
+        for c in closes.dropFirst() {
+            emaValue = c * k + emaValue * (1 - k)
+        }
+        return emaValue
+    }
+
+    /// Resamples daily points into one close per ISO week — the last close of
+    /// each week — preserving chronological order.
+    static func weeklyCloses(from daily: [PricePoint], calendar: Calendar = .current) -> [Double] {
+        let sorted = daily.sorted { $0.date < $1.date }
+        var lastCloseByWeek: [Date: Double] = [:]
+        for p in sorted where p.close.isFinite {
+            let start = calendar.dateInterval(of: .weekOfYear, for: p.date)?.start
+                ?? calendar.startOfDay(for: p.date)
+            lastCloseByWeek[start] = p.close
+        }
+        return lastCloseByWeek.sorted { $0.key < $1.key }.map(\.value)
+    }
+
+    /// For a given condition, decides whether the price has just crossed the
+    /// average AND records the new side. Returns `nil` when there is nothing to
+    /// decide (no data, or the first evaluation — which only primes the state).
+    /// - Returns: `(fire: Bool, newPositionAbove: Bool)` when evaluated.
+    static func evaluateCross(condition: AlertCondition,
+                              average: Double?,
+                              price: Double,
+                              wasAbove: Bool?) -> (fire: Bool, nowAbove: Bool)? {
+        guard let average, average > 0, price > 0 else { return nil }
+        let nowAbove = price >= average
+        if wasAbove == nil {
+            return (fire: false, nowAbove: nowAbove) // prime silently
+        }
+        let crossed = nowAbove != wasAbove
+        return (fire: crossed, nowAbove: nowAbove)
     }
 }

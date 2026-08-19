@@ -71,3 +71,10 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
   1. AI phải giải thích nguyên nhân và trình bày phương án kỹ thuật rõ ràng.
   2. **CHỈ TIẾN HÀNH VIẾT CODE KHI NGƯỜI DÙNG XÁC NHẬN "OK" / DUYỆT TRỰC TIẾP** bằng lời nhắn trong chat.
   3. Tuyệt đối **không tự động nhảy sang bước viết code / thực thi (Execute)** dù có thông báo chuyển bước từ hệ thống khi người dùng chưa trực tiếp nhắn tin đồng ý.
+
+---
+
+## 10. Cân Nhắc Kỹ Hiệu Năng Trước Khi Sửa Code (Performance First Consideration)
+- **Đánh giá hiệu năng bắt buộc**: Trước khi thực hiện bất kỳ thay đổi nào trong codebase (đặc biệt là quản lý state, tính toán dữ liệu, vòng lặp re-render hoặc lưu trữ I/O), **bắt buộc phải phân tích và đánh giá kỹ lưỡng ảnh hưởng đến hiệu năng** (CPU, Memory, Network Requests, Render latency / Frame rate).
+- **Tối ưu tài nguyên tuyệt đối**: Đảm bảo các giải pháp kỹ thuật luôn tối ưu tài nguyên, không gây giật lag (zero UI frame drops), không gây re-render thừa và tận dụng tối đa cơ chế in-memory cache / debounced I/O.
+

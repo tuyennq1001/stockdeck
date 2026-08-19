@@ -3,58 +3,34 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-REQUESTED_NAME="${1:-}"
-
-if [ -n "$REQUESTED_NAME" ]; then
-    DEVICE_ID=$(xcrun simctl list devices available | grep "$REQUESTED_NAME" | head -1 | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/' || true)
-else
-    DEVICE_ID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/' || true)
-fi
-
-if [ -z "$DEVICE_ID" ]; then
-    echo "No matching iPhone simulator found. Available devices:"
-    xcrun simctl list devices available | grep -E "iPhone|iPad"
-    exit 1
-fi
-
-DEVICE_NAME=$(xcrun simctl list devices available | grep "$DEVICE_ID" | head -1 | sed -E 's/^[[:space:]]*([^(]+).*/\1/' | xargs)
-
-echo "Booting simulator: $DEVICE_NAME ($DEVICE_ID)..."
-xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-open -a Simulator
-
-SDK_PATH=$(xcrun --sdk iphonesimulator --show-sdk-path)
+APP=".build/StockDeck-iOS.app"
+SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 TRIPLE="arm64-apple-ios17.0-simulator"
-APP_DIR=".build/StockDeck-iOS.app"
+BUNDLE_ID="com.terry.stockdeck.ios"
 
-echo "Building StockDeck for iOS Simulator ($DEVICE_NAME)..."
-swift build --sdk "$SDK_PATH" --triple "$TRIPLE"
+echo "Building StockDeck for iOS Simulator..."
+swift build --triple "$TRIPLE" --sdk "$SDK_PATH"
 
-# Find binary location dynamically
-EXECUTABLE_PATH=$(find .build -path "*ios-simulator*/debug/StockDeck" -type f | head -1)
+PRODUCTS=".build/arm64-apple-ios-simulator/debug"
 
-if [ -z "$EXECUTABLE_PATH" ]; then
-    echo "Error: StockDeck executable for iOS Simulator not found!"
-    exit 1
-fi
+echo "Assembling iOS app bundle..."
+rm -rf "$APP"
+mkdir -p "$APP"
 
-PRODUCTS_DIR=$(dirname "$EXECUTABLE_PATH")
+cp "$PRODUCTS/StockDeck" "$APP/StockDeck"
+chmod +x "$APP/StockDeck"
 
-echo "Assembling iOS App Bundle ($APP_DIR)..."
-rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR"
-
-cp "$EXECUTABLE_PATH" "$APP_DIR/StockDeck"
-cp "StockDeck/Resources/AppIcon.png" "$APP_DIR/AppIcon.png" 2>/dev/null || true
-cp "StockDeck/Resources/AppLogo.png" "$APP_DIR/AppLogo.png" 2>/dev/null || true
-
-for bundle in "$PRODUCTS_DIR"/*.bundle; do
-    if [ -d "$bundle" ]; then
-        cp -R "$bundle" "$APP_DIR/"
-    fi
+# Copy resources & bundles
+for bundle in "$PRODUCTS"/*.bundle; do
+    [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/"
 done
 
-cat > "$APP_DIR/Info.plist" << EOF
+# Copy icons & images if available
+cp "StockDeck/Resources/AppIcon.png" "$APP/" 2>/dev/null || true
+cp "StockDeck/Resources/AppLogo.png" "$APP/" 2>/dev/null || true
+
+# Write iOS Info.plist
+cat > "$APP/Info.plist" << 'PLISTEOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -62,39 +38,80 @@ cat > "$APP_DIR/Info.plist" << EOF
     <key>CFBundleExecutable</key>
     <string>StockDeck</string>
     <key>CFBundleIdentifier</key>
-    <string>com.simone.stockdeck.ios</string>
+    <string>com.terry.stockdeck.ios</string>
     <key>CFBundleName</key>
     <string>StockDeck</string>
     <key>CFBundleDisplayName</key>
     <string>StockDeck</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <key>MinimumOSVersion</key>
-    <string>17.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>
         <integer>2</integer>
+    </array>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
     </array>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>StockDeck needs access to import and export your portfolio and watchlist files.</string>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
 </dict>
 </plist>
-EOF
+PLISTEOF
 
-codesign --deep --sign - --force "$APP_DIR" 2>/dev/null || true
+echo "APPL????" > "$APP/PkgInfo"
 
-echo "Installing StockDeck on $DEVICE_NAME..."
-xcrun simctl install "$DEVICE_ID" "$APP_DIR"
+# Code sign for simulator (ad-hoc)
+codesign --force --sign - --timestamp=none "$APP" 2>/dev/null || true
 
-echo "Launching StockDeck on $DEVICE_NAME..."
-xcrun simctl launch "$DEVICE_ID" com.simone.stockdeck.ios
+echo "Checking iOS Simulator..."
+# Find booted device or pick default iPhone
+BOOTED_DEVICE="$(xcrun simctl list devices | grep "(Booted)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
 
-echo "StockDeck iOS App launched successfully on $DEVICE_NAME!"
+if [[ -z "$BOOTED_DEVICE" ]]; then
+    DEVICE_ID="$(xcrun simctl list devices available | grep -E "iPhone 17 Pro \(" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
+    if [[ -z "$DEVICE_ID" ]]; then
+        DEVICE_ID="$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
+    fi
+    echo "Booting simulator ($DEVICE_ID)..."
+    xcrun simctl boot "$DEVICE_ID" || true
+    TARGET_DEVICE="$DEVICE_ID"
+else
+    echo "Using already booted simulator ($BOOTED_DEVICE)..."
+    TARGET_DEVICE="$BOOTED_DEVICE"
+fi
+
+open -a Simulator || true
+
+echo "Terminating previous instance of $BUNDLE_ID..."
+xcrun simctl terminate "$TARGET_DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+
+echo "Installing $APP on simulator..."
+xcrun simctl install "$TARGET_DEVICE" "$APP"
+
+echo "Launching $BUNDLE_ID..."
+xcrun simctl launch "$TARGET_DEVICE" "$BUNDLE_ID"
+
+echo "StockDeck iOS launched successfully!"

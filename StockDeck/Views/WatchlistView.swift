@@ -1,4 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+private enum WatchlistCol {
+    static let symbol: CGFloat = 110
+    static let sparkline: CGFloat = 80
+    static let price: CGFloat = 94
+    static let change: CGFloat = 85
+}
 
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
@@ -20,43 +28,45 @@ struct WatchlistView: View {
     @State private var dropIndicator: DropIndicator<String>? = nil
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     @State private var alertSymbol: String? = nil
-    @State private var sortColumn: SortColumn = .manual
-    @State private var sortAscending: Bool = true
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
+    @State private var showFileImporter: Bool = false
+    @State private var importAlertMessage: String? = nil
 
-    enum SortColumn {
-        case manual, symbol, price, absoluteChange, changePercent
+    private var currentSortKey: WatchlistSortKey {
+        WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
+    }
+
+    private var currentSortAsc: Bool {
+        storageService.currentWatchlist.sortAsc ?? true
+    }
+
+    private func setSort(_ key: WatchlistSortKey, ascending: Bool) {
+        storageService.setWatchlistSort(key: key.rawString, ascending: ascending, for: storageService.currentWatchlist.id)
+    }
+
+    private func toggleSort(_ key: WatchlistSortKey) {
+        let newAsc: Bool
+        if currentSortKey == key {
+            newAsc = !currentSortAsc
+        } else {
+            newAsc = (key == .order || key == .symbol)
+        }
+        setSort(key, ascending: newAsc)
     }
 
     var sortedSymbols: [String] {
-        if sortColumn == .manual {
-            return sortAscending ? storageService.watchlist : Array(storageService.watchlist.reversed())
-        }
-        return storageService.watchlist.sorted { a, b in
-            let qa = stockService.quotes[a]
-            let qb = stockService.quotes[b]
-            let result: Bool
-            switch sortColumn {
-            case .manual:
-                result = true
-            case .symbol:
-                result = a.localizedCompare(b) == .orderedAscending
-            case .price:
-                let pa = qa?.price ?? 0
-                let pb = qb?.price ?? 0
-                result = pa < pb
-            case .absoluteChange:
-                let ca = qa?.change ?? 0
-                let cb = qb?.change ?? 0
-                result = ca < cb
-            case .changePercent:
-                let ca = qa?.changePercent ?? 0
-                let cb = qb?.changePercent ?? 0
-                result = ca < cb
-            }
-            return sortAscending ? result : !result
-        }
+        StorageService.sortWatchlistSymbols(
+            storageService.watchlist,
+            key: currentSortKey,
+            ascending: currentSortAsc,
+            quotes: stockService.quotes,
+            history: stockService.watchlistHistory,
+            priceHistoryMax: stockService.priceHistoryMax,
+            priceRate: { stockService.priceRate(from: $0) },
+            rate: { stockService.rate(from: $0) },
+            showExtendedHours: storageService.showExtendedHours
+        )
     }
 
     var filteredSymbols: [String] { sortedSymbols }
@@ -80,17 +90,15 @@ struct WatchlistView: View {
                         draggingId: $draggingSymbol,
                         isHorizontal: false,
                         makeDragItem: {
-                            if sortColumn != .manual || !sortAscending {
-                                sortColumn = .manual
-                                sortAscending = true
+                            if currentSortKey != .order || !currentSortAsc {
+                                setSort(.order, ascending: true)
                             }
                             if previewSymbolOrder.isEmpty { previewSymbolOrder = storageService.watchlist }
                             return NSItemProvider(object: symbol as NSString)
                         },
                         onMove: { src, tgt, placement in
-                            if sortColumn != .manual || !sortAscending {
-                                sortColumn = .manual
-                                sortAscending = true
+                            if currentSortKey != .order || !currentSortAsc {
+                                setSort(.order, ascending: true)
                             }
                             moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
                         },
@@ -132,20 +140,22 @@ struct WatchlistView: View {
                         .fontWeight(.bold)
                         .lineLimit(1)
                 }
-                .frame(width: 105, alignment: .leading)
+                .frame(width: WatchlistCol.symbol, alignment: .leading)
 
-                Color.clear
-                    .frame(width: 70) // Price
-                if storageService.showAbsoluteChange {
-                    Color.clear
-                        .frame(width: 80) // Change
+                if storageService.showWatchlistSparkline {
+                    Color.clear.frame(width: WatchlistCol.sparkline).padding(.leading, 6)
                 }
-                Color.clear
-                    .frame(width: 70) // Today %
 
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if storageService.showAbsoluteChange {
+                    Color.clear.frame(width: WatchlistCol.price)
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: WatchlistCol.change, alignment: .trailing)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 3)
@@ -155,6 +165,33 @@ struct WatchlistView: View {
                 watchlistContextMenu(symbol: symbol)
             }
         }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 0) {
+            sortHeader("Symbol", column: .symbol)
+                .frame(width: WatchlistCol.symbol, alignment: .leading)
+            if storageService.showWatchlistSparkline {
+                Text("30D")
+                    .padding(.leading, 6)
+                    .frame(width: WatchlistCol.sparkline, alignment: .center)
+            }
+            if storageService.showAbsoluteChange {
+                sortHeader("Price", column: .price)
+                    .frame(width: WatchlistCol.price, alignment: .trailing)
+                sortHeader("Change", column: .metric(.todayChange))
+                    .frame(width: WatchlistCol.change, alignment: .trailing)
+            } else {
+                sortHeader("Price", column: .price)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .font(.inter(11, weight: .medium, relativeTo: .caption))
+        .foregroundColor(.secondary)
+        .tracking(0.8)
+        .textCase(.uppercase)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     var body: some View {
@@ -180,47 +217,24 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                HStack(spacing: 0) {
-                    sortHeader("Symbol", column: .symbol)
-                        .frame(width: 105, alignment: .leading)
-                    sortHeader("Price", column: .price)
-                        .frame(width: 70, alignment: .trailing)
-                    if storageService.showAbsoluteChange {
-                        sortHeader("Change", column: .absoluteChange)
-                            .frame(width: 80, alignment: .trailing)
-                    }
-                    sortHeader("Today %", column: .changePercent)
-                        .frame(width: 70, alignment: .trailing)
-                    Text("Ext")
-                        .font(.inter(10, weight: .medium, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                        .tracking(0.8)
-                        .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .font(.inter(10, weight: .medium, relativeTo: .caption))
-                .foregroundColor(.secondary)
-                .tracking(0.8)
-                .textCase(.uppercase)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                headerRow
 
                 Divider()
 
-            flatList
+                flatList
 
-            Divider()
+                Divider()
 
-            Button(action: { showSearch = true }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Add stock")
+                Button(action: { showSearch = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add stock")
+                    }
+                    .font(.inter(10, relativeTo: .caption))
                 }
-                .font(.inter(10, relativeTo: .caption))
-            }
-            .buttonStyle(.borderless)
-            .pointingHandCursor()
-            .padding(8)
+                .buttonStyle(.borderless)
+                .pointingHandCursor()
+                .padding(8)
             }
         }
         .sheet(item: Binding<AddToPortfolioItem?>(
@@ -297,6 +311,61 @@ struct WatchlistView: View {
             .onDrop(of: [.text], delegate: WatchlistCommitDelegate(
                 onCommit: { commitSymbolPreview() }
             ))
+            .onAppear {
+                Task {
+                    await stockService.ensureSparklines(for: storageService.watchlist)
+                }
+            }
+            .onChange(of: storageService.selectedWatchlistId) { _, _ in
+                Task {
+                    await stockService.ensureSparklines(for: storageService.watchlist)
+                }
+            }
+            .onChange(of: storageService.watchlist) { _, newWatchlist in
+                Task {
+                    await stockService.ensureSparklines(for: newWatchlist)
+                }
+            }
+            .fileImporter(
+                isPresented: $showFileImporter,
+                allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
+            ) { result in
+                switch result {
+                case .success(let url):
+                    let accessed = url.startAccessingSecurityScopedResource()
+                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                    if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
+                        var messages: [String] = []
+                        for (wlName, symbols) in parsed {
+                            let deduped = Set(symbols)
+                            if let existing = storageService.watchlists.first(where: {
+                                $0.name.trimmingCharacters(in: .whitespaces).lowercased()
+                                == wlName.trimmingCharacters(in: .whitespaces).lowercased()
+                            }) {
+                                storageService.addMultipleToWatchlist(deduped, targetWatchlistId: existing.id)
+                                messages.append("\(deduped.count) symbols merged into “\(wlName)”")
+                            } else {
+                                let created = storageService.createWatchlist(name: wlName)
+                                storageService.addMultipleToWatchlist(deduped, targetWatchlistId: created.id)
+                                messages.append("\(deduped.count) symbols to new “\(wlName)”")
+                            }
+                        }
+                        importAlertMessage = "Imported \(parsed.count) watchlist(s): " + messages.joined(separator: "; ")
+                    } else {
+                        importAlertMessage = "Could not parse watchlist file or no valid symbols found."
+                    }
+                case .failure(let error):
+                    importAlertMessage = "Failed to import file: \(error.localizedDescription)"
+                }
+            }
+            .alert("Watchlist Import", isPresented: Binding<Bool>(
+                get: { importAlertMessage != nil },
+                set: { if !$0 { importAlertMessage = nil } }
+            )) {
+                Button("OK") { importAlertMessage = nil }
+            } message: {
+                if let msg = importAlertMessage { Text(msg) }
+            }
     }
 
     /// The watchlist tabs in order: the local drag preview while dragging, else the
@@ -342,6 +411,7 @@ struct WatchlistView: View {
                                         Capsule()
                                             .fill(selected ? DS.brand : Color.primary.opacity(0.06))
                                     )
+                                    .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                             .pointingHandCursor()
@@ -373,20 +443,37 @@ struct WatchlistView: View {
                         }
                     }
 
-                    Button(action: {
-                        newWatchlistName = ""
-                        showNewWatchlistAlert = true
-                    }) {
+                    Menu {
+                        Button {
+                            newWatchlistName = ""
+                            showNewWatchlistAlert = true
+                        } label: {
+                            Label("New Watchlist", systemImage: "plus")
+                        }
+
+                        Button {
+                            #if os(macOS)
+                            PortfolioIO.pickAndParseWatchlist(storageService: storageService, restoreActivationPolicy: true) { msg in
+                                importAlertMessage = msg
+                            }
+                            #else
+                            showFileImporter = true
+                            #endif
+                        } label: {
+                            Label("Import Watchlist (CSV/XLSX/TXT)…", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
                         Image(systemName: "plus")
                             .font(.inter(10, weight: .bold, relativeTo: .caption))
                             .foregroundColor(DS.brand)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(Capsule().fill(DS.brand.opacity(0.12)))
+                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
                     .pointingHandCursor()
-                    .help("Create new watchlist")
+                    .help("Add or import watchlist")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -400,22 +487,18 @@ struct WatchlistView: View {
     }
 
     @ViewBuilder
-    private func sortHeader(_ title: String, column: SortColumn) -> some View {
+    private func sortHeader(_ title: String, column: WatchlistSortKey) -> some View {
         Button(action: {
-            if sortColumn == column {
-                sortAscending.toggle()
-            } else {
-                sortColumn = column
-                sortAscending = (column == .manual || column == .symbol)
-            }
+            toggleSort(column)
         }) {
             HStack(spacing: 2) {
                 Text(title)
-                if sortColumn == column {
-                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                if currentSortKey == column {
+                    Image(systemName: currentSortAsc ? "chevron.up" : "chevron.down")
                         .font(.inter(8, relativeTo: .caption2))
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
@@ -460,9 +543,8 @@ struct WatchlistView: View {
         if let idx = storageService.watchlist.firstIndex(of: symbol) {
             Divider()
             Button {
-                if sortColumn != .manual || !sortAscending {
-                    sortColumn = .manual
-                    sortAscending = true
+                if currentSortKey != .order || !currentSortAsc {
+                    setSort(.order, ascending: true)
                 }
                 moveSymbolInWatchlist(symbol, by: -1)
             } label: {
@@ -471,9 +553,8 @@ struct WatchlistView: View {
             .disabled(idx == 0)
 
             Button {
-                if sortColumn != .manual || !sortAscending {
-                    sortColumn = .manual
-                    sortAscending = true
+                if currentSortKey != .order || !currentSortAsc {
+                    setSort(.order, ascending: true)
                 }
                 moveSymbolInWatchlist(symbol, by: 1)
             } label: {
@@ -682,81 +763,96 @@ struct QuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
 
-    var body: some View {
-        HStack(spacing: 0) {
-
-            // Col 1: Logo + symbol + name
-            let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
-            HStack(spacing: 5) {
-                SymbolLogo(symbol: quote.symbol, size: 20)
-                VStack(alignment: .leading, spacing: 0) {
-                    // Single stocks / ETFs keep the raw ticker as the primary label;
-                    // indices, FX pairs, and futures use their conventional name.
-                    Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                        .font(.inter(12, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                    if storageService.showCompanyName {
-                        Text(isDisplayAsset ? quote.symbol : quote.name)
-                            .font(.inter(9, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            .frame(width: 105, alignment: .leading)
-
-            // Col 2: Price (regular closing price formatted compact, unified with Portfolio)
-            let displayPrice = quote.price
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                if storageService.showDayRange, let high = quote.dayHigh, let low = quote.dayLow {
-                    Text("\(StorageService.formatCompactNumber(low, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low))) – \(StorageService.formatCompactNumber(high, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: high)))")
-                        .font(.inter(9, relativeTo: .caption).monospacedDigit())
+    private var symbolCell: some View {
+        let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
+        return HStack(spacing: 5) {
+            SymbolLogo(symbol: quote.symbol, size: 20)
+            VStack(alignment: .leading, spacing: 0) {
+                // Single stocks / ETFs keep the raw ticker as the primary label;
+                // indices, FX pairs, and futures use their conventional name.
+                Text(isDisplayAsset ? quote.displayName : quote.symbol)
+                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.bold)
+                    .lineLimit(1)
+                if storageService.showCompanyName {
+                    Text(isDisplayAsset ? quote.symbol : quote.name)
+                        .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 70, alignment: .trailing)
+        }
+        .frame(width: WatchlistCol.symbol, alignment: .leading)
+    }
 
-            // Col 3: Change (Absolute change value, follows valueDecimals/format settings)
-            if storageService.showAbsoluteChange {
-                Text((quote.change >= 0 ? "+" : "") + StorageService.formatCompactNumber(quote.change, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.change)))
-                    .font(.inter(12, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
+    private var priceCell: some View {
+        let displayPrice = quote.price
+        let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
+        let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
+        let extLabel: String = quote.marketStateLabel.isEmpty ? "Ext" : quote.marketStateLabel
+
+        return VStack(alignment: .trailing, spacing: 1) {
+            Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+            if let extPct {
+                HStack(spacing: 2) {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    Text("·")
+                        .font(.inter(10, relativeTo: .caption2))
+                        .foregroundColor(.secondary)
+                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            } else {
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.semibold)
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(width: 80, alignment: .trailing)
+                    .minimumScaleFactor(0.85)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var changeCell: some View {
+        let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
+        let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
+        Text((quote.change >= 0 ? "+" : "") + formatted)
+            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+            .fontWeight(.medium)
+            .foregroundColor(quote.isPositive ? DS.up : DS.down)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            symbolCell
+
+            // Col 2: 30D Sparkline (add 6pt left padding to separate from Symbol)
+            if storageService.showWatchlistSparkline {
+                Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 20)
+                    .padding(.leading, 6)
             }
 
-            // Col 4: Today % (Percent change)
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(12, relativeTo: .body).monospacedDigit())
-                .fontWeight(.bold)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: 70, alignment: .trailing)
-
-            // Col 5: Ext (Extended hours % change)
-            VStack(alignment: .trailing, spacing: 0) {
-                if storageService.showExtendedHours,
-                   let extPct = quote.extendedChangePercent {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                } else {
-                    Text("—")
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                }
+            // Col 3: Price & Col 4: Change
+            if storageService.showAbsoluteChange {
+                priceCell.frame(width: WatchlistCol.price, alignment: .trailing)
+                changeCell.frame(width: WatchlistCol.change, alignment: .trailing)
+            } else {
+                priceCell.frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4.5)
     }
 }

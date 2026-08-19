@@ -1,5 +1,7 @@
 #if os(macOS)
 import AppKit
+#endif
+import Foundation
 import UniformTypeIdentifiers
 
 /// Shared NSSavePanel/NSOpenPanel plumbing for portfolio export/import,
@@ -9,6 +11,7 @@ import UniformTypeIdentifiers
 @MainActor
 enum PortfolioIO {
 
+    #if os(macOS)
     /// Presents an NSSavePanel and writes the exported JSON on confirm.
     ///
     /// - Parameter restoreActivationPolicy: when true, temporarily flips the app
@@ -69,6 +72,7 @@ enum PortfolioIO {
             try? data.write(to: url, options: .atomic)
         }
     }
+    #endif
 
     struct ImportResult: Identifiable {
         let id = UUID()
@@ -77,6 +81,7 @@ enum PortfolioIO {
         let isFundImport: Bool
     }
 
+    #if os(macOS)
     /// Helper to pick a file and parse standard holdings for preview.
     static func pickAndParseStandard(
         storageService: StorageService,
@@ -149,6 +154,7 @@ enum PortfolioIO {
             }
         }
     }
+    #endif
 
     static func parseStandardFile(fileURL url: URL, storageService: StorageService) -> ImportResult? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -178,6 +184,7 @@ enum PortfolioIO {
         return ImportResult(items: items, suggestedPortfolioName: suggestedName, isFundImport: true)
     }
 
+    #if os(macOS)
     /// Generates a clean sample Excel (.xlsx) file and saves it directly to ~/Downloads.
     static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool, onAlert: ((String) -> Void)? = nil) {
         guard let data = SpreadsheetIO.generateSampleXLSXData() else { return }
@@ -289,6 +296,7 @@ enum PortfolioIO {
             onAlert?("Could not save watchlist sample file.")
         }
     }
+    #endif
 }
 #else
 import Foundation

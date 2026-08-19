@@ -34,7 +34,6 @@ struct SettingsWideView: View {
                     }
                     VStack(alignment: .leading, spacing: DS.gap) {
                         tradingCard
-                        watchlistCard
                         notificationsCard
                         appearanceCard
                         aboutCard
@@ -245,20 +244,14 @@ struct SettingsWideView: View {
             SettingToggle("Extended hours (Pre/Post)",
                           caption: "Show pre-market and after-hours prices",
                           isOn: $storageService.showExtendedHours)
+            SettingDivider()
+            SettingRow("Default chart", caption: "Style used when opening a stock chart") {
+                DSPicker(options: [("line", "Line chart"), ("tradingview", "Trading View")],
+                         selection: $storageService.defaultChartStyle, width: 160)
+            }
         }
     }
 
-    private var watchlistCard: some View {
-        SettingsCard(title: "Watchlist row details") {
-            SettingToggle("Company name", isOn: $storageService.showCompanyName)
-            SettingDivider()
-            SettingToggle("Day range (low – high)", isOn: $storageService.showDayRange)
-            SettingDivider()
-            SettingToggle("52-week range bar", isOn: $storageService.show52WeekBar)
-            SettingDivider()
-            SettingToggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
-        }
-    }
 
     private var menuBarCard: some View {
         SettingsCard(title: "Menu bar") {

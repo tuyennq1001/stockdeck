@@ -30,10 +30,10 @@ enum NoteImageStore {
     }
 }
 
-#if os(macOS)
-// MARK: - Editor Model (holds NSTextView reference for toolbar)
+// MARK: - Editor Model
 
 final class EditorModel: ObservableObject {
+    #if os(macOS)
     weak var textView: NSTextView?
 
     func insertFormatting(prefix: String, suffix: String) {
@@ -67,6 +67,26 @@ final class EditorModel: ObservableObject {
             tv.didChangeText()
         }
     }
+    #else
+    weak var textView: UITextView?
+
+    func insertFormatting(prefix: String, suffix: String) {
+        guard let tv = textView, let range = tv.selectedTextRange else { return }
+        let selected = tv.text(in: range) ?? ""
+        let replacement = selected.isEmpty ? "\(prefix)text\(suffix)" : "\(prefix)\(selected)\(suffix)"
+        tv.replace(range, withText: replacement)
+    }
+
+    func insertImageMarkdown(filename: String) {
+        guard let tv = textView else { return }
+        let md = "\n![image](note-image://\(filename))\n"
+        if let range = tv.selectedTextRange {
+            tv.replace(range, withText: md)
+        } else {
+            tv.text = (tv.text ?? "") + md
+        }
+    }
+    #endif
 
     func handleImageDrop(_ data: Data) {
         let filename = NoteImageStore.saveImage(data, ext: "png")
@@ -78,6 +98,7 @@ final class EditorModel: ObservableObject {
 
 // MARK: - WYSIWYG Markdown Editor
 
+#if os(macOS)
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     var model: EditorModel
@@ -127,17 +148,48 @@ struct MarkdownEditor: NSViewRepresentable {
     }
 }
 #else
-final class EditorModel: ObservableObject {
-    func insertFormatting(prefix: String, suffix: String) {}
-    func insertImageMarkdown(filename: String) {}
-    func handleImageDrop(_ data: Data) {}
-}
-
-struct MarkdownEditor: View {
+struct MarkdownEditor: UIViewRepresentable {
     @Binding var text: String
     var model: EditorModel
-    var body: some View {
-        TextEditor(text: $text)
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, model: model)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.font = .systemFont(ofSize: 13)
+        textView.textColor = .label
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        context.coordinator.textView = textView
+        model.textView = textView
+        textView.text = text
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text && !context.coordinator.isInternalChange {
+            uiView.text = text
+        }
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        @Binding var text: String
+        var model: EditorModel
+        weak var textView: UITextView?
+        var isInternalChange = false
+
+        init(text: Binding<String>, model: EditorModel) {
+            _text = text; self.model = model
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            isInternalChange = true
+            text = textView.text
+            isInternalChange = false
+        }
     }
 }
 #endif

@@ -2,6 +2,7 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
+public typealias PlatformNativeColor = NSColor
 
 extension NSColor {
     /// Parses "#RRGGBB" / "RRGGBB" (and optional alpha "#RRGGBBAA"). Returns nil if invalid.
@@ -57,6 +58,7 @@ extension StorageService {
 
 #else
 import UIKit
+public typealias PlatformNativeColor = UIColor
 
 extension UIColor {
     /// Parses "#RRGGBB" / "RRGGBB" (and optional alpha "#RRGGBBAA"). Returns nil if invalid.

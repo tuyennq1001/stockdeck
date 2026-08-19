@@ -1,8 +1,8 @@
-import SwiftUI
 #if os(macOS)
 import AppKit
 import Sparkle
 #endif
+import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var storageService: StorageService
@@ -18,7 +18,6 @@ struct SettingsView: View {
     @AppStorage("settings.group.general") private var groupGeneral = true
     @AppStorage("settings.group.currency") private var groupCurrency = false
     @AppStorage("settings.group.positions") private var groupPositions = false
-    @AppStorage("settings.group.watchlist") private var groupWatchlist = false
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
@@ -40,6 +39,7 @@ struct SettingsView: View {
     }
 
     private func chooseWorkspaceFolder() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -49,6 +49,7 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             storageService.aiWorkspacePath = url.path
         }
+        #endif
     }
 
     var body: some View {
@@ -151,6 +152,14 @@ struct SettingsView: View {
                     Toggle("Show extended hours (Pre/Post)", isOn: $storageService.showExtendedHours)
                         .toggleStyle(.switch)
                     caption("Show pre-market and after-hours prices")
+
+                    subHeader("Default chart")
+                    Picker("Default chart", selection: $storageService.defaultChartStyle) {
+                        Text("Line chart").tag("line")
+                        Text("Trading View").tag("tradingview")
+                    }
+                    .pickerStyle(.menu)
+                    caption("Default style when opening a stock chart")
                 }
 
                 // MARK: - AI Review
@@ -214,18 +223,6 @@ struct SettingsView: View {
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
                 }
 
-                // MARK: - Watchlist Display
-                SettingsGroup(title: "Watchlist", icon: "list.bullet", isExpanded: $groupWatchlist) {
-                    Toggle("Company name", isOn: $storageService.showCompanyName)
-                        .toggleStyle(.switch)
-                    Toggle("Day range (low – high)", isOn: $storageService.showDayRange)
-                        .toggleStyle(.switch)
-                    Toggle("52-week range bar", isOn: $storageService.show52WeekBar)
-                        .toggleStyle(.switch)
-                    Toggle("Absolute change value", isOn: $storageService.showAbsoluteChange)
-                        .toggleStyle(.switch)
-                    caption("Choose which details appear in each watchlist row")
-                }
 
                 #if os(macOS)
                 // MARK: - Menu Bar (display + colors)
@@ -290,6 +287,7 @@ struct SettingsView: View {
                     }
 
                     subHeader("Colors")
+                    #if os(macOS)
                     ColorPicker("Gain color", selection: Binding(
                         get: { Color(nsColor: storageService.gainColor) },
                         set: { storageService.gainColorHex = $0.hexString }
@@ -298,6 +296,16 @@ struct SettingsView: View {
                         get: { Color(nsColor: storageService.lossColor) },
                         set: { storageService.lossColorHex = $0.hexString }
                     ))
+                    #else
+                    ColorPicker("Gain color", selection: Binding(
+                        get: { Color(uiColor: storageService.gainColor) },
+                        set: { storageService.gainColorHex = $0.hexString }
+                    ))
+                    ColorPicker("Loss color", selection: Binding(
+                        get: { Color(uiColor: storageService.lossColor) },
+                        set: { storageService.lossColorHex = $0.hexString }
+                    ))
+                    #endif
                     Button("Reset to default green/red") {
                         storageService.gainColorHex = ""
                         storageService.lossColorHex = ""
@@ -383,7 +391,11 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Button {
                             if let url = URL(string: "https://github.com/sponsors/tuyennq1001") {
-                                openURL(url)
+                                #if os(macOS)
+                                NSWorkspace.shared.open(url)
+                                #else
+                                UIApplication.shared.open(url)
+                                #endif
                             }
                         } label: {
                             Label("Become a Sponsor", systemImage: "heart.fill")
@@ -394,7 +406,11 @@ struct SettingsView: View {
 
                         Button {
                             if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") {
-                                openURL(url)
+                                #if os(macOS)
+                                NSWorkspace.shared.open(url)
+                                #else
+                                UIApplication.shared.open(url)
+                                #endif
                             }
                         } label: {
                             Label("Star on GitHub", systemImage: "star.fill")

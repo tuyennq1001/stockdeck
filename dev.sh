@@ -43,9 +43,13 @@ cat > "$APP/Contents/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <!-- Keep development builds isolated from stale Control Center state
-         created by older ad-hoc bundles that used com.simone.stockdeck.dev. -->
-    <string>com.simone.stockdeck.development</string>
+    <!-- Launch via `open` (Finder-style) so macOS 26 registers the Menu Bar item
+         reliably and keeps the process alive. Keep this bundle ID stable: the
+         Binance API credentials live in the keychain under this identity, and a
+         fresh suffix silently breaks access to them (the app re-asks for keys).
+         If the Menu Bar item gets stuck hidden, re-enable it in System Settings
+         rather than bumping the suffix. -->
+    <string>com.terry.stockdeck.development.v4</string>
     <key>CFBundleName</key>
     <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>
@@ -62,8 +66,11 @@ cat > "$APP/Contents/Info.plist" << EOF
 </dict>
 </plist>
 EOF
+SIGN_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}')
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
-codesign --deep --sign - --force "$APP" 2>/dev/null
+echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
+codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
 
 echo "Killing old StockDeck process instances..."
 pkill -9 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
@@ -71,7 +78,15 @@ pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 sleep 0.5
 
 echo "Launching StockDeck DEV..."
-# By default a plain launch (menu-bar only) — the desktop window does NOT pop up
-# automatically. Pass SD_OPEN_WINDOW=1 to auto-open it after 2.5s (used for
-# deterministic screenshots of the full window).
-SD_OPEN_WINDOW=${SD_OPEN_WINDOW:-0} "$APP/Contents/MacOS/StockDeck" >/dev/null 2>&1 &
+# Launch via `open` (Finder-style): macOS 26 registers the Menu Bar item
+# correctly and keeps the process alive, which a raw binary launch does not.
+# By default the desktop window auto-opens so the app is visibly running.
+# The Menu Bar icon itself is governed by macOS 26's per-app Control Center
+# toggle (System Settings → Control Center → Menu Bar items): if it is missing
+# or hidden, enable it there; bumping Bundle ID / autosave name does not help.
+SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-0}"
+if [ "$SD_OPEN_WINDOW" = "1" ]; then
+    SD_OPEN_WINDOW=1 open "$APP"
+else
+    SD_OPEN_WINDOW=0 open "$APP"
+fi

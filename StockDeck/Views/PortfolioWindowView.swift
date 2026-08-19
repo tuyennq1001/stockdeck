@@ -39,13 +39,14 @@ struct PortfolioWindowView: View {
     @State private var showSearch = false
     @State private var addHoldingTarget: AddHoldingTarget?
     @State private var editHolding: EditTarget?
-    @State private var showNewPortfolio = false
+    @State private var showNewPortfolioAlert = false
     @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
     @State private var renameWatchlistName = ""
+    @State private var deletePortfolioTarget: PortfolioRef? = nil
     @State private var deleteWatchlistTarget: Watchlist? = nil
     @State private var draggingWatchlistId: UUID? = nil
     /// Live display order of sidebar watchlists while dragging: no storage writes
@@ -102,6 +103,10 @@ struct PortfolioWindowView: View {
         .onChange(of: storageService.showNewsTab) { _, showNews in
             if !showNews, selection == .home { navigate(to: .watchlist) }
         }
+        // Clicking an alert notification lands the user on the Alerts tab.
+        .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
+            navigate(to: .alerts)
+        }
         .onChange(of: draggingWatchlistId) { _, newValue in
             if newValue == nil { previewWatchlistIds = [] }
         }
@@ -118,8 +123,9 @@ struct PortfolioWindowView: View {
             notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
             export: { exportPortfolios([$0]) },
             delete: { id in
-                storageService.deletePortfolio(id: id)
-                if selection == .portfolio(id) { navigate(to: .portfoliosAll) }
+                if let p = storageService.portfolios.first(where: { $0.id == id }) {
+                    deletePortfolioTarget = PortfolioRef(id: p.id, name: p.name)
+                }
             }))
         .sheet(isPresented: $showSearch) {
             WatchlistSearchSheet { showSearch = false }
@@ -140,7 +146,17 @@ struct PortfolioWindowView: View {
             HoldingFormSheet(mode: .edit(portfolioId: target.portfolioId, holding: target.holding)) { editHolding = nil }
                 .environmentObject(stockService).environmentObject(storageService)
         }
-        .sheet(isPresented: $showNewPortfolio) { newPortfolioSheet }
+        .alert("New Portfolio", isPresented: $showNewPortfolioAlert) {
+            TextField("Portfolio name", text: $newPortfolioName)
+            Button("Cancel", role: .cancel) { newPortfolioName = "" }
+            Button("Create") {
+                let trimmed = newPortfolioName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    storageService.addPortfolio(name: trimmed)
+                }
+                newPortfolioName = ""
+            }
+        }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService) { newP in
                 selection = .portfolio(newP.id)
@@ -202,6 +218,18 @@ struct PortfolioWindowView: View {
         } message: {
             Text("Are you sure you want to delete “\(deleteWatchlistTarget?.name ?? "")”? This action cannot be undone.")
         }
+        .alert("Delete Portfolio", isPresented: Binding(get: { deletePortfolioTarget != nil }, set: { if !$0 { deletePortfolioTarget = nil } })) {
+            Button("Cancel", role: .cancel) { deletePortfolioTarget = nil }
+            Button("Delete", role: .destructive) {
+                if let p = deletePortfolioTarget {
+                    storageService.deletePortfolio(id: p.id)
+                    if selection == .portfolio(p.id) { navigate(to: .portfoliosAll) }
+                }
+                deletePortfolioTarget = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete portfolio '\(deletePortfolioTarget?.name ?? "")'? This action cannot be undone.")
+        }
         .background(keyboardShortcuts)
     }
 
@@ -217,7 +245,7 @@ struct PortfolioWindowView: View {
             Button("") {
                 Task { await stockService.refreshAll(storageService: storageService) }
             }.keyboardShortcut("r", modifiers: .command)
-            Button("") { showNewPortfolio = true }.keyboardShortcut("n", modifiers: .command)
+            Button("") { showNewPortfolioAlert = true }.keyboardShortcut("n", modifiers: .command)
             // ⌘W closes just this window — StockDeck keeps living in the menu bar.
             Button("") { NSApp.keyWindow?.performClose(nil) }.keyboardShortcut("w", modifiers: .command)
         }
@@ -272,8 +300,26 @@ struct PortfolioWindowView: View {
                                 navigate(to: .watchlist)
                             }
                             .contextMenu {
+                                Button {
+                                    storageService.selectedWatchlistId = wl.id
+                                    showSearch = true
+                                } label: {
+                                    Label("Add Symbol…", systemImage: "plus")
+                                }
                                 Button { renamingWatchlist = wl; renameWatchlistName = wl.name } label: {
                                     Label("Rename Watchlist…", systemImage: "pencil")
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }), idx > 0 {
+                                    let prevId = storageService.watchlists[idx - 1].id
+                                    Button { storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId) } label: {
+                                        Label("Move Up", systemImage: "arrow.up")
+                                    }
+                                }
+                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }), idx < storageService.watchlists.count - 1 {
+                                    let nextId = storageService.watchlists[idx + 1].id
+                                    Button { storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id) } label: {
+                                        Label("Move Down", systemImage: "arrow.down")
+                                    }
                                 }
                                 if storageService.watchlists.count > 1 {
                                     Divider()
@@ -318,9 +364,6 @@ struct PortfolioWindowView: View {
                                 Button { addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) } label: {
                                     Label("Add Holding…", systemImage: "plus")
                                 }
-                                Button { importStandard() } label: {
-                                    Label("Import File…", systemImage: "square.and.arrow.down")
-                                }
                                 Button { renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) } label: {
                                     Label("Rename…", systemImage: "pencil")
                                 }
@@ -344,9 +387,8 @@ struct PortfolioWindowView: View {
                                 }
                                 Divider()
                                 Button(role: .destructive) {
-                                    storageService.deletePortfolio(id: portfolio.id)
-                                    if selection == .portfolio(portfolio.id) { navigate(to: .portfoliosAll) }
-                                } label: { Label("Delete", systemImage: "trash") }
+                                    deletePortfolioTarget = PortfolioRef(id: portfolio.id, name: portfolio.name)
+                                } label: { Label("Delete Portfolio", systemImage: "trash") }
                             }
                         }
                     }
@@ -358,14 +400,11 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
+                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
+                           selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
-            // Pinned bottom block: Import / Export, Settings, then total footer.
-            NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
-                   selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
-                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
-
             NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                    selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
                 .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
@@ -522,7 +561,7 @@ struct PortfolioWindowView: View {
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
     }
 
-    /// "PORTFOLIOS" label with the quiet + button. Right click exports all portfolios.
+    /// "PORTFOLIOS" label with the plus button. Right click exports all portfolios.
     private var portfoliosHeader: some View {
         HStack {
             Text("Portfolios")
@@ -531,13 +570,17 @@ struct PortfolioWindowView: View {
                 .tracking(0.8).textCase(.uppercase)
             Spacer()
 
-            DSMenu(width: 230, sections: plusMenuSections) {
+            Button {
+                showNewPortfolioAlert = true
+            } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(DS.inkSecondary)
                     .frame(width: 20, height: 20)
             }
-            .help("New portfolio or add holding…")
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Create new portfolio…")
         }
         .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 4)
         .contentShape(Rectangle())
@@ -575,17 +618,6 @@ struct PortfolioWindowView: View {
             sections.append(exportActions)
         }
         return sections
-    }
-
-    /// Sections for the sidebar "+" DSMenu.
-    private var plusMenuSections: [[DSMenuAction]] {
-        var s: [[DSMenuAction]] = [[ DSMenuAction(title: "New Portfolio…", icon: "folder.badge.plus") { showNewPortfolio = true } ]]
-        if !storageService.portfolios.isEmpty {
-            s.append(storageService.portfolios.map { p in
-                DSMenuAction(title: "Add to \(p.name)", icon: "plus") { addHoldingTarget = AddHoldingTarget(portfolioId: p.id, symbol: nil) }
-            })
-        }
-        return s
     }
 
     private var brand: some View {
@@ -660,55 +692,7 @@ struct PortfolioWindowView: View {
         selection = destination
     }
 
-    private var newPortfolioSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("New Portfolio").font(.inter(15, weight: .bold, relativeTo: .headline))
-            TextField("Portfolio name", text: $newPortfolioName)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(createPortfolio)
 
-            Divider()
-
-            Button(action: {
-                showNewPortfolio = false
-                showBinanceSheet = true
-            }) {
-                HStack {
-                    Image(systemName: "circle.hexagongrid.fill")
-                        .foregroundColor(.yellow)
-                    Text("Connect Binance (Read-Only)...")
-                        .font(.inter(12, weight: .medium, relativeTo: .body))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(8)
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(6)
-            }
-            .buttonStyle(.plain)
-
-            HStack {
-                Spacer()
-                Button("Cancel") { showNewPortfolio = false; newPortfolioName = "" }
-                Button("Create", action: createPortfolio)
-                    .buttonStyle(.borderedProminent)
-                    .tint(DS.brand)
-                    .disabled(newPortfolioName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(18)
-        .frame(width: 340)
-    }
-
-    private func createPortfolio() {
-        let name = newPortfolioName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        storageService.addPortfolio(name: name)
-        newPortfolioName = ""
-        showNewPortfolio = false
-    }
 
     // MARK: - Import / Export (reuses StorageService JSON logic)
 
@@ -871,6 +855,7 @@ private struct TotalFooter: View {
         .padding(.horizontal, 16)
     }
 }
+#if os(macOS)
 
 /// Wraps a reorderable row/tab, measures its size, and attaches drag & drop with
 /// half-split placement: dropping on the top/left half inserts the dragged item

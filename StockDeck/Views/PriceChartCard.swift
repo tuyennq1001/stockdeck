@@ -50,12 +50,20 @@ struct PriceChartCard: View {
 
     enum ChartStyle: String, CaseIterable {
         case line
-        case candlestick
+        case tradingview
     }
 
     @State private var chartRange: ChartRange = .month
     @State private var chartStyle: ChartStyle = .line
     @State private var hoverPoint: PricePoint?
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The TradingView widget symbol for the current stock, or nil when the
+    /// symbol has no reliable TradingView listing (e.g. Japanese mutual funds),
+    /// in which case the TradingView style is disabled.
+    private var tradingViewSymbol: String? {
+        TradingViewSymbol.map(symbol, exchange: storageService.exchange(for: symbol))
+    }
 
     private var priceSymbol: String {
         let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
@@ -87,14 +95,6 @@ struct PriceChartCard: View {
         case .year, .threeYears, .fiveYears, .all:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
         }
-    }
-
-    private func calculateCandleWidth(pointCount: Int) -> CGFloat {
-        if pointCount <= 30 { return 7 }
-        if pointCount <= 60 { return 5 }
-        if pointCount <= 120 { return 3 }
-        if pointCount <= 300 { return 2 }
-        return 1
     }
 
     /// Smooth hover crosshair drawn as an overlay (not chart marks), so moving the
@@ -163,42 +163,47 @@ struct PriceChartCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Row 1: Last Price & Change Pill
-            VStack(alignment: .leading, spacing: 4) {
-                let info = displayedPriceInfo
-                SectionLabel("Last price")
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(StorageService.formatAmount(info.price, symbol: priceSymbol))
-                        .font(.inter(26, weight: .bold, relativeTo: .title).monospacedDigit())
-                        .tracking(-0.4)
-                        .foregroundStyle(DS.ink)
-                        .lineLimit(1)
-                        .contentTransition(.numericText())
-                        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: info.price)
-
-                    HStack(spacing: 6) {
-                        ChangePill(value: info.diff,
-                                   text: String(format: "%+.\(storageService.percentDecimals)f%% \(info.label)", info.diffPct))
-                        Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, signed: true))
-                            .font(DS.caption.monospacedDigit())
-                            .foregroundStyle(DS.pnlColor(info.diff))
+            // Row 1: Last Price & Change Pill (left) + style picker (right), so
+            // the chart below gets the full card width and a taller frame.
+            let info = displayedPriceInfo
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionLabel("Last price")
+                    let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: info.price)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(StorageService.formatAmount(info.price, symbol: priceSymbol, decimals: dec))
+                            .font(.inter(26, weight: .bold, relativeTo: .title).monospacedDigit())
+                            .tracking(-0.4)
+                            .foregroundStyle(DS.ink)
                             .lineLimit(1)
+                            .contentTransition(.numericText())
+                            .animation(.spring(response: 0.5, dampingFraction: 0.9), value: info.price)
+
+                        HStack(spacing: 6) {
+                            ChangePill(value: info.diff,
+                                       text: String(format: "%+.\(storageService.percentDecimals)f%% \(info.label)", info.diffPct))
+                            Text(StorageService.formatAmount(info.diff, symbol: priceSymbol, decimals: dec, signed: true, stripTrailingZeros: true))
+                                .font(DS.caption.monospacedDigit())
+                                .foregroundStyle(DS.pnlColor(info.diff))
+                                .lineLimit(1)
+                        }
                     }
                 }
+                Spacer(minLength: 8)
+                stylePicker
             }
 
-            // Row 2: Range Picker + Style Picker
-            if (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
-                HStack(spacing: 6) {
-                    rangePicker
-                    Spacer(minLength: 0)
-                    stylePicker
-                }
-            }
-
-            // Row 3: Chart
+            // Row 2: Chart. The line chart's range picker floats at the bottom-left
+            // inside the chart — the same corner TradingView uses — and TradingView
+            // mode has its own ranges, so no overlay is drawn there.
             chart
-                .frame(height: 190)
+                .overlay(alignment: .bottomLeading) {
+                    if (chartStyle == .line || tradingViewSymbol == nil) && (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
+                        rangePicker
+                            .padding(.leading, 12).padding(.bottom, 16)
+                    }
+                }
+                .frame(height: 500)
         }
         .padding(DS.pad)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -207,84 +212,92 @@ struct PriceChartCard: View {
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
             if chartRange == .all { await stockService.ensurePriceHistoryMax(for: symbol) }
         }
+        .onAppear {
+            chartStyle = ChartStyle(rawValue: storageService.defaultChartStyle) ?? .line
+            if let savedRange = ChartRange(rawValue: storageService.lastStockChartRange) {
+                chartRange = savedRange
+            }
+        }
+        .onChange(of: storageService.defaultChartStyle) { _, newValue in
+            chartStyle = ChartStyle(rawValue: newValue) ?? .line
+        }
+        .onChange(of: chartRange) { _, newRange in
+            storageService.lastStockChartRange = newRange.rawValue
+        }
     }
 
     private var rangePicker: some View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
     }
 
-    private var stylePicker: some View {
-        HStack(spacing: 2) {
-            Button(action: { chartStyle = .line }) {
-                Image(systemName: "line.uptrend.xyaxis")
-                    .font(.system(size: 11, weight: .semibold))
+    @ViewBuilder private var stylePicker: some View {
+        if tradingViewSymbol != nil {
+            HStack(spacing: 4) {
+                Button(action: { chartStyle = .line }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "line.uptrend.xyaxis")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Line")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    }
                     .foregroundStyle(chartStyle == .line ? .white : DS.inkSecondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(Capsule().fill(chartStyle == .line ? DS.brand : Color.clear))
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("Line chart")
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Line chart")
 
-            Button(action: { chartStyle = .candlestick }) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(chartStyle == .candlestick ? .white : DS.inkSecondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(chartStyle == .candlestick ? DS.brand : Color.clear))
+                Button(action: { chartStyle = .tradingview }) {
+                    HStack(spacing: 5) {
+                        Text("Trading")
+                            .font(.inter(11, weight: .bold, relativeTo: .caption))
+                        Text("View")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    }
+                    .foregroundStyle(chartStyle == .tradingview ? .white : DS.inkSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(chartStyle == .tradingview ? DS.brand : Color.clear))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("TradingView chart")
             }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("Candlestick chart")
+            .padding(3)
+            .background(Capsule().fill(DS.cardAlt))
         }
-        .padding(2)
-        .background(Capsule().fill(DS.cardAlt))
     }
 
     @ViewBuilder private var chart: some View {
-        if history.count >= 2 {
+        if chartStyle == .tradingview, let tvSymbol = tradingViewSymbol {
+            TradingViewChartView(tvSymbol: tvSymbol,
+                                 theme: colorScheme == .dark ? "dark" : "light",
+                                 interval: "D")
+                // Force a brand-new web view per symbol so switching stocks
+                // can never leave the previous symbol's chart on screen.
+                .id(tvSymbol)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, DS.pad)
+                .padding(.bottom, 10)
+        } else if history.count >= 2 {
             let periodUp = (history.last?.close ?? 0) >= (history.first?.close ?? 0)
             let tint = periodUp ? DS.up : DS.down
             Chart {
-                if chartStyle == .line {
-                    ForEach(history) { point in
-                        AreaMark(x: .value("Day", point.date), y: .value("Close", point.close))
-                            .foregroundStyle(.linearGradient(colors: [tint.opacity(0.25), tint.opacity(0)],
-                                                             startPoint: .top, endPoint: .bottom))
-                            .interpolationMethod(.monotone)
-                        LineMark(x: .value("Day", point.date), y: .value("Close", point.close))
-                            .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
-                            .interpolationMethod(.monotone)
-                    }
-                    if let last = history.last {
-                        PointMark(x: .value("Day", last.date), y: .value("Close", last.close))
-                            .symbolSize(50)
-                            .foregroundStyle(tint)
-                    }
-                } else {
-                    let candleWidth = calculateCandleWidth(pointCount: history.count)
-                    ForEach(history) { point in
-                        let isUp = point.close >= point.effectiveOpen
-                        let candleTint = isUp ? DS.up : DS.down
-
-                        RuleMark(
-                            x: .value("Day", point.date),
-                            yStart: .value("Low", point.effectiveLow),
-                            yEnd: .value("High", point.effectiveHigh)
-                        )
-                        .foregroundStyle(candleTint)
-                        .lineStyle(.init(lineWidth: 1))
-
-                        BarMark(
-                            x: .value("Day", point.date),
-                            yStart: .value("Open", min(point.effectiveOpen, point.close)),
-                            yEnd: .value("Close", max(point.effectiveOpen, point.close)),
-                            width: .fixed(candleWidth)
-                        )
-                        .foregroundStyle(candleTint)
-                    }
+                ForEach(history) { point in
+                    AreaMark(x: .value("Day", point.date), y: .value("Close", point.close))
+                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.25), tint.opacity(0)],
+                                                         startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.monotone)
+                    LineMark(x: .value("Day", point.date), y: .value("Close", point.close))
+                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
+                        .interpolationMethod(.monotone)
+                }
+                if let last = history.last {
+                    PointMark(x: .value("Day", last.date), y: .value("Close", last.close))
+                        .symbolSize(50)
+                        .foregroundStyle(tint)
                 }
             }
             .chartYScale(domain: chartDomain)
@@ -351,6 +364,8 @@ struct Sparkline: View {
     @ObservedObject private var stockService = StockService.shared
     let symbol: String
     var days: Int = 30
+    var width: CGFloat? = 64
+    var height: CGFloat? = 22
 
     private var points: [PricePoint] {
         guard let all = stockService.watchlistHistory[symbol],
@@ -377,7 +392,7 @@ struct Sparkline: View {
                 Capsule().fill(DS.cardAlt).frame(height: 2)
             }
         }
-        .frame(width: 64, height: 22)
+        .frame(width: width, height: height)
         // History is filled by the watchlist's batched spark request, so no
         // per-row fetch here (that would be one request per symbol).
     }

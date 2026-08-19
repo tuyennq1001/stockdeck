@@ -6,6 +6,8 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var symbols: [String]
     /// Nil keeps imported/older watchlists on the default layout.
     var metrics: [WatchlistMetric]? = nil
+    var sortKey: String? = nil
+    var sortAsc: Bool? = nil
 }
 
 /// Where a dragged item lands relative to its drop target: before it, or after
@@ -57,14 +59,15 @@ class StorageService: ObservableObject {
 
     /// All watchlists share a unified metric layout across the app.
     var watchlistMetrics: [WatchlistMetric] {
-        currentWatchlist.metrics ?? WatchlistMetric.defaultSelection
+        (currentWatchlist.metrics ?? WatchlistMetric.defaultSelection).filter { $0 != .today && $0 != .price }
     }
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
         objectWillChange.send()
+        let cleaned = metrics.filter { $0 != .today && $0 != .price }
         var updated = watchlists
         for index in updated.indices {
-            updated[index].metrics = metrics
+            updated[index].metrics = cleaned
         }
         watchlists = updated
     }
@@ -107,13 +110,16 @@ class StorageService: ObservableObject {
     @Published var showCompanyName: Bool = true {
         didSet { scheduleSave() }
     }
+    @Published var showWatchlistSparkline: Bool = true {
+        didSet { scheduleSave() }
+    }
     @Published var showDayRange: Bool = true {
         didSet { scheduleSave() }
     }
     @Published var show52WeekBar: Bool = true {
         didSet { scheduleSave() }
     }
-    @Published var showAbsoluteChange: Bool = true {
+    @Published var showAbsoluteChange: Bool = false {
         didSet { scheduleSave() }
     }
 
@@ -128,6 +134,21 @@ class StorageService: ObservableObject {
     @Published var showNewsTab: Bool = true {
         didSet { scheduleSave() }
     }
+
+    private var isSharedInstance: Bool {
+        !isCustomStorage
+    }
+
+    // MARK: - iCloud Sync
+    @Published var iCloudSyncEnabled: Bool = false {
+        didSet {
+            scheduleSave()
+            if isSharedInstance && !isLoading {
+                iCloudSyncService.shared.onSyncToggleChanged(enabled: iCloudSyncEnabled)
+            }
+        }
+    }
+    @Published var lastiCloudSyncDate: Date? = nil
 
     /// Typed appearance preference, tolerant of unknown persisted values.
     var appearanceMode: AppearanceMode {
@@ -196,6 +217,13 @@ class StorageService: ObservableObject {
     /// the add/edit holding sheets. Off by default to keep the common long-only
     /// flow simple.
     @Published var advancedPositions: Bool = false {
+        didSet { scheduleSave() }
+    }
+
+    /// Default chart style for holding / quote charts: "line" (native line
+    /// chart) or "tradingview" (embedded TradingView widget). The style picker
+    /// on each chart still lets the user switch on the fly.
+    @Published var defaultChartStyle: String = "line" {
         didSet { scheduleSave() }
     }
 
@@ -519,6 +547,30 @@ class StorageService: ObservableObject {
         alerts.removeAll()
     }
 
+    func removeAlerts(ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        alerts.removeAll { ids.contains($0.id) }
+    }
+
+    func updateAlert(id: UUID, condition: AlertCondition, threshold: Double) {
+        guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
+        alerts[i].condition = condition
+        alerts[i].threshold = threshold
+        // An edited alert counts as a fresh one: re-arm it and clear the
+        // "triggered" state so it can fire again immediately.
+        alerts[i].isEnabled = true
+        alerts[i].lastTriggeredAt = nil
+        // A changed condition also resets the MA cross state (nil = prime next
+        // evaluation without firing).
+        alerts[i].lastPositionAboveMA = nil
+    }
+
+    /// Records the latest above/below side for a crossing MA alert.
+    func updateAlertPosition(id: UUID, nowAbove: Bool) {
+        guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
+        alerts[i].lastPositionAboveMA = nowAbove
+    }
+
     func setAlertEnabled(id: UUID, enabled: Bool) {
         guard let i = alerts.firstIndex(where: { $0.id == id }) else { return }
         alerts[i].isEnabled = enabled
@@ -629,6 +681,33 @@ class StorageService: ObservableObject {
         portfolioChartRanges[scopeKey] = rangeRaw
     }
 
+    @Published var lastStockChartRange: String = "1M" {
+        didSet { scheduleSave() }
+    }
+
+    @Published var portfolioPositionSorts: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
+    func positionSort(for scopeKey: String) -> (column: String, ascending: Bool)? {
+        guard let raw = portfolioPositionSorts[scopeKey] else { return nil }
+        let parts = raw.split(separator: ":")
+        guard parts.count == 2 else { return nil }
+        return (column: String(parts[0]), ascending: parts[1] == "asc")
+    }
+
+    func setPositionSort(column: String, ascending: Bool, for scopeKey: String) {
+        portfolioPositionSorts[scopeKey] = "\(column):\(ascending ? "asc" : "desc")"
+    }
+
+    func setWatchlistSort(key: String, ascending: Bool, for watchlistId: UUID) {
+        guard let idx = watchlists.firstIndex(where: { $0.id == watchlistId }) else { return }
+        if watchlists[idx].sortKey != key || watchlists[idx].sortAsc != ascending {
+            watchlists[idx].sortKey = key
+            watchlists[idx].sortAsc = ascending
+        }
+    }
+
     var lastSelectedTab: String = "Watchlist"
 
     static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "VND", "CAD", "AUD"]
@@ -649,7 +728,8 @@ class StorageService: ObservableObject {
     /// Formats a plain number with a thousands grouping separator and locale-aware
     /// decimal separator, e.g. "1,234.56" (en) / "1.234,56" (it). Falls back to a
     /// non-grouped representation if the formatter ever fails.
-    nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    nonisolated static func formatNumber(_ value: Double, decimals: Int, locale: Locale = .autoupdatingCurrent,
+                                         stripTrailingZeros: Bool = false) -> String {
         // When a numeric value is not finite, show a dash so UI cells display
         // "-" instead of "NaN" for missing/unknown data (e.g. unknown cost).
         guard value.isFinite else { return "-" }
@@ -666,7 +746,13 @@ class StorageService: ObservableObject {
         let rounded = String(format: "%.\(decimals)f", abs(value))
         let parts = rounded.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
         let intDigits = String(parts[0])
-        let fracDigits = parts.count > 1 ? String(parts[1]) : ""
+        var fracDigits = parts.count > 1 ? String(parts[1]) : ""
+
+        if stripTrailingZeros && !fracDigits.isEmpty {
+            while fracDigits.hasSuffix("0") {
+                fracDigits.removeLast()
+            }
+        }
 
         var grouped = ""
         var count = 0
@@ -676,19 +762,19 @@ class StorageService: ObservableObject {
             count += 1
         }
         var result = String(grouped.reversed())
-        if decimals > 0 { result += decSep + fracDigits }
+        if !fracDigits.isEmpty { result += decSep + fracDigits }
         return (value < 0 ? "-" : "") + result
     }
 
     /// Formats an amount with the currency symbol *before* the figure, e.g.
     /// "€1,234.56", "+€820.00", "-€540.00". The sign (when shown) precedes the symbol.
     nonisolated static func formatAmount(_ value: Double, symbol: String, decimals: Int = 2, signed: Bool = false,
-                             locale: Locale = .autoupdatingCurrent) -> String {
+                                         locale: Locale = .autoupdatingCurrent, stripTrailingZeros: Bool = false) -> String {
         // When the numeric value is not finite (NaN/Inf), show a dash so the UI
         // doesn't display "NaN" for P&L or cost when a holding has unknown cost.
         guard value.isFinite else { return "-" }
         let sign = signed ? (value >= 0 ? "+" : "-") : (value < 0 ? "-" : "")
-        let magnitude = formatNumber(abs(value), decimals: decimals, locale: locale)
+        let magnitude = formatNumber(abs(value), decimals: decimals, locale: locale, stripTrailingZeros: stripTrailingZeros)
         return "\(sign)\(symbol)\(magnitude)"
     }
 
@@ -751,7 +837,146 @@ class StorageService: ObservableObject {
         }
     }
 
-    static func currencySymbol(for code: String) -> String {
+    /// Canonical watchlist sorting method shared across Desktop and Popover views.
+    /// Guarantees 100% identical row ordering, FX conversion, missing-data handling,
+    /// and stable tie-breaking across the entire app.
+    nonisolated static func sortWatchlistSymbols(
+        _ symbols: [String],
+        key: WatchlistSortKey,
+        ascending: Bool,
+        quotes: [String: StockQuote],
+        history: [String: [PricePoint]] = [:],
+        priceHistoryMax: [String: [PricePoint]] = [:],
+        priceRate: (String) -> Double = { _ in 1.0 },
+        rate: (String) -> Double = { _ in 1.0 },
+        showExtendedHours: Bool = true
+    ) -> [String] {
+        if key == .order {
+            return ascending ? symbols : Array(symbols.reversed())
+        }
+        if key == .symbol {
+            return symbols.sorted { ascending ? $0.localizedCompare($1) == .orderedAscending : $0.localizedCompare($1) == .orderedDescending }
+        }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let monthStart = calendar.date(byAdding: .month, value: -1, to: now)
+        let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now)
+        let sixMonthStart = calendar.date(byAdding: .month, value: -6, to: now)
+        let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now))
+        let oneYearStart = calendar.date(byAdding: .year, value: -1, to: now)
+        let twoYearStart = calendar.date(byAdding: .year, value: -2, to: now)
+        let threeYearStart = calendar.date(byAdding: .year, value: -3, to: now)
+        let fiveYearStart = calendar.date(byAdding: .year, value: -5, to: now)
+
+        func value(for symbol: String) -> Double? {
+            let q = quotes[symbol]
+            let pRate = q.map { priceRate($0.currency) } ?? 1
+            let mRate = q.map { rate($0.currency) } ?? 1
+            let hist = history[symbol] ?? []
+            let histMax = priceHistoryMax[symbol] ?? []
+            let regularPrice = q?.price ?? 0
+
+            switch key {
+            case .order, .symbol:
+                return nil
+            case .price:
+                return q != nil ? regularPrice * pRate : nil
+            case .changePercent:
+                return q?.changePercent
+            case .extChangePercent:
+                guard showExtendedHours, let q, q.isExtendedHours else { return nil }
+                return q.extendedChangePercent
+            case .metric(let m):
+                switch m {
+                case .price:
+                    return q != nil ? regularPrice * pRate : nil
+                case .ext:
+                    guard showExtendedHours, let q, q.isExtendedHours else { return nil }
+                    return q.extendedChangePercent
+                case .today:
+                    return q?.changePercent
+                case .todayChange:
+                    return q.map { $0.change * pRate }
+                case .oneMonth:
+                    return monthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .threeMonths:
+                    return threeMonthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .sixMonths:
+                    return sixMonthStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .ytd:
+                    return yearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .oneYear:
+                    return oneYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .twoYears:
+                    return twoYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .threeYears:
+                    return threeYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .fiveYears:
+                    return fiveYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                case .ath:
+                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
+                    if let h = histHigh { return max(h, quoteHigh) * pRate }
+                    if quoteHigh > 0 { return quoteHigh * pRate }
+                    return nil
+                case .atl:
+                    let histLow = histMax.map(\.effectiveLow).min()
+                    let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
+                    if let l = histLow, let ql = qLow, ql > 0 { return min(l, ql) * pRate }
+                    if let l = histLow { return l * pRate }
+                    if let ql = qLow, ql > 0 { return ql * pRate }
+                    return nil
+                case .fromAth:
+                    let ath: Double?
+                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
+                    if let h = histHigh { ath = max(h, quoteHigh) * pRate }
+                    else if quoteHigh > 0 { ath = quoteHigh * pRate }
+                    else { ath = nil }
+                    guard let ath, ath > 0, regularPrice > 0 else { return nil }
+                    let priceConverted = regularPrice * pRate
+                    if priceConverted >= ath { return 0.0 }
+                    return min(0.0, (priceConverted - ath) / ath * 100)
+                case .fromAtl:
+                    let atl: Double?
+                    let histLow = histMax.map(\.effectiveLow).min()
+                    let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
+                    if let l = histLow, let ql = qLow, ql > 0 { atl = min(l, ql) * pRate }
+                    else if let l = histLow { atl = l * pRate }
+                    else if let ql = qLow, ql > 0 { atl = ql * pRate }
+                    else { atl = nil }
+                    guard let atl, atl > 0, regularPrice > 0 else { return nil }
+                    let priceConverted = regularPrice * pRate
+                    if priceConverted <= atl { return 0.0 }
+                    return max(0.0, (priceConverted - atl) / atl * 100)
+                case .marketCap:
+                    return q?.marketCap.map { $0 * mRate }
+                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+                    return nil
+                }
+            }
+        }
+
+        let symbolOrder = Dictionary(uniqueKeysWithValues: symbols.enumerated().map { ($0.element, $0.offset) })
+
+        return symbols.sorted { lhs, rhs in
+            let lv = value(for: lhs)
+            let rv = value(for: rhs)
+            switch (lv, rv) {
+            case let (l?, r?) where l != r:
+                return ascending ? l < r : l > r
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                return (symbolOrder[lhs] ?? 0) < (symbolOrder[rhs] ?? 0)
+            }
+        }
+    }
+
+    nonisolated static func currencySymbol(for code: String) -> String {
         switch code {
         case "EUR": return "€"
         case "USD": return "$"
@@ -768,7 +993,7 @@ class StorageService: ObservableObject {
     /// Formats a number compactly with K/M suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
-    static func formatCompactNumber(_ value: Double, decimals: Int? = nil) -> String {
+    nonisolated static func formatCompactNumber(_ value: Double, decimals: Int? = nil, stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : ""
         if absVal >= 1_000_000 {
@@ -778,14 +1003,15 @@ class StorageService: ObservableObject {
             let k = absVal / 1_000
             return "\(sign)\(String(format: k >= 100 ? "%.0fK" : "%.1fK", k))"
         } else {
-            return formatNumber(value, decimals: decimals ?? 0)
+            return formatNumber(value, decimals: decimals ?? 0, stripTrailingZeros: stripTrailingZeros)
         }
     }
 
     /// Formats an amount compactly with K/M suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
-    static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil) -> String {
+    nonisolated static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil,
+                                                stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
         if absVal >= 1_000_000 {
@@ -797,13 +1023,13 @@ class StorageService: ObservableObject {
             let formatted = String(format: k >= 100 ? "%.0fK" : "%.1fK", k)
             return "\(sign)\(symbol)\(formatted)"
         } else {
-            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed)
+            return formatAmount(value, symbol: symbol, decimals: decimals ?? 0, signed: signed, stripTrailingZeros: stripTrailingZeros)
         }
     }
 
     /// Formats market capitalization in compact T/B/M scale with currency symbol.
     /// e.g. Apple → "$3.50T", Toyota → "¥45.2B", small cap → "$850M"
-    static func formatMarketCap(_ value: Double, currency: String) -> String {
+    nonisolated static func formatMarketCap(_ value: Double, currency: String) -> String {
         let absVal = abs(value)
         let currSymbol = currencySymbol(for: currency)
         if absVal >= 1_000_000_000_000 {
@@ -819,17 +1045,22 @@ class StorageService: ObservableObject {
     }
 
     private let fileURL: URL
+    private let isCustomStorage: Bool
     private var isLoading = false
     private var decodeFailure = false
     private var saveTask: Task<Void, Never>?
 
     init(fileURL: URL? = nil) {
+        self.isCustomStorage = (fileURL != nil)
         if let customURL = fileURL {
             self.fileURL = customURL
         } else {
             guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
                 let fallback = FileManager.default.temporaryDirectory
                 self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
+                isLoading = true
+                load()
+                isLoading = false
                 return
             }
             let dirName = "StockDeck"
@@ -1213,8 +1444,23 @@ class StorageService: ObservableObject {
                 symbol += ".T"
             }
 
+            // Exact fingerprint match (account + symbol + date + qty + avg price).
+            // Re-importing a cumulative trade-history file must never double-count
+            // an identical transaction; two accounts buying the same fund on the
+            // same day are kept apart by their account name.
+            let isExactDuplicate = currentHoldings.contains {
+                $0.symbol == symbol
+                    && $0.account == newH.account
+                    && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
+                    && abs($0.quantity - newH.quantity) < 1e-9
+                    && ($0.avgPrice.isNaN || newH.avgPrice.isNaN || abs($0.avgPrice - newH.avgPrice) < 1e-6)
+            }
+            if isExactDuplicate { continue }
+
             if let existingIndex = currentHoldings.firstIndex(where: {
-                $0.symbol == symbol && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
+                $0.symbol == symbol
+                    && $0.account == newH.account
+                    && ($0.purchaseDate == newH.purchaseDate || ($0.purchaseDate == nil && newH.purchaseDate == nil))
             }) {
                 let existing = currentHoldings[existingIndex]
                 let totalQty = existing.quantity + newH.quantity
@@ -1278,9 +1524,10 @@ class StorageService: ObservableObject {
         stockPriceCurrency = ""
         showExtendedHours = true
         showCompanyName = true
+        showWatchlistSparkline = true
         showDayRange = true
         show52WeekBar = true
-        showAbsoluteChange = true
+        showAbsoluteChange = false
         menuBarDisplay = "pnl"
         gainColorHex = ""
         lossColorHex = ""
@@ -1290,6 +1537,7 @@ class StorageService: ObservableObject {
         menuBarHidePercent = false
         tickerShowName = false
         advancedPositions = false
+        defaultChartStyle = "line"
         watchlistSort = "manual"
         appLanguage = "en"
         fontSizeLevel = 9
@@ -1303,6 +1551,22 @@ class StorageService: ObservableObject {
         aiProvider = "openai"
         aiWorkspacePath = ""
         aiDeepseekThinking = false
+    }
+
+    /// Completely wipes all portfolios, watchlists, alerts, and settings back to a clean slate.
+    func clearAllAppData() {
+        portfolios = []
+        watchlists = [Watchlist(id: UUID(), name: "Watchlist", symbols: [])]
+        selectedWatchlistId = watchlists.first?.id
+        watchlist = []
+        alerts = []
+        symbolNotes = [:]
+        portfolioNotifications = [:]
+        portfolioSnapshots = [:]
+        portfolioChartRanges = [:]
+        portfolioPositionSorts = [:]
+        resetToDefaults()
+        saveNow()
     }
 
     // MARK: - Export / Import
@@ -1348,7 +1612,7 @@ class StorageService: ObservableObject {
 
     // MARK: - Persistence
 
-    private struct AppData: Codable {
+    struct AppData: Codable {
         var watchlist: [String]
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
@@ -1364,6 +1628,7 @@ class StorageService: ObservableObject {
         var alerts: [PriceAlert]?
         var symbolNotes: [String: [SymbolNote]]?
         var showCompanyName: Bool?
+        var showWatchlistSparkline: Bool?
         var showDayRange: Bool?
         var show52WeekBar: Bool?
         var showAbsoluteChange: Bool?
@@ -1385,6 +1650,7 @@ class StorageService: ObservableObject {
         var symbolExchange: [String: String]?
         var appLanguage: String?
         var advancedPositions: Bool?
+        var defaultChartStyle: String?
         var appearanceRaw: String?
         var showNewsTab: Bool?
         var aiChatSections: [AIChatSection]?
@@ -1393,6 +1659,176 @@ class StorageService: ObservableObject {
         var aiProvider: String?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
+        var lastStockChartRange: String?
+        var portfolioPositionSorts: [String: String]?
+        var iCloudSyncEnabled: Bool?
+        var lastiCloudSyncDate: Date?
+    }
+
+    func exportAppData() -> AppData {
+        AppData(
+            watchlist: watchlist,
+            watchlists: watchlists,
+            selectedWatchlistId: selectedWatchlistId,
+            portfolioColumns: portfolioColumns?.map(\.rawValue),
+            portfolios: portfolios,
+            preferredCurrency: preferredCurrency,
+            stockPriceCurrency: stockPriceCurrency,
+            showExtendedHours: showExtendedHours,
+            menuBarDisplay: menuBarDisplay,
+            isinMap: isinMap,
+            fontSizeLevel: fontSizeLevel,
+            fontFamily: fontFamily,
+            alerts: alerts,
+            symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes,
+            showCompanyName: showCompanyName,
+            showWatchlistSparkline: showWatchlistSparkline,
+            showDayRange: showDayRange,
+            show52WeekBar: show52WeekBar,
+            showAbsoluteChange: showAbsoluteChange,
+            portfolioNotifications: portfolioNotifications,
+            portfolioSnapshots: portfolioSnapshots,
+            portfolioChartRanges: portfolioChartRanges,
+            discordWebhookURL: discordWebhookURL,
+            discordEnabled: discordEnabled,
+            gainColorHex: gainColorHex,
+            lossColorHex: lossColorHex,
+            menuBarUseSystemColor: menuBarUseSystemColor,
+            percentTwoDecimals: nil,
+            percentDecimals: percentDecimals,
+            valueDecimals: valueDecimals,
+            menuBarHidePercent: menuBarHidePercent,
+            tickerShowName: tickerShowName,
+            watchlistSort: watchlistSort,
+            symbolType: symbolType,
+            symbolExchange: symbolExchange,
+            appLanguage: appLanguage,
+            advancedPositions: advancedPositions,
+            defaultChartStyle: defaultChartStyle,
+            appearanceRaw: appearanceRaw,
+            showNewsTab: showNewsTab,
+            aiChatSections: aiChatSections,
+            aiBaseURL: aiBaseURL,
+            aiModel: aiModel,
+            aiProvider: aiProvider,
+            aiWorkspacePath: aiWorkspacePath,
+            aiDeepseekThinking: aiDeepseekThinking,
+            lastStockChartRange: lastStockChartRange,
+            portfolioPositionSorts: portfolioPositionSorts,
+            iCloudSyncEnabled: iCloudSyncEnabled,
+            lastiCloudSyncDate: lastiCloudSyncDate
+        )
+    }
+
+    func applyAppData(_ decoded: AppData, isFromSync: Bool = false) {
+        if isFromSync {
+            isLoading = true
+        }
+        if let wls = decoded.watchlists, !wls.isEmpty {
+            var seenNames = Set<String>()
+            var cleaned: [Watchlist] = []
+            for wl in wls {
+                let trimmed = wl.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let key = trimmed.lowercased()
+                if !wl.symbols.isEmpty {
+                    if !seenNames.contains(key) {
+                        cleaned.append(wl)
+                        seenNames.insert(key)
+                    }
+                } else if !seenNames.contains(key) && !key.starts(with: "list ") {
+                    cleaned.append(wl)
+                    seenNames.insert(key)
+                }
+            }
+            watchlists = cleaned.isEmpty ? wls : cleaned
+            if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
+                selectedWatchlistId = selId
+            } else {
+                selectedWatchlistId = watchlists.first?.id
+            }
+        } else if !decoded.watchlist.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: decoded.watchlist)
+            watchlists = [def]
+            selectedWatchlistId = def.id
+        } else if watchlists.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+            watchlists = [def]
+        }
+        portfolios = decoded.portfolios.map { p in
+            var updated = p
+            if updated.isReadOnly {
+                updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
+            } else {
+                updated.holdings = updated.holdings.map { h in
+                    var newH = h
+                    if newH.symbol.hasSuffix("-USD") {
+                        let base = String(newH.symbol.dropLast(4))
+                        if !StorageService.isStandardCryptoSymbol(base) {
+                            newH.symbol = base
+                        }
+                    }
+                    return newH
+                }
+            }
+            return updated
+        }
+        preferredCurrency = decoded.preferredCurrency ?? "EUR"
+        stockPriceCurrency = decoded.stockPriceCurrency ?? ""
+        showExtendedHours = decoded.showExtendedHours ?? true
+        menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
+        isinMap = decoded.isinMap ?? [:]
+        alerts = decoded.alerts ?? []
+        symbolNotes = decoded.symbolNotes ?? [:]
+        portfolioNotifications = decoded.portfolioNotifications ?? [:]
+        portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
+        portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
+        discordWebhookURL = decoded.discordWebhookURL ?? ""
+        discordEnabled = decoded.discordEnabled ?? false
+        gainColorHex = decoded.gainColorHex ?? ""
+        lossColorHex = decoded.lossColorHex ?? ""
+        menuBarUseSystemColor = decoded.menuBarUseSystemColor ?? false
+        percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)
+        valueDecimals = decoded.valueDecimals ?? -1
+        menuBarHidePercent = decoded.menuBarHidePercent ?? false
+        tickerShowName = decoded.tickerShowName ?? false
+        advancedPositions = decoded.advancedPositions ?? false
+        defaultChartStyle = decoded.defaultChartStyle ?? "line"
+        watchlistSort = decoded.watchlistSort ?? "manual"
+        symbolType = decoded.symbolType ?? [:]
+        symbolExchange = decoded.symbolExchange ?? [:]
+        appLanguage = decoded.appLanguage ?? "en"
+        showCompanyName = decoded.showCompanyName ?? true
+        showWatchlistSparkline = decoded.showWatchlistSparkline ?? true
+        showDayRange = decoded.showDayRange ?? true
+        show52WeekBar = decoded.show52WeekBar ?? true
+        showAbsoluteChange = decoded.showAbsoluteChange ?? false
+        fontSizeLevel = decoded.fontSizeLevel ?? 9
+        fontFamily = decoded.fontFamily ?? "Inter Variable"
+        appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
+        showNewsTab = decoded.showNewsTab ?? true
+        aiChatSections = decoded.aiChatSections ?? []
+        aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
+        aiModel = decoded.aiModel ?? "gpt-4o-mini"
+        aiProvider = decoded.aiProvider ?? "openai"
+        aiWorkspacePath = decoded.aiWorkspacePath ?? ""
+        aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+        lastStockChartRange = decoded.lastStockChartRange ?? "1M"
+        portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
+        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+        portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
+        if let syncEnabled = decoded.iCloudSyncEnabled {
+            iCloudSyncEnabled = syncEnabled
+        }
+        if let syncDate = decoded.lastiCloudSyncDate {
+            lastiCloudSyncDate = syncDate
+        }
+        FontRegistration.familyName = fontFamily
+        FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
+
+        if isFromSync {
+            isLoading = false
+            performSave()
+        }
     }
 
     private func scheduleSave() {
@@ -1402,18 +1838,19 @@ class StorageService: ObservableObject {
             try? await Task.sleep(nanoseconds: 100_000_000)
             guard !Task.isCancelled else { return }
             self.performSave()
+            if self.isSharedInstance && self.iCloudSyncEnabled {
+                iCloudSyncService.shared.schedulePush()
+            }
         }
     }
 
     private func performSave() {
-        // Backup the existing file before overwriting, so a crash or bug can't
-        // destroy all user data without a recovery path.
         let bakURL = fileURL.appendingPathExtension("bak")
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try? FileManager.default.removeItem(at: bakURL)
             try? FileManager.default.copyItem(at: fileURL, to: bakURL)
         }
-        let data = AppData(watchlist: watchlist, watchlists: watchlists, selectedWatchlistId: selectedWatchlistId, portfolioColumns: portfolioColumns?.map(\.rawValue), portfolios: portfolios, preferredCurrency: preferredCurrency, stockPriceCurrency: stockPriceCurrency, showExtendedHours: showExtendedHours, menuBarDisplay: menuBarDisplay, isinMap: isinMap, fontSizeLevel: fontSizeLevel, fontFamily: fontFamily, alerts: alerts, symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes, showCompanyName: showCompanyName, showDayRange: showDayRange, show52WeekBar: show52WeekBar, showAbsoluteChange: showAbsoluteChange, portfolioNotifications: portfolioNotifications, portfolioSnapshots: portfolioSnapshots, portfolioChartRanges: portfolioChartRanges, discordWebhookURL: discordWebhookURL, discordEnabled: discordEnabled, gainColorHex: gainColorHex, lossColorHex: lossColorHex, menuBarUseSystemColor: menuBarUseSystemColor, percentTwoDecimals: nil, percentDecimals: percentDecimals, valueDecimals: valueDecimals, menuBarHidePercent: menuBarHidePercent, tickerShowName: tickerShowName, watchlistSort: watchlistSort, symbolType: symbolType, symbolExchange: symbolExchange, appLanguage: appLanguage, advancedPositions: advancedPositions, appearanceRaw: appearanceRaw, showNewsTab: showNewsTab, aiChatSections: aiChatSections, aiBaseURL: aiBaseURL, aiModel: aiModel, aiProvider: aiProvider, aiWorkspacePath: aiWorkspacePath, aiDeepseekThinking: aiDeepseekThinking)
+        let data = exportAppData()
         do {
             let encoded = try JSONEncoder().encode(data)
             try encoded.write(to: fileURL, options: .atomic)
@@ -1426,6 +1863,9 @@ class StorageService: ObservableObject {
         saveTask?.cancel()
         saveTask = nil
         performSave()
+        if isSharedInstance && iCloudSyncEnabled {
+            iCloudSyncService.shared.pushLocalData()
+        }
     }
 
     private func load() {
@@ -1433,106 +1873,8 @@ class StorageService: ObservableObject {
         do {
             let data = try Data(contentsOf: fileURL)
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
-            if let wls = decoded.watchlists, !wls.isEmpty {
-                // Deduplicate watchlists by name/ID and strip leftover empty test lists
-                var seenNames = Set<String>()
-                var cleaned: [Watchlist] = []
-                for wl in wls {
-                    let trimmed = wl.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let key = trimmed.lowercased()
-                    if !wl.symbols.isEmpty {
-                        if !seenNames.contains(key) {
-                            cleaned.append(wl)
-                            seenNames.insert(key)
-                        }
-                    } else if !seenNames.contains(key) && !key.starts(with: "list ") {
-                        cleaned.append(wl)
-                        seenNames.insert(key)
-                    }
-                }
-                watchlists = cleaned.isEmpty ? wls : cleaned
-                if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
-                    selectedWatchlistId = selId
-                } else {
-                    selectedWatchlistId = watchlists.first?.id
-                }
-            } else if !decoded.watchlist.isEmpty {
-                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: decoded.watchlist)
-                watchlists = [def]
-                selectedWatchlistId = def.id
-            } else {
-                let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
-                watchlists = [def]
-            }
-            portfolios = decoded.portfolios.map { p in
-                var updated = p
-                if updated.isReadOnly {
-                    // Keep holdings with and without a known cost basis separate
-                    // (a Spot-reconstructed portion vs. an untracked remainder of
-                    // the same symbol) so partial cost basis survives a reload.
-                    updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
-                } else {
-                    // Repair manual portfolios if they were mistakenly appended with -USD for non-crypto symbols
-                    updated.holdings = updated.holdings.map { h in
-                        var newH = h
-                        if newH.symbol.hasSuffix("-USD") {
-                            let base = String(newH.symbol.dropLast(4))
-                            if !StorageService.isStandardCryptoSymbol(base) {
-                                newH.symbol = base
-                            }
-                        }
-                        return newH
-                    }
-                }
-                return updated
-            }
-            preferredCurrency = decoded.preferredCurrency ?? "EUR"
-            stockPriceCurrency = decoded.stockPriceCurrency ?? ""
-            showExtendedHours = decoded.showExtendedHours ?? true
-            menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
-            isinMap = decoded.isinMap ?? [:]
-            alerts = decoded.alerts ?? []
-            symbolNotes = decoded.symbolNotes ?? [:]
-            portfolioNotifications = decoded.portfolioNotifications ?? [:]
-            portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
-            portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
-            discordWebhookURL = decoded.discordWebhookURL ?? ""
-            discordEnabled = decoded.discordEnabled ?? false
-            gainColorHex = decoded.gainColorHex ?? ""
-            lossColorHex = decoded.lossColorHex ?? ""
-            menuBarUseSystemColor = decoded.menuBarUseSystemColor ?? false
-            // #10: migrate the old on/off toggle (2 vs 1) to the free decimal count.
-            percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)
-            valueDecimals = decoded.valueDecimals ?? -1
-            menuBarHidePercent = decoded.menuBarHidePercent ?? false
-            tickerShowName = decoded.tickerShowName ?? false
-            advancedPositions = decoded.advancedPositions ?? false
-            watchlistSort = decoded.watchlistSort ?? "manual"
-            symbolType = decoded.symbolType ?? [:]
-            symbolExchange = decoded.symbolExchange ?? [:]
-            appLanguage = decoded.appLanguage ?? "en"
-            showCompanyName = decoded.showCompanyName ?? true
-            showDayRange = decoded.showDayRange ?? true
-            show52WeekBar = decoded.show52WeekBar ?? true
-            showAbsoluteChange = decoded.showAbsoluteChange ?? true
-            fontSizeLevel = decoded.fontSizeLevel ?? 9
-            fontFamily = decoded.fontFamily ?? "Inter Variable"
-            appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
-            showNewsTab = decoded.showNewsTab ?? true
-            aiChatSections = decoded.aiChatSections ?? []
-            aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
-            aiModel = decoded.aiModel ?? "gpt-4o-mini"
-            aiProvider = decoded.aiProvider ?? "openai"
-            aiWorkspacePath = decoded.aiWorkspacePath ?? ""
-            aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
-            let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
-            portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
-            FontRegistration.familyName = fontFamily
-            FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
+            applyAppData(decoded, isFromSync: false)
         } catch {
-            // The file exists but couldn't be decoded (schema change, corruption, etc.).
-            // Rename it so the original data is preserved for recovery, and set a flag
-            // that blocks any automatic save from overwriting the renamed backup.
             decodeFailure = true
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd-HHmmss"

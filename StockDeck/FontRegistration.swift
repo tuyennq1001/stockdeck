@@ -1,11 +1,10 @@
-import CoreText
-import SwiftUI
-
 #if os(macOS)
 import AppKit
 #else
 import UIKit
 #endif
+import CoreText
+import SwiftUI
 
 enum FontRegistration {
     static var familyName = "Inter Variable"
@@ -68,8 +67,8 @@ enum FontRegistration {
         let base = UIFont(descriptor: descriptor, size: size)
         let tnum = base.fontDescriptor.addingAttributes([
             .featureSettings: [[
-                kCTFontFeatureTypeIdentifierKey as UIFontDescriptor.AttributeName: kNumberSpacingType,
-                kCTFontFeatureSelectorIdentifierKey as UIFontDescriptor.AttributeName: kMonospacedNumbersSelector
+                UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector
             ]]
         ])
         return UIFont(descriptor: tnum, size: size)

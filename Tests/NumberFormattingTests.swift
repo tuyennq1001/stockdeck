@@ -72,4 +72,30 @@ final class NumberFormattingTests: XCTestCase {
     func testAmountItalianGrouping() {
         XCTAssertEqual(StorageService.formatAmount(1234.56, symbol: "€", locale: itIT), "€1.234,56")
     }
+
+    // MARK: stripTrailingZeros
+
+    func testStripTrailingZerosDecimals() {
+        XCTAssertEqual(StorageService.formatNumber(0.98, decimals: 4, locale: enUS, stripTrailingZeros: true), "0.98")
+        XCTAssertEqual(StorageService.formatNumber(1.5000, decimals: 4, locale: enUS, stripTrailingZeros: true), "1.5")
+        XCTAssertEqual(StorageService.formatNumber(1.0000, decimals: 4, locale: enUS, stripTrailingZeros: true), "1")
+        XCTAssertEqual(StorageService.formatNumber(0.0000, decimals: 4, locale: enUS, stripTrailingZeros: true), "0")
+        XCTAssertEqual(StorageService.formatNumber(0.0012, decimals: 4, locale: enUS, stripTrailingZeros: true), "0.0012")
+        XCTAssertEqual(StorageService.formatNumber(-0.9800, decimals: 4, locale: enUS, stripTrailingZeros: true), "-0.98")
+    }
+
+    func testStripTrailingZerosDE() {
+        XCTAssertEqual(StorageService.formatNumber(0.98, decimals: 4, locale: deDE, stripTrailingZeros: true), "0,98")
+        XCTAssertEqual(StorageService.formatNumber(1234.50, decimals: 4, locale: deDE, stripTrailingZeros: true), "1.234,5")
+    }
+
+    func testFormatAmountStripTrailingZeros() {
+        XCTAssertEqual(StorageService.formatAmount(0.98, symbol: "$", decimals: 4, signed: true, locale: enUS, stripTrailingZeros: true), "+$0.98")
+        XCTAssertEqual(StorageService.formatAmount(-0.98, symbol: "$", decimals: 4, signed: true, locale: enUS, stripTrailingZeros: true), "-$0.98")
+    }
+
+    func testFormatCompactNumberStripTrailingZeros() {
+        XCTAssertEqual(StorageService.formatCompactNumber(0.98, decimals: 4, stripTrailingZeros: true), "0.98")
+        XCTAssertEqual(StorageService.formatCompactNumber(1.5000, decimals: 4, stripTrailingZeros: true), "1.5")
+    }
 }

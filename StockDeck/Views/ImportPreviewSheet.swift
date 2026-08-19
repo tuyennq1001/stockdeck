@@ -107,6 +107,7 @@ struct ImportPreviewSheet: View {
                     
                     Spacer()
                     
+                    #if os(macOS)
                     if isFundImport {
                         Button("Download 投資信託 Template (XLSX)") {
                             PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true)
@@ -116,6 +117,7 @@ struct ImportPreviewSheet: View {
 
                         Text("·").font(DS.caption).foregroundStyle(DS.inkTertiary)
                     }
+                    #endif
 
                     Button("Select All") {
                         for i in items.indices { items[i].isChecked = true }
@@ -187,7 +189,7 @@ struct ImportPreviewSheet: View {
         HStack(spacing: 10) {
             #if os(macOS)
             Toggle("", isOn: item.isChecked)
-                .toggleStyle(.checkbox)
+                .toggleStyle(.dsCheckbox)
                 .labelsHidden()
             #else
             Toggle("", isOn: item.isChecked)

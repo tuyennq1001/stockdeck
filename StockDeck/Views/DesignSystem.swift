@@ -1,10 +1,8 @@
 import SwiftUI
 #if os(macOS)
 import AppKit
-typealias PlatformNativeColor = NSColor
 #else
 import UIKit
-typealias PlatformNativeColor = UIColor
 #endif
 
 /// Design tokens for the StockDeck desktop window — the "private banking" light
@@ -21,7 +19,7 @@ enum DS {
     static let sidebarBG = dynamic(light: PlatformNativeColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1),
                                    dark: PlatformNativeColor(white: 0.11, alpha: 1))
     /// Card stock.
-    static let card = dynamic(light: PlatformNativeColor.white, dark: PlatformNativeColor(white: 0.13, alpha: 1))
+    static let card = dynamic(light: .white, dark: PlatformNativeColor(white: 0.13, alpha: 1))
     /// Inset wells, chart placeholders, thumbnails.
     static let cardAlt = dynamic(light: PlatformNativeColor(red: 0.961, green: 0.949, blue: 0.925, alpha: 1),
                                  dark: PlatformNativeColor(white: 0.17, alpha: 1))
@@ -124,11 +122,11 @@ enum DS {
     #endif
 
     #if os(macOS)
-    private static func dynamic(light: NSColor, dark: NSColor) -> Color {
+    private static func dynamic(light: PlatformNativeColor, dark: PlatformNativeColor) -> Color {
         Color(nsColor: .init(name: nil) { $0.isDarkMode ? dark : light })
     }
     #else
-    private static func dynamic(light: UIColor, dark: UIColor) -> Color {
+    private static func dynamic(light: PlatformNativeColor, dark: PlatformNativeColor) -> Color {
         Color(uiColor: .init { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? dark : light
         })
@@ -448,6 +446,7 @@ struct BrandMark: View {
     var size: CGFloat = 28
 
 #if os(macOS)
+    /// Loaded once from the app's bundled icon (works in dev and release).
     private static let appIcon: NSImage? = {
         if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
                      Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
@@ -468,7 +467,7 @@ struct BrandMark: View {
         let sys = NSApp.applicationIconImage
         return (sys?.size.width ?? 0) > 0 ? sys : nil
     }()
-    #else
+#else
     private static let appIcon: UIImage? = {
         if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
                      Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
@@ -478,7 +477,7 @@ struct BrandMark: View {
         }
         return nil
     }()
-    #endif
+#endif
 
     var body: some View {
         Group {
@@ -568,6 +567,7 @@ struct SymbolLogo: View {
 
     /// The cached VN logo once available; a letter monogram while it downloads.
     @ViewBuilder private var vnContent: some View {
+        #if os(macOS)
         if let vnCacheURL, let image = NSImage(contentsOf: vnCacheURL) {
             Image(nsImage: image)
                 .resizable()
@@ -578,6 +578,18 @@ struct SymbolLogo: View {
                 .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
                 .foregroundStyle(DS.brand)
         }
+        #else
+        if let vnCacheURL, let data = try? Data(contentsOf: vnCacheURL), let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .padding(size * 0.12)
+        } else {
+            Text(String(symbol.prefix(1)).uppercased())
+                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                .foregroundStyle(DS.brand)
+        }
+        #endif
     }
 
     private func resolveVNCache() {
@@ -1165,21 +1177,70 @@ struct NavRow: View {
 
 // MARK: - Hand cursor extension
 
+#if os(macOS)
+@MainActor
+enum CursorManager {
+    private static var activeCount = 0
+    private static var isPushed = false
+
+    static func update(inside: Bool) {
+        if inside {
+            activeCount += 1
+            if !isPushed {
+                NSCursor.pointingHand.push()
+                isPushed = true
+            }
+        } else {
+            activeCount = max(0, activeCount - 1)
+            if activeCount == 0 && isPushed {
+                NSCursor.pop()
+                isPushed = false
+            }
+        }
+    }
+
+    static func reset() {
+        if isPushed {
+            NSCursor.pop()
+            isPushed = false
+        }
+        activeCount = 0
+    }
+}
+#endif
+
 extension View {
     /// Shows the pointing hand cursor when hovering over interactive elements.
     func pointingHandCursor() -> some View {
         #if os(macOS)
         self.onHover { inside in
-            if inside {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
+            CursorManager.update(inside: inside)
         }
         #else
         self
         #endif
     }
+}
+
+// MARK: - Cross-Platform Checkbox Toggle Style
+
+struct DSCheckboxToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                    .foregroundColor(configuration.isOn ? DS.brand : DS.inkSecondary)
+                configuration.label
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+extension ToggleStyle where Self == DSCheckboxToggleStyle {
+    static var dsCheckbox: DSCheckboxToggleStyle { DSCheckboxToggleStyle() }
 }
 
 /// Helper for querying app bundle metadata (version, dev vs release).

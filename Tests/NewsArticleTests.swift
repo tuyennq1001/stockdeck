@@ -18,7 +18,7 @@ final class NewsArticleTests: XCTestCase {
           <source url="https://finance.yahoo.com">Yahoo Finance</source>
         </item>
         <item>
-          <title>Apple supplier warning - Reuters</title>
+          <title>Apple supplier warning. Production delayed in Q3 - Reuters</title>
           <link>https://news.google.com/rss/articles/CBMi-test2?oc=5</link>
           <guid isPermaLink="false">CBMi-test2</guid>
           <pubDate>Mon, 10 Aug 2026 09:30:00 GMT</pubDate>
@@ -39,7 +39,7 @@ final class NewsArticleTests: XCTestCase {
     func testParsesAllFields() throws {
         let a = try XCTUnwrap(GoogleNewsRSSParser.parse(sampleRSS).first)
         XCTAssertEqual(a.id, "CBMi-test1")
-        XCTAssertEqual(a.title, "Apple hits new high after earnings beat - Yahoo Finance")
+        XCTAssertEqual(a.title, "Apple hits new high after earnings beat")
         XCTAssertEqual(a.publisher, "Yahoo Finance")
         XCTAssertEqual(a.link, "https://news.google.com/rss/articles/CBMi-test1?oc=5")
         XCTAssertEqual(a.publishTime, 1786468215)
@@ -47,6 +47,19 @@ final class NewsArticleTests: XCTestCase {
         XCTAssertTrue(a.relatedTickers.isEmpty)
         XCTAssertNil(a.sourceSymbol, "sourceSymbol is not part of the feed; set by the fetcher")
         XCTAssertEqual(a.url?.scheme, "https")
+    }
+
+    func testSplitTitleAndContentWithSentenceBreak() throws {
+        let second = try XCTUnwrap(GoogleNewsRSSParser.parse(sampleRSS).dropFirst().first)
+        XCTAssertEqual(second.title, "Apple supplier warning")
+        XCTAssertEqual(second.content, "Production delayed in Q3")
+        XCTAssertEqual(second.publisher, "Reuters")
+    }
+
+    func testCleanHTML() {
+        let html = "<p>Apple &amp; Microsoft report &quot;record&quot; earnings&#39; growth.&nbsp;&lt;strong&gt;Read more&lt;/strong&gt;</p>"
+        let cleaned = GoogleNewsRSSParser.cleanHTML(html)
+        XCTAssertEqual(cleaned, "Apple & Microsoft report \"record\" earnings' growth. Read more")
     }
 
     func testParserSetsSourceSymbol() {
