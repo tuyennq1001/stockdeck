@@ -135,6 +135,8 @@ struct PortfolioListView: View {
                     }
                     .font(.inter(12, weight: .medium, relativeTo: .caption))
                     .foregroundColor(.secondary)
+                    .tracking(0.8)
+                    .textCase(.uppercase)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
 
@@ -686,7 +688,9 @@ struct PortfolioSection: View {
                 }
                 .font(.inter(12, weight: .medium, relativeTo: .caption))
                 .foregroundColor(.secondary)
-                .padding(.vertical, 1)
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .padding(.vertical, 4)
             }
 
             // Holdings (Grouped by symbol)
