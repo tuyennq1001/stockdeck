@@ -2,10 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 110
-    static let sparkline: CGFloat = 64
-    static let price: CGFloat = 84
-    static let change: CGFloat = 68
+    static let symbol: CGFloat = 105
+    static let sparkline: CGFloat = 115
+    static let price: CGFloat = 94
+    static let change: CGFloat = 62
 }
 
 struct WatchlistView: View {
@@ -164,21 +164,12 @@ struct WatchlistView: View {
                     Color.clear.frame(width: WatchlistCol.sparkline)
                 }
 
-                if storageService.showExtendedHours || storageService.showAbsoluteChange {
-                    Color.clear.frame(width: WatchlistCol.price)
-                } else {
-                    Color.clear.frame(maxWidth: .infinity)
-                }
-
                 if storageService.showAbsoluteChange {
-                    if storageService.showExtendedHours {
-                        Color.clear.frame(width: WatchlistCol.change)
-                    } else {
-                        Color.clear.frame(maxWidth: .infinity)
-                    }
-                }
-
-                if storageService.showExtendedHours {
+                    Color.clear.frame(width: WatchlistCol.price)
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: WatchlistCol.change, alignment: .trailing)
+                } else {
                     ProgressView()
                         .scaleEffect(0.6)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -202,24 +193,13 @@ struct WatchlistView: View {
                 Text("30D")
                     .frame(width: WatchlistCol.sparkline, alignment: .center)
             }
-            if storageService.showExtendedHours || storageService.showAbsoluteChange {
+            if storageService.showAbsoluteChange {
                 sortHeader("Price", column: .price)
                     .frame(width: WatchlistCol.price, alignment: .trailing)
+                sortHeader("Change", column: .absoluteChange)
+                    .frame(width: WatchlistCol.change, alignment: .trailing)
             } else {
                 sortHeader("Price", column: .price)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            if storageService.showAbsoluteChange {
-                if storageService.showExtendedHours {
-                    sortHeader("Change", column: .absoluteChange)
-                        .frame(width: WatchlistCol.change, alignment: .trailing)
-                } else {
-                    sortHeader("Change", column: .absoluteChange)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
-            if storageService.showExtendedHours {
-                Text("Ext")
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
@@ -832,14 +812,38 @@ struct QuoteRow: View {
 
     private var priceCell: some View {
         let displayPrice = quote.price
+        let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
+        let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
+        let extLabel: String = quote.marketStateLabel.isEmpty ? "Ext" : quote.marketStateLabel
+
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
                 .font(.inter(14, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(12, relativeTo: .caption).monospacedDigit())
-                .fontWeight(.semibold)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+            if let extPct {
+                HStack(spacing: 2) {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    Text("·")
+                        .font(.inter(10.5, relativeTo: .caption2))
+                        .foregroundColor(.secondary)
+                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
+                        .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            } else {
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                    .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.semibold)
+                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
         }
     }
 
@@ -855,34 +859,6 @@ struct QuoteRow: View {
             .minimumScaleFactor(0.7)
     }
 
-    private var extCell: some View {
-        let extPrice = (quote.isExtendedHours) ? quote.effectivePrice : nil
-        let extPct = extPrice == nil ? nil : quote.extendedChangePercent
-        let extLabel = extPrice == nil ? nil : quote.marketStateLabel
-
-        return VStack(alignment: .trailing, spacing: 1) {
-            if let extPrice {
-                Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .foregroundColor(.secondary)
-            }
-            if let extPct {
-                Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", (extLabel?.isEmpty ?? true) ? "" : "\(extLabel!) ", extPct))
-                    .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                    .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-            } else {
-                Text("—")
-                    .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
     var body: some View {
         HStack(spacing: 0) {
             symbolCell
@@ -892,25 +868,12 @@ struct QuoteRow: View {
                 Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 22)
             }
 
-            // Col 3: Price
-            if storageService.showExtendedHours || storageService.showAbsoluteChange {
+            // Col 3: Price & Col 4: Change
+            if storageService.showAbsoluteChange {
                 priceCell.frame(width: WatchlistCol.price, alignment: .trailing)
+                changeCell.frame(width: WatchlistCol.change, alignment: .trailing)
             } else {
                 priceCell.frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
-            // Col 4: Change
-            if storageService.showAbsoluteChange {
-                if storageService.showExtendedHours {
-                    changeCell.frame(width: WatchlistCol.change, alignment: .trailing)
-                } else {
-                    changeCell.frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
-
-            // Col 5: Ext
-            if storageService.showExtendedHours {
-                extCell.frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.horizontal, 12)
