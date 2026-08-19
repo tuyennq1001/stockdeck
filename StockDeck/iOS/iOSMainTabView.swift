@@ -109,6 +109,14 @@ struct iOSMainTabView: View {
         .onAppear {
             selectedTab = Tab.resolve(stored: storageService.lastSelectedTab,
                                       showNews: storageService.showNewsTab)
+            if storageService.iCloudSyncEnabled {
+                iCloudSyncService.shared.pullAndMerge(force: false)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            if storageService.iCloudSyncEnabled {
+                iCloudSyncService.shared.pullAndMerge(force: false)
+            }
         }
         .onChange(of: selectedTab) { _, newValue in
             storageService.lastSelectedTab = newValue.rawValue
@@ -118,6 +126,9 @@ struct iOSMainTabView: View {
     private var refreshButton: some View {
         Button {
             Task {
+                if storageService.iCloudSyncEnabled {
+                    iCloudSyncService.shared.pullAndMerge(force: false)
+                }
                 await stockService.refreshAll(storageService: storageService)
                 if selectedTab == .home {
                     await stockService.refreshNews(storageService: storageService, force: true)
@@ -126,7 +137,7 @@ struct iOSMainTabView: View {
         } label: {
             Image(systemName: "arrow.clockwise")
         }
-        .disabled(stockService.isLoading)
+        .disabled(stockService.isLoading || iCloudSyncService.shared.isSyncing)
     }
 }
 #endif
