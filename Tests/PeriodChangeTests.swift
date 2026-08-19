@@ -25,6 +25,22 @@ final class PeriodChangeTests: XCTestCase {
         XCTAssertEqual(histories["ETH-USD"]?.map(\.close), [2000, 2200])
     }
 
+    func testParsesYahooSparkWithDifferentKeyAndSymbol() throws {
+        let json = """
+        {
+          "JPY=X": {
+            "symbol": "USDJPY=X",
+            "timestamp": [100, 200],
+            "close": [150.0, 152.0]
+          }
+        }
+        """
+
+        let histories = try YahooSparkParser.parse(Data(json.utf8))
+        XCTAssertEqual(histories["JPY=X"]?.map(\.close), [150.0, 152.0])
+        XCTAssertEqual(histories["USDJPY=X"]?.map(\.close), [150.0, 152.0])
+    }
+
     func testUsesLastCloseAtOrBeforeBoundary() throws {
         let boundary = Date(timeIntervalSince1970: 1_000)
         let points = [
