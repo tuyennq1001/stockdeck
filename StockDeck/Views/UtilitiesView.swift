@@ -379,6 +379,24 @@ struct UtilitiesView: View {
                     .disabled(syncService.isSyncing)
                 }
 
+                #if os(iOS)
+                HStack(spacing: 6) {
+                    Image(systemName: syncService.isFileLinked ? "checkmark.circle.fill" : "link.badge.plus")
+                        .foregroundColor(syncService.isFileLinked ? .green : .secondary)
+                        .font(.system(size: 13))
+                    if syncService.isFileLinked {
+                        Text("Auto-sync linked: \(syncService.linkedFileName)")
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundColor(DS.ink)
+                    } else {
+                        Text("Auto-sync: Select 'stockdeck_sync.json' below once to link")
+                            .font(.inter(11, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                #endif
+
                 HStack(spacing: 10) {
                     Button {
                         syncService.pushLocalData()
@@ -579,6 +597,9 @@ struct UtilitiesView: View {
         let types: [UTType] = [.json, .commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
         #if os(iOS)
         presentNativeDocumentPicker(allowedContentTypes: types) { url in
+            if url.lastPathComponent.hasSuffix(".json") {
+                syncService.saveBookmark(for: url)
+            }
             handleSelectedFileURL(url)
         }
         #elseif os(macOS)

@@ -1,5 +1,8 @@
 import Foundation
 import Combine
+#if os(iOS)
+import UIKit
+#endif
 
 @MainActor
 final class iCloudSyncService: ObservableObject {
@@ -9,10 +12,13 @@ final class iCloudSyncService: ObservableObject {
     private let kSyncPayloadKey = "stockdeck_appdata_payload"
     private let kSyncTimestampKey = "stockdeck_sync_timestamp"
     private let kSyncDeviceIdKey = "stockdeck_sync_device_id"
+    private let kBookmarkKey = "stockdeck_icloud_file_bookmark"
 
     @Published var lastSyncDate: Date? = nil
     @Published var syncStatus: String = "Idle"
     @Published var isSyncing: Bool = false
+    @Published var isFileLinked: Bool = false
+    @Published var linkedFileName: String = ""
 
     /// Checks if the user is currently signed in to an Apple ID / iCloud account on this device
     var isiCloudAvailable: Bool {
@@ -31,6 +37,7 @@ final class iCloudSyncService: ObservableObject {
             UserDefaults.standard.set(newId, forKey: "stockdeck_device_uuid")
             self.deviceId = newId
         }
+        updateLinkedFileStatus()
     }
 
     func start() {
@@ -45,11 +52,63 @@ final class iCloudSyncService: ObservableObject {
         )
         store.synchronize()
 
+        updateLinkedFileStatus()
+
         // If iCloud sync is enabled, pull remote data on launch
         if StorageService.shared.iCloudSyncEnabled {
             pullAndMerge(force: false)
         }
     }
+
+    func updateLinkedFileStatus() {
+        #if os(iOS)
+        if let url = resolveBookmarkedURL() {
+            isFileLinked = true
+            linkedFileName = url.lastPathComponent
+        } else {
+            isFileLinked = false
+            linkedFileName = ""
+        }
+        #else
+        isFileLinked = true
+        linkedFileName = "stockdeck_sync.json"
+        #endif
+    }
+
+    #if os(iOS)
+    func saveBookmark(for url: URL) {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+        guard let bookmarkData = try? url.bookmarkData(
+            options: .minimalBookmark,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else { return }
+
+        UserDefaults.standard.set(bookmarkData, forKey: kBookmarkKey)
+        updateLinkedFileStatus()
+    }
+
+    func resolveBookmarkedURL() -> URL? {
+        guard let bookmarkData = UserDefaults.standard.data(forKey: kBookmarkKey) else {
+            return nil
+        }
+        var isStale = false
+        guard let resolvedURL = try? URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            return nil
+        }
+        if isStale {
+            saveBookmark(for: resolvedURL)
+        }
+        return resolvedURL
+    }
+    #endif
 
     @objc private func ubiquitousKeyValueStoreDidChange(_ notification: Notification) {
         Task { @MainActor in
@@ -90,6 +149,9 @@ final class iCloudSyncService: ObservableObject {
             try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
             return docs.appendingPathComponent("stockdeck_sync.json")
         }
+        if let bookmarked = resolveBookmarkedURL() {
+            return bookmarked
+        }
         #endif
         return nil
     }
@@ -117,6 +179,10 @@ final class iCloudSyncService: ObservableObject {
 
         var wroteDrive = false
         if let driveURL = iCloudDriveSyncFileURL {
+            #if os(iOS)
+            let accessed = driveURL.startAccessingSecurityScopedResource()
+            defer { if accessed { driveURL.stopAccessingSecurityScopedResource() } }
+            #endif
             do {
                 try encoded.write(to: driveURL, options: .atomic)
                 wroteDrive = true
@@ -152,11 +218,17 @@ final class iCloudSyncService: ObservableObject {
         var remoteData: Data? = nil
         var isFromDrive = false
 
-        if let driveURL = iCloudDriveSyncFileURL,
-           FileManager.default.fileExists(atPath: driveURL.path),
-           let driveData = try? Data(contentsOf: driveURL) {
-            remoteData = driveData
-            isFromDrive = true
+        if let driveURL = iCloudDriveSyncFileURL {
+            #if os(iOS)
+            let accessed = driveURL.startAccessingSecurityScopedResource()
+            defer { if accessed { driveURL.stopAccessingSecurityScopedResource() } }
+            #endif
+
+            if FileManager.default.fileExists(atPath: driveURL.path),
+               let driveData = try? Data(contentsOf: driveURL) {
+                remoteData = driveData
+                isFromDrive = true
+            }
         }
 
         if remoteData == nil {
@@ -201,6 +273,10 @@ final class iCloudSyncService: ObservableObject {
         // Converge remote to the merged state
         if let mergedEncoded = try? JSONEncoder().encode(merged) {
             if let driveURL = iCloudDriveSyncFileURL {
+                #if os(iOS)
+                let accessed = driveURL.startAccessingSecurityScopedResource()
+                defer { if accessed { driveURL.stopAccessingSecurityScopedResource() } }
+                #endif
                 try? mergedEncoded.write(to: driveURL, options: .atomic)
             }
             let now = Date().timeIntervalSince1970
