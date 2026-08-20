@@ -48,6 +48,17 @@ final class AIReviewService {
         let messages: [AIChatSection.APIMessage]
         /// DeepSeek V4 thinking mode toggle (nil = leave to provider default).
         let thinking: Bool?
+        let maxTokens: Int?
+
+        init(baseURL: String, apiKey: String, model: String, systemContext: String, messages: [AIChatSection.APIMessage], thinking: Bool? = nil, maxTokens: Int? = nil) {
+            self.baseURL = baseURL
+            self.apiKey = apiKey
+            self.model = model
+            self.systemContext = systemContext
+            self.messages = messages
+            self.thinking = thinking
+            self.maxTokens = maxTokens
+        }
     }
 
     /// Sends the conversation + context to the provider and returns the assistant reply.
@@ -64,7 +75,7 @@ final class AIReviewService {
         payload["model"] = request.model
         payload["messages"] = Self.buildMessages(systemContext: request.systemContext, messages: request.messages)
         payload["temperature"] = 0.4
-        payload["max_tokens"] = 1600
+        payload["max_tokens"] = request.maxTokens ?? 4096
         if let thinking = request.thinking {
             payload["thinking"] = ["type": thinking ? "enabled" : "disabled"]
         }
@@ -104,6 +115,12 @@ final class AIReviewService {
             // (e.g. it burned the token budget reasoning), report it clearly.
             if let content = message.content, !content.isEmpty {
                 return content.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let reasoning = message.reasoningContent, !reasoning.isEmpty,
+               let firstBrace = reasoning.firstIndex(of: "{"),
+               let lastBrace = reasoning.lastIndex(of: "}"), firstBrace <= lastBrace {
+                let jsonSub = String(reasoning[firstBrace...lastBrace])
+                return jsonSub.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             NSLog("[AIReview] Empty message content. finish_reason=\(decoded.choices.first?.finishReason ?? "?"). Body: \(String(bodyText.prefix(500)))")
             throw AIReviewError.decoding("empty content (finish_reason=\(decoded.choices.first?.finishReason ?? "?")). Body: \(String(bodyText.prefix(300)))")

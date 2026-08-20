@@ -515,6 +515,32 @@ class StorageService: ObservableObject {
         }
     }
 
+    // MARK: - Daily AI Insight Cache
+    @Published var dailyAIInsight: HomeAIInsight?
+
+    private var dailyAIInsightFileURL: URL {
+        fileURL.deletingLastPathComponent().appendingPathComponent("daily_ai_insight.json")
+    }
+
+    func loadDailyAIInsight() -> HomeAIInsight? {
+        if let cached = dailyAIInsight {
+            return cached
+        }
+        guard let data = try? Data(contentsOf: dailyAIInsightFileURL),
+              let insight = try? JSONDecoder().decode(HomeAIInsight.self, from: data) else {
+            return nil
+        }
+        self.dailyAIInsight = insight
+        return insight
+    }
+
+    func saveDailyAIInsight(_ insight: HomeAIInsight) {
+        self.dailyAIInsight = insight
+        if let data = try? JSONEncoder().encode(insight) {
+            try? data.write(to: dailyAIInsightFileURL, options: .atomic)
+        }
+    }
+
     @Published var fontSizeLevel: Int = 9 {
         didSet {
             FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
