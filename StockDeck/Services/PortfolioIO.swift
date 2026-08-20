@@ -298,28 +298,3 @@ enum PortfolioIO {
     }
     #endif
 }
-#else
-import Foundation
-import UniformTypeIdentifiers
-
-@MainActor
-enum PortfolioIO {
-    struct ImportResult: Identifiable {
-        let id = UUID()
-        let items: [ParsedImportItem]
-        let suggestedPortfolioName: String?
-        let isFundImport: Bool
-    }
-
-    static func exportAll(_ portfolios: [Portfolio], storageService: StorageService, restoreActivationPolicy: Bool) {}
-    static func exportWatchlists(_ watchlists: [Watchlist], stockService: StockService, restoreActivationPolicy: Bool) {}
-    static func exportSinglePortfolio(_ portfolio: Portfolio, storageService: StorageService, restoreActivationPolicy: Bool) {}
-    static func importPortfolios(storageService: StorageService, restoreActivationPolicy: Bool) {}
-    static func saveSamplePortfolioSpreadsheet(onAlert: ((String) -> Void)? = nil) {}
-    static func saveSampleWatchlistSpreadsheet(onAlert: ((String) -> Void)? = nil) {}
-    static func pickAndParseStandard(storageService: StorageService, restoreActivationPolicy: Bool, onParsed: (ImportResult) -> Void, onAlert: (String) -> Void) {}
-    static func pickAndParseJapaneseFunds(restoreActivationPolicy: Bool, onParsed: (ImportResult) -> Void, onAlert: (String) -> Void) {}
-    static func downloadSample(storageService: StorageService, restoreActivationPolicy: Bool, onAlert: (String) -> Void) {}
-    static func downloadJapaneseFundSample(restoreActivationPolicy: Bool, onAlert: ((String) -> Void)? = nil) {}
-}
-#endif
