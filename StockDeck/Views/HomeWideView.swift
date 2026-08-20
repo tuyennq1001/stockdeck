@@ -2,15 +2,24 @@
 import SwiftUI
 import AppKit
 
-/// Desktop news view: a featured lead story anchoring a responsive grid of story
-/// cards. Tapping opens the article in the in-app browser.
+/// Desktop news & market insights view: combines AI-driven movement explanations
+/// with a responsive grid of story cards. Tapping opens the article in the in-app browser.
 struct HomeWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
+    @State private var mode: HomeViewMode = .insights
     @State private var query = ""
     @State private var activeLink: InAppWebLink?
+    @State private var isLoadingInsight = false
+    @State private var insightError: String? = nil
     @FocusState private var searchFocused: Bool
+
+    let onOpenSettings: () -> Void
+
+    init(onOpenSettings: @escaping () -> Void = {}) {
+        self.onOpenSettings = onOpenSettings
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 320, maximum: 420), spacing: DS.gap)]
 
@@ -28,42 +37,225 @@ struct HomeWideView: View {
     }
 
     var body: some View {
-        PageScaffold("News", caption: newsCaption) {
+        PageScaffold("Home", caption: headerCaption) {
             HStack(spacing: 12) {
-                searchField
-                RefreshButton(isLoading: stockService.isLoadingNews) {
-                    Task { await stockService.refreshNews(storageService: storageService, force: true) }
+                modePicker
+                if mode == .news {
+                    searchField
+                }
+                RefreshButton(isLoading: mode == .insights ? isLoadingInsight : stockService.isLoadingNews) {
+                    if mode == .insights {
+                        refreshInsights(force: true)
+                    } else {
+                        Task { await stockService.refreshNews(storageService: storageService, force: true) }
+                    }
                 }
             }
         } content: {
-            if stockService.news.isEmpty {
-                emptyState
-            } else {
-                let news = filteredNews
-                if news.isEmpty {
-                    noMatchesState
+            Group {
+                if mode == .insights {
+                    insightsContent
                 } else {
-                    ScrollView {
-                        VStack(spacing: DS.gap) {
-                            if let featured = news.first {
-                                FeaturedNewsCard(article: featured) { open($0) }
-                            }
-                            LazyVGrid(columns: columns, spacing: DS.gap) {
-                                ForEach(news.dropFirst()) { article in
-                                    NewsCard(article: article) { open($0) }
-                                }
-                            }
-                        }
-                        .pageColumn()
-                        .padding(.top, 4)
-                    }
+                    newsContent
                 }
             }
         }
         .navigationTitle("Home")
-        .task { await stockService.refreshNews(storageService: storageService) }
+        .task {
+            _ = storageService.loadDailyAIInsight()
+            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
+                refreshInsights(force: false)
+            }
+            await stockService.refreshNews(storageService: storageService)
+        }
         .sheet(item: $activeLink) { link in
             InAppWebViewPopup(url: link.url)
+        }
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(HomeViewMode.allCases, id: \.self) { m in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        mode = m
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: m == .insights ? "sparkles" : "newspaper")
+                            .font(.system(size: 11))
+                        Text(m.rawValue)
+                            .font(.inter(11.5, weight: mode == m ? .bold : .medium, relativeTo: .caption))
+                    }
+                    .foregroundStyle(mode == m ? DS.brand : DS.inkSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(mode == m ? DS.brand.opacity(0.12) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(DS.cardAlt))
+    }
+
+    private var headerCaption: String {
+        if mode == .insights {
+            return "Luận điểm giải thích biến động danh mục qua AI & tin tức 24h"
+        }
+        return newsCaption
+    }
+
+    private func refreshInsights(force: Bool = false) {
+        guard storageService.hasAIConfiguration else { return }
+        isLoadingInsight = true
+        insightError = nil
+        Task {
+            do {
+                _ = try await HomeAIInsightService.shared.generateDailyInsight(
+                    storageService: storageService,
+                    stockService: stockService,
+                    force: force
+                )
+                isLoadingInsight = false
+            } catch {
+                insightError = error.localizedDescription
+                isLoadingInsight = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var insightsContent: some View {
+        if !storageService.hasAIConfiguration {
+            ScrollView {
+                VStack(spacing: DS.gap) {
+                    AIInsightMissingConfigCard(onOpenSettings: onOpenSettings)
+                    if !stockService.news.isEmpty {
+                        newsContent
+                    }
+                }
+                .pageColumn()
+                .padding(.top, 4)
+            }
+        } else if isLoadingInsight && storageService.dailyAIInsight == nil {
+            VStack {
+                Spacer()
+                AIInsightLoadingCard()
+                    .frame(maxWidth: 480)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let insight = storageService.dailyAIInsight {
+            ScrollView {
+                VStack(spacing: DS.gap) {
+                    AIInsightPulseHeroCard(
+                        insight: insight,
+                        isLoading: isLoadingInsight,
+                        onRefresh: { refreshInsights(force: true) }
+                    )
+
+                    if !insight.items.isEmpty {
+                        let grouped = Dictionary(grouping: insight.items, by: \.marketCategory)
+                        ForEach(MarketCategory.allCases) { cat in
+                            if let items = grouped[cat], !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    MarketSectionHeader(category: cat, count: items.count)
+
+                                    LazyVGrid(columns: columns, spacing: DS.gap) {
+                                        ForEach(items) { item in
+                                            SymbolInsightCard(item: item) { open($0) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 24))
+                                .foregroundStyle(DS.inkTertiary)
+                            Text("Chưa có chi tiết luận điểm cho các mã riêng lẻ")
+                                .font(DS.caption)
+                                .foregroundStyle(DS.inkSecondary)
+                            Button("Phân tích lại các mã theo dõi") {
+                                refreshInsights(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(DS.brand)
+                        }
+                        .padding(.vertical, 20)
+                    }
+                }
+                .pageColumn()
+                .padding(.top, 4)
+            }
+        } else if let err = insightError {
+            VStack(spacing: 12) {
+                Spacer()
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 32))
+                    .foregroundStyle(DS.down)
+                Text("Không thể tải nhận định AI: \(err)")
+                    .font(DS.bodyStrong)
+                    .foregroundStyle(DS.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                Button("Thử lại") {
+                    refreshInsights(force: true)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.brand)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 12) {
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.system(size: 32))
+                    .foregroundStyle(DS.inkTertiary)
+                Text("Chưa có nhận định AI cho hôm nay")
+                    .font(DS.bodyStrong)
+                    .foregroundStyle(DS.inkSecondary)
+                Button("Phân tích ngay") {
+                    refreshInsights(force: true)
+                }
+                .buttonStyle(.bordered)
+                .tint(DS.brand)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var newsContent: some View {
+        if stockService.news.isEmpty {
+            emptyState
+        } else {
+            let news = filteredNews
+            if news.isEmpty {
+                noMatchesState
+            } else {
+                ScrollView {
+                    VStack(spacing: DS.gap) {
+                        if let featured = news.first {
+                            FeaturedNewsCard(article: featured) { open($0) }
+                        }
+                        LazyVGrid(columns: columns, spacing: DS.gap) {
+                            ForEach(news.dropFirst()) { article in
+                                NewsCard(article: article) { open($0) }
+                            }
+                        }
+                    }
+                    .pageColumn()
+                    .padding(.top, 4)
+                }
+            }
         }
     }
 

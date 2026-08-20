@@ -9,8 +9,11 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @State private var mode: HomeViewMode = .insights
     @State private var query = ""
     @State private var activeLink: InAppWebLink?
+    @State private var isLoadingInsight = false
+    @State private var insightError: String? = nil
 
     /// Filters by headline, tickers (source + related) and publisher.
     private var filteredNews: [NewsArticle] {
@@ -25,70 +28,264 @@ struct HomeView: View {
     }
 
     var body: some View {
-        Group {
-            if stockService.news.isEmpty {
-                if stockService.isLoadingNews {
-                    VStack(spacing: 10) {
-                        Spacer()
-                        ProgressView().scaleEffect(0.8)
-                        Text("Loading news…")
-                            .font(.inter(11, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    VStack(spacing: 12) {
-                        Spacer()
-                        Image(systemName: "newspaper")
-                            .font(.inter(32, relativeTo: .largeTitle))
-                            .foregroundColor(.secondary)
-                        Text("No news available")
-                            .font(.inter(12, relativeTo: .body))
-                            .foregroundColor(.secondary)
-                        Button("Refresh") {
-                            Task { await stockService.refreshNews(storageService: storageService, force: true) }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+
+            if mode == .insights {
+                insightsView
             } else {
-                VStack(spacing: 0) {
-                    searchField
-                    Divider()
-                    let news = filteredNews
-                    if news.isEmpty {
-                        VStack(spacing: 8) {
-                            Spacer()
-                            Image(systemName: "magnifyingglass")
-                                .font(.inter(24, relativeTo: .title)).foregroundColor(.secondary)
-                            Text("No stories match")
-                                .font(.inter(11, relativeTo: .caption)).foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(news) { article in
-                                    NewsRow(article: article) { activeLink = InAppWebLink(url: $0) }
-                                    Divider().padding(.leading, 74)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
+                newsView
             }
         }
         .task {
+            _ = storageService.loadDailyAIInsight()
+            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
+                refreshInsights(force: false)
+            }
             await stockService.refreshNews(storageService: storageService)
         }
         .sheet(item: $activeLink) { link in
             InAppWebViewPopup(url: link.url)
+        }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            modePicker
+            Spacer()
+            if mode == .news {
+                searchField
+            }
+            Button {
+                if mode == .insights {
+                    refreshInsights(force: true)
+                } else {
+                    Task { await stockService.refreshNews(storageService: storageService, force: true) }
+                }
+            } label: {
+                if (mode == .insights && isLoadingInsight) || (mode == .news && stockService.isLoadingNews) {
+                    ProgressView().scaleEffect(0.6)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(isLoadingInsight || stockService.isLoadingNews)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(HomeViewMode.allCases, id: \.self) { m in
+                let isSelected = (mode == m)
+                let icon = (m == .insights ? "sparkles" : "newspaper")
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        mode = m
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: icon)
+                            .font(.system(size: 10))
+                        Text(m.rawValue)
+                            .font(.inter(10, weight: isSelected ? .bold : .medium, relativeTo: .caption2))
+                    }
+                    .foregroundColor(isSelected ? DS.brand : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? DS.brand.opacity(0.12) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(Color.secondary.opacity(0.08)))
+    }
+
+    private func refreshInsights(force: Bool = false) {
+        guard storageService.hasAIConfiguration else { return }
+        isLoadingInsight = true
+        insightError = nil
+        Task {
+            do {
+                _ = try await HomeAIInsightService.shared.generateDailyInsight(
+                    storageService: storageService,
+                    stockService: stockService,
+                    force: force
+                )
+                isLoadingInsight = false
+            } catch {
+                insightError = error.localizedDescription
+                isLoadingInsight = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var insightsView: some View {
+        if !storageService.hasAIConfiguration {
+            ScrollView {
+                VStack(spacing: 12) {
+                    AIInsightMissingConfigCard(onOpenSettings: {})
+                        .padding(.horizontal, 10)
+                        .padding(.top, 8)
+                    newsView
+                }
+            }
+        } else if isLoadingInsight && storageService.dailyAIInsight == nil {
+            VStack(spacing: 10) {
+                Spacer()
+                ProgressView().scaleEffect(0.8)
+                Text("AI đang phân tích luận điểm biến động 24h…")
+                    .font(.inter(11, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let insight = storageService.dailyAIInsight {
+            ScrollView {
+                VStack(spacing: 10) {
+                    AIInsightPulseHeroCard(
+                        insight: insight,
+                        isLoading: isLoadingInsight,
+                        onRefresh: { refreshInsights(force: true) }
+                    )
+
+                    if !insight.items.isEmpty {
+                        let grouped = Dictionary(grouping: insight.items, by: \.marketCategory)
+                        ForEach(MarketCategory.allCases) { cat in
+                            if let items = grouped[cat], !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    MarketSectionHeader(category: cat, count: items.count)
+
+                                    ForEach(items) { item in
+                                        SymbolInsightCard(item: item) { activeLink = InAppWebLink(url: $0) }
+                                    }
+                                }
+                                .padding(.top, 4)
+                            }
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 20))
+                                .foregroundColor(.secondary)
+                            Text("Chưa có chi tiết luận điểm cho các mã riêng lẻ")
+                                .font(.inter(11, relativeTo: .caption))
+                                .foregroundColor(.secondary)
+                            Button("Phân tích lại các mã theo dõi") {
+                                refreshInsights(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.vertical, 16)
+                    }
+                }
+                .padding(10)
+            }
+        } else if let err = insightError {
+            VStack(spacing: 8) {
+                Spacer()
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 24))
+                    .foregroundColor(DS.down)
+                Text("Lỗi phân tích AI: \(err)")
+                    .font(.inter(11, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                Button("Thử lại") {
+                    refreshInsights(force: true)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 8) {
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.system(size: 24))
+                    .foregroundColor(.secondary)
+                Text("Chưa có nhận định AI cho hôm nay")
+                    .font(.inter(11, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                Button("Phân tích ngay") {
+                    refreshInsights(force: true)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var newsView: some View {
+        if stockService.news.isEmpty {
+            if stockService.isLoadingNews {
+                VStack(spacing: 10) {
+                    Spacer()
+                    ProgressView().scaleEffect(0.8)
+                    Text("Loading news…")
+                        .font(.inter(11, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "newspaper")
+                        .font(.inter(32, relativeTo: .largeTitle))
+                        .foregroundColor(.secondary)
+                    Text("No news available")
+                        .font(.inter(12, relativeTo: .body))
+                        .foregroundColor(.secondary)
+                    Button("Refresh") {
+                        Task { await stockService.refreshNews(storageService: storageService, force: true) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            let news = filteredNews
+            if news.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.inter(24, relativeTo: .title)).foregroundColor(.secondary)
+                    Text("No stories match")
+                        .font(.inter(11, relativeTo: .caption)).foregroundColor(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(news) { article in
+                            NewsRow(article: article) { activeLink = InAppWebLink(url: $0) }
+                            Divider().padding(.leading, 74)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
         }
     }
 

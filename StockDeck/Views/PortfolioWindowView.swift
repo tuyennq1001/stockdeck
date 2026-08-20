@@ -648,7 +648,7 @@ struct PortfolioWindowView: View {
     @ViewBuilder private var detail: some View {
         switch selection {
         case .home:
-            HomeWideView()
+            HomeWideView(onOpenSettings: { navigate(to: .settings) })
         case .watchlist:
             WatchlistWideView(showSearch: $showSearch)
                 .id(storageService.selectedWatchlistId)
