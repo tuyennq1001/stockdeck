@@ -123,13 +123,13 @@ struct PortfolioListView: View {
                 if !globals.isEmpty {
                     HStack(spacing: 0) {
                         Text("Symbol")
-                            .frame(width: 76, alignment: .leading)
+                            .frame(width: 70, alignment: .leading)
                         Text("Cost")
-                            .frame(width: 58, alignment: .trailing)
+                            .frame(width: 62, alignment: .trailing)
                         Text("Price")
-                            .frame(width: 78, alignment: .trailing)
+                            .frame(width: 98, alignment: .trailing)
                         Text("Value")
-                            .frame(width: 86, alignment: .trailing)
+                            .frame(width: 78, alignment: .trailing)
                         Text("Total P&L")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
@@ -1228,7 +1228,7 @@ struct PortfolioQuoteRow: View {
                     }
                 }
             }
-            .frame(width: 76, alignment: .leading)
+            .frame(width: 70, alignment: .leading)
 
             // Col 2: Cost (compact amount in native currency)
             if globalPos.hasCostBasis {
@@ -1243,14 +1243,14 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 58, alignment: .trailing)
+                .frame(width: 62, alignment: .trailing)
             } else {
                 Text("—")
                     .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 58, alignment: .trailing)
+                    .frame(width: 62, alignment: .trailing)
             }
 
             // Col 3: Price (2 lines: regular closing price + today % change / ext %)
@@ -1266,18 +1266,19 @@ struct PortfolioQuoteRow: View {
 
                     let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
                     let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
-                    let extLabel: String = quote.marketStateLabel.isEmpty ? "Ext" : quote.marketStateLabel
 
                     if let extPct {
-                        HStack(spacing: 2) {
+                        let isPre = quote.marketState.hasPrefix("PRE")
+                        HStack(spacing: 0) {
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                                 .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                 .fontWeight(.semibold)
                                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                            Text("·")
-                                .font(.inter(10, relativeTo: .caption2))
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
+                            Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                                .font(.system(size: 7.5, weight: .semibold))
+                                .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                                .padding(.horizontal, 1)
+                            Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
                                 .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                                 .fontWeight(.semibold)
                                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
@@ -1296,7 +1297,7 @@ struct PortfolioQuoteRow: View {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 78, alignment: .trailing)
+            .frame(width: 98, alignment: .trailing)
 
             // Col 4: Value (2 lines: Market Value in native currency + Today P&L)
             VStack(alignment: .trailing, spacing: 1) {
@@ -1324,7 +1325,7 @@ struct PortfolioQuoteRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 86, alignment: .trailing)
+            .frame(width: 78, alignment: .trailing)
 
             // Col 5: Total P&L — compact amount (K/M when large) + percent, 2 lines.
             // Fixed-size fonts (not dynamic .body) so the figures never shrink

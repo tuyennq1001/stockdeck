@@ -60,6 +60,7 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 
 ## 8. Quy tắc Build (Build Rules)
 - **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build.
+- **Quy tắc Build Đa Nền Tảng (Dual Build Rule)**: Mỗi khi chỉnh sửa code, kiểm thử hoặc hoàn thành tính năng, **bắt buộc phải build song song cả macOS (`./dev.sh`) và iOS (`./dev-ios.sh` hoặc `swift build --triple arm64-apple-ios17.0-simulator --sdk $(xcrun --sdk iphonesimulator --show-sdk-path)`)** để đảm bảo không bị lỗi biên dịch trên bất kỳ nền tảng nào.
 - **Không pipe build output qua `grep` hoặc filter blocking khác**: Hiển thị toàn bộ output build để không bỏ sót lỗi. `grep` có thể treo nếu pattern không khớp.
 - **Nếu cần kiểm tra nhanh lỗi biên dịch**: Dùng `swift build 2>&1 | head -100` (có giới hạn dòng, không treo) hoặc `./dev.sh 2>&1 | tail -20`.
 

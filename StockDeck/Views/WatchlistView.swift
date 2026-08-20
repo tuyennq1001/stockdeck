@@ -2,10 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 110
+    static let symbol: CGFloat = 108
     static let sparkline: CGFloat = 80
-    static let price: CGFloat = 94
-    static let change: CGFloat = 85
+    static let price: CGFloat = 120
+    static let change: CGFloat = 82
 }
 
 struct WatchlistView: View {
@@ -789,22 +789,23 @@ struct QuoteRow: View {
         let displayPrice = quote.price
         let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
         let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
-        let extLabel: String = quote.marketStateLabel.isEmpty ? "Ext" : quote.marketStateLabel
 
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
                 .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
             if let extPct {
-                HStack(spacing: 2) {
+                let isPre = quote.marketState.hasPrefix("PRE")
+                HStack(spacing: 0) {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    Text("·")
-                        .font(.inter(10, relativeTo: .caption2))
-                        .foregroundColor(.secondary)
-                    Text(String(format: "%@%+.\(storageService.percentDecimals)f%%", extLabel.isEmpty ? "" : "\(extLabel) ", extPct))
+                    Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                        .font(.system(size: 7.5, weight: .semibold))
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                        .padding(.horizontal, 1)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
                         .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
