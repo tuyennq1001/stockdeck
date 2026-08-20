@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
+    @Environment(\.openURL) private var openURL
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
 
@@ -223,6 +224,7 @@ struct SettingsView: View {
                 }
 
 
+                #if os(macOS)
                 // MARK: - Menu Bar (display + colors)
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
                     subHeader("Display")
@@ -314,6 +316,7 @@ struct SettingsView: View {
                     Toggle("Use system color in the menu bar", isOn: $storageService.menuBarUseSystemColor)
                     caption("Keeps the menu bar text readable on any wallpaper (direction still shown by + / − and ▲ ▼). Doesn't affect in-app colors.")
                 }
+                #endif
 
                 // MARK: - Notifications
                 SettingsGroup(title: "Notifications", icon: "bell", isExpanded: $groupNotifications) {

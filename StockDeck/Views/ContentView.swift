@@ -191,6 +191,7 @@ struct ContentView: View {
                 .pointingHandCursor()
                 .help("Refresh quotes")
 
+                #if os(macOS)
                 // The clear way into the full desktop app.
                 Button(action: {
                     NSLog("[StockDeck] Open button tapped in popover")
@@ -210,6 +211,7 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 .pointingHandCursor()
                 .help("Open the full StockDeck window")
+                #endif
 
                 // Settings gear button placed immediately to the right of Open button
                 Button(action: { selectedTab = .settings }) {
@@ -221,6 +223,7 @@ struct ContentView: View {
                 .pointingHandCursor()
                 .help("Settings")
 
+                #if os(macOS)
                 Button(action: { NSApp.terminate(nil) }) {
                     Image(systemName: "power")
                         .font(.inter(11, relativeTo: .subheadline))
@@ -228,6 +231,7 @@ struct ContentView: View {
                 .buttonStyle(.borderless)
                 .pointingHandCursor()
                 .help("Quit StockDeck")
+                #endif
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

@@ -140,9 +140,9 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView else { return }
+            guard let tv = textView else { return }
             isInternalChange = true
-            text = textView.string
+            text = tv.string
             isInternalChange = false
         }
     }
@@ -348,20 +348,22 @@ struct MarkdownNoteView: View {
                 case .text(let md): MarkdownRenderer(text: expanded ? md : truncated(md)).frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let f, let alt):
                     #if os(macOS)
-                    if let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f)) {
+                    let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f))
+                    #else
+                    let img = UIImage(contentsOfFile: NoteImageStore.imageURL(for: f).path)
+                    #endif
+                    if let img {
+                        #if os(macOS)
                         Image(nsImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
-                        if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
-                    }
-                    #else
-                    if let data = try? Data(contentsOf: NoteImageStore.imageURL(for: f)), let img = UIImage(data: data) {
+                        #else
                         Image(uiImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
+                        #endif
                         if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
                     }
-                    #endif
                 }
             }
             if totalLines > threshold && !expanded {

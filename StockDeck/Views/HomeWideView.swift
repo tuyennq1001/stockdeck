@@ -152,6 +152,8 @@ private struct FeaturedNewsCard: View {
     }
     private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
 
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         Button {
             onOpen(url: article.url)
@@ -262,6 +264,8 @@ private struct NewsCard: View {
     }
     private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
     private var otherTickers: [String] { Array(article.relatedTickers.filter { $0 != referenceTicker }.prefix(2)) }
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Button {

@@ -105,6 +105,7 @@ struct HoldingDetailView: View {
         }
     }
 
+
     // MARK: - Purchase Lots
 
     private var isEditableScope: Bool {

@@ -44,6 +44,21 @@ struct ImportPreviewSheet: View {
         return storageService.portfolios.first { $0.id.uuidString == selectedPortfolioId }
     }
 
+    var isAllSelected: Bool {
+        !items.isEmpty && items.allSatisfy { $0.isChecked }
+    }
+
+    private var isAllSelectedBinding: Binding<Bool> {
+        Binding(
+            get: { isAllSelected },
+            set: { newValue in
+                for i in items.indices {
+                    items[i].isChecked = newValue
+                }
+            }
+        )
+    }
+
     var body: some View {
         SheetShell(
             title: isFundImport ? "Import 投資信託 (Japanese Funds)" : "Import Holdings",
@@ -75,8 +90,17 @@ struct ImportPreviewSheet: View {
 
                 Divider()
 
-                // List Controls: Select / Deselect All & Template Download
-                HStack {
+                // List Controls: Header Checkbox, Select / Deselect All & Template Download
+                HStack(spacing: 10) {
+                    #if os(macOS)
+                    Toggle("", isOn: isAllSelectedBinding)
+                        .toggleStyle(.checkbox)
+                        .labelsHidden()
+                    #else
+                    Toggle("", isOn: isAllSelectedBinding)
+                        .labelsHidden()
+                    #endif
+
                     Text("Parsed Positions (\(items.count))")
                         .font(DS.bodyStrong)
                         .foregroundStyle(DS.ink)
@@ -109,6 +133,7 @@ struct ImportPreviewSheet: View {
                     .buttonStyle(.borderless)
                     .font(DS.caption)
                 }
+                .padding(.horizontal, 10)
 
                 // Preview List with Checkboxes
                 ScrollView {
@@ -162,9 +187,14 @@ struct ImportPreviewSheet: View {
         let currSym = StorageService.currencySymbol(for: currency)
 
         HStack(spacing: 10) {
+            #if os(macOS)
             Toggle("", isOn: item.isChecked)
                 .toggleStyle(.dsCheckbox)
                 .labelsHidden()
+            #else
+            Toggle("", isOn: item.isChecked)
+                .labelsHidden()
+            #endif
 
             SymbolLogo(symbol: symbol, size: 22)
 

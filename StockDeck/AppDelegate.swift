@@ -943,6 +943,7 @@ extension AppDelegate: NSPopoverDelegate {
     }
 }
 #else
+import Combine
 import SwiftUI
 
 extension Notification.Name {
@@ -952,6 +953,7 @@ extension Notification.Name {
 
 final class UpdaterViewModel: ObservableObject {
     @Published var canCheckForUpdates = false
+    var isAvailable: Bool { false }
     func checkForUpdates() {}
 }
 #endif

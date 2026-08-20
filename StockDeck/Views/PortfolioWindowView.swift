@@ -856,3 +856,4 @@ private struct TotalFooter: View {
     }
 }
 #endif
+
