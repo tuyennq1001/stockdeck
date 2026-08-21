@@ -151,15 +151,10 @@ enum AIPortfolioContext {
             }
         } else if !portfolios.isEmpty {
             let hs = portfolios.flatMap { $0.holdings }
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs { histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol] ?? stockService.priceHistory[h.symbol] ?? [] }
-            var rateBySymbol: [String: Double] = [:]
-            for h in hs { rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol)) }
-            let points = PortfolioBackfill.series(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol)
             let inception = hs.compactMap(\.purchaseDate).min()
             for period in PortfolioOverview.PerformancePeriod.allCases {
                 perfPct.append((period.rawValue,
-                                PortfolioViewModel.portfolioPerformance(for: period, points: points, inception: inception),
+                                PortfolioViewModel.portfolioPerformance(for: period, holdings: hs, stockService: stockService, inception: inception),
                                 PortfolioViewModel.spxPerformance(for: period, stockService: stockService)))
             }
         }

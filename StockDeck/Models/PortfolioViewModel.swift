@@ -283,7 +283,7 @@ final class PortfolioViewModel {
     private func recomputePerformance() {
         let hs = portfolios.flatMap { $0.holdings }
         let holdingsFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage)"
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
         }.joined(separator: ";")
         let fullKey = "\(scopeKey):\(holdingsFingerprint)"
 
@@ -291,15 +291,10 @@ final class PortfolioViewModel {
         let svc = stockService
 
         cachedPerformance = PerformanceBenchmarkCache.performance(for: fullKey) {
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = svc.priceHistoryMax[h.symbol] ?? svc.priceHistory[h.symbol] ?? []
-            }
-            let maxPoints = valueSeries(from: histBySymbol)
             var pDict: [PortfolioOverview.PerformancePeriod: Double?] = [:]
             var sDict: [PortfolioOverview.PerformancePeriod: Double?] = [:]
             for period in PortfolioOverview.PerformancePeriod.allCases {
-                pDict[period] = Self.portfolioPerformance(for: period, points: maxPoints, inception: inception)
+                pDict[period] = Self.portfolioPerformance(for: period, holdings: hs, stockService: svc, inception: inception)
                 sDict[period] = Self.spxPerformance(for: period, stockService: svc)
             }
             return (pDict, sDict)
@@ -307,26 +302,78 @@ final class PortfolioViewModel {
     }
 
     static func portfolioPerformance(for period: PortfolioOverview.PerformancePeriod,
-                                      points: [ValuePoint],
+                                      holdings: [Holding],
+                                      stockService: StockService,
                                       inception: Date?) -> Double? {
-        guard points.count >= 2, let lastVal = points.last?.value, abs(lastVal) > 1e-9 else { return nil }
+        guard !holdings.isEmpty else { return nil }
         let cutoff = period.cutoffDate()
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
 
-        // Horizontal Deployment: Không bịa số giả định cho BẤT KỲ khoảng thời gian nào 
-        // nếu danh mục chưa ra đời vào thời điểm đó.
-        if let inception {
+        // Only enforce inception limit if ALL holdings have known purchase dates
+        let hasUndatedHoldings = holdings.contains(where: { $0.purchaseDate == nil })
+        if let inception, !hasUndatedHoldings {
             guard inception <= graceCutoff else { return nil }
         }
 
-        guard let startPoint = points.last(where: { $0.date <= cutoff }) ?? points.first(where: { $0.date <= graceCutoff }),
-              abs(startPoint.value) > 1e-9 else { return nil }
-        return ((lastVal - startPoint.value) / abs(startPoint.value)) * 100
+        var currentTotalValue = 0.0
+        var cutoffTotalValue = 0.0
+        var hasValidCutoffData = false
+
+        for h in holdings {
+            let scale = (h.isJapaneseFund || StockService.codeToFundNameMap[h.symbol] != nil) ? 10000.0 : 1.0
+            let rate = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            let qty = h.quantity.isFinite ? h.quantity : 0
+            let lev = h.effectiveLeverage.isFinite ? h.effectiveLeverage : 1
+
+            // Current price
+            let liveQuote = stockService.quotes[h.symbol] ?? stockService.quotes[h.symbol.uppercased()]
+            let rawCurrentPrice = liveQuote?.price ?? (h.avgPrice.isFinite && h.avgPrice > 0 ? h.avgPrice : nil)
+
+            let points = (stockService.priceHistory[h.symbol] ?? stockService.priceHistoryMax[h.symbol] ?? [])
+                .filter { $0.close.isFinite && $0.close > 0 }
+                .sorted { $0.date < $1.date }
+
+            let currPrice: Double
+            if let raw = rawCurrentPrice, raw.isFinite, raw > 0 {
+                currPrice = raw
+            } else if let lastPoint = points.last {
+                currPrice = lastPoint.close
+            } else {
+                continue
+            }
+
+            let curVal = (currPrice / scale) * qty * lev * rate
+            currentTotalValue += curVal
+
+            // Cutoff price from daily price history (exact daily closes)
+            let baselinePoint = points.last(where: { $0.date <= cutoff })
+                ?? points.first(where: { $0.date <= graceCutoff })
+
+            let cutoffPrice: Double
+            if let base = baselinePoint {
+                cutoffPrice = base.close
+                hasValidCutoffData = true
+            } else if let firstPoint = points.first {
+                cutoffPrice = firstPoint.close
+            } else if h.avgPrice.isFinite && h.avgPrice > 0 {
+                cutoffPrice = h.avgPrice
+            } else {
+                cutoffPrice = currPrice
+            }
+
+            let cutVal = (cutoffPrice / scale) * qty * lev * rate
+            cutoffTotalValue += cutVal
+        }
+
+        guard hasValidCutoffData, cutoffTotalValue > 1e-9, currentTotalValue > 1e-9 else { return nil }
+        return ((currentTotalValue - cutoffTotalValue) / cutoffTotalValue) * 100
     }
 
     static func spxPerformance(for period: PortfolioOverview.PerformancePeriod,
                                 stockService: StockService) -> Double? {
-        let points = stockService.priceHistoryMax["^GSPC"] ?? stockService.priceHistory["^GSPC"] ?? []
+        let points = (stockService.priceHistory["^GSPC"] ?? stockService.priceHistoryMax["^GSPC"] ?? [])
+            .filter { $0.close.isFinite && $0.close > 0 }
+            .sorted { $0.date < $1.date }
         guard points.count >= 2, let lastPrice = points.last?.close, abs(lastPrice) > 1e-9 else { return nil }
         let cutoff = period.cutoffDate()
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
