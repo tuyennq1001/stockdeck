@@ -101,55 +101,69 @@ enum DailyPnl {
         // entire gain since purchase piles onto one day), so we rebase it
         // against the actual price that preceded the day in the real history.
         // When even that isn't available the day is skipped entirely.
-        func baselinePnl(for day: Date) -> (pnl: Double, value: Double)? {
-            let startInstant = day.addingTimeInterval(1)
-            var pnl = 0.0
-            var value = 0.0
-            var any = false
-            for h in holdings {
-                let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
-                if let ownedFrom, ownedFrom >= startInstant { continue }
-                let scale = h.isJapaneseFund ? 10000.0 : 1.0
-                let rate = rateBySymbol[h.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
-                let qty = h.quantity.isFinite ? h.quantity : 0
-                let lev = h.effectiveLeverage.isFinite ? h.effectiveLeverage : 1
-                guard let points = historyBySymbol[h.symbol],
-                      let point = points.last(where: { $0.date < startInstant }),
-                      point.close.isFinite, point.close > 0 else { continue }
-                let pricePerUnit = point.close / scale
-                value += pricePerUnit * qty * lev * rate
-                if h.hasKnownCostBasis {
-                    pnl += ((pricePerUnit - h.avgPrice / scale) * qty * lev * rate)
-                }
-                any = true
-            }
-            guard any else { return nil }
-            return (pnl, value)
-        }
-
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "MMM d"
 
         var result: [DailyPnlRow] = []
         for (index, day) in keptDays.enumerated() {
-            let pnl = cumulativePnl[day] ?? 0
-            if index == keptDays.count - 1 {
-                // Oldest day: diff against the real preceding price instead of
-                // dumping the whole cumulative P&L onto one day.
-                guard let baseline = baselinePnl(for: day) else { continue }
-                let own = pnl - baseline.pnl
-                let pct: Double? = abs(baseline.value) >= 0.01 ? own / abs(baseline.value) * 100 : nil
-                result.append(DailyPnlRow(date: day, label: formatter.string(from: day), pnl: own, pnlPercent: pct))
-                continue
+            var own: Double = 0
+            var prevTotalValue: Double = 0
+            
+            let prevDay = index < keptDays.count - 1 ? keptDays[index + 1] : nil
+            
+            for h in holdings {
+                let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
+                if let ownedFrom, ownedFrom > endOfDay(day) { continue }
+                
+                guard let priceToday = price(atDayStart: day, for: h.symbol) else { continue }
+                let scale = h.isJapaneseFund ? 10000.0 : 1.0
+                let rate = rateBySymbol[h.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+                let qty = h.quantity.isFinite ? h.quantity : 0
+                let lev = h.effectiveLeverage.isFinite ? h.effectiveLeverage : 1
+                let pricePerUnitToday = priceToday / scale
+                
+                var pricePerUnitPrev: Double? = nil
+                var wasOwnedPrev = false
+                
+                if let prevDay {
+                    let prevEnd = endOfDay(prevDay)
+                    if let ownedFrom, ownedFrom > prevEnd {
+                        wasOwnedPrev = false
+                    } else {
+                        wasOwnedPrev = true
+                        if let p = price(atDayStart: prevDay, for: h.symbol) {
+                            pricePerUnitPrev = p / scale
+                        }
+                    }
+                } else {
+                    let startInstant = day.addingTimeInterval(1)
+                    if let ownedFrom, ownedFrom >= startInstant {
+                        wasOwnedPrev = false
+                    } else {
+                        wasOwnedPrev = true
+                        if let points = historyBySymbol[h.symbol],
+                           let point = points.last(where: { $0.date < startInstant }),
+                           point.close.isFinite, point.close > 0 {
+                            pricePerUnitPrev = point.close / scale
+                        }
+                    }
+                }
+                
+                if wasOwnedPrev {
+                    if let prev = pricePerUnitPrev {
+                        own += (pricePerUnitToday - prev) * qty * lev * rate
+                        prevTotalValue += prev * qty * lev * rate
+                    }
+                } else {
+                    if h.hasKnownCostBasis {
+                        own += (pricePerUnitToday - (h.avgPrice / scale)) * qty * lev * rate
+                        prevTotalValue += (h.avgPrice / scale) * qty * lev * rate
+                    }
+                }
             }
-            let prev = keptDays[index + 1]
-            let own = pnl - (cumulativePnl[prev] ?? 0)
-            let pct: Double? = {
-                let prevValue = cumulativeValue[keptDays[index + 1]] ?? 0
-                guard abs(prevValue) >= 0.01 else { return nil }
-                return own / abs(prevValue) * 100
-            }()
+            
+            let pct: Double? = abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
             result.append(DailyPnlRow(date: day, label: formatter.string(from: day), pnl: own, pnlPercent: pct))
         }
         return result

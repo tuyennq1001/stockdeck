@@ -123,22 +123,58 @@ enum MonthlyPnl {
 
         var result: [MonthlyPnlRow] = []
         for (index, month) in keptMonths.enumerated() {
-            let pnl = cumulativePnl[month] ?? 0
-            let own: Double? = {
-                guard index < keptMonths.count - 1 else {
+            var own: Double = 0
+            var prevTotalValue: Double = 0
+            
+            let prevMonth = index < keptMonths.count - 1 ? keptMonths[index + 1] : nil
+            
+            for h in holdings {
+                let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
+                if let ownedFrom, ownedFrom > endOfMonth(month) { continue }
+                
+                guard let priceToday = price(atMonthStart: month, for: h.symbol) else { continue }
+                let scale = h.isJapaneseFund ? 10000.0 : 1.0
+                let rate = rateBySymbol[h.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+                let qty = h.quantity.isFinite ? h.quantity : 0
+                let lev = h.effectiveLeverage.isFinite ? h.effectiveLeverage : 1
+                let pricePerUnitToday = priceToday / scale
+                
+                var pricePerUnitPrev: Double? = nil
+                var wasOwnedPrev = false
+                
+                if let prevMonth {
+                    let prevEnd = endOfMonth(prevMonth)
+                    if let ownedFrom, ownedFrom > prevEnd {
+                        wasOwnedPrev = false
+                    } else {
+                        wasOwnedPrev = true
+                        if let p = price(atMonthStart: prevMonth, for: h.symbol) {
+                            pricePerUnitPrev = p / scale
+                        }
+                    }
+                } else {
                     // Oldest month with data: no prior month to diff against, so
                     // show its cumulative P&L rather than inventing a delta.
-                    return pnl
+                    wasOwnedPrev = false
                 }
-                let prev = keptMonths[index + 1]
-                return pnl - (cumulativePnl[prev] ?? 0)
-            }()
-            let pct: Double? = {
-                guard let own, index < keptMonths.count - 1 else { return nil }
-                let prevValue = cumulativeValue[keptMonths[index + 1]] ?? 0
-                guard abs(prevValue) >= 0.01 else { return nil }
-                return own / abs(prevValue) * 100
-            }()
+                
+                if wasOwnedPrev {
+                    if let prev = pricePerUnitPrev {
+                        own += (pricePerUnitToday - prev) * qty * lev * rate
+                        prevTotalValue += prev * qty * lev * rate
+                    }
+                } else {
+                    if h.hasKnownCostBasis {
+                        own += (pricePerUnitToday - (h.avgPrice / scale)) * qty * lev * rate
+                        prevTotalValue += (h.avgPrice / scale) * qty * lev * rate
+                    }
+                }
+            }
+            
+            // For the oldest month, `prevTotalValue` includes the `point.close` (value right before the month started).
+            // If there's no `wasOwnedPrev`, `prevTotalValue` includes the `avgPrice`.
+            // So `prevTotalValue` is the correct denominator.
+            let pct: Double? = abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
             result.append(MonthlyPnlRow(monthStart: month, label: formatter.string(from: month), pnl: own, pnlPercent: pct))
         }
         return result
