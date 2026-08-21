@@ -335,18 +335,43 @@ final class iCloudSyncService: ObservableObject {
             if let idx = mergedPortfolios.firstIndex(where: {
                 $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == trimmedRemoteName
             }) {
-                var combinedHoldings = mergedPortfolios[idx].holdings
-                for rh in rp.holdings {
-                    let exists = combinedHoldings.contains { lh in
-                        lh.symbol == rh.symbol &&
-                        abs(lh.avgPrice - rh.avgPrice) < 0.0001 &&
-                        abs(lh.quantity - rh.quantity) < 0.0001
+                if rp.isReadOnly || mergedPortfolios[idx].isReadOnly {
+                    // For auto-synced / read-only portfolios (like Binance):
+                    // Use the latest sync snapshot rather than appending lots!
+                    let localSync = mergedPortfolios[idx].lastSyncedAt ?? .distantPast
+                    let remoteSync = rp.lastSyncedAt ?? .distantPast
+                    if remoteSync >= localSync {
+                        mergedPortfolios[idx].holdings = rp.holdings
+                        mergedPortfolios[idx].lastSyncedAt = rp.lastSyncedAt
                     }
-                    if !exists {
-                        combinedHoldings.append(rh)
+                } else {
+                    var combinedHoldings = mergedPortfolios[idx].holdings
+                    for rh in rp.holdings {
+                        let exists = combinedHoldings.contains { lh in
+                            if lh.id == rh.id { return true }
+                            guard lh.symbol.caseInsensitiveCompare(rh.symbol) == .orderedSame else { return false }
+                            guard abs(lh.quantity - rh.quantity) < 1e-6 else { return false }
+                            if lh.avgPrice.isNaN && rh.avgPrice.isNaN {
+                                // Both unknown cost basis -> matched
+                            } else if lh.avgPrice.isFinite && rh.avgPrice.isFinite {
+                                guard abs(lh.avgPrice - rh.avgPrice) < 1e-4 else { return false }
+                            } else {
+                                return false
+                            }
+                            if let ld = lh.purchaseDate, let rd = rh.purchaseDate {
+                                guard abs(ld.timeIntervalSince(rd)) < 60 else { return false }
+                            } else if lh.purchaseDate != rh.purchaseDate {
+                                return false
+                            }
+                            if lh.account != rh.account { return false }
+                            return true
+                        }
+                        if !exists {
+                            combinedHoldings.append(rh)
+                        }
                     }
+                    mergedPortfolios[idx].holdings = combinedHoldings
                 }
-                mergedPortfolios[idx].holdings = combinedHoldings
             } else {
                 mergedPortfolios.append(rp)
             }
@@ -439,6 +464,31 @@ final class iCloudSyncService: ObservableObject {
         }
         if let sNews = remote.showNewsTab {
             merged.showNewsTab = sNews
+        }
+        if let rRanges = remote.portfolioChartRanges {
+            var combined = merged.portfolioChartRanges ?? [:]
+            for (k, v) in rRanges { combined[k] = v }
+            merged.portfolioChartRanges = combined
+        }
+        if let rDaily = remote.portfolioDailyPnlRanges {
+            var combined = merged.portfolioDailyPnlRanges ?? [:]
+            for (k, v) in rDaily { combined[k] = v }
+            merged.portfolioDailyPnlRanges = combined
+        }
+        if let rMonthly = remote.portfolioMonthlyPnlRanges {
+            var combined = merged.portfolioMonthlyPnlRanges ?? [:]
+            for (k, v) in rMonthly { combined[k] = v }
+            merged.portfolioMonthlyPnlRanges = combined
+        }
+        if let rModes = remote.portfolioPnlViewModes {
+            var combined = merged.portfolioPnlViewModes ?? [:]
+            for (k, v) in rModes { combined[k] = v }
+            merged.portfolioPnlViewModes = combined
+        }
+        if let rSorts = remote.portfolioPositionSorts {
+            var combined = merged.portfolioPositionSorts ?? [:]
+            for (k, v) in rSorts { combined[k] = v }
+            merged.portfolioPositionSorts = combined
         }
 
         return merged

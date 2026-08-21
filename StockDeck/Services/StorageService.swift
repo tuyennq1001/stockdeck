@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import ServiceManagement
+#endif
 
 struct Watchlist: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
@@ -134,6 +137,47 @@ class StorageService: ObservableObject {
     @Published var showNewsTab: Bool = true {
         didSet { scheduleSave() }
     }
+
+    // MARK: - Launch at Login (macOS)
+    #if os(macOS)
+    /// Whether the app is configured to automatically launch at system login.
+    @Published var launchAtLogin: Bool = false {
+        didSet {
+            guard !isLoading else { return }
+            updateLaunchAtLogin(launchAtLogin)
+        }
+    }
+
+    /// Sync the in-memory setting with the actual macOS system registration status.
+    func syncLaunchAtLoginStatus() {
+        let isEnabled = (SMAppService.mainApp.status == .enabled)
+        if launchAtLogin != isEnabled {
+            launchAtLogin = isEnabled
+        }
+    }
+
+    /// Register or unregister the app from macOS Login Items.
+    private func updateLaunchAtLogin(_ enabled: Bool) {
+        let currentStatus = SMAppService.mainApp.status
+        do {
+            if enabled {
+                if currentStatus != .enabled {
+                    try SMAppService.mainApp.register()
+                }
+            } else {
+                if currentStatus == .enabled {
+                    try SMAppService.mainApp.unregister()
+                }
+            }
+        } catch {
+            NSLog("[StorageService] Failed to set launch at login: %@", error.localizedDescription)
+            let actualStatus = (SMAppService.mainApp.status == .enabled)
+            if launchAtLogin != actualStatus {
+                launchAtLogin = actualStatus
+            }
+        }
+    }
+    #endif
 
     private var isSharedInstance: Bool {
         !isCustomStorage
@@ -337,6 +381,21 @@ class StorageService: ObservableObject {
 
     /// Preferred timeline range option per portfolio scope (e.g. "3Y", "1Y", "All").
     @Published var portfolioChartRanges: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
+    /// Preferred daily P&L range option per portfolio scope (e.g. "3M", "6M", "1Y").
+    @Published var portfolioDailyPnlRanges: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
+    /// Preferred monthly P&L range option per portfolio scope (e.g. "1Y", "3Y", "All").
+    @Published var portfolioMonthlyPnlRanges: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+
+    /// Preferred P&L view mode per portfolio scope (e.g. "Daily P&L", "Monthly P&L").
+    @Published var portfolioPnlViewModes: [String: String] = [:] {
         didSet { scheduleSave() }
     }
 
@@ -705,6 +764,30 @@ class StorageService: ObservableObject {
 
     func setChartRange(_ rangeRaw: String, for scopeKey: String) {
         portfolioChartRanges[scopeKey] = rangeRaw
+    }
+
+    func dailyPnlRange(for scopeKey: String) -> String? {
+        portfolioDailyPnlRanges[scopeKey]
+    }
+
+    func setDailyPnlRange(_ rangeRaw: String, for scopeKey: String) {
+        portfolioDailyPnlRanges[scopeKey] = rangeRaw
+    }
+
+    func monthlyPnlRange(for scopeKey: String) -> String? {
+        portfolioMonthlyPnlRanges[scopeKey]
+    }
+
+    func setMonthlyPnlRange(_ rangeRaw: String, for scopeKey: String) {
+        portfolioMonthlyPnlRanges[scopeKey] = rangeRaw
+    }
+
+    func pnlViewMode(for scopeKey: String) -> String? {
+        portfolioPnlViewModes[scopeKey]
+    }
+
+    func setPnlViewMode(_ modeRaw: String, for scopeKey: String) {
+        portfolioPnlViewModes[scopeKey] = modeRaw
     }
 
     @Published var lastStockChartRange: String = "1M" {
@@ -1100,6 +1183,9 @@ class StorageService: ObservableObject {
         }
         isLoading = true
         load()
+        #if os(macOS)
+        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        #endif
         isLoading = false
     }
 
@@ -1577,6 +1663,11 @@ class StorageService: ObservableObject {
         aiProvider = "openai"
         aiWorkspacePath = ""
         aiDeepseekThinking = false
+        #if os(macOS)
+        if launchAtLogin {
+            launchAtLogin = false
+        }
+        #endif
     }
 
     /// Completely wipes all portfolios, watchlists, alerts, and settings back to a clean slate.
@@ -1590,6 +1681,9 @@ class StorageService: ObservableObject {
         portfolioNotifications = [:]
         portfolioSnapshots = [:]
         portfolioChartRanges = [:]
+        portfolioDailyPnlRanges = [:]
+        portfolioMonthlyPnlRanges = [:]
+        portfolioPnlViewModes = [:]
         portfolioPositionSorts = [:]
         resetToDefaults()
         saveNow()
@@ -1661,6 +1755,9 @@ class StorageService: ObservableObject {
         var portfolioNotifications: [String: [PortfolioNotification]]?
         var portfolioSnapshots: [String: [PortfolioSnapshot]]?
         var portfolioChartRanges: [String: String]?
+        var portfolioDailyPnlRanges: [String: String]?
+        var portfolioMonthlyPnlRanges: [String: String]?
+        var portfolioPnlViewModes: [String: String]?
         var discordWebhookURL: String?
         var discordEnabled: Bool?
         var gainColorHex: String?
@@ -1715,6 +1812,9 @@ class StorageService: ObservableObject {
             portfolioNotifications: portfolioNotifications,
             portfolioSnapshots: portfolioSnapshots,
             portfolioChartRanges: portfolioChartRanges,
+            portfolioDailyPnlRanges: portfolioDailyPnlRanges,
+            portfolioMonthlyPnlRanges: portfolioMonthlyPnlRanges,
+            portfolioPnlViewModes: portfolioPnlViewModes,
             discordWebhookURL: discordWebhookURL,
             discordEnabled: discordEnabled,
             gainColorHex: gainColorHex,
@@ -1785,16 +1885,22 @@ class StorageService: ObservableObject {
             if updated.isReadOnly {
                 updated.holdings = StorageService.aggregateBinanceHoldings(updated.holdings)
             } else {
-                updated.holdings = updated.holdings.map { h in
-                    var newH = h
-                    if newH.symbol.hasSuffix("-USD") {
-                        let base = String(newH.symbol.dropLast(4))
-                        if !StorageService.isStandardCryptoSymbol(base) {
-                            newH.symbol = base
+                var seenHoldingIDs = Set<UUID>()
+                var uniqueHoldings: [Holding] = []
+                for h in updated.holdings {
+                    if !seenHoldingIDs.contains(h.id) {
+                        seenHoldingIDs.insert(h.id)
+                        var newH = h
+                        if newH.symbol.hasSuffix("-USD") {
+                            let base = String(newH.symbol.dropLast(4))
+                            if !StorageService.isStandardCryptoSymbol(base) {
+                                newH.symbol = base
+                            }
                         }
+                        uniqueHoldings.append(newH)
                     }
-                    return newH
                 }
+                updated.holdings = uniqueHoldings
             }
             return updated
         }
@@ -1808,6 +1914,9 @@ class StorageService: ObservableObject {
         portfolioNotifications = decoded.portfolioNotifications ?? [:]
         portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
         portfolioChartRanges = decoded.portfolioChartRanges ?? [:]
+        portfolioDailyPnlRanges = decoded.portfolioDailyPnlRanges ?? [:]
+        portfolioMonthlyPnlRanges = decoded.portfolioMonthlyPnlRanges ?? [:]
+        portfolioPnlViewModes = decoded.portfolioPnlViewModes ?? [:]
         discordWebhookURL = decoded.discordWebhookURL ?? ""
         discordEnabled = decoded.discordEnabled ?? false
         gainColorHex = decoded.gainColorHex ?? ""

@@ -11,9 +11,9 @@ DEV_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$
 DEV_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
 echo "Building..."
-swift build -c release 2>&1 | tail -3
+swift build
 
-PRODUCTS=".build/$(uname -m)-apple-macosx/release"
+PRODUCTS=".build/$(uname -m)-apple-macosx/debug"
 
 echo "Assembling DEV app bundle..."
 rm -rf "$APP"
@@ -49,7 +49,7 @@ cat > "$APP/Contents/Info.plist" << EOF
          fresh suffix silently breaks access to them (the app re-asks for keys).
          If the Menu Bar item gets stuck hidden, re-enable it in System Settings
          rather than bumping the suffix. -->
-    <string>com.terry.stockdeck.development.v4</string>
+    <string>com.terry.stockdeck.development.v5</string>
     <key>CFBundleName</key>
     <string>StockDeck Dev</string>
     <key>CFBundleShortVersionString</key>
