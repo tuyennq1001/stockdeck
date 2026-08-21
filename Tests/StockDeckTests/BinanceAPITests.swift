@@ -287,4 +287,34 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(aggregated[0].quantity, 3.5, accuracy: 1e-9)
         XCTAssertTrue(aggregated[0].avgPrice.isNaN)
     }
+
+    func testAcquisitionDatesAppliedToHoldings() throws {
+        let service = BinanceAPIService.shared
+        let depositDate = Date(timeIntervalSince1970: 1700000000) // 2023-11-14
+        let spotDate = Date(timeIntervalSince1970: 1710000000) // 2024-03-09
+        let basis = BinanceEquityCostBasis(averagePrice: 60_000, purchaseDate: spotDate, coveredQuantity: 1.0)
+
+        // SOL with no spot basis but with deposit/convert acquisition date
+        let solHoldings = service.buildHoldings(
+            assetName: "SOL",
+            quantity: 5.0,
+            equityCosts: [:],
+            spotCosts: [:],
+            acquisitionDates: ["SOL": depositDate]
+        )
+        XCTAssertEqual(solHoldings.count, 1)
+        XCTAssertEqual(solHoldings[0].purchaseDate, depositDate)
+
+        // BTC with spot cost basis earlier than deposit date -> uses earliest
+        let btcHoldings = service.buildHoldings(
+            assetName: "BTC",
+            quantity: 1.0,
+            equityCosts: [:],
+            spotCosts: ["BTC": basis],
+            acquisitionDates: ["BTC": Date(timeIntervalSince1970: 1720000000)]
+        )
+        XCTAssertEqual(btcHoldings.count, 1)
+        XCTAssertEqual(btcHoldings[0].purchaseDate, spotDate)
+    }
 }
+
