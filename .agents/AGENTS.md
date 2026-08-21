@@ -11,7 +11,10 @@
 - Trước khi thực hiện bất kỳ thay đổi nào trong codebase (đặc biệt là quản lý state, tính toán dữ liệu, vòng lặp re-render hoặc lưu trữ I/O), **bắt buộc phải phân tích và đánh giá kỹ lưỡng ảnh hưởng đến hiệu năng** (CPU, Memory, Network Requests, Render latency / Frame rate).
 - Đảm bảo các giải pháp kỹ thuật luôn tối ưu tài nguyên, không gây giật lag (zero UI frame drops), không gây re-render thừa và tận dụng tối đa cơ chế in-memory cache / debounced I/O.
 
-## Quy Tắc Build Đa Nền Tảng (Dual Build Rule)
-- Mỗi khi chỉnh sửa code, kiểm thử hoặc hoàn thành tính năng, **bắt buộc phải build song song cả macOS (`./dev.sh`) và iOS (`./dev-ios.sh` hoặc `swift build --triple arm64-apple-ios17.0-simulator --sdk $(xcrun --sdk iphonesimulator --show-sdk-path)`)** để đảm bảo không bị lỗi biên dịch trên bất kỳ nền tảng nào.
+## Quy Tắc Build (Build Rule)
+- Mỗi khi chỉnh sửa code, kiểm thử hoặc hoàn thành tính năng, **bắt buộc phải build macOS (`./dev.sh`)**. **Mặc định KHÔNG build iOS (`./dev-ios.sh`)** để tiết kiệm token, trừ khi người dùng chỉ định rõ.
 
 
+
+## Tư Duy Triển Khai Ngang (Horizontal Deployment)
+- Khi sửa bất kỳ bug nào, bắt buộc phải rà soát và triển khai cách sửa tương tự sang các màn hình/tính năng khác có logic tương đồng để đảm bảo tính nhất quán.

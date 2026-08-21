@@ -24,8 +24,8 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
                 guard let self else { return }
-                let symbols = Array(StockService.collectSymbols(storageService: self.storageService))
-                self.webSocketService.ensureConnected(symbols: symbols)
+                let wssSymbols = Array(StockService.collectWebSocketSymbols(storageService: self.storageService))
+                self.webSocketService.ensureConnected(symbols: wssSymbols)
                 Task {
                     await self.stockService.refreshAll(storageService: self.storageService)
                 }
@@ -58,8 +58,8 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
         // Initial refresh
         Task {
-            let symbols = Array(StockService.collectSymbols(storageService: storageService))
-            webSocketService.ensureConnected(symbols: symbols)
+            let wssSymbols = Array(StockService.collectWebSocketSymbols(storageService: storageService))
+            webSocketService.ensureConnected(symbols: wssSymbols)
             await stockService.refreshAll(storageService: storageService)
             if storageService.showNewsTab {
                 await stockService.refreshNews(storageService: storageService)

@@ -121,8 +121,8 @@ final class MonthlyPnlTests: XCTestCase {
         XCTAssertEqual(r.count, 2)
         XCTAssertEqual(r[0].label, "Jun 2026")
         XCTAssertEqual(r[1].label, "May 2026")
-        // Jun own P&L = X (no cost basis, 0) + Y (110-100)*5 = 50.
-        XCTAssertEqual(r[0].pnl ?? 0, 50, accuracy: 1e-9)
+        // Jun own P&L = X (70-60)*10 = 100 + Y (110-100)*5 = 50. Total = 150.
+        XCTAssertEqual(r[0].pnl ?? 0, 150, accuracy: 1e-9)
         // May carries no profit (both lots anchored to Jun purchase).
         XCTAssertEqual(r[1].pnl ?? 0, 0, accuracy: 1e-9)
     }

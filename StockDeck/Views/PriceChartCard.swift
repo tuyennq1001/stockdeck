@@ -144,14 +144,28 @@ struct PriceChartCard: View {
         if chartRange.isIntraday {
             return stockService.intradayHistory[symbol] ?? []
         }
-        if chartRange == .all {
-            return stockService.priceHistoryMax[symbol] ?? []
+        
+        let daily = stockService.priceHistory[symbol] ?? []
+        let cutoff: Date?
+        if let days = chartRange.days {
+            cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+        } else {
+            cutoff = nil
         }
-        guard let all = stockService.priceHistory[symbol] else { return [] }
-        guard let days = chartRange.days,
-              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-        else { return all }
-        return all.filter { $0.date >= cutoff }
+        
+        let filteredDaily = cutoff != nil ? daily.filter { $0.date >= cutoff! } : daily
+        
+        // Tư duy triển khai ngang: Nếu khoảng thời gian thực tế <= 2 năm, ép dùng Daily để biểu đồ mượt nhất
+        if let earliest = filteredDaily.first?.date, Calendar.current.dateComponents([.day], from: earliest, to: Date()).day ?? 0 <= 730 {
+            return filteredDaily
+        }
+        
+        if chartRange == .all {
+            let maxPoints = stockService.priceHistoryMax[symbol] ?? []
+            return cutoff != nil ? maxPoints.filter { $0.date >= cutoff! } : maxPoints
+        }
+        
+        return filteredDaily
     }
 
     private var isLoadingCurrent: Bool {
