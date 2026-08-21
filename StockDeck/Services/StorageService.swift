@@ -1378,7 +1378,7 @@ class StorageService: ObservableObject {
             "TRX", "ETC", "XLM", "BCH", "FIL", "ICP", "HBAR", "VET", "ALGO", "TON",
             "INJ", "SEI", "TIA", "RUNE", "AAVE", "MKR", "CRV", "ENA", "ONDO", "JUP", "PYTH",
             "FET", "RENDER", "TAO", "WLD", "STRK", "METIS",
-            "ARB", "OP", "SUI",
+            "ARB", "OP", "SUI", "HYPE", "HYPER", "DRIFT", "GRASS",
             // Meme coins
             "PEPE", "WIF", "BONK", "FLOKI", "DOGS", "PNUT", "ORDI", "SATS",
             // Stablecoins & USD-pegged (BUSD is legacy but still mapped 1.0)

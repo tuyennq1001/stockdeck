@@ -60,7 +60,7 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 
 ## 8. Quy tắc Build (Build Rules)
 - **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build.
-- **Quy tắc Build Đa Nền Tảng (Dual Build Rule)**: Mỗi khi chỉnh sửa code, kiểm thử hoặc hoàn thành tính năng, **bắt buộc phải build song song cả macOS (`./dev.sh`) và iOS (`./dev-ios.sh` hoặc `swift build --triple arm64-apple-ios17.0-simulator --sdk $(xcrun --sdk iphonesimulator --show-sdk-path)`)** để đảm bảo không bị lỗi biên dịch trên bất kỳ nền tảng nào.
+- **Quy tắc Build (Build Rules)**: Mỗi khi chỉnh sửa code hoặc hoàn thành tính năng, **bắt buộc phải build macOS (`./dev.sh`)** để kiểm tra. **Mặc định KHÔNG build iOS (`./dev-ios.sh`)** để tiết kiệm token, trừ khi người dùng chỉ định rõ ràng yêu cầu build iOS.
 - **Không pipe build output qua `grep` hoặc filter blocking khác**: Hiển thị toàn bộ output build để không bỏ sót lỗi. `grep` có thể treo nếu pattern không khớp.
 - **Nếu cần kiểm tra nhanh lỗi biên dịch**: Dùng `swift build 2>&1 | head -100` (có giới hạn dòng, không treo) hoặc `./dev.sh 2>&1 | tail -20`.
 
@@ -78,4 +78,9 @@ Dưới đây là tập hợp các nguyên tắc sống còn bắt buộc tuân 
 ## 10. Cân Nhắc Kỹ Hiệu Năng Trước Khi Sửa Code (Performance First Consideration)
 - **Đánh giá hiệu năng bắt buộc**: Trước khi thực hiện bất kỳ thay đổi nào trong codebase (đặc biệt là quản lý state, tính toán dữ liệu, vòng lặp re-render hoặc lưu trữ I/O), **bắt buộc phải phân tích và đánh giá kỹ lưỡng ảnh hưởng đến hiệu năng** (CPU, Memory, Network Requests, Render latency / Frame rate).
 - **Tối ưu tài nguyên tuyệt đối**: Đảm bảo các giải pháp kỹ thuật luôn tối ưu tài nguyên, không gây giật lag (zero UI frame drops), không gây re-render thừa và tận dụng tối đa cơ chế in-memory cache / debounced I/O.
+
+
+## 11. Tư Duy Triển Khai Ngang (Horizontal Deployment Rule)
+- **Rà soát diện rộng**: Khi sửa bất kỳ bug nào (đặc biệt liên quan đến logic, thuật toán, hay UX), **bắt buộc** phải tự động rà soát toàn bộ codebase xem có màn hình, component hay tính năng nào khác đang dùng chung logic hoặc gặp tình trạng tương tự hay không.
+- **Áp dụng đồng bộ**: Triển khai giải pháp đồng bộ (deploy horizontally) cho tất cả các vị trí liên quan để đảm bảo tính nhất quán của app mà không cần đợi người dùng nhắc nhở.
 

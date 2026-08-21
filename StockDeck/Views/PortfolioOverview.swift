@@ -423,35 +423,74 @@ struct PortfolioOverview: View {
     }
 
     /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
-    private var estimatedSeries: [ValuePoint] {
-        let useMax = (chartRange == .all || chartRange == .threeYears || chartRange == .fiveYears)
-        return valueSeries(from: useMax ? stockService.priceHistoryMax : stockService.priceHistory)
-    }
-    private var estimatedFiltered: [ValuePoint] {
-        if let days = chartRange.days,
-           let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) {
-            return estimatedSeries.filter { $0.date >= cutoff }
-        } else if chartRange == .all {
-            if let purchaseDate = earliestPurchaseDate {
-                let cutoff = Calendar.current.startOfDay(for: purchaseDate)
-                let filtered = estimatedSeries.filter { $0.date >= cutoff }
-                if !filtered.isEmpty { return filtered }
-            }
-            if let cutoff5Y = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
-                let filtered = estimatedSeries.filter { $0.date >= cutoff5Y }
-                if !filtered.isEmpty { return filtered }
-            }
-        }
-        return estimatedSeries
-    }
-
     /// The market value curve drawn and used for period change calculations.
     /// Uses the unified valueSeries (real closing prices × current positions)
     /// representing the true market value trajectory of the portfolio.
     private var displaySeries: [ValuePoint] {
-        chartRange == .week
-            ? valueSeries(from: stockService.intradayWeek)
-            : estimatedFiltered
+        if chartRange == .week {
+            return valueSeries(from: stockService.intradayWeek)
+        }
+        
+        var cutoff: Date? = nil
+        if let days = chartRange.days {
+            cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+        } else if chartRange == .all {
+            if let purchaseDate = earliestPurchaseDate {
+                cutoff = Calendar.current.startOfDay(for: purchaseDate)
+            } else {
+                cutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date())
+            }
+        }
+        
+        // Horizontal Deployment: Tôn trọng ngày giao dịch đầu tiên cho TOÀN BỘ các mốc thời gian
+        // Không "xuyên không" về quá khứ giả định nếu danh mục chưa tồn tại
+        if let purchaseDate = earliestPurchaseDate {
+            let absoluteCutoff = Calendar.current.startOfDay(for: purchaseDate)
+            if let current = cutoff {
+                cutoff = max(current, absoluteCutoff)
+            } else {
+                cutoff = absoluteCutoff
+            }
+        }
+        
+        // Tư duy triển khai ngang: Tự động chuyển đổi sang dữ liệu Daily (high-res) nếu thời gian thực tế <= 2 năm
+        let daysSpan: Int
+        if let c = cutoff {
+            daysSpan = Calendar.current.dateComponents([.day], from: c, to: Date()).day ?? 9999
+        } else {
+            daysSpan = 9999
+        }
+        
+        let useMax = daysSpan > 730
+        let originalSource = useMax ? stockService.priceHistoryMax : stockService.priceHistory
+        
+        var source = originalSource
+        if let cutoffDate = cutoff {
+            var hasData = false
+            for (sym, points) in source {
+                var filtered = points.filter { $0.date >= cutoffDate }
+                if let before = points.last(where: { $0.date < cutoffDate }) {
+                    filtered.insert(before, at: 0)
+                }
+                source[sym] = filtered
+                if filtered.count > 1 { hasData = true }
+            }
+            
+            if !hasData && chartRange == .all {
+                if let fallbackCutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                    source = originalSource
+                    for (sym, points) in source {
+                        var filtered = points.filter { $0.date >= fallbackCutoff }
+                        if let before = points.last(where: { $0.date < fallbackCutoff }) {
+                            filtered.insert(before, at: 0)
+                        }
+                        source[sym] = filtered
+                    }
+                }
+            }
+        }
+        
+        return valueSeries(from: source)
     }
 
     /// Evaluates benchmark matrix once per app session (not updating real-time).

@@ -113,6 +113,16 @@ class StockService: ObservableObject {
         return syms
     }
 
+    static func collectWebSocketSymbols(storageService: StorageService) -> Set<String> {
+        let all = collectSymbols(storageService: storageService)
+        return all.filter { s in
+            let clean = s.hasSuffix("-USD") ? String(s.dropLast(4)) : s
+            return !StorageService.isStandardCryptoSymbol(clean)
+                && !StorageService.isBinanceNativePair(s)
+                && !StorageService.isStandardCryptoSymbol(s)
+        }
+    }
+
     /// Full refresh: quotes (REST) + exchange rates. Use only at startup or when WSS is down.
     /// Phase 1: load only watchlist symbols so the menu bar shows immediately.
     /// Skips exchange rates (uses cached rates from the previous session).
@@ -737,7 +747,7 @@ class StockService: ObservableObject {
 
         for chunk in chunks {
             let listed = chunk.joined(separator: "\",\"")
-            let urlString = "https://api.binance.com/api/v3/ticker/24hr?symbols=[\"\(listed)\"]"
+            let urlString = "https://api.binance.com/api/v3/ticker/tradingDay?symbols=[\"\(listed)\"]"
             guard let url = URL(string: urlString) else { continue }
             do {
                 let (data, response) = try await session.data(from: url)
@@ -751,16 +761,24 @@ class StockService: ObservableObject {
                 }
 
                 // Binance returns HTTP 400 for the whole batch when any pair is
-                // invalid (for example an unsupported tokenized-stock symbol).
+                // invalid (for example an unsupported tokenized-stock symbol or Futures-only pair).
                 // Retry each pair independently so one bad asset cannot suppress
                 // valid BTC/ETH/SOL quotes in the same request.
                 print("[StockService] Binance ticker batch HTTP \(httpResp.statusCode); retrying symbols individually")
                 for single in chunk {
-                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/tradingDay?symbol=\(single)")!
                     if let (sData, sResp) = try? await session.data(from: singleURL),
                        let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
                        let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
                         tickerMap[t.symbol.uppercased()] = t
+                    } else {
+                        // Fallback to Binance Futures (e.g. HYPEUSDT)
+                        let fapiURL = URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=\(single)")!
+                        if let (fData, fResp) = try? await session.data(from: fapiURL),
+                           let fHttp = fResp as? HTTPURLResponse, fHttp.statusCode == 200,
+                           let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: fData) {
+                            tickerMap[t.symbol.uppercased()] = t
+                        }
                     }
                 }
             } catch {
@@ -768,11 +786,19 @@ class StockService: ObservableObject {
                 // shape; retrying individually keeps valid pairs available.
                 print("[StockService] Failed to fetch Binance crypto tickers chunk: \(error); retrying symbols individually")
                 for single in chunk {
-                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/24hr?symbol=\(single)")!
+                    let singleURL = URL(string: "https://api.binance.com/api/v3/ticker/tradingDay?symbol=\(single)")!
                     if let (sData, sResp) = try? await session.data(from: singleURL),
                        let sHttp = sResp as? HTTPURLResponse, sHttp.statusCode == 200,
                        let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: sData) {
                         tickerMap[t.symbol.uppercased()] = t
+                    } else {
+                        // Fallback to Binance Futures (e.g. HYPEUSDT)
+                        let fapiURL = URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=\(single)")!
+                        if let (fData, fResp) = try? await session.data(from: fapiURL),
+                           let fHttp = fResp as? HTTPURLResponse, fHttp.statusCode == 200,
+                           let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: fData) {
+                            tickerMap[t.symbol.uppercased()] = t
+                        }
                     }
                 }
             }
@@ -797,7 +823,13 @@ class StockService: ObservableObject {
                 self.quotes[sym] = quote
                 self.quotes[sym.uppercased()] = quote
                 self.quotes[cleanBase] = quote
+                self.quotes["\(cleanBase)-USD"] = quote
+                self.quotes["\(cleanBase)USDT"] = quote
                 StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym.uppercased())
+                StorageService.shared.setType("CRYPTOCURRENCY", for: cleanBase)
+                StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)-USD")
+                StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)USDT")
                 continue
             }
 
@@ -807,10 +839,28 @@ class StockService: ObservableObject {
             // pair (ETHBTC) and invert the price.
             let isNative = StorageService.isBinanceNativePair(cleanBase)
             let inverted = isNative ? Self.invertedBinancePair(cleanBase) : nil
-            let matchedTicker: BinanceTicker24hr? = isNative
+            var matchedTicker: BinanceTicker24hr? = isNative
                 ? (tickerMap[cleanBase] ?? (inverted.flatMap { tickerMap[$0] }))
                 : (tickerMap["\(cleanBase)USDT"] ?? tickerMap["\(cleanBase)BTC"])
             let isInvertedQuote = isNative && tickerMap[cleanBase] == nil && (inverted.flatMap { tickerMap[$0] }) != nil
+
+            // Fallback: Check Binance Futures directly for tokens listed on Futures only (e.g. HYPE, HYPEUSDT)
+            if matchedTicker == nil {
+                for candidate in ["\(cleanBase)USDT", cleanBase] {
+                    if let cached = tickerMap[candidate] {
+                        matchedTicker = cached
+                        break
+                    }
+                    if let fapiURL = URL(string: "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=\(candidate)"),
+                       let (fData, fResp) = try? await session.data(from: fapiURL),
+                       let fHttp = fResp as? HTTPURLResponse, fHttp.statusCode == 200,
+                       let t = try? JSONDecoder().decode(BinanceTicker24hr.self, from: fData) {
+                        tickerMap[t.symbol.uppercased()] = t
+                        matchedTicker = t
+                        break
+                    }
+                }
+            }
 
             // Fallback for BETH / WBETH if BETHUSDT isn't direct
             if matchedTicker == nil && (cleanBase == "BETH" || cleanBase == "WBETH") {
@@ -830,7 +880,13 @@ class StockService: ObservableObject {
                     self.quotes[sym] = quote
                     self.quotes[sym.uppercased()] = quote
                     self.quotes[cleanBase] = quote
+                    self.quotes["\(cleanBase)-USD"] = quote
+                    self.quotes["\(cleanBase)USDT"] = quote
                     StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: sym.uppercased())
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: cleanBase)
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)-USD")
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)USDT")
                     continue
                 }
             }
@@ -864,7 +920,23 @@ class StockService: ObservableObject {
                 self.quotes[sym] = quote
                 self.quotes[sym.uppercased()] = quote
                 self.quotes[cleanBase] = quote
+                self.quotes["\(cleanBase)-USD"] = quote
+                self.quotes["\(cleanBase)USDT"] = quote
+                let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD"]
+                for q in quoteAssets where cleanBase.hasSuffix(q) && cleanBase.count > q.count {
+                    let base = String(cleanBase.dropLast(q.count))
+                    self.quotes[base] = quote
+                    self.quotes["\(base)-USD"] = quote
+                    self.quotes["\(base)\(q)"] = quote
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: base)
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(base)-USD")
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(base)\(q)")
+                }
                 StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
+                StorageService.shared.setType("CRYPTOCURRENCY", for: sym.uppercased())
+                StorageService.shared.setType("CRYPTOCURRENCY", for: cleanBase)
+                StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)-USD")
+                StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)USDT")
             }
         }
     }
@@ -1260,6 +1332,21 @@ class StockService: ObservableObject {
         dailyHistoryTasks[symbol] = nil
     }
 
+
+    private func yahooSymbol(for symbol: String) -> String {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if upper.hasSuffix("-USD") { return upper }
+        if StorageService.isStandardCryptoSymbol(upper) { return "\(upper)-USD" }
+        if StorageService.isBinanceNativePair(upper) {
+            let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD", "BTC", "ETH", "BNB"]
+            for q in quoteAssets where upper.hasSuffix(q) && upper.count > q.count {
+                let base = String(upper.dropLast(q.count))
+                return "\(base)-USD"
+            }
+        }
+        return symbol
+    }
+
     private func loadPriceHistory(_ symbol: String) async {
         if isJapaneseMutualFund(symbol) {
             let points = await fetchJapaneseFundHistory(symbol: symbol)
@@ -1296,7 +1383,8 @@ class StockService: ObservableObject {
             return
         }
 
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let fetchSymbol = yahooSymbol(for: symbol)
+        let encoded = fetchSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fetchSymbol
         // range=10y daily closes & OHLC for 1Y/3Y/5Y/10Y chart ranges
         guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y"),
               let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
@@ -1373,7 +1461,8 @@ class StockService: ObservableObject {
             }
         }
 
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let fetchSymbol = yahooSymbol(for: symbol)
+        let encoded = fetchSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fetchSymbol
         guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max"),
               let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1mo&range=max") else { return }
         guard let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
@@ -1507,7 +1596,8 @@ class StockService: ObservableObject {
         if let at = intradayWeekAt[symbol],
            Date().timeIntervalSince(at) < 900,
            intradayWeek[symbol]?.isEmpty == false { return }
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let fetchSymbol = yahooSymbol(for: symbol)
+        let encoded = fetchSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fetchSymbol
         guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
               let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
               let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
@@ -1623,6 +1713,12 @@ class StockService: ObservableObject {
         for ticker in tickers {
             let symbol = ticker.id
             guard !symbol.isEmpty, ticker.price > 0 else { continue }
+
+            // Chặn Yahoo WebSocket ghi đè các mã Crypto (do Binance quản lý 100%)
+            let clean = symbol.hasSuffix("-USD") ? String(symbol.dropLast(4)) : symbol
+            if StorageService.isStandardCryptoSymbol(clean) || StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) {
+                continue
+            }
 
             let existing = updated[symbol]
 
@@ -2266,26 +2362,52 @@ class StockService: ObservableObject {
     private var cachedBinanceSymbols: [BinanceSymbolInfo]?
     private var binanceSymbolsFetchedAt: Date?
 
-    /// Fetches Binance exchangeInfo (all trading pairs) and caches for 6 hours.
+    /// Fetches Binance exchangeInfo (all Spot and Futures trading pairs) and caches for 6 hours.
     /// Response is ~2MB so we call once and filter client-side on every search.
     private func fetchBinanceExchangeInfo() async -> [BinanceSymbolInfo] {
         if let cached = cachedBinanceSymbols, let at = binanceSymbolsFetchedAt,
            Date().timeIntervalSince(at) < 21600 {
             return cached
         }
-        guard let url = URL(string: "https://api.binance.com/api/v3/exchangeInfo") else {
-            return cachedBinanceSymbols ?? []
+        
+        async let spotTask: [BinanceSymbolInfo] = {
+            guard let url = URL(string: "https://api.binance.com/api/v3/exchangeInfo"),
+                  let (data, resp) = try? await session.data(from: url),
+                  let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let response = try? JSONDecoder().decode(BinanceExchangeInfoResponse.self, from: data) else {
+                return []
+            }
+            return response.symbols.filter { $0.status == "TRADING" }
+        }()
+
+        async let futuresTask: [BinanceSymbolInfo] = {
+            guard let url = URL(string: "https://fapi.binance.com/fapi/v1/exchangeInfo"),
+                  let (data, resp) = try? await session.data(from: url),
+                  let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let response = try? JSONDecoder().decode(BinanceExchangeInfoResponse.self, from: data) else {
+                return []
+            }
+            return response.symbols.filter { $0.status == "TRADING" }
+        }()
+
+        let (spotSymbols, futuresSymbols) = await (spotTask, futuresTask)
+        var combined: [String: BinanceSymbolInfo] = [:]
+        for s in spotSymbols {
+            combined[s.symbol.uppercased()] = s
         }
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(BinanceExchangeInfoResponse.self, from: data)
-            let active = response.symbols.filter { $0.status == "TRADING" }
+        for f in futuresSymbols {
+            if combined[f.symbol.uppercased()] == nil {
+                combined[f.symbol.uppercased()] = f
+            }
+        }
+
+        let active = Array(combined.values)
+        if !active.isEmpty {
             cachedBinanceSymbols = active
             binanceSymbolsFetchedAt = Date()
             return active
-        } catch {
-            return cachedBinanceSymbols ?? []
         }
+        return cachedBinanceSymbols ?? []
     }
 
     /// Searches Binance trading pairs. Matches both the base asset (e.g. "BTC",

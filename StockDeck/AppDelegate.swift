@@ -226,7 +226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 let symbols = Array(self.collectSymbols())
                 guard !symbols.isEmpty else { return }
-                self.webSocketService.updateSymbols(symbols)
+                self.webSocketService.updateSymbols(Array(StockService.collectWebSocketSymbols(storageService: self.storageService)))
                 self.refreshTask?.cancel()
                 let start = Date()
                 self.refreshStartedAt = start
@@ -266,7 +266,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startWebSocket() {
-        let symbols = collectSymbols()
+        let symbols = StockService.collectWebSocketSymbols(storageService: storageService)
         guard !symbols.isEmpty else { return }
 
         webSocketService.onTick = { [weak self] ticker in
@@ -370,7 +370,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.autoSyncBinancePortfolios()
                 // Supervisor: revive the WebSocket if it silently died, otherwise
                 // just keep its subscriptions current.
-                self.webSocketService.ensureConnected(symbols: Array(self.collectSymbols()))
+                self.webSocketService.ensureConnected(symbols: Array(StockService.collectWebSocketSymbols(storageService: self.storageService)))
             }
         }
     }
@@ -695,7 +695,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handlePopoverClosed() {
         updateMenuBarTitle()
         // Update WSS subscriptions in case symbols changed
-        webSocketService.updateSymbols(Array(collectSymbols()))
+        webSocketService.updateSymbols(Array(StockService.collectWebSocketSymbols(storageService: self.storageService)))
     }
 
     private var menuBarImage: NSImage? {

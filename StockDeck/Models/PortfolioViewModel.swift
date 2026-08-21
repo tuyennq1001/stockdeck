@@ -313,7 +313,9 @@ final class PortfolioViewModel {
         let cutoff = period.cutoffDate()
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
 
-        if (period == .y5 || period == .y10), let inception {
+        // Horizontal Deployment: Không bịa số giả định cho BẤT KỲ khoảng thời gian nào 
+        // nếu danh mục chưa ra đời vào thời điểm đó.
+        if let inception {
             guard inception <= graceCutoff else { return nil }
         }
 
