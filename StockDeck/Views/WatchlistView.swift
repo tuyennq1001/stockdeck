@@ -103,14 +103,15 @@ struct WatchlistView: View {
                             moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
                         },
                         onCommit: { commitSymbolPreview() },
+                        content: {
+                            if draggingSymbol == symbol {
+                                quoteOrPlaceholderRow(symbol).opacity(0)
+                            } else {
+                                quoteOrPlaceholderRow(symbol)
+                            }
+                        },
                         dropIndicator: $dropIndicator
-                    ) {
-                        if draggingSymbol == symbol {
-                            quoteOrPlaceholderRow(symbol).opacity(0)
-                        } else {
-                            quoteOrPlaceholderRow(symbol)
-                        }
-                    }
+                    )
                     if symbol != displaySymbols.last {
                         Divider().padding(.leading, 74)
                     }

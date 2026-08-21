@@ -53,6 +53,9 @@ struct SettingsWideView: View {
         .dsAlert($showClearPortfolioNotifs, title: "Clear all portfolio notifications",
                  message: "This will delete all portfolio notifications across every portfolio. This cannot be undone.",
                  confirmTitle: "Clear all", destructive: true) { storageService.removeAllPortfolioNotifications() }
+        .onAppear {
+            storageService.syncLaunchAtLoginStatus()
+        }
     }
 
     // MARK: - Cards
@@ -81,6 +84,10 @@ struct SettingsWideView: View {
                         Task { await stockService.refreshAll(storageService: storageService) }
                     }
             }
+            SettingDivider()
+            SettingToggle("Launch at login",
+                          caption: "Automatically start StockDeck when you log into your Mac",
+                          isOn: $storageService.launchAtLogin)
         }
     }
 

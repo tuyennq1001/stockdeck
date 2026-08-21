@@ -1216,14 +1216,17 @@ private struct WatchRowView<Menu: View>: View {
         return PriceHistory.percentChange(points: row.history, currentPrice: row.quote?.price ?? 0, since: boundary)
     }
 
-    @ViewBuilder
+    private var isRowExtended: Bool {
+        showExtended && row.extPrice != nil
+    }
+
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
             switch metric {
             case .price:
                 if row.loaded {
                     pairedCell(price: row.price, pct: row.changePercent,
-                               label: nil, emphasised: !extendedSession)
+                               label: nil, emphasised: !isRowExtended)
                 } else {
                     DSSpinner(size: 12)
                 }
@@ -1231,7 +1234,7 @@ private struct WatchRowView<Menu: View>: View {
                 if showExtended {
                     if let ext = row.extPrice {
                         pairedCell(price: ext, pct: row.extChangePercent,
-                                   label: row.extLabel, emphasised: extendedSession)
+                                   label: row.extLabel, emphasised: isRowExtended)
                     } else {
                         Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
                     }
@@ -1348,7 +1351,7 @@ private struct WatchRowView<Menu: View>: View {
                     if compact {
                         if row.loaded {
                             pairedCell(price: row.price, pct: row.changePercent,
-                                       label: nil, emphasised: !extendedSession)
+                                       label: nil, emphasised: !isRowExtended)
                                 .frame(width: 96, alignment: .trailing)
                         } else {
                             DSSpinner(size: 12)

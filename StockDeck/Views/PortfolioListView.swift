@@ -1017,8 +1017,8 @@ struct GroupedHoldingRow: View {
         holdings.sorted { lhs, rhs in
             switch (lhs.purchaseDate, rhs.purchaseDate) {
             case let (l?, r?): return l > r
-            case (nil, _): return false
-            case (_, nil): return true
+            case (nil, _?): return false
+            case (_?, nil): return true
             case (nil, nil): return false
             }
         }

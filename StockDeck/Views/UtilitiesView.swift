@@ -8,6 +8,7 @@ import AppKit
 
 enum UtilitySegment: String, CaseIterable, Identifiable {
     case alerts = "Alerts"
+    case aiReview = "AI Review"
     case importExport = "Import / Export"
 
     var id: String { rawValue }
@@ -15,6 +16,7 @@ enum UtilitySegment: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .alerts: return "bell.badge"
+        case .aiReview: return "sparkles"
         case .importExport: return "arrow.triangle.2.circlepath.icloud"
         }
     }
@@ -148,6 +150,7 @@ struct UtilitiesView: View {
     private var pickerBar: some View {
         Picker("Utilities Segment", selection: $selectedSegment) {
             Text("🔔 Alerts").tag(UtilitySegment.alerts)
+            Text("✨ AI Review").tag(UtilitySegment.aiReview)
             Text("☁️ Import / Export").tag(UtilitySegment.importExport)
         }
         .pickerStyle(.segmented)
@@ -157,9 +160,14 @@ struct UtilitiesView: View {
 
     @ViewBuilder
     private var contentBody: some View {
-        if selectedSegment == .alerts {
+        switch selectedSegment {
+        case .alerts:
             alertsSection
-        } else {
+        case .aiReview:
+            AIReviewWideView()
+                .environmentObject(stockService)
+                .environmentObject(storageService)
+        case .importExport:
             importExportSection
         }
     }

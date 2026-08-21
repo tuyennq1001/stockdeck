@@ -133,11 +133,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // brand-new identity (new bundle ID / autosave name) shows nothing. Write
         // the key once when absent so the item appears by default; the user can
         // still hide it later from Control Center.
-        let statusItemName = "StockDeck.MainStatusItem.v3"
+        let statusItemName = "StockDeck.MainStatusItem.v5"
         let statusItemVisibleKey = "NSStatusItem VisibleCC \(statusItemName)"
-        if UserDefaults.standard.object(forKey: statusItemVisibleKey) == nil {
-            UserDefaults.standard.set(true, forKey: statusItemVisibleKey)
-        }
+        UserDefaults.standard.set(true, forKey: statusItemVisibleKey)
         statusItem?.autosaveName = statusItemName
         statusItem?.isVisible = true
 

@@ -144,8 +144,8 @@ struct HoldingDetailView: View {
         return matched.sorted { lhs, rhs in
             switch (lhs.holding.purchaseDate, rhs.holding.purchaseDate) {
             case let (l?, r?): return l > r
-            case (nil, _): return false
-            case (_, nil): return true
+            case (nil, _?): return false
+            case (_?, nil): return true
             case (nil, nil): return false
             }
         }

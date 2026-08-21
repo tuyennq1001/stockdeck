@@ -55,8 +55,15 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                // MARK: - General (language, appearance, font)
+                // MARK: - General (language, appearance, font, startup)
                 SettingsGroup(title: "General", icon: "gearshape", isExpanded: $groupGeneral) {
+                    #if os(macOS)
+                    subHeader("Startup")
+                    Toggle("Launch at login", isOn: $storageService.launchAtLogin)
+                        .toggleStyle(.switch)
+                    caption("Automatically start StockDeck when you log into your Mac.")
+                    #endif
+
                     subHeader("Language")
                     Picker("Language", selection: $storageService.appLanguage) {
                         ForEach(StorageService.supportedLanguages, id: \.code) { lang in
@@ -450,6 +457,11 @@ struct SettingsView: View {
         } message: {
             Text("This will delete all portfolio notifications across every portfolio. This cannot be undone.")
         }
+        #if os(macOS)
+        .onAppear {
+            storageService.syncLaunchAtLoginStatus()
+        }
+        #endif
     }
 
 }

@@ -1,4 +1,8 @@
 #if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 import SwiftUI
 
 /// Desktop AI Review tab: a conversation pane that lets the user chat with an
@@ -83,6 +87,7 @@ struct AIReviewWideView: View {
 
     // MARK: - Chat layout
 
+    #if os(macOS)
     private func chatLayout(_ vm: AIReviewViewModel) -> some View {
         HStack(spacing: DS.gap) {
             historyRail(vm)
@@ -91,6 +96,65 @@ struct AIReviewWideView: View {
         .pageColumn()
         .padding(.top, 4)
     }
+    #else
+    private func chatLayout(_ vm: AIReviewViewModel) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button {
+                        vm.newChat()
+                    } label: {
+                        Label("New conversation", systemImage: "plus")
+                    }
+                    Divider()
+                    ForEach(storageService.aiChatSections) { section in
+                        Button {
+                            vm.select(section)
+                        } label: {
+                            HStack {
+                                Text(section.title)
+                                if vm.selectedSectionID == section.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 11))
+                        Text(vm.selectedSection?.title ?? "Conversations")
+                            .font(.inter(12, weight: .semibold, relativeTo: .subheadline))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Capsule().fill(DS.brand.opacity(0.12)))
+                }
+
+                Spacer()
+
+                Button {
+                    vm.newChat()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DS.brand)
+                }
+                .padding(.trailing, 4)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(DS.card)
+
+            Divider()
+
+            conversationPane(vm)
+        }
+    }
+    #endif
 
     // MARK: - History rail
 
@@ -193,6 +257,7 @@ struct AIReviewWideView: View {
                 Text("· notes ready").font(.inter(11, relativeTo: .caption)).foregroundStyle(DS.inkTertiary)
             }
             Spacer()
+            #if os(macOS)
             if let path = storageService.ensureAIWorkspace() {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([path.appendingPathComponent("ai-context.md")])
@@ -204,6 +269,7 @@ struct AIReviewWideView: View {
                 .pointingHandCursor()
                 .help("Open the workspace folder (ai-context.md) — every reply is grounded on this file")
             }
+            #endif
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .overlay(alignment: .bottom) { Divider().overlay(DS.hairline) }
@@ -303,8 +369,12 @@ struct AIReviewWideView: View {
     }
 
     private func copy(_ text: String) {
+        #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        #else
+        UIPasteboard.general.string = text
+        #endif
     }
 
     // MARK: - Composer
@@ -554,4 +624,3 @@ private struct MarkdownText: View {
         return result.characters.isEmpty ? attributed : result
     }
 }
-#endif

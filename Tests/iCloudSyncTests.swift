@@ -112,4 +112,83 @@ final class iCloudSyncTests: XCTestCase {
         XCTAssertEqual(s.preferredCurrency, "VND")
         XCTAssertEqual(s.watchlist, ["VIC", "VNM"])
     }
+
+    func testSmartMergeWithNaNCostBasisHoldingsDoesNotDuplicate() {
+        let syncService = iCloudSyncService.shared
+
+        let localP = Portfolio(id: UUID(), name: "Crypto", holdings: [
+            Holding(symbol: "BTCUSDT", quantity: 1.5, avgPrice: .nan),
+            Holding(symbol: "ETHUSDT", quantity: 10.0, avgPrice: .nan)
+        ])
+        var currentData = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [localP]
+        )
+
+        let remoteP = Portfolio(id: UUID(), name: "Crypto", holdings: [
+            Holding(symbol: "BTCUSDT", quantity: 1.5, avgPrice: .nan),
+            Holding(symbol: "ETHUSDT", quantity: 10.0, avgPrice: .nan)
+        ])
+        let remoteData = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [remoteP]
+        )
+
+        // Perform smartMerge 5 times in a loop (simulating multiple refresh clicks)
+        for _ in 1...5 {
+            currentData = syncService.smartMerge(local: currentData, remote: remoteData)
+        }
+
+        XCTAssertEqual(currentData.portfolios.count, 1)
+        let cryptoP = currentData.portfolios.first
+        XCTAssertEqual(cryptoP?.holdings.count, 2)
+        XCTAssertEqual(cryptoP?.holdings.first(where: { $0.symbol == "BTCUSDT" })?.quantity, 1.5)
+        XCTAssertEqual(cryptoP?.holdings.first(where: { $0.symbol == "ETHUSDT" })?.quantity, 10.0)
+    }
+
+    func testSmartMergeReadOnlyPortfolioUsesLatestSnapshot() {
+        let syncService = iCloudSyncService.shared
+
+        let t1 = Date(timeIntervalSince1970: 1_700_000_000)
+        let t2 = Date(timeIntervalSince1970: 1_700_001_000)
+
+        let localP = Portfolio(
+            id: UUID(),
+            name: "Binance Spot",
+            holdings: [Holding(symbol: "BTCUSDT", quantity: 1.0, avgPrice: .nan)],
+            sourceType: .binance(keychainId: "test1"),
+            lastSyncedAt: t1
+        )
+        let localData = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [localP]
+        )
+
+        let remoteP = Portfolio(
+            id: UUID(),
+            name: "Binance Spot",
+            holdings: [
+                Holding(symbol: "BTCUSDT", quantity: 2.5, avgPrice: .nan),
+                Holding(symbol: "SOLUSDT", quantity: 50.0, avgPrice: .nan)
+            ],
+            sourceType: .binance(keychainId: "test1"),
+            lastSyncedAt: t2
+        )
+        let remoteData = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [remoteP]
+        )
+
+        let merged = syncService.smartMerge(local: localData, remote: remoteData)
+        XCTAssertEqual(merged.portfolios.count, 1)
+        let binanceP = merged.portfolios.first
+        XCTAssertEqual(binanceP?.holdings.count, 2)
+        XCTAssertEqual(binanceP?.holdings.first(where: { $0.symbol == "BTCUSDT" })?.quantity, 2.5)
+        XCTAssertEqual(binanceP?.holdings.first(where: { $0.symbol == "SOLUSDT" })?.quantity, 50.0)
+        XCTAssertEqual(binanceP?.lastSyncedAt, t2)
+    }
 }

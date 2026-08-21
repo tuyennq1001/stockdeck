@@ -6,6 +6,8 @@ struct iOSMainTabView: View {
     @EnvironmentObject var storageService: StorageService
     @State private var selectedTab: Tab = .watchlist
     @State private var showSearch = false
+    @State private var showWatchlistCustomizer = false
+    @State private var showPortfolioColumnCustomizer = false
     @State private var addHoldingPortfolioId: UUID?
 
     var body: some View {
@@ -35,6 +37,11 @@ struct iOSMainTabView: View {
                         ToolbarItem(placement: .topBarTrailing) {
                             HStack(spacing: 12) {
                                 Button {
+                                    showWatchlistCustomizer = true
+                                } label: {
+                                    Image(systemName: "slider.horizontal.3")
+                                }
+                                Button {
                                     showSearch = true
                                 } label: {
                                     Image(systemName: "magnifyingglass")
@@ -50,6 +57,11 @@ struct iOSMainTabView: View {
                                 .navigationBarTitleDisplayMode(.inline)
                         }
                     }
+                    .sheet(isPresented: $showWatchlistCustomizer) {
+                        WatchlistMetricCustomizer(initialMetrics: storageService.watchlistMetrics) { newMetrics in
+                            storageService.setWatchlistMetrics(newMetrics)
+                        }
+                    }
             }
             .tabItem {
                 Label("Watchlist", systemImage: Tab.watchlist.icon)
@@ -61,6 +73,13 @@ struct iOSMainTabView: View {
                     .navigationTitle("Portfolios")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                showPortfolioColumnCustomizer = true
+                            } label: {
+                                Image(systemName: "slider.horizontal.3")
+                            }
+                        }
                         ToolbarItem(placement: .topBarTrailing) {
                             refreshButton
                         }
@@ -74,6 +93,11 @@ struct iOSMainTabView: View {
                                 AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
                             }
                             .presentationDetents([.medium, .large])
+                        }
+                    }
+                    .sheet(isPresented: $showPortfolioColumnCustomizer) {
+                        PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { newColumns in
+                            storageService.setPortfolioColumns(newColumns)
                         }
                     }
             }

@@ -702,6 +702,98 @@ class StockService: ObservableObject {
         return nil
     }
 
+    /// Parses raw Binance Kline 2D JSON array `[[openTime, open, high, low, close, volume...]]`
+    /// into sorted PricePoints. When `invert` is true (for cross pairs like BTCETH derived from ETHBTC),
+    /// reciprocals are calculated for OHLC.
+    nonisolated static func parseBinanceKlines(data: Data, invert: Bool = false) -> [PricePoint] {
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [[Any]] else { return [] }
+        var points: [PricePoint] = []
+        let parseDouble: (Any) -> Double? = { val in
+            if let str = val as? String { return Double(str) }
+            if let num = val as? NSNumber { return num.doubleValue }
+            return nil
+        }
+        for item in raw {
+            guard item.count >= 5 else { continue }
+            let openTimeMs: Double
+            if let num = item[0] as? NSNumber {
+                openTimeMs = num.doubleValue
+            } else if let str = item[0] as? String, let num = Double(str) {
+                openTimeMs = num
+            } else { continue }
+
+            guard let rawClose = parseDouble(item[4]), rawClose > 0 else { continue }
+            let rawOpen = parseDouble(item[1]) ?? rawClose
+            let rawHigh = parseDouble(item[2]) ?? rawClose
+            let rawLow = parseDouble(item[3]) ?? rawClose
+
+            let date = Date(timeIntervalSince1970: openTimeMs / 1000.0)
+            if invert {
+                let close = 1.0 / rawClose
+                let open = rawOpen > 0 ? (1.0 / rawOpen) : close
+                let high = rawLow > 0 ? (1.0 / rawLow) : close
+                let low = rawHigh > 0 ? (1.0 / rawHigh) : close
+                points.append(PricePoint(date: date, close: close, open: open, high: high, low: low))
+            } else {
+                points.append(PricePoint(date: date, close: rawClose, open: rawOpen, high: rawHigh, low: rawLow))
+            }
+        }
+        return points.sorted { $0.date < $1.date }
+    }
+
+    /// Fetches 1D daily candles directly from Binance API for crypto symbols.
+    /// Supports Spot, USD-M Futures, cross pairs (via inverted reciprocal), and stablecoins.
+    func fetchBinanceKlines(for symbol: String) async -> [PricePoint] {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        var clean = upper
+        if clean.hasSuffix("-USD") {
+            clean = String(clean.dropLast(4))
+        }
+
+        if BinanceStablecoin.isUSDPegged(clean) {
+            let now = Date()
+            let points = (0..<365).compactMap { dayOffset -> PricePoint? in
+                guard let d = Calendar.current.date(byAdding: .day, value: -dayOffset, to: now) else { return nil }
+                return PricePoint(date: Calendar.current.startOfDay(for: d), close: 1.0, open: 1.0, high: 1.0, low: 1.0)
+            }.reversed()
+            return Array(points)
+        }
+
+        let isNative = StorageService.isBinanceNativePair(clean)
+        let inverted = isNative ? Self.invertedBinancePair(clean) : nil
+
+        var candidates: [(pair: String, invert: Bool)] = []
+        if let inverted {
+            candidates.append((inverted, true))
+        }
+        if isNative {
+            candidates.append((clean, false))
+        } else {
+            candidates.append(("\(clean)USDT", false))
+            candidates.append(("\(clean)BTC", false))
+        }
+
+        for candidate in candidates {
+            // 1. Try Binance Spot klines
+            if let url = URL(string: "https://api.binance.com/api/v3/klines?symbol=\(candidate.pair)&interval=1d&limit=1000") {
+                if let (data, resp) = try? await session.data(from: url),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                    let points = Self.parseBinanceKlines(data: data, invert: candidate.invert)
+                    if !points.isEmpty { return points }
+                }
+            }
+            // 2. Try Binance USD-M Futures klines (e.g. HYPEUSDT)
+            if let fapiUrl = URL(string: "https://fapi.binance.com/fapi/v1/klines?symbol=\(candidate.pair)&interval=1d&limit=1000") {
+                if let (data, resp) = try? await session.data(from: fapiUrl),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                    let points = Self.parseBinanceKlines(data: data, invert: candidate.invert)
+                    if !points.isEmpty { return points }
+                }
+            }
+        }
+        return []
+    }
+
     /// Fetches live 24hr ticker quotes directly from Binance Public API
     /// (`https://api.binance.com/api/v3/ticker/24hr?symbols=[...]`) for crypto
     /// symbols, stablecoins, and liquid staking tokens (WBETH, BETH). Requests
@@ -1338,7 +1430,7 @@ class StockService: ObservableObject {
         if upper.hasSuffix("-USD") { return upper }
         if StorageService.isStandardCryptoSymbol(upper) { return "\(upper)-USD" }
         if StorageService.isBinanceNativePair(upper) {
-            let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD", "BTC", "ETH", "BNB"]
+            let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD"]
             for q in quoteAssets where upper.hasSuffix(q) && upper.count > q.count {
                 let base = String(upper.dropLast(q.count))
                 return "\(base)-USD"
@@ -1381,6 +1473,23 @@ class StockService: ObservableObject {
                 priceHistoryFetchedAt[symbol] = Date()
             } catch { return }
             return
+        }
+
+        if StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) || symbol.hasSuffix("-USD") {
+            let points = await fetchBinanceKlines(for: symbol)
+            if !points.isEmpty {
+                priceHistory[symbol] = points
+                priceHistoryFetchedAt[symbol] = Date()
+                if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
+                    let monthly = PriceHistory.deriveMonthly(from: points)
+                    if !monthly.isEmpty {
+                        priceHistoryMax[symbol] = monthly
+                        priceHistoryMaxAt[symbol] = Date()
+                    }
+                }
+                scheduleHistoryCacheSave()
+                return
+            }
         }
 
         let fetchSymbol = yahooSymbol(for: symbol)
@@ -1459,6 +1568,10 @@ class StockService: ObservableObject {
                 priceHistoryMaxAt[symbol] = Date()
                 return
             }
+        }
+
+        if StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) {
+            return
         }
 
         let fetchSymbol = yahooSymbol(for: symbol)
@@ -1628,7 +1741,11 @@ class StockService: ObservableObject {
         guard !missing.isEmpty else { sparkFetchedAt = Date(); return }
 
         let vnMissing = missing.filter { Self.isVietnameseStock($0) }
-        let regularMissing = missing.filter { !vnMissing.contains($0) }
+        let cryptoMissing = missing.filter { sym in
+            !vnMissing.contains(sym) &&
+            (StorageService.isBinanceNativePair(sym) || StorageService.isStandardCryptoSymbol(sym) || sym.hasSuffix("-USD"))
+        }
+        let regularMissing = missing.filter { !vnMissing.contains($0) && !cryptoMissing.contains($0) }
 
         if !vnMissing.isEmpty {
             let now = Int64(Date().timeIntervalSince1970)
@@ -1666,6 +1783,34 @@ class StockService: ObservableObject {
                         self.watchlistHistory["^VNINDEX"] = points
                         self.watchlistHistory["^VNINDEX.VN"] = points
                         self.watchlistHistory["VNINDEX"] = points
+                    }
+                }
+                scheduleHistoryCacheSave()
+            }
+        }
+
+        if !cryptoMissing.isEmpty {
+            await withTaskGroup(of: (String, [PricePoint]).self) { group in
+                for sym in cryptoMissing {
+                    group.addTask { [weak self] in
+                        guard let self = self else { return (sym, []) }
+                        let points = await self.fetchBinanceKlines(for: sym)
+                        return (sym, points)
+                    }
+                }
+                for await (sym, points) in group where !points.isEmpty {
+                    self.watchlistHistory[sym] = points
+                    self.watchlistHistory[sym.uppercased()] = points
+                    if self.priceHistory[sym] == nil || (self.priceHistory[sym]?.isEmpty ?? true) {
+                        self.priceHistory[sym] = points
+                        self.priceHistoryFetchedAt[sym] = Date()
+                    }
+                    if self.priceHistoryMax[sym] == nil || (self.priceHistoryMax[sym]?.isEmpty ?? true) {
+                        let monthly = PriceHistory.deriveMonthly(from: points)
+                        if !monthly.isEmpty {
+                            self.priceHistoryMax[sym] = monthly
+                            self.priceHistoryMaxAt[sym] = Date()
+                        }
                     }
                 }
                 scheduleHistoryCacheSave()
