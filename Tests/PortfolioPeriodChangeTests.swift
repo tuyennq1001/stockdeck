@@ -58,4 +58,81 @@ final class PortfolioPeriodChangeTests: XCTestCase {
         let shortPts = [ValuePoint(date: start, value: 100), ValuePoint(date: shortEnd, value: 120)]
         XCTAssertNil(PortfolioPeriodChange.cagr(shortPts))
     }
+
+    @MainActor
+    func testPortfolioPerformanceAccurateHoldingsValuation() {
+        let stockService = StockService.shared
+        let now = Date()
+        let cal = Calendar.current
+        let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+
+        let dec31 = jan1.addingTimeInterval(-86400)
+        let today = now
+
+        // Symbol A: gained +20% (100 -> 120)
+        stockService.priceHistory["TEST_A"] = [
+            PricePoint(date: dec31, close: 100),
+            PricePoint(date: today, close: 120)
+        ]
+        stockService.quotes["TEST_A"] = StockQuote(
+            symbol: "TEST_A", name: "Stock A", price: 120, change: 0,
+            changePercent: 0, regularMarketPreviousClose: 120,
+            currency: "USD"
+        )
+
+        // Symbol B: gained +10% (200 -> 220)
+        stockService.priceHistory["TEST_B"] = [
+            PricePoint(date: dec31, close: 200),
+            PricePoint(date: today, close: 220)
+        ]
+        stockService.quotes["TEST_B"] = StockQuote(
+            symbol: "TEST_B", name: "Stock B", price: 220, change: 0,
+            changePercent: 0, regularMarketPreviousClose: 220,
+            currency: "USD"
+        )
+
+        let holdings = [
+            Holding(symbol: "TEST_A", quantity: 10, avgPrice: 100), // Cutoff Val: 1000, Cur: 1200
+            Holding(symbol: "TEST_B", quantity: 5, avgPrice: 200)   // Cutoff Val: 1000, Cur: 1100
+        ]
+        // Total Cutoff = 2000, Total Current = 2300 -> +15%
+        let perf = PortfolioViewModel.portfolioPerformance(
+            for: .ytd, holdings: holdings, stockService: stockService, inception: nil
+        )
+
+        XCTAssertNotNil(perf)
+        XCTAssertEqual(perf ?? 0, 15.0, accuracy: 1e-4)
+    }
+
+    @MainActor
+    func testPortfolioPerformanceWithUndatedHoldingsDoesNotBlockYTD() {
+        let stockService = StockService.shared
+        let now = Date()
+        let cal = Calendar.current
+        let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+        let dec31 = jan1.addingTimeInterval(-86400)
+
+        stockService.priceHistory["TEST_BTC"] = [
+            PricePoint(date: dec31, close: 80000),
+            PricePoint(date: now, close: 88000)
+        ]
+        stockService.quotes["TEST_BTC"] = StockQuote(
+            symbol: "TEST_BTC", name: "Bitcoin", price: 88000, change: 0,
+            changePercent: 0, regularMarketPreviousClose: 88000,
+            currency: "USD"
+        )
+
+        // Undated holding (synced balance)
+        let holdings = [
+            Holding(symbol: "TEST_BTC", quantity: 0.1, avgPrice: .nan, purchaseDate: nil)
+        ]
+        // Even if inception is passed as a recent date, undated holdings allow YTD evaluation
+        let recentDate = now.addingTimeInterval(-30 * 86400)
+        let perf = PortfolioViewModel.portfolioPerformance(
+            for: .ytd, holdings: holdings, stockService: stockService, inception: recentDate
+        )
+
+        XCTAssertNotNil(perf)
+        XCTAssertEqual(perf ?? 0, 10.0, accuracy: 1e-4)
+    }
 }

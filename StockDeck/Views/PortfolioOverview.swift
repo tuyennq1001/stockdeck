@@ -464,8 +464,9 @@ struct PortfolioOverview: View {
         }
         
         // Horizontal Deployment: Tôn trọng ngày giao dịch đầu tiên cho TOÀN BỘ các mốc thời gian
-        // Không "xuyên không" về quá khứ giả định nếu danh mục chưa tồn tại
-        if let purchaseDate = earliestPurchaseDate {
+        // Không "xuyên không" về quá khứ giả định nếu danh mục chưa tồn tại (chỉ khi toàn bộ vị thế đều có ngày mua)
+        let allHoldingsDated = !viewModel.portfolios.flatMap(\.holdings).contains(where: { $0.purchaseDate == nil })
+        if allHoldingsDated, let purchaseDate = earliestPurchaseDate {
             let absoluteCutoff = Calendar.current.startOfDay(for: purchaseDate)
             if let current = cutoff {
                 cutoff = max(current, absoluteCutoff)
