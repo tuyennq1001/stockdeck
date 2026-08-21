@@ -174,7 +174,14 @@ enum MonthlyPnl {
             // For the oldest month, `prevTotalValue` includes the `point.close` (value right before the month started).
             // If there's no `wasOwnedPrev`, `prevTotalValue` includes the `avgPrice`.
             // So `prevTotalValue` is the correct denominator.
-            let pct: Double? = abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
+            let pct: Double? = {
+                if prevMonth == nil {
+                    // Oldest month shows cumulative P&L but suppresses the percentage
+                    // because it would represent lifetime return, not a month's return.
+                    return nil
+                }
+                return abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
+            }()
             result.append(MonthlyPnlRow(monthStart: month, label: formatter.string(from: month), pnl: own, pnlPercent: pct))
         }
         return result
