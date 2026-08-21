@@ -276,6 +276,27 @@ struct PortfolioOverview: View {
         }
     }
 
+    private func loadPnlPreferences(for key: String) {
+        if let savedDaily = storageService.dailyPnlRange(for: key),
+           let range = DailyPnlRange(rawValue: savedDaily) {
+            dailyPnlRange = range
+        } else {
+            dailyPnlRange = .oneYear
+        }
+        if let savedMonthly = storageService.monthlyPnlRange(for: key),
+           let range = MonthlyPnlRange(rawValue: savedMonthly) {
+            monthlyPnlRange = range
+        } else {
+            monthlyPnlRange = .threeYears
+        }
+        if let savedMode = storageService.pnlViewMode(for: key),
+           let mode = PnlViewMode(rawValue: savedMode) {
+            pnlViewMode = mode
+        } else {
+            pnlViewMode = .daily
+        }
+    }
+
     private func setPositionSort(_ column: PositionSortColumn, ascending: Bool) {
         sortColumn = column
         sortAscending = ascending
@@ -633,12 +654,22 @@ struct PortfolioOverview: View {
                 chartRange = range
             }
             loadPositionSort(for: scopeKey)
+            loadPnlPreferences(for: scopeKey)
         }
         .onChange(of: chartRange) { _, newRange in
             storageService.setChartRange(newRange.rawValue, for: scopeKey)
         }
-        .onChange(of: dailyPnlRange) { _, _ in hoveredDay = nil }
-        .onChange(of: monthlyPnlRange) { _, _ in hoveredMonth = nil }
+        .onChange(of: dailyPnlRange) { _, newRange in
+            hoveredDay = nil
+            storageService.setDailyPnlRange(newRange.rawValue, for: scopeKey)
+        }
+        .onChange(of: monthlyPnlRange) { _, newRange in
+            hoveredMonth = nil
+            storageService.setMonthlyPnlRange(newRange.rawValue, for: scopeKey)
+        }
+        .onChange(of: pnlViewMode) { _, newMode in
+            storageService.setPnlViewMode(newMode.rawValue, for: scopeKey)
+        }
         .onChange(of: scopeKey) { _, newKey in
             viewModel.scopeChanged()
             if let savedRaw = storageService.chartRange(for: newKey),
@@ -648,6 +679,7 @@ struct PortfolioOverview: View {
                 chartRange = .all
             }
             loadPositionSort(for: newKey)
+            loadPnlPreferences(for: newKey)
         }
         .task(id: symbols) {
             // On window open: only the daily 10y series per symbol (the base the
