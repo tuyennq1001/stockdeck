@@ -207,6 +207,21 @@ private struct BinanceSpotTrade: Decodable {
     let time: Int64
 }
 
+private struct BinanceDepositRecord: Decodable {
+    let coin: String
+    let status: Int
+    let insertTime: Int64
+}
+
+private struct BinanceConvertTrade: Decodable {
+    let toAsset: String
+    let createTime: Int64
+}
+
+private struct BinanceConvertTradeResponse: Decodable {
+    let list: [BinanceConvertTrade]?
+}
+
 /// Stablecoins pegged 1:1 to USD that Binance serves directly (or legacy delisted
 /// tokens still redeemable at $1). Used for quote fallbacks and holding mapping.
 enum BinanceStablecoin {
@@ -512,6 +527,119 @@ class BinanceAPIService {
         }
     }
 
+    /// Fetches successful crypto deposit history over the past 2 years (chunked in 90-day windows)
+    func fetchDepositDates(apiKey: String, secretKey: String, timestamp: Int64) async -> [String: Date] {
+        let ninetyDaysMs: Int64 = 90 * 86400 * 1000
+        let twoYearsAgo = timestamp - (730 * 86400 * 1000)
+        var windows: [(start: Int64, end: Int64)] = []
+        var curEnd = timestamp
+        while curEnd > twoYearsAgo {
+            let curStart = max(curEnd - ninetyDaysMs, twoYearsAgo)
+            windows.append((start: curStart, end: curEnd))
+            curEnd = curStart
+        }
+
+        return await withTaskGroup(of: [String: Date].self, returning: [String: Date].self) { group in
+            for window in windows {
+                group.addTask {
+                    let queryString = "status=1&startTime=\(window.start)&endTime=\(window.end)&recvWindow=5000&timestamp=\(timestamp)"
+                    guard let signature = self.hmacHMAC256(message: queryString, secret: secretKey),
+                          let url = URL(string: "\(self.baseURL)/sapi/v1/capital/deposit/hisrec?\(queryString)&signature=\(signature)") else {
+                        return [:]
+                    }
+                    var request = URLRequest(url: url)
+                    request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+                    guard let (data, response) = try? await URLSession.shared.data(for: request),
+                          let httpResponse = response as? HTTPURLResponse,
+                          httpResponse.statusCode == 200,
+                          let records = try? JSONDecoder().decode([BinanceDepositRecord].self, from: data) else {
+                        return [:]
+                    }
+                    var dates: [String: Date] = [:]
+                    for r in records where r.status == 1 {
+                        let asset = self.cleanAssetName(r.coin)
+                        let date = Date(timeIntervalSince1970: TimeInterval(r.insertTime) / 1000)
+                        if let existing = dates[asset] {
+                            dates[asset] = min(existing, date)
+                        } else {
+                            dates[asset] = date
+                        }
+                    }
+                    return dates
+                }
+            }
+
+            var merged: [String: Date] = [:]
+            for await dates in group {
+                for (asset, date) in dates {
+                    if let existing = merged[asset] {
+                        merged[asset] = min(existing, date)
+                    } else {
+                        merged[asset] = date
+                    }
+                }
+            }
+            return merged
+        }
+    }
+
+    /// Fetches Binance Convert trade history over the past year (chunked in 30-day windows)
+    func fetchConvertDates(apiKey: String, secretKey: String, timestamp: Int64) async -> [String: Date] {
+        let thirtyDaysMs: Int64 = 30 * 86400 * 1000
+        let oneYearAgo = timestamp - (365 * 86400 * 1000)
+        var windows: [(start: Int64, end: Int64)] = []
+        var curEnd = timestamp
+        while curEnd > oneYearAgo {
+            let curStart = max(curEnd - thirtyDaysMs, oneYearAgo)
+            windows.append((start: curStart, end: curEnd))
+            curEnd = curStart
+        }
+
+        return await withTaskGroup(of: [String: Date].self, returning: [String: Date].self) { group in
+            for window in windows {
+                group.addTask {
+                    let queryString = "startTime=\(window.start)&endTime=\(window.end)&limit=1000&recvWindow=5000&timestamp=\(timestamp)"
+                    guard let signature = self.hmacHMAC256(message: queryString, secret: secretKey),
+                          let url = URL(string: "\(self.baseURL)/sapi/v1/convert/tradeFlow?\(queryString)&signature=\(signature)") else {
+                        return [:]
+                    }
+                    var request = URLRequest(url: url)
+                    request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
+                    guard let (data, response) = try? await URLSession.shared.data(for: request),
+                          let httpResponse = response as? HTTPURLResponse,
+                          httpResponse.statusCode == 200,
+                          let res = try? JSONDecoder().decode(BinanceConvertTradeResponse.self, from: data),
+                          let list = res.list else {
+                        return [:]
+                    }
+                    var dates: [String: Date] = [:]
+                    for r in list {
+                        let asset = self.cleanAssetName(r.toAsset)
+                        let date = Date(timeIntervalSince1970: TimeInterval(r.createTime) / 1000)
+                        if let existing = dates[asset] {
+                            dates[asset] = min(existing, date)
+                        } else {
+                            dates[asset] = date
+                        }
+                    }
+                    return dates
+                }
+            }
+
+            var merged: [String: Date] = [:]
+            for await dates in group {
+                for (asset, date) in dates {
+                    if let existing = merged[asset] {
+                        merged[asset] = min(existing, date)
+                    } else {
+                        merged[asset] = date
+                    }
+                }
+            }
+            return merged
+        }
+    }
+
     /// Fetch Binance server time to calculate clock offset and prevent timestamp errors (-1021)
     func syncServerTime() async {
         guard let url = URL(string: "\(baseURL)/api/v3/time") else { return }
@@ -551,7 +679,7 @@ class BinanceAPIService {
         request.setValue(apiKey, forHTTPHeaderField: "X-MBX-APIKEY")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Fetch Spot, Funding (P2P), UserAsset, Earn, Futures, and Margin in parallel
+        // Fetch Spot, Funding (P2P), UserAsset, Earn, Futures, Margin, Deposits, and Convert in parallel
         let spotRequest = request
         async let spotTask = URLSession.shared.data(for: spotRequest)
         async let fundingTask = fetchFundingBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
@@ -559,6 +687,8 @@ class BinanceAPIService {
         async let earnTask = fetchEarnBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
         async let futuresTask = fetchFuturesBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
         async let marginTask = fetchMarginBalances(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let depositTask = fetchDepositDates(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
+        async let convertTask = fetchConvertDates(apiKey: apiKey, secretKey: secretKey, timestamp: timestamp)
 
         let (data, response) = try await spotTask
         let fundingAssets = await fundingTask
@@ -566,6 +696,17 @@ class BinanceAPIService {
         let earnAssets = await earnTask
         let futuresAssets = await futuresTask
         let marginAssets = await marginTask
+        let depositDates = await depositTask
+        let convertDates = await convertTask
+
+        var acquisitionDates: [String: Date] = depositDates
+        for (asset, date) in convertDates {
+            if let existing = acquisitionDates[asset] {
+                acquisitionDates[asset] = min(existing, date)
+            } else {
+                acquisitionDates[asset] = date
+            }
+        }
 
         if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
             if let apiErr = try? JSONDecoder().decode(BinanceAPIErrorResponse.self, from: data) {
@@ -657,7 +798,13 @@ class BinanceAPIService {
         )
 
         return aggregatedBalances.flatMap { (assetName, qty) -> [Holding] in
-            buildHoldings(assetName: assetName, quantity: qty, equityCosts: equityCosts, spotCosts: spotCosts)
+            buildHoldings(
+                assetName: assetName,
+                quantity: qty,
+                equityCosts: equityCosts,
+                spotCosts: spotCosts,
+                acquisitionDates: acquisitionDates
+            )
         }
     }
 
@@ -669,7 +816,8 @@ class BinanceAPIService {
         assetName: String,
         quantity: Double,
         equityCosts: [String: BinanceEquityCostBasis],
-        spotCosts: [String: BinanceEquityCostBasis]
+        spotCosts: [String: BinanceEquityCostBasis],
+        acquisitionDates: [String: Date] = [:]
     ) -> [Holding] {
         guard quantity >= 1e-8 else { return [] }
         let rawSymbol: String
@@ -687,6 +835,13 @@ class BinanceAPIService {
 
         let isEquity = assetName.hasPrefix("EQ_")
         let basis = equityCosts[assetName] ?? spotCosts[assetName]
+        let acquisitionDate = acquisitionDates[assetName]
+        let effectivePurchaseDate: Date? = {
+            if let bDate = basis?.purchaseDate, let aDate = acquisitionDate {
+                return min(bDate, aDate)
+            }
+            return basis?.purchaseDate ?? acquisitionDate
+        }()
 
         if let basis,
            !isEquity,
@@ -703,14 +858,14 @@ class BinanceAPIService {
                         symbol: symbol,
                         quantity: covered,
                         avgPrice: basis.averagePrice,
-                        purchaseDate: basis.purchaseDate
+                        purchaseDate: effectivePurchaseDate
                     ),
                     Holding(
                         id: UUID(),
                         symbol: symbol,
                         quantity: remainder,
                         avgPrice: .nan,
-                        purchaseDate: nil
+                        purchaseDate: acquisitionDate
                     )
                 ]
             }
@@ -722,7 +877,7 @@ class BinanceAPIService {
             quantity: quantity,
             avgPrice: basis?.averagePrice
                 ?? (BinanceStablecoin.isUSDPegged(assetName) ? 1.0 : .nan),
-            purchaseDate: basis?.purchaseDate
+            purchaseDate: effectivePurchaseDate
         )]
     }
 
