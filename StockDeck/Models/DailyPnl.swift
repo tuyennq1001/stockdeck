@@ -48,8 +48,8 @@ enum DailyPnl {
         // price history. Returns nil when the series has nothing in range.
         func price(atDayStart start: Date, for symbol: String) -> Double? {
             guard let points = historyBySymbol[symbol], !points.isEmpty else { return nil }
-            let end = endOfDay(start).addingTimeInterval(7 * 86400)
-            guard let point = points.last(where: { $0.date <= end }),
+            let end = endOfDay(start)
+            guard let point = points.last(where: { $0.date < end }),
                   point.close.isFinite, point.close > 0 else { return nil }
             return point.close
         }
