@@ -406,6 +406,28 @@ struct PortfolioOverview: View {
     // MARK: - Convenience accessors (all from viewModel, no recomputation)
 
     private var holdings: [ValuedHolding] { viewModel.sortedValuedHoldings }
+    private func findHolding(by id: UUID) -> ValuedHolding? {
+        for portfolio in storageService.portfolios {
+            if let h = portfolio.holdings.first(where: { $0.id == id }) {
+                let quote = stockService.quotes[h.symbol] ?? stockService.quotes[h.symbol.uppercased()] ?? StockQuote(
+                    symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
+                    currency: stockService.detectedCurrency(for: h.symbol)
+                )
+                let price = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+                return ValuedHolding(
+                    id: h.id,
+                    portfolioId: portfolio.id,
+                    holding: h,
+                    quote: quote,
+                    value: h.marketValue(currentPrice: price),
+                    cost: h.costBasisLocal,
+                    dayChangePercent: quote.changePercent,
+                    type: storageService.type(for: h.symbol)
+                )
+            }
+        }
+        return nil
+    }
     private var totalValue: Double { viewModel.totalValue }
     private var totalCost: Double { viewModel.totalCost }
     private var totalPnl: Double { viewModel.totalPnl }
@@ -630,6 +652,15 @@ struct PortfolioOverview: View {
                     .pageColumn()
                     .padding(.top, 4)
                 }
+            }
+        }
+        .navigationDestination(for: UUID.self) { id in
+            if let h = holdings.first(where: { $0.id == id }) {
+                HoldingDetailView(portfolioId: h.portfolioId, scope: scope,
+                                  holding: h.holding, quote: h.quote)
+            } else if let found = findHolding(by: id) {
+                HoldingDetailView(portfolioId: found.portfolioId, scope: scope,
+                                  holding: found.holding, quote: found.quote)
             }
         }
         .navigationTitle(title)
@@ -1389,6 +1420,18 @@ struct PortfolioOverview: View {
             .sorted { $0.value > $1.value }
     }
 
+    private func allocationRow(_ slice: AllocationSlice) -> some View {
+        HStack(spacing: 9) {
+            RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
+            SymbolLogo(symbol: slice.symbol, size: 20)
+            let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
+            Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+            Spacer()
+            Text(String(format: "%.1f%%", slice.fraction * 100))
+                .font(DS.figure).foregroundStyle(DS.inkSecondary)
+        }
+    }
+
     private var allocationCard: some View {
         Card(title: "Allocation") {
             if allocation.isEmpty {
@@ -1415,14 +1458,18 @@ struct PortfolioOverview: View {
                         ScrollView(.vertical, showsIndicators: true) {
                             VStack(alignment: .leading, spacing: 9) {
                                 ForEach(allocation) { slice in
-                                    HStack(spacing: 9) {
-                                        RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
-                                        SymbolLogo(symbol: slice.symbol, size: 20)
-                                        let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
-                                        Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
-                                        Spacer()
-                                        Text(String(format: "%.1f%%", slice.fraction * 100))
-                                            .font(DS.figure).foregroundStyle(DS.inkSecondary)
+                                    let matchedHolding = holdings.first(where: { StockService.canonicalSymbol(for: $0.symbol) == StockService.canonicalSymbol(for: slice.symbol) })
+                                    Group {
+                                        if let matched = matchedHolding {
+                                            NavigationLink(value: matched.id) {
+                                                allocationRow(slice)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .pointingHandCursor()
+                                            .help("View \(slice.symbol) details")
+                                        } else {
+                                            allocationRow(slice)
+                                        }
                                     }
                                     .contentShape(Rectangle())
                                     .onHover { hoveredSlice = $0 ? slice.symbol : nil }
@@ -1515,29 +1562,35 @@ struct PortfolioOverview: View {
     private func moverRow(_ h: ValuedHolding, maxAbs: Double, lastId: UUID?) -> some View {
         let isJpFund = h.quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol)
         let isDisplayAsset = StockService.isDisplayNameAsset(h.symbol)
-        HStack(spacing: 10) {
-            SymbolLogo(symbol: h.symbol, size: 24)
-            VStack(alignment: .leading, spacing: 1) {
-                if isJpFund || isDisplayAsset {
-                    Text(h.quote.displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
-                } else {
-                    Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
-                    Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+        NavigationLink(value: h.id) {
+            HStack(spacing: 10) {
+                SymbolLogo(symbol: h.symbol, size: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    if isJpFund || isDisplayAsset {
+                        Text(h.quote.displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+                    } else {
+                        Text(h.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                        Text(h.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(String(format: "%+.\(decimals)f%%", h.dayChangePercent))
+                        .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
+                        .foregroundStyle(DS.pnlColor(h.dayChangePercent))
+                    ZStack(alignment: h.dayChangePercent >= 0 ? .leading : .trailing) {
+                        Capsule().fill(DS.cardAlt).frame(width: 48, height: 4)
+                        Capsule().fill(DS.pnlColor(h.dayChangePercent))
+                            .frame(width: max(4, 48 * abs(h.dayChangePercent) / max(maxAbs, 0.01)), height: 4)
+                    }
                 }
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(String(format: "%+.\(decimals)f%%", h.dayChangePercent))
-                    .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
-                    .foregroundStyle(DS.pnlColor(h.dayChangePercent))
-                ZStack(alignment: h.dayChangePercent >= 0 ? .leading : .trailing) {
-                    Capsule().fill(DS.cardAlt).frame(width: 48, height: 4)
-                    Capsule().fill(DS.pnlColor(h.dayChangePercent))
-                        .frame(width: max(4, 48 * abs(h.dayChangePercent) / max(maxAbs, 0.01)), height: 4)
-                }
-            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 8)
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help("View \(h.symbol) details")
         if h.id != lastId {
             Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
         }
@@ -1706,12 +1759,6 @@ struct PortfolioOverview: View {
                         }
                     }
                     .frame(minWidth: max(availableWidth, minTableWidth))
-                }
-                .navigationDestination(for: UUID.self) { id in
-                    if let h = holdings.first(where: { $0.id == id }) {
-                        HoldingDetailView(portfolioId: h.portfolioId, scope: scope,
-                                          holding: h.holding, quote: h.quote)
-                    }
                 }
             }
         }
