@@ -42,7 +42,7 @@ struct HoldingDetailView: View {
         let mainTitle = (isJpFund || isDisplayAsset) ? quote.displayName : holding.symbol
         let subTitle = isDisplayAsset ? holding.symbol : (isJpFund ? "" : quote.name)
 
-        PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol) {
+        PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol, onBack: { dismiss() }) {
             HStack(spacing: 10) {
                 if holding.isShort { Tag(text: "SHORT", color: DS.down) }
                 if holding.effectiveLeverage != 1 {
