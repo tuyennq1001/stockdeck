@@ -25,7 +25,7 @@ enum InsertPlacement {
 class StorageService: ObservableObject {
     static let shared = StorageService()
 
-    @Published var watchlists: [Watchlist] = [Watchlist(id: UUID(), name: "Watchlist", symbols: [])] {
+    @Published var watchlists: [Watchlist] = [] {
         didSet { scheduleSave() }
     }
 
@@ -1185,6 +1185,11 @@ class StorageService: ObservableObject {
         }
         isLoading = true
         load()
+        if watchlists.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+            watchlists = [def]
+            selectedWatchlistId = def.id
+        }
         #if os(macOS)
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
         #endif
@@ -1871,6 +1876,9 @@ class StorageService: ObservableObject {
                     seenNames.insert(key)
                 }
             }
+            if cleaned.count > 1 {
+                cleaned.removeAll { $0.symbols.isEmpty && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "watchlist" }
+            }
             watchlists = cleaned.isEmpty ? wls : cleaned
             if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
                 selectedWatchlistId = selId
@@ -1884,6 +1892,7 @@ class StorageService: ObservableObject {
         } else if watchlists.isEmpty {
             let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
             watchlists = [def]
+            selectedWatchlistId = def.id
         }
         portfolios = decoded.portfolios.map { p in
             var updated = p

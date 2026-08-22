@@ -300,6 +300,11 @@ final class iCloudSyncService: ObservableObject {
 
         // 1. Merge Watchlists
         var mergedWatchlists: [Watchlist] = local.watchlists ?? []
+        let localHasOnlyEmptyDefault = (local.watchlists?.count == 1 && local.watchlists?.first?.name.lowercased() == "watchlist" && local.watchlists?.first?.symbols.isEmpty == true)
+        if localHasOnlyEmptyDefault && remote.watchlists?.isEmpty == false {
+            mergedWatchlists = []
+        }
+
         if let remoteWatchlists = remote.watchlists {
             for rw in remoteWatchlists {
                 let trimmedRemoteName = rw.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -317,6 +322,9 @@ final class iCloudSyncService: ObservableObject {
                     mergedWatchlists.append(rw)
                 }
             }
+        }
+        if mergedWatchlists.count > 1 {
+            mergedWatchlists.removeAll { $0.symbols.isEmpty && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "watchlist" }
         }
         if !mergedWatchlists.isEmpty {
             merged.watchlists = mergedWatchlists
