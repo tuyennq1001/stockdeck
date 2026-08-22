@@ -215,11 +215,7 @@ class StorageService: ObservableObject {
     @Published var lossColorHex: String = "" {
         didSet { scheduleSave() }
     }
-    /// When true, the menu bar ignores gain/loss colors and uses the system label
-    /// color (always readable on any background; direction stays in the +/- and ▲▼).
-    @Published var menuBarUseSystemColor: Bool = false {
-        didSet { scheduleSave() }
-    }
+
 
     /// Issue #7.4 / #10: number of decimal places shown for percentages (0–4),
     /// everywhere a % appears (menu bar, watchlist, portfolios). Clamped on set.
@@ -1643,7 +1639,6 @@ class StorageService: ObservableObject {
         menuBarDisplay = "pnl"
         gainColorHex = ""
         lossColorHex = ""
-        menuBarUseSystemColor = false
         percentDecimals = 1
         valueDecimals = -1
         menuBarHidePercent = false
@@ -1766,7 +1761,6 @@ class StorageService: ObservableObject {
         var discordEnabled: Bool?
         var gainColorHex: String?
         var lossColorHex: String?
-        var menuBarUseSystemColor: Bool?
         var percentTwoDecimals: Bool?   // legacy (pre-#10) — migrated on decode
         var percentDecimals: Int?
         var valueDecimals: Int?
@@ -1823,7 +1817,6 @@ class StorageService: ObservableObject {
             discordEnabled: discordEnabled,
             gainColorHex: gainColorHex,
             lossColorHex: lossColorHex,
-            menuBarUseSystemColor: menuBarUseSystemColor,
             percentTwoDecimals: nil,
             percentDecimals: percentDecimals,
             valueDecimals: valueDecimals,
@@ -1925,7 +1918,6 @@ class StorageService: ObservableObject {
         discordEnabled = decoded.discordEnabled ?? false
         gainColorHex = decoded.gainColorHex ?? ""
         lossColorHex = decoded.lossColorHex ?? ""
-        menuBarUseSystemColor = decoded.menuBarUseSystemColor ?? false
         percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)
         valueDecimals = decoded.valueDecimals ?? -1
         menuBarHidePercent = decoded.menuBarHidePercent ?? false

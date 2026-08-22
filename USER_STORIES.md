@@ -178,11 +178,10 @@
 ## US-18: Configurable Menu Bar Colors
 **As a** user, **I want** to customize the menu bar text colors **so that** they stay readable on any desktop background (issue #7.1).
 
-- [x] Settings → "Menu Bar Colors": color pickers for Gain and Loss colors
+- [x] Settings → "Colors": color pickers for Gain and Loss colors
 - [x] Defaults to the system green/red (dynamic) until a custom color is chosen
-- [x] "Use system text color" toggle: ignores gain/loss colors and uses the always-readable system label color; direction stays conveyed by `+/−` and `▲▼`
 - [x] "Reset to default green/red" button
-- [x] Colors persisted as hex in `data.json` (`gainColorHex`, `lossColorHex`, `menuBarUseSystemColor`); `ColorHex.swift` bridges hex ↔ `NSColor`/`Color`
+- [x] Colors persisted as hex in `data.json` (`gainColorHex`, `lossColorHex`); `ColorHex.swift` bridges hex ↔ `NSColor`/`Color`
 
 ## US-19: Language / Localization
 **As a** user, **I want** to pick the app's language **so that** I can use StockDeck in my own language (issue #7).
