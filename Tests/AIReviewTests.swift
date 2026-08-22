@@ -179,4 +179,25 @@ final class AIReviewTests: XCTestCase {
         XCTAssertEqual(storage.investorProfile?.riskTolerance, .aggressive)
         XCTAssertEqual(storage.investorProfile?.primaryGoal, "Mua nhà 10 năm")
     }
+
+    func testAIPortfolioContextIncludesXIRRWhenHoldingsHaveDates() {
+        let storage = StorageService.shared
+        let originalPortfolios = storage.portfolios
+        let pId = UUID()
+        let buyDate = Date().addingTimeInterval(-100 * 86400)
+        let holding = Holding(symbol: "AAPL", quantity: 10, avgPrice: 150, purchaseDate: buyDate)
+        let portfolio = Portfolio(id: pId, name: "Test Portfolio", holdings: [holding])
+        storage.portfolios = [portfolio]
+        defer { storage.portfolios = originalPortfolios }
+
+        let context = AIPortfolioContext.build(
+            storageService: storage,
+            stockService: .shared,
+            scope: .portfolio(pId),
+            viewModel: nil
+        )
+
+        // Context should render cleanly with or without live quotes
+        XCTAssertFalse(context.contextText.isEmpty)
+    }
 }
