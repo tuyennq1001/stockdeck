@@ -156,8 +156,10 @@ final class AIReviewTests: XCTestCase {
     }
 
     func testInvestorProfileSerializationInAppData() {
-        let storage = StorageService.shared
-        let originalProfile = storage.investorProfile
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
         let testProfile = InvestorProfile(
             age: 28,
             maritalStatus: "Độc thân",
@@ -167,7 +169,6 @@ final class AIReviewTests: XCTestCase {
             primaryGoal: "Mua nhà 10 năm"
         )
         storage.investorProfile = testProfile
-        defer { storage.investorProfile = originalProfile }
 
         let exported = storage.exportAppData()
         XCTAssertEqual(exported.investorProfile?.age, 28)
@@ -181,23 +182,33 @@ final class AIReviewTests: XCTestCase {
     }
 
     func testAIPortfolioContextIncludesXIRRWhenHoldingsHaveDates() {
-        let storage = StorageService.shared
-        let originalPortfolios = storage.portfolios
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
+        let stockService = StockService.shared
+        stockService.quotes["AAPL"] = StockQuote(
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            price: 180.0,
+            change: 2.0,
+            changePercent: 1.1,
+            currency: "USD"
+        )
+
         let pId = UUID()
         let buyDate = Date().addingTimeInterval(-100 * 86400)
         let holding = Holding(symbol: "AAPL", quantity: 10, avgPrice: 150, purchaseDate: buyDate)
         let portfolio = Portfolio(id: pId, name: "Test Portfolio", holdings: [holding])
         storage.portfolios = [portfolio]
-        defer { storage.portfolios = originalPortfolios }
 
         let context = AIPortfolioContext.build(
             storageService: storage,
-            stockService: .shared,
+            stockService: stockService,
             scope: .portfolio(pId),
             viewModel: nil
         )
 
-        // Context should render cleanly with or without live quotes
-        XCTAssertFalse(context.contextText.isEmpty)
+        XCTAssertTrue(context.contextText.contains("ACTUAL MONEY-WEIGHTED RETURN (XIRR / Real Cash Flow Performance)"))
     }
 }

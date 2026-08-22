@@ -324,12 +324,26 @@ struct AIReviewWideView: View {
         case .user:
             HStack {
                 Spacer()
-                Text(message.content)
-                    .font(DS.body)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Capsule().fill(DS.brand))
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .trailing, spacing: 6) {
+                    if let base64 = message.imageBase64,
+                       let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")),
+                       let nsImg = NSImage(data: data) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 240, maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                    }
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .font(DS.body)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         case .assistant:
             HStack(alignment: .top, spacing: 8) {
@@ -388,7 +402,57 @@ struct AIReviewWideView: View {
                     Spacer()
                 }
             }
+
+            // Image attachment preview
+            if let data = vm.attachedImageData, let nsImg = NSImage(data: data) {
+                HStack(spacing: 10) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DS.hairline, lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Image attached")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(DS.ink)
+                        Text("Will be analyzed along with your question")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        vm.attachedImageData = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(DS.cardAlt.opacity(0.8)))
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
+                // Attach image button
+                Button {
+                    chooseOrPasteImage(vm)
+                } label: {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(vm.attachedImageData != nil ? DS.brand : DS.inkSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Attach or paste image from clipboard (Cmd+V)")
+
                 TextField("Ask about your portfolio… (Shift+Enter for newline)", text: Binding(
                     get: { vm.draft },
                     set: { vm.draft = $0 }
@@ -404,6 +468,14 @@ struct AIReviewWideView: View {
                                 submit(vm)
                             }
                             return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.init("v"), phases: .down) { press in
+                        if press.modifiers == .command {
+                            if pasteImageFromClipboard(vm) {
+                                return .handled
+                            }
                         }
                         return .ignored
                     }
@@ -454,7 +526,7 @@ struct AIReviewWideView: View {
     }
 
     private func canSubmit(_ vm: AIReviewViewModel) -> Bool {
-        !vm.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !vm.isSending
+        (!vm.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.attachedImageData != nil) && !vm.isSending
     }
 
     private func canSaveWorkspace(_ vm: AIReviewViewModel) -> Bool {
@@ -464,6 +536,44 @@ struct AIReviewWideView: View {
     private func submit(_ vm: AIReviewViewModel) {
         guard canSubmit(vm) else { return }
         Task { await vm.sendCurrentMessage() }
+    }
+
+    @discardableResult
+    private func pasteImageFromClipboard(_ vm: AIReviewViewModel) -> Bool {
+        #if os(macOS)
+        let pb = NSPasteboard.general
+        if let image = NSImage(pasteboard: pb) {
+            if let tiff = image.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                vm.attachedImageData = jpeg
+                return true
+            }
+        }
+        #endif
+        return false
+    }
+
+    private func chooseOrPasteImage(_ vm: AIReviewViewModel) {
+        if pasteImageFromClipboard(vm) { return }
+        #if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image, .png, .jpeg]
+        panel.prompt = "Attach"
+        if panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) {
+            if let img = NSImage(data: data),
+               let tiff = img.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                vm.attachedImageData = jpeg
+            } else {
+                vm.attachedImageData = data
+            }
+        }
+        #endif
     }
 
     // MARK: - Rename sheet

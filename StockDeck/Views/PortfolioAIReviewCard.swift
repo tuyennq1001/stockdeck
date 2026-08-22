@@ -18,6 +18,7 @@ struct PortfolioAIReviewCard: View {
     @State private var isExpanded: Bool = true
     @State private var draft: String = ""
     @State private var isSending: Bool = false
+    @State private var attachedImageData: Data? = nil
     @State private var errorMessage: String? = nil
     @State private var showEditProfileSheet: Bool = false
     @State private var showResetChatConfirm: Bool = false
@@ -396,13 +397,27 @@ struct PortfolioAIReviewCard: View {
         case .user:
             HStack {
                 Spacer()
-                Text(message.content)
-                    .font(DS.body)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .trailing, spacing: 6) {
+                    if let base64 = message.imageBase64,
+                       let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")),
+                       let nsImg = NSImage(data: data) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 240, maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                    }
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .font(DS.body)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         case .assistant, .report:
             VStack(alignment: .leading, spacing: 6) {
@@ -434,66 +449,164 @@ struct PortfolioAIReviewCard: View {
     // MARK: - Composer Bar
 
     private var composerBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("Hỏi AI về danh mục, phân bổ rủi ro… (Enter để gửi, Shift+Enter xuống dòng)", text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(DS.body)
-                .lineLimit(3...8)
-                .frame(minHeight: 52)
-                .focused($isComposerFocused)
-                .onKeyPress(.return, phases: .down) { press in
-                    if !press.modifiers.contains(.shift) && !press.modifiers.contains(.option) {
-                        if canSubmit {
-                            submitDraft()
-                        }
-                        return .handled
-                    }
-                    return .ignored
-                }
-                .onSubmit {
-                    submitDraft()
-                }
+        VStack(spacing: 8) {
+            // Attached Image Thumbnail Preview
+            if let data = attachedImageData, let nsImg = NSImage(data: data) {
+                HStack(spacing: 10) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DS.hairline, lineWidth: 1))
 
-            Button {
-                submitDraft()
-            } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        Circle().fill(canSubmit ? DS.brand : DS.inkTertiary.opacity(0.35))
-                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Đã đính kèm ảnh")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(DS.ink)
+                        Text("Nhấn Enter để gửi ảnh cùng câu hỏi cho AI")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        attachedImageData = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("Xóa ảnh đính kèm")
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 10).fill(DS.cardAlt.opacity(0.85)))
             }
-            .buttonStyle(.plain)
-            .disabled(!canSubmit)
-            .pointingHandCursor()
-            .help("Gửi câu hỏi (Enter)")
+
+            HStack(alignment: .bottom, spacing: 10) {
+                // Attach Image Button
+                Button {
+                    chooseOrPasteImage()
+                } label: {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(attachedImageData != nil ? DS.brand : DS.inkSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Đính kèm hoặc dán ảnh từ clipboard (Cmd+V)")
+
+                TextField("Hỏi AI về danh mục, phân bổ rủi ro… (Enter để gửi, Shift+Enter xuống dòng)", text: $draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(DS.body)
+                    .lineLimit(3...8)
+                    .frame(minHeight: 52)
+                    .focused($isComposerFocused)
+                    .onKeyPress(.return, phases: .down) { press in
+                        if !press.modifiers.contains(.shift) && !press.modifiers.contains(.option) {
+                            if canSubmit {
+                                submitDraft()
+                            }
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.init("v"), phases: .down) { press in
+                        if press.modifiers == .command {
+                            if pasteImageFromClipboard() {
+                                return .handled
+                            }
+                        }
+                        return .ignored
+                    }
+                    .onSubmit {
+                        submitDraft()
+                    }
+
+                Button {
+                    submitDraft()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            Circle().fill(canSubmit ? DS.brand : DS.inkTertiary.opacity(0.35))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSubmit)
+                .pointingHandCursor()
+                .help("Gửi câu hỏi (Enter)")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(DS.cardAlt)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(isComposerFocused ? DS.brand : .clear, lineWidth: 1.5)
+            )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(DS.cardAlt)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isComposerFocused ? DS.brand : .clear, lineWidth: 1.5)
-        )
     }
 
     private var canSubmit: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
+        (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedImageData != nil) && !isSending
     }
 
     private func submitDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return }
+        guard (!text.isEmpty || attachedImageData != nil), !isSending else { return }
+        let img = attachedImageData
         draft = ""
-        sendUserMessage(text: text)
+        attachedImageData = nil
+        sendUserMessage(text: text, imageData: img)
     }
 
-    private func sendUserMessage(text: String) {
+    @discardableResult
+    private func pasteImageFromClipboard() -> Bool {
+        let pb = NSPasteboard.general
+        if let image = NSImage(pasteboard: pb) {
+            if let tiff = image.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                self.attachedImageData = jpeg
+                return true
+            }
+        }
+        return false
+    }
+
+    private func chooseOrPasteImage() {
+        if pasteImageFromClipboard() {
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image, .png, .jpeg]
+        panel.prompt = "Đính kèm"
+        if panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) {
+            if let img = NSImage(data: data),
+               let tiff = img.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                self.attachedImageData = jpeg
+            } else {
+                self.attachedImageData = data
+            }
+        }
+    }
+
+    private func sendUserMessage(text: String, imageData: Data? = nil) {
         guard !storageService.aiApiKey.isEmpty else {
             errorMessage = "Vui lòng nhập API key trong Settings → AI Review trước."
             return
@@ -508,8 +621,10 @@ struct PortfolioAIReviewCard: View {
             storageService.aiChatSections.insert(section, at: 0)
         }
 
+        let imgBase64 = imageData?.base64EncodedString()
+
         // Append user message
-        section.messages.append(AIChatMessage(role: .user, content: text))
+        section.messages.append(AIChatMessage(role: .user, content: text, imageBase64: imgBase64))
         section.updatedAt = Date()
         if let idx = storageService.aiChatSections.firstIndex(where: { $0.id == section.id }) {
             storageService.aiChatSections[idx] = section

@@ -490,6 +490,36 @@ final class iCloudSyncService: ObservableObject {
             for (k, v) in rSorts { combined[k] = v }
             merged.portfolioPositionSorts = combined
         }
+        if let mbd = remote.menuBarDisplay, !mbd.isEmpty {
+            merged.menuBarDisplay = mbd
+        }
+        if let aip = remote.aiProvider, !aip.isEmpty {
+            merged.aiProvider = aip
+        }
+        if let aib = remote.aiBaseURL, !aib.isEmpty {
+            merged.aiBaseURL = aib
+        }
+        if let aim = remote.aiModel, !aim.isEmpty {
+            merged.aiModel = aim
+        }
+        if let wsp = remote.aiWorkspacePath {
+            merged.aiWorkspacePath = wsp
+        }
+        if let dst = remote.aiDeepseekThinking {
+            merged.aiDeepseekThinking = dst
+        }
+        if let prof = remote.investorProfile {
+            merged.investorProfile = prof
+        }
+        if let rSections = remote.aiChatSections, !rSections.isEmpty {
+            var combinedSections = merged.aiChatSections ?? []
+            for rs in rSections {
+                if !combinedSections.contains(where: { $0.id == rs.id }) {
+                    combinedSections.append(rs)
+                }
+            }
+            merged.aiChatSections = combinedSections
+        }
 
         return merged
     }

@@ -17,6 +17,8 @@ final class AIReviewViewModel {
     var selectedSectionID: UUID?
     /// The draft text in the composer.
     var draft = ""
+    /// Attached image data to be sent with the next message.
+    var attachedImageData: Data? = nil
     /// True while a user message is being sent.
     var isSending = false
     /// Last error surfaced in the chat pane.
@@ -71,15 +73,18 @@ final class AIReviewViewModel {
     /// losing the user's text.
     func sendCurrentMessage() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isSending else { return }
+        let hasImage = attachedImageData != nil
+        guard (!text.isEmpty || hasImage), !isSending else { return }
         guard !storageService.aiApiKey.isEmpty else {
             errorMessage = "Set an API key in Settings → AI Review first."
             return
         }
         guard let sectionID = selectedSectionID else { return }
 
-        append(sectionID, role: .user, content: text)
+        let imgBase64 = attachedImageData?.base64EncodedString()
+        append(sectionID, role: .user, content: text, imageBase64: imgBase64)
         draft = ""
+        attachedImageData = nil
         errorMessage = nil
         isSending = true
         defer { isSending = false }
@@ -144,13 +149,13 @@ final class AIReviewViewModel {
         )
     }
 
-    private func append(_ sectionID: UUID, role: AIChatRole, content: String) {
+    private func append(_ sectionID: UUID, role: AIChatRole, content: String, imageBase64: String? = nil) {
         guard let idx = storageService.aiChatSections.firstIndex(where: { $0.id == sectionID }) else { return }
         var section = storageService.aiChatSections[idx]
-        section.messages.append(AIChatMessage(role: role, content: content))
+        section.messages.append(AIChatMessage(role: role, content: content, imageBase64: imageBase64))
         section.updatedAt = Date()
         if role == .user, section.title == "New conversation" {
-            section.title = String(content.prefix(48))
+            section.title = content.isEmpty ? "Image analysis" : String(content.prefix(48))
         }
         storageService.aiChatSections[idx] = section
     }

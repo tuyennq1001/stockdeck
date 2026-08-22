@@ -132,11 +132,21 @@ final class AIReviewService {
         }
     }
 
-    private static func buildMessages(systemContext: String, messages: [AIChatSection.APIMessage]) -> [[String: String]] {
-        var out: [[String: String]] = []
+    private static func buildMessages(systemContext: String, messages: [AIChatSection.APIMessage]) -> [[String: Any]] {
+        var out: [[String: Any]] = []
         out.append(["role": "system", "content": systemContext])
         for m in messages {
-            out.append(["role": m.role, "content": m.content])
+            if let img = m.imageBase64, !img.isEmpty {
+                var parts: [[String: Any]] = []
+                if !m.content.isEmpty {
+                    parts.append(["type": "text", "text": m.content])
+                }
+                let formattedURL = img.hasPrefix("data:") ? img : "data:image/jpeg;base64,\(img)"
+                parts.append(["type": "image_url", "image_url": ["url": formattedURL]])
+                out.append(["role": m.role, "content": parts])
+            } else {
+                out.append(["role": m.role, "content": m.content])
+            }
         }
         return out
     }

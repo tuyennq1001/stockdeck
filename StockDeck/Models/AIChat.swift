@@ -73,12 +73,14 @@ struct AIChatMessage: Identifiable, Codable, Equatable {
     let id: UUID
     let role: AIChatRole
     let content: String
+    let imageBase64: String?
     let createdAt: Date
 
-    init(id: UUID = UUID(), role: AIChatRole, content: String, createdAt: Date = Date()) {
+    init(id: UUID = UUID(), role: AIChatRole, content: String, imageBase64: String? = nil, createdAt: Date = Date()) {
         self.id = id
         self.role = role
         self.content = content
+        self.imageBase64 = imageBase64
         self.createdAt = createdAt
     }
 }
@@ -116,11 +118,18 @@ struct AIChatSection: Identifiable, Codable, Equatable {
     func apiMessages(window: Int = 12) -> [AIChatSection.APIMessage] {
         let dialogue = messages.filter { $0.role == .user || $0.role == .assistant }
         let recent = Array(dialogue.suffix(window))
-        return recent.map { AIChatSection.APIMessage(role: $0.role.rawValue, content: $0.content) }
+        return recent.map { AIChatSection.APIMessage(role: $0.role.rawValue, content: $0.content, imageBase64: $0.imageBase64) }
     }
 
     struct APIMessage: Codable {
         let role: String
         let content: String
+        let imageBase64: String?
+
+        init(role: String, content: String, imageBase64: String? = nil) {
+            self.role = role
+            self.content = content
+            self.imageBase64 = imageBase64
+        }
     }
 }
