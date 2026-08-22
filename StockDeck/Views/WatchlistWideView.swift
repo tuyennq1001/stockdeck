@@ -732,9 +732,6 @@ struct WatchlistWideView: View {
                         },
                         dropIndicator: $dropIndicator
                     )
-                    if idx < visibleRows.count - 1 {
-                        Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
-                    }
                 }
             }
         }
@@ -812,9 +809,6 @@ struct WatchlistWideView: View {
                             },
                             dropIndicator: $dropIndicator
                         )
-                        if idx < visibleRows.count - 1 {
-                            Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
-                        }
                     }
                 }
             }
@@ -849,9 +843,6 @@ struct WatchlistWideView: View {
                                 menu: { rowMenu(row) }
                             )
                             .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
-                            if idx < visibleRows.count - 1 {
-                                Divider().overlay(DS.hairline.opacity(0.5)).padding(.horizontal, 14)
-                            }
                         }
                     }
                 }
@@ -1276,7 +1267,7 @@ private struct PinnedRowView<Menu: View>: View {
                 if compact {
                     if row.loaded {
                         pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
+                                   label: nil, emphasised: true)
                             .frame(width: 96, alignment: .trailing)
                     } else {
                         DSSpinner(size: 12)
@@ -1285,7 +1276,7 @@ private struct PinnedRowView<Menu: View>: View {
                 } else {
                     if row.loaded {
                         pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
+                                   label: nil, emphasised: true)
                             .frame(width: WCol.price, alignment: .trailing)
                     } else {
                         DSSpinner(size: 12)
@@ -1294,11 +1285,13 @@ private struct PinnedRowView<Menu: View>: View {
                 }
             }
             .padding(.horizontal, WCol.padHorizontal)
-            .padding(.vertical, 9)
-            .frame(minHeight: 48)
+            .frame(height: 52)
             .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
             .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
             .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
+            }
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
@@ -1485,10 +1478,12 @@ private struct MetricsRowView<Menu: View>: View {
                 }
             }
             .padding(.horizontal, WCol.padHorizontal)
-            .padding(.vertical, 9)
-            .frame(minHeight: 48)
+            .frame(height: 52)
             .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
             .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                Divider().overlay(DS.hairline.opacity(0.5)).padding(.horizontal, 14)
+            }
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
