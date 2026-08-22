@@ -100,7 +100,8 @@ final class HomeAIInsightTests: XCTestCase {
     }
 
     func testPromptBuilderIncludesSymbolAndNews() {
-        let storage = StorageService.shared
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("test_prompt_\(UUID().uuidString).json")
+        let storage = StorageService(fileURL: tempFile)
         let mover = HomeAIInsightService.SymbolCandidate(
             symbol: "AAPL",
             name: "Apple Inc.",

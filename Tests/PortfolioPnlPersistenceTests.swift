@@ -4,8 +4,13 @@ import XCTest
 @MainActor
 final class PortfolioPnlPersistenceTests: XCTestCase {
 
+    private func makeStorage() -> StorageService {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_pnl_\(UUID().uuidString).json")
+        return StorageService(fileURL: tempURL)
+    }
+
     func testDailyAndMonthlyPnlRangePerScope() {
-        let storage = StorageService()
+        let storage = makeStorage()
         let scopeAll = "all"
         let scope1 = UUID().uuidString
         let scope2 = UUID().uuidString
@@ -42,7 +47,7 @@ final class PortfolioPnlPersistenceTests: XCTestCase {
     }
 
     func testAppDataExportAndApplyRoundTrip() {
-        let storage = StorageService()
+        let storage = makeStorage()
         let scope1 = "portfolio-alpha"
         let scope2 = "portfolio-beta"
 
@@ -65,7 +70,7 @@ final class PortfolioPnlPersistenceTests: XCTestCase {
         XCTAssertEqual(exported.portfolioPnlViewModes?[scope2], "Monthly P&L")
 
         // New instance applying exported data
-        let storage2 = StorageService()
+        let storage2 = makeStorage()
         storage2.applyAppData(exported)
 
         XCTAssertEqual(storage2.dailyPnlRange(for: scope1), "6M")
@@ -78,7 +83,7 @@ final class PortfolioPnlPersistenceTests: XCTestCase {
     }
 
     func testClearAllAppDataResetsPnlRanges() {
-        let storage = StorageService()
+        let storage = makeStorage()
         let scope = "scope-test"
 
         storage.setDailyPnlRange("3M", for: scope)

@@ -88,10 +88,9 @@ final class AIReviewTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         let notes = tmp.appendingPathComponent("ai-context.md")
         try? "Risk tolerance: moderate; goal: growth over 10y".write(to: notes, atomically: true, encoding: .utf8)
-        let storage = StorageService.shared
-        let original = storage.aiWorkspacePath
+        let tempStorageFile = tmp.appendingPathComponent("storage.json")
+        let storage = StorageService(fileURL: tempStorageFile)
         storage.aiWorkspacePath = tmp.path
-        defer { storage.aiWorkspacePath = original }
         let context = AIPortfolioContext.build(
             storageService: storage,
             stockService: .shared,
