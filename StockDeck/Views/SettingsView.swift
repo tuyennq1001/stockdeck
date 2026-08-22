@@ -434,8 +434,6 @@ struct SettingsView: View {
                     .font(.inter(10, relativeTo: .caption))
                     caption("Gain/loss colors apply across the whole app — menu bar, watchlist and portfolios.")
 
-                    Toggle("Use system color in the menu bar", isOn: $storageService.menuBarUseSystemColor)
-                    caption("Keeps the menu bar text readable on any wallpaper (direction still shown by + / − and ▲ ▼). Doesn't affect in-app colors.")
                 }
                 #endif
 

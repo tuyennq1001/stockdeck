@@ -551,10 +551,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let title: String
         let color: NSColor
 
-        // Issue #7.1: customizable gain/loss colors. "Use system color" overrides both
-        // with the always-readable label color (direction stays in the +/- and ▲▼).
-        let upColor: NSColor = storageService.menuBarUseSystemColor ? .labelColor : storageService.gainColor
-        let downColor: NSColor = storageService.menuBarUseSystemColor ? .labelColor : storageService.lossColor
+        // Issue #7.1: customizable gain/loss colors.
+        let upColor: NSColor = storageService.gainColor
+        let downColor: NSColor = storageService.lossColor
 
         switch displayMode {
         case "todayPnl":
