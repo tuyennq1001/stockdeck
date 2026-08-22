@@ -41,7 +41,6 @@ struct WatchlistWideView: View {
     @State private var alertSymbol: AlertTarget?
     @State private var multiAlertSymbols: [String] = []
     @State private var showMetricCustomizer = false
-    @State private var hoveredSymbol: String? = nil
 
     struct WatchRow: Identifiable {
         let id: String
@@ -197,14 +196,6 @@ struct WatchlistWideView: View {
     private var selectedMetrics: [WatchlistMetric] { storageService.watchlistMetrics }
     private var otherMetrics: [WatchlistMetric] { selectedMetrics.filter { $0 != .price } }
 
-    /// True when any watchlist quote is trading pre/post-market. Drives the row
-    /// hierarchy: during extended hours the After-hrs price/% reads first and the
-    /// regular price dims to context; during regular hours it's the reverse.
-    private var extendedSession: Bool {
-        storageService.showExtendedHours &&
-        storageService.watchlist.contains { stockService.quotes[$0]?.isExtendedHours == true }
-    }
-
     private func sortedRows() -> [WatchRow] {
         let base = rows
         let sortedSymbols = StorageService.sortWatchlistSymbols(
@@ -260,7 +251,6 @@ struct WatchlistWideView: View {
         }
         .navigationTitle(storageService.currentWatchlist.name)
         .task(id: Set(storageService.watchlist)) {
-            // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
         }
         .task(id: selectedMetrics) {
@@ -273,8 +263,6 @@ struct WatchlistWideView: View {
             if previewOrder.isEmpty { previewOrder = storageService.watchlist }
         }
         .onChange(of: storageService.watchlist) { _, newList in
-            // Keep the preview in sync with outside changes (add/remove/switch) —
-            // but never clobber an in-flight drag preview.
             if draggingSymbol == nil { previewOrder = newList }
         }
         .onChange(of: draggingSymbol) { _, newValue in
@@ -489,51 +477,52 @@ struct WatchlistWideView: View {
                             onMove: { srcId, tgtId, placement in
                                 moveWatchlistInPreview(srcId, relativeTo: tgtId, placement: placement)
                             },
-                            onCommit: { commitWatchlistPreview() }
-                        ) {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    storageService.selectWatchlist(id: wl.id)
+                            onCommit: { commitWatchlistPreview() },
+                            content: {
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        storageService.selectWatchlist(id: wl.id)
+                                    }
+                                }) {
+                                    Text(wl.name)
+                                        .font(DS.bodyStrong)
+                                        .foregroundStyle(selected ? .white : DS.ink)
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            Capsule()
+                                                .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                        )
                                 }
-                            }) {
-                                Text(wl.name)
-                                    .font(DS.bodyStrong)
-                                    .foregroundStyle(selected ? .white : DS.ink)
-                                    .padding(.horizontal, 11)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        Capsule()
-                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                            .id(wl.id)
-                            .contextMenu {
-                                Button("Rename…") {
-                                    renamingWatchlist = wl
-                                    renameWatchlistName = wl.name
-                                }
-                                if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
-                                    if idx > 0 {
-                                        Button("Move Left") {
-                                            let prevId = storageService.watchlists[idx - 1].id
-                                            storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .id(wl.id)
+                                .contextMenu {
+                                    Button("Rename…") {
+                                        renamingWatchlist = wl
+                                        renameWatchlistName = wl.name
+                                    }
+                                    if let idx = storageService.watchlists.firstIndex(where: { $0.id == wl.id }) {
+                                        if idx > 0 {
+                                            Button("Move Left") {
+                                                let prevId = storageService.watchlists[idx - 1].id
+                                                storageService.moveWatchlist(from: wl.id, beforeOrAfter: prevId)
+                                            }
+                                        }
+                                        if idx < storageService.watchlists.count - 1 {
+                                            Button("Move Right") {
+                                                let nextId = storageService.watchlists[idx + 1].id
+                                                storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
+                                            }
                                         }
                                     }
-                                    if idx < storageService.watchlists.count - 1 {
-                                        Button("Move Right") {
-                                            let nextId = storageService.watchlists[idx + 1].id
-                                            storageService.moveWatchlist(from: nextId, beforeOrAfter: wl.id)
-                                        }
+                                    Divider()
+                                    Button("Delete Watchlist", role: .destructive) {
+                                        storageService.deleteWatchlist(id: wl.id)
                                     }
                                 }
-                                Divider()
-                                Button("Delete Watchlist", role: .destructive) {
-                                    storageService.deleteWatchlist(id: wl.id)
-                                }
                             }
-                        }
+                        )
                     }
 
                     Button(action: {
@@ -592,15 +581,13 @@ struct WatchlistWideView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var pinnedColumnWidth: CGFloat {
-        WCol.padHorizontal + WCol.checkWidth + WCol.spacing + WCol.rankWidth + WCol.spacing + WCol.symbol + WCol.spacing + WCol.price + WCol.padHorizontal
-    }
-
-    private var metricsColumnsWidth: CGFloat {
-        guard !otherMetrics.isEmpty else { return 0 }
-        let widths = otherMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let spacing = CGFloat(max(0, otherMetrics.count - 1)) * WCol.spacing
-        return widths + spacing + WCol.padHorizontal * 2
+    private var tableWidth: CGFloat {
+        let base = WCol.padHorizontal + WCol.checkWidth + WCol.spacing + WCol.rankWidth + WCol.spacing + WCol.symbol + WCol.spacing + WCol.price
+        let other = selectedMetrics.filter { $0 != .price }
+        guard !other.isEmpty else { return base + WCol.padHorizontal }
+        let metricWidth = other.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
+        let spacing = CGFloat(other.count) * WCol.spacing
+        return base + spacing + metricWidth + WCol.padHorizontal
     }
 
     private var tableToolbar: some View {
@@ -696,7 +683,7 @@ struct WatchlistWideView: View {
 
     private var compactTableContents: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 compactHeaderRow
                 Divider().overlay(DS.hairline)
                 ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
@@ -718,21 +705,17 @@ struct WatchlistWideView: View {
                         },
                         onCommit: { commitPreviewOrder() },
                         content: {
-                            PinnedRowView(
+                            WatchRowView(
                                 row: row,
                                 position: idx + 1,
                                 showExtended: storageService.showExtendedHours,
                                 percentDecimals: storageService.percentDecimals,
                                 valueDecimals: storageService.valueDecimals,
+                                metrics: selectedMetrics,
                                 isSelected: selectedSymbols.contains(row.symbol),
-                                isHovered: hoveredSymbol == row.symbol,
                                 compact: true,
                                 onOpen: { handleRowClick(row.symbol) },
                                 onToggleSelect: { toggleSelection(of: row.symbol) },
-                                onHover: { hovering in
-                                    if hovering { hoveredSymbol = row.symbol }
-                                    else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
-                                },
                                 menu: { rowMenu(row) }
                             )
                             .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
@@ -760,100 +743,64 @@ struct WatchlistWideView: View {
         .textCase(.uppercase)
     }
 
-    // MARK: - Wide Mode (Side-by-side Pinned & Horizontally Scrollable Panes)
+    // MARK: - Wide Mode (Horizontally Scrollable Table)
 
     private var wideTableContents: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            HStack(alignment: .top, spacing: 0) {
-                // Left Pinned Columns: [Select All, #, Symbol, Price]
-                VStack(spacing: 0) {
-                    pinnedHeader
-                    Divider().overlay(DS.hairline)
-                    ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
-                        ReorderRow(
-                            id: row.symbol,
-                            draggingId: $draggingSymbol,
-                            isHorizontal: false,
-                            makeDragItem: {
-                                previewOrder = storageService.watchlist
-                                draggingSymbols = groupForDrag(row.symbol)
-                                return NSItemProvider(object: row.symbol as NSString)
-                            },
-                            onMove: { src, tgt, placement in
-                                if sortKey != .order || !sortAsc {
-                                    storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
-                                }
-                                moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
-                                                   beforeOrAfter: tgt, placement: placement)
-                            },
-                            onCommit: { commitPreviewOrder() },
-                            content: {
-                                PinnedRowView(
-                                    row: row,
-                                    position: idx + 1,
-                                    showExtended: storageService.showExtendedHours,
-                                    percentDecimals: storageService.percentDecimals,
-                                    valueDecimals: storageService.valueDecimals,
-                                    isSelected: selectedSymbols.contains(row.symbol),
-                                    isHovered: hoveredSymbol == row.symbol,
-                                    compact: false,
-                                    onOpen: { handleRowClick(row.symbol) },
-                                    onToggleSelect: { toggleSelection(of: row.symbol) },
-                                    onHover: { hovering in
-                                        if hovering { hoveredSymbol = row.symbol }
-                                        else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
-                                    },
-                                    menu: { rowMenu(row) }
-                                )
-                                .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
-                            },
-                            dropIndicator: $dropIndicator
-                        )
-                        if idx < visibleRows.count - 1 {
-                            Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
-                        }
-                    }
-                }
-                .frame(width: pinnedColumnWidth)
-
-                // Right Scrollable Columns (Remaining Metrics)
-                if !otherMetrics.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        VStack(spacing: 0) {
-                            metricsHeader
-                            Divider().overlay(DS.hairline)
-                            ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
-                                MetricsRowView(
-                                    row: row,
-                                    metrics: otherMetrics,
-                                    percentDecimals: storageService.percentDecimals,
-                                    valueDecimals: storageService.valueDecimals,
-                                    showExtended: storageService.showExtendedHours,
-                                    isHovered: hoveredSymbol == row.symbol,
-                                    onOpen: { handleRowClick(row.symbol) },
-                                    onHover: { hovering in
-                                        if hovering { hoveredSymbol = row.symbol }
-                                        else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
-                                    },
-                                    menu: { rowMenu(row) }
-                                )
-                                .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
-                                if idx < visibleRows.count - 1 {
-                                    Divider().overlay(DS.hairline.opacity(0.5)).padding(.horizontal, 14)
-                                }
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(spacing: 0) {
+                headerRow
+                Divider().overlay(DS.hairline)
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
+                            ReorderRow(
+                                id: row.symbol,
+                                draggingId: $draggingSymbol,
+                                isHorizontal: false,
+                                makeDragItem: {
+                                    previewOrder = storageService.watchlist
+                                    draggingSymbols = groupForDrag(row.symbol)
+                                    return NSItemProvider(object: row.symbol as NSString)
+                                },
+                                onMove: { src, tgt, placement in
+                                    if sortKey != .order || !sortAsc {
+                                        storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
+                                    }
+                                    moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
+                                                       beforeOrAfter: tgt, placement: placement)
+                                },
+                                onCommit: { commitPreviewOrder() },
+                                content: {
+                                    WatchRowView(
+                                        row: row,
+                                        position: idx + 1,
+                                        showExtended: storageService.showExtendedHours,
+                                        percentDecimals: storageService.percentDecimals,
+                                        valueDecimals: storageService.valueDecimals,
+                                        metrics: selectedMetrics,
+                                        isSelected: selectedSymbols.contains(row.symbol),
+                                        compact: false,
+                                        onOpen: { handleRowClick(row.symbol) },
+                                        onToggleSelect: { toggleSelection(of: row.symbol) },
+                                        menu: { rowMenu(row) }
+                                    )
+                                    .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
+                                },
+                                dropIndicator: $dropIndicator
+                            )
+                            if idx < visibleRows.count - 1 {
+                                Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                             }
                         }
-                        .frame(minWidth: metricsColumnsWidth, alignment: .leading)
                     }
                 }
             }
+            .frame(width: tableWidth, alignment: .leading)
         }
         .padding(.vertical, 6)
     }
 
     private func handleRowClick(_ symbol: String) {
-        // Selection is handled exclusively by the row checkboxes; clicking a row
-        // only opens the detail chart.
         withAnimation(.easeInOut(duration: 0.2)) {
             activeDetailSymbol = symbol
         }
@@ -869,7 +816,6 @@ struct WatchlistWideView: View {
 
     private var isCompact: Bool { activeDetailSymbol != nil }
 
-    /// The header checkbox: select or clear all watchlist rows.
     private var selectAllButton: some View {
         Image(systemName: selectAllIcon)
             .font(.system(size: 12, weight: .semibold))
@@ -897,21 +843,12 @@ struct WatchlistWideView: View {
         return "minus.square.fill"
     }
 
-    private var pinnedHeader: some View {
+    private var headerRow: some View {
         HStack(spacing: WCol.spacing) {
             selectAllButton
             Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.rankWidth, alignment: .leading)
             headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
             headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
-        }
-        .padding(.horizontal, WCol.padHorizontal)
-        .padding(.vertical, 10)
-        .textCase(.uppercase)
-        .contextMenu { headerContextMenu }
-    }
-
-    private var metricsHeader: some View {
-        HStack(spacing: WCol.spacing) {
             ForEach(otherMetrics) { metric in
                 metricHeader(metric)
             }
@@ -1072,7 +1009,6 @@ struct WatchlistWideView: View {
         }
     }
 
-    /// Moves a symbol up/down in the manual watchlist order (persisted).
     private func move(_ symbol: String, by delta: Int) {
         if sortKey != .order || !sortAsc {
             storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
@@ -1083,9 +1019,6 @@ struct WatchlistWideView: View {
         storageService.watchlist.swapAt(i, j)
     }
 
-    /// The set of symbols that travel together when `symbol` is dragged.
-    /// TradingView-style: if the row is part of a live multi-selection, the whole
-    /// selection moves as one block; otherwise just that row.
     private func groupForDrag(_ symbol: String) -> Set<String> {
         if selectedSymbols.contains(symbol), selectedSymbols.count > 1 {
             return selectedSymbols
@@ -1093,9 +1026,6 @@ struct WatchlistWideView: View {
         return [symbol]
     }
 
-    /// Live, local-only reorder of the preview while dragging. Moves a whole
-    /// group into a single contiguous block at the drop position, preserving the
-    /// group's pre-drag relative order. No storage writes.
     private func moveGroupInPreview(_ group: Set<String>, beforeOrAfter targetSymbol: String, placement: InsertPlacement) {
         if previewOrder.isEmpty { previewOrder = storageService.watchlist }
         guard !group.contains(targetSymbol),
@@ -1109,8 +1039,6 @@ struct WatchlistWideView: View {
         previewOrder.insert(contentsOf: members, at: insertIndex)
     }
 
-    /// The watchlist tabs in order: the local drag preview while dragging, else the
-    /// persisted order.
     private var displayedWatchlists: [Watchlist] {
         if draggingWatchlistId != nil, !previewWatchlistIds.isEmpty {
             let byId = Dictionary(uniqueKeysWithValues: storageService.watchlists.map { ($0.id, $0) })
@@ -1119,7 +1047,6 @@ struct WatchlistWideView: View {
         return storageService.watchlists
     }
 
-    /// Live, local-only reorder of the watchlist tab preview while dragging.
     private func moveWatchlistInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
         if previewWatchlistIds.isEmpty { previewWatchlistIds = storageService.watchlists.map(\.id) }
         guard sourceId != targetId,
@@ -1132,8 +1059,6 @@ struct WatchlistWideView: View {
         previewWatchlistIds.insert(item, at: insertIndex)
     }
 
-    /// Persists the previewed watchlist order exactly once, when the tab drop
-    /// lands (or the drag ends outside the picker bar).
     private func commitWatchlistPreview() {
         guard !previewWatchlistIds.isEmpty else {
             draggingWatchlistId = nil
@@ -1145,7 +1070,6 @@ struct WatchlistWideView: View {
         storageService.commitWatchlistOrder(final)
     }
 
-    /// Commits the previewed order to storage exactly once, when the drop lands.
     private func commitPreviewOrder() {
         guard !previewOrder.isEmpty else { return }
         let final = previewOrder
@@ -1170,7 +1094,7 @@ struct WatchlistWideView: View {
 }
 
 /// Shared column widths so the header lines up with every row.
-/// File-scope `private` = visible to all components in `WatchlistWideView.swift`.
+/// File-scope `private` = visible to both `WatchlistWideView` and `WatchRowView`.
 private enum WCol {
     static let checkWidth: CGFloat = 22
     static let rankWidth: CGFloat = 24
@@ -1192,136 +1116,20 @@ private enum WCol {
     }
 }
 
-/// Pinned row containing [Checkbox, Position #, Symbol, Price].
-private struct PinnedRowView<Menu: View>: View {
+/// One custom watchlist row: hover tint, click-to-open, right-click actions.
+private struct WatchRowView<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
     let position: Int
     let showExtended: Bool
     let percentDecimals: Int
     let valueDecimals: Int
+    let metrics: [WatchlistMetric]
     let isSelected: Bool
-    let isHovered: Bool
     var compact: Bool = false
     let onOpen: () -> Void
     var onToggleSelect: () -> Void = {}
-    var onHover: (Bool) -> Void = { _ in }
     @ViewBuilder let menu: () -> Menu
-
-    private func priceDec(_ price: Double) -> Int {
-        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
-    }
-
-    private var isRowExtended: Bool {
-        showExtended && row.extPrice != nil
-    }
-
-    @ViewBuilder
-    private func pairedCell(price: Double, pct: Double?, label: String?, emphasised: Bool) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text("\(StorageService.formatNumber(price, decimals: priceDec(price)))")
-                .font(DS.figure)
-                .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
-                .contentTransition(.numericText())
-            if let pct {
-                HStack(spacing: 4) {
-                    if let label, !label.isEmpty {
-                        Text(LocalizedStringKey(label)).font(DS.micro).foregroundStyle(DS.inkTertiary)
-                    }
-                    if emphasised {
-                        ChangePill(value: pct, text: String(format: "%+.\(percentDecimals)f%%", pct))
-                    } else {
-                        Text(String(format: "%+.\(percentDecimals)f%%", pct))
-                            .font(DS.micro).foregroundStyle(DS.pnlColor(pct).opacity(0.55))
-                    }
-                }
-            }
-        }
-    }
-
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: WCol.spacing) {
-                // Checkbox: toggling selection must not open the detail pane
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isSelected ? DS.brand : DS.inkTertiary)
-                    .frame(width: WCol.checkWidth, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(TapGesture().onEnded { onToggleSelect() })
-
-                Text("\(position)")
-                    .font(DS.micro.monospacedDigit())
-                    .foregroundStyle(DS.inkTertiary)
-                    .frame(width: WCol.rankWidth, alignment: .leading)
-
-                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
-                let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
-                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
-                let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
-
-                HStack(spacing: 9) {
-                    SymbolLogo(symbol: row.symbol, size: 28)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(titleText)
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(1)
-                        if !subTitleText.isEmpty {
-                            Text(subTitleText)
-                                .font(DS.micro)
-                                .foregroundStyle(DS.inkTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
-                .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
-
-                if compact {
-                    if row.loaded {
-                        pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
-                            .frame(width: 96, alignment: .trailing)
-                    } else {
-                        DSSpinner(size: 12)
-                            .frame(width: 96, alignment: .trailing)
-                    }
-                } else {
-                    if row.loaded {
-                        pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
-                            .frame(width: WCol.price, alignment: .trailing)
-                    } else {
-                        DSSpinner(size: 12)
-                            .frame(width: WCol.price, alignment: .trailing)
-                    }
-                }
-            }
-            .padding(.horizontal, WCol.padHorizontal)
-            .padding(.vertical, 9)
-            .frame(minHeight: 48)
-            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
-            .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { onHover($0) }
-        .contextMenu { menu() }
-    }
-}
-
-/// Horizontally scrollable row containing remaining metric columns.
-private struct MetricsRowView<Menu: View>: View {
-    let row: WatchlistWideView.WatchRow
-    let metrics: [WatchlistMetric]
-    let percentDecimals: Int
-    let valueDecimals: Int
-    let showExtended: Bool
-    let isHovered: Bool
-    let onOpen: () -> Void
-    var onHover: (Bool) -> Void = { _ in }
-    @ViewBuilder let menu: () -> Menu
+    @State private var hover = false
 
     private func priceDec(_ price: Double) -> Int {
         valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
@@ -1404,80 +1212,162 @@ private struct MetricsRowView<Menu: View>: View {
 
     @ViewBuilder
     private func metricCell(_ metric: WatchlistMetric) -> some View {
-        Group {
-            switch metric {
-            case .price:
-                EmptyView()
-            case .ext:
-                if showExtended {
-                    if let ext = row.extPrice {
-                        pairedCell(price: ext, pct: row.extChangePercent,
-                                   label: row.extLabel, emphasised: isRowExtended)
-                    } else {
-                        Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
-                    }
+        switch metric {
+        case .price:
+            EmptyView()
+        case .ext:
+            if showExtended {
+                if let ext = row.extPrice {
+                    pairedCell(price: ext, pct: row.extChangePercent,
+                               label: row.extLabel, emphasised: isRowExtended)
+                        .frame(width: WCol.width(for: metric), alignment: .trailing)
+                } else {
+                    Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+                        .frame(width: WCol.width(for: metric), alignment: .trailing)
                 }
-            case .today:
-                periodCell(row.changePercent)
-            case .todayChange:
-                todayChangeCell
-            case .oneMonth:
-                periodCell(row.oneMonthChangePercent)
-            case .threeMonths:
-                periodCell(row.threeMonthChangePercent)
-            case .sixMonths:
-                periodCell(row.sixMonthChangePercent)
-            case .oneYear:
-                periodCell(row.oneYearChangePercent)
-            case .twoYears:
-                periodCell(row.twoYearChangePercent)
-            case .threeYears:
-                periodCell(row.threeYearChangePercent)
-            case .fiveYears:
-                periodCell(row.fiveYearChangePercent)
-            case .ytd:
-                periodCell(row.ytdChangePercent)
-            case .ath:
-                priceMetric(row.allTimeHigh)
-            case .atl:
-                priceMetric(row.allTimeLow)
-            case .fromAth:
-                periodCell(row.fromAthPercent)
-            case .fromAtl:
-                periodCell(row.fromAtlPercent)
-            case .marketCap:
-                marketCapCell
-            case .chart24h:
-                Sparkline(symbol: row.symbol, days: 1)
-            case .chart7d:
-                Sparkline(symbol: row.symbol, days: 7)
-            case .chart30d:
-                Sparkline(symbol: row.symbol, days: 30)
-            case .chart60d:
-                Sparkline(symbol: row.symbol, days: 60)
-            case .chart90d:
-                Sparkline(symbol: row.symbol, days: 90)
             }
+        case .today:
+            periodCell(row.changePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .todayChange:
+            todayChangeCell
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .oneMonth:
+            periodCell(row.oneMonthChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .threeMonths:
+            periodCell(row.threeMonthChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .sixMonths:
+            periodCell(row.sixMonthChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .oneYear:
+            periodCell(row.oneYearChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .twoYears:
+            periodCell(row.twoYearChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .threeYears:
+            periodCell(row.threeYearChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .fiveYears:
+            periodCell(row.fiveYearChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .ytd:
+            periodCell(row.ytdChangePercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .ath:
+            priceMetric(row.allTimeHigh)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .atl:
+            priceMetric(row.allTimeLow)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .fromAth:
+            periodCell(row.fromAthPercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .fromAtl:
+            periodCell(row.fromAtlPercent)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .marketCap:
+            marketCapCell
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .chart24h:
+            Sparkline(symbol: row.symbol, days: 1)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .chart7d:
+            Sparkline(symbol: row.symbol, days: 7)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .chart30d:
+            Sparkline(symbol: row.symbol, days: 30)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .chart60d:
+            Sparkline(symbol: row.symbol, days: 60)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
+        case .chart90d:
+            Sparkline(symbol: row.symbol, days: 90)
+                .frame(width: WCol.width(for: metric), alignment: .trailing)
         }
-        .frame(width: WCol.width(for: metric), alignment: .trailing)
     }
 
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                ForEach(metrics) { metric in
-                    metricCell(metric)
+                // Checkbox: toggling selection must not open the detail pane
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isSelected ? DS.brand : DS.inkTertiary)
+                    .frame(width: WCol.checkWidth, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(TapGesture().onEnded { onToggleSelect() })
+
+                Text("\(position)")
+                    .font(DS.micro.monospacedDigit())
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(width: WCol.rankWidth, alignment: .leading)
+
+                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
+                let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
+                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
+                let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
+
+                HStack(spacing: 9) {
+                    SymbolLogo(symbol: row.symbol, size: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(titleText)
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                        if !subTitleText.isEmpty {
+                            Text(subTitleText)
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
+                .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
+
+                if compact {
+                    if row.loaded {
+                        pairedCell(price: row.price, pct: row.changePercent,
+                                   label: nil, emphasised: !isRowExtended)
+                            .frame(width: 96, alignment: .trailing)
+                    } else {
+                        DSSpinner(size: 12)
+                            .frame(width: 96, alignment: .trailing)
+                    }
+                } else {
+                    if row.loaded {
+                        pairedCell(price: row.price, pct: row.changePercent,
+                                   label: nil, emphasised: !isRowExtended)
+                            .frame(width: WCol.price, alignment: .trailing)
+                    } else {
+                        DSSpinner(size: 12)
+                            .frame(width: WCol.price, alignment: .trailing)
+                    }
+
+                    ForEach(metrics.filter { $0 != .price }) { metric in
+                        metricCell(metric)
+                    }
                 }
             }
             .padding(.horizontal, WCol.padHorizontal)
             .padding(.vertical, 9)
             .frame(minHeight: 48)
-            .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
+            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
+            .background(
+                Group {
+                    if hover { DS.cardAlt.opacity(0.6) }
+                    else { DS.card }
+                }
+            )
             .contentShape(Rectangle())
         }
+        .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
         .buttonStyle(.plain)
         .pointingHandCursor()
-        .onHover { onHover($0) }
+        .onHover { hover = $0 }
         .contextMenu { menu() }
     }
 }
@@ -1499,5 +1389,3 @@ private struct WatchlistListCommitDelegate: DropDelegate {
     }
 }
 #endif
-
-
