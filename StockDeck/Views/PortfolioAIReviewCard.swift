@@ -237,12 +237,50 @@ struct PortfolioAIReviewCard: View {
 
             // Messages Stream
             if let current = currentSection, !current.messages.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(current.messages) { msg in
-                        chatMessageBubble(msg)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            ForEach(current.messages) { msg in
+                                chatMessageBubble(msg)
+                                    .id(msg.id)
+                            }
+                            if isSending {
+                                HStack(spacing: 8) {
+                                    DSSpinner(size: 13)
+                                    Text("AI đang phân tích danh mục và hồ sơ của bạn…")
+                                        .font(DS.caption)
+                                        .foregroundStyle(DS.inkSecondary)
+                                }
+                                .padding(.vertical, 6)
+                                .id("typing")
+                            }
+                            Color.clear.frame(height: 1).id("chatBottom")
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 340)
+                    .onAppear {
+                        if let last = current.messages.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: current.messages.count) { _, _ in
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("chatBottom", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: isSending) { _, sending in
+                        if sending {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("typing", anchor: .bottom)
+                            }
+                        } else {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo("chatBottom", anchor: .bottom)
+                            }
+                        }
                     }
                 }
-                .padding(.vertical, 4)
             } else if !isSending {
                 VStack(spacing: 8) {
                     Text("💡 Nhấn vào một trong các câu hỏi gợi ý bên trên hoặc nhập câu hỏi bên dưới để AI phân tích danh mục của bạn.")
@@ -250,9 +288,7 @@ struct PortfolioAIReviewCard: View {
                         .foregroundStyle(DS.inkTertiary)
                         .padding(.vertical, 8)
                 }
-            }
-
-            if isSending {
+            } else {
                 HStack(spacing: 8) {
                     DSSpinner(size: 13)
                     Text("AI đang phân tích danh mục và hồ sơ của bạn…")
@@ -398,11 +434,11 @@ struct PortfolioAIReviewCard: View {
     // MARK: - Composer Bar
 
     private var composerBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 10) {
             TextField("Hỏi AI về danh mục, mã cổ phiếu, phân bổ rủi ro…", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(DS.body)
-                .lineLimit(1...4)
+                .lineLimit(2...6)
                 .focused($isComposerFocused)
                 .onSubmit {
                     submitDraft()
@@ -412,9 +448,9 @@ struct PortfolioAIReviewCard: View {
                 submitDraft()
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 32, height: 32)
                     .background(
                         Circle().fill(canSubmit ? DS.brand : DS.inkTertiary.opacity(0.35))
                     )
@@ -423,8 +459,8 @@ struct PortfolioAIReviewCard: View {
             .disabled(!canSubmit)
             .pointingHandCursor()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(DS.cardAlt)
