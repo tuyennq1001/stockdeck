@@ -22,6 +22,8 @@ struct SettingsView: View {
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
     @AppStorage("settings.group.about") private var groupAbout = false
+    @AppStorage("settings.group.icloud") private var groupICloud = false
+    @ObservedObject private var syncService = iCloudSyncService.shared
 
     /// Small secondary caption used throughout the settings list.
     private func caption(_ text: String) -> some View {
@@ -110,6 +112,76 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     caption("Size: \(storageService.fontSizeLevel)")
+                }
+
+                // MARK: - iCloud Sync
+                SettingsGroup(title: "iCloud Sync", icon: "icloud", isExpanded: $groupICloud) {
+                    Toggle("Enable iCloud Sync", isOn: $storageService.iCloudSyncEnabled)
+                        .toggleStyle(.switch)
+                        .onChange(of: storageService.iCloudSyncEnabled) {
+                            syncService.onSyncToggleChanged(enabled: storageService.iCloudSyncEnabled)
+                        }
+                    caption("Automatically syncs watchlists, portfolios, alerts, and notes across all your devices via iCloud.")
+
+                    if storageService.iCloudSyncEnabled {
+                        if !syncService.isiCloudAvailable {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("iCloud not signed in on this device. Please sign in to Apple ID in System Settings.")
+                                    .font(.inter(10, relativeTo: .caption))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+                        }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(syncService.syncStatus.contains("Fail") ? Color.red : Color.green)
+                                        .frame(width: 6, height: 6)
+                                    Text(syncService.syncStatus)
+                                        .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                }
+                                if let lastDate = syncService.lastSyncDate {
+                                    Text("Last: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Not synced yet")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button(syncService.isSyncing ? "Syncing…" : "Sync Now") {
+                                syncService.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(syncService.isSyncing)
+                        }
+
+                        HStack(spacing: 8) {
+                            Button("Push to iCloud") {
+                                syncService.pushLocalData()
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+                            .foregroundStyle(DS.brand)
+
+                            Text("·").font(.inter(10, relativeTo: .caption)).foregroundColor(.secondary)
+
+                            Button("Pull from iCloud") {
+                                syncService.pullAndMerge(force: true)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.inter(10, relativeTo: .caption))
+                            .foregroundStyle(DS.brand)
+                        }
+                    }
                 }
 
                 // MARK: - Currency

@@ -400,7 +400,7 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
-                    NavRow(icon: "square.and.arrow.down.on.square", title: "Import / Export", helpText: "Import & Export portfolios, watchlists, templates",
+                    NavRow(icon: "arrow.triangle.2.circlepath.icloud", title: "Import / Export", helpText: "iCloud Sync, import & export portfolios, watchlists, templates",
                            selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
