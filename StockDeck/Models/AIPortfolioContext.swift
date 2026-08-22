@@ -290,8 +290,16 @@ enum AIPortfolioContext {
         }
         lines.append("")
 
+        if let profile = storage.investorProfile {
+            lines.append(profile.promptContextText(preferredCurrency: currency))
+            lines.append("")
+        }
+
         lines.append("INSTRUCTIONS")
         lines.append("Answer about the user's portfolio using ONLY this context and the user's questions. Be honest: if a figure is '-', say the history is insufficient rather than inventing one. Do not recommend specific trades with certainty — this is not regulated financial advice. When asked to review health, structure the reply with clear short sections and a concise 'Next steps' list.")
+        if storage.investorProfile != nil {
+            lines.append("When evaluating portfolio health, asset allocation, and risk, always tailor your analysis and actionable suggestions to the user's age, risk tolerance, and financial goals from their profile.")
+        }
         if let notes = storage.aiWorkspaceContextText() {
             lines.append("")
             lines.append("WORKSPACE NOTES (durable user memory — always present, never ask for them again):")

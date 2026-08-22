@@ -21,8 +21,10 @@ struct SettingsView: View {
     @AppStorage("settings.group.menubar") private var groupMenuBar = false
     @AppStorage("settings.group.notifications") private var groupNotifications = false
     @AppStorage("settings.group.ai") private var groupAI = false
+    @AppStorage("settings.group.investor_profile") private var groupInvestorProfile = false
     @AppStorage("settings.group.about") private var groupAbout = false
     @AppStorage("settings.group.icloud") private var groupICloud = false
+    @State private var showEditProfileSheet = false
     @ObservedObject private var syncService = iCloudSyncService.shared
 
     /// Small secondary caption used throughout the settings list.
@@ -302,6 +304,46 @@ struct SettingsView: View {
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
                 }
 
+                // MARK: - Investor Profile
+                SettingsGroup(title: "Investor Profile & Goals", icon: "person.text.rectangle", isExpanded: $groupInvestorProfile) {
+                    if let profile = storageService.investorProfile {
+                        subHeader("Current Profile")
+                        Text(profile.summaryDescription)
+                            .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(DS.ink)
+                        if !profile.primaryGoal.isEmpty {
+                            subHeader("Primary Goal")
+                            Text(profile.primaryGoal)
+                                .font(.inter(11, relativeTo: .caption))
+                                .foregroundStyle(DS.inkSecondary)
+                        }
+                        HStack {
+                            Button("Reset") {
+                                storageService.investorProfile = nil
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+
+                            Spacer()
+
+                            Button("Edit Profile…") {
+                                showEditProfileSheet = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DS.brand)
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        subHeader("Status")
+                        caption("No profile set up yet. Create a profile to receive personalized advice tailored to your goals.")
+                        Button("Set up Investor Profile…") {
+                            showEditProfileSheet = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DS.brand)
+                        .padding(.top, 4)
+                    }
+                }
 
                 #if os(macOS)
                 // MARK: - Menu Bar (display + colors)
@@ -528,6 +570,18 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will delete all portfolio notifications across every portfolio. This cannot be undone.")
+        }
+        .sheet(isPresented: $showEditProfileSheet) {
+            InvestorProfileEditorSheet(
+                initialProfile: storageService.investorProfile ?? InvestorProfile(),
+                onSave: { updated in
+                    storageService.investorProfile = updated
+                    showEditProfileSheet = false
+                },
+                onCancel: {
+                    showEditProfileSheet = false
+                }
+            )
         }
         #if os(macOS)
         .onAppear {

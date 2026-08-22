@@ -101,4 +101,82 @@ final class AIReviewTests: XCTestCase {
         XCTAssertTrue(context.contextText.contains("WORKSPACE NOTES"))
         XCTAssertTrue(context.contextText.contains("Risk tolerance: moderate"))
     }
+
+    func testInvestorProfileSummaryAndPromptContext() {
+        let profile = InvestorProfile(
+            age: 27,
+            maritalStatus: "Độc thân",
+            riskTolerance: .aggressive,
+            investmentStyle: .dcaBuyAndHold,
+            investmentHorizon: .longTerm,
+            primaryGoal: "10 năm sau mua nhà và 40 năm sau nghỉ hưu",
+            monthlyContribution: 1000,
+            customNotes: "Không margin"
+        )
+
+        XCTAssertTrue(profile.summaryDescription.contains("27 tuổi"))
+        XCTAssertTrue(profile.summaryDescription.contains("Độc thân"))
+        XCTAssertTrue(profile.summaryDescription.contains("Rủi ro cao"))
+        XCTAssertTrue(profile.summaryDescription.contains("Tích sản DCA"))
+
+        let promptText = profile.promptContextText(preferredCurrency: "USD")
+        XCTAssertTrue(promptText.contains("INVESTOR PROFILE & GOALS"))
+        XCTAssertTrue(promptText.contains("Age: 27"))
+        XCTAssertTrue(promptText.contains("Marital/Family Status: Độc thân"))
+        XCTAssertTrue(promptText.contains("10 năm sau mua nhà và 40 năm sau nghỉ hưu"))
+        XCTAssertTrue(promptText.contains("1000 USD"))
+        XCTAssertTrue(promptText.contains("Không margin"))
+    }
+
+    func testAIPortfolioContextIncludesInvestorProfile() {
+        let storage = StorageService.shared
+        let originalProfile = storage.investorProfile
+        let testProfile = InvestorProfile(
+            age: 30,
+            maritalStatus: "Đã kết hôn",
+            riskTolerance: .moderate,
+            investmentStyle: .dividend,
+            investmentHorizon: .mediumTerm,
+            primaryGoal: "Tự do tài chính sau 15 năm"
+        )
+        storage.investorProfile = testProfile
+        defer { storage.investorProfile = originalProfile }
+
+        let context = AIPortfolioContext.build(
+            storageService: storage,
+            stockService: .shared,
+            scope: .allPortfolios,
+            viewModel: nil
+        )
+
+        XCTAssertTrue(context.contextText.contains("INVESTOR PROFILE & GOALS"))
+        XCTAssertTrue(context.contextText.contains("Age: 30"))
+        XCTAssertTrue(context.contextText.contains("Đã kết hôn"))
+        XCTAssertTrue(context.contextText.contains("Tự do tài chính sau 15 năm"))
+    }
+
+    func testInvestorProfileSerializationInAppData() {
+        let storage = StorageService.shared
+        let originalProfile = storage.investorProfile
+        let testProfile = InvestorProfile(
+            age: 28,
+            maritalStatus: "Độc thân",
+            riskTolerance: .aggressive,
+            investmentStyle: .growth,
+            investmentHorizon: .longTerm,
+            primaryGoal: "Mua nhà 10 năm"
+        )
+        storage.investorProfile = testProfile
+        defer { storage.investorProfile = originalProfile }
+
+        let exported = storage.exportAppData()
+        XCTAssertEqual(exported.investorProfile?.age, 28)
+        XCTAssertEqual(exported.investorProfile?.primaryGoal, "Mua nhà 10 năm")
+
+        storage.investorProfile = nil
+        storage.applyAppData(exported)
+        XCTAssertEqual(storage.investorProfile?.age, 28)
+        XCTAssertEqual(storage.investorProfile?.riskTolerance, .aggressive)
+        XCTAssertEqual(storage.investorProfile?.primaryGoal, "Mua nhà 10 năm")
+    }
 }

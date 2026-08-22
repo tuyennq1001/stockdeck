@@ -445,6 +445,12 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// User's investor profile (age, risk tolerance, investment style, goals).
+    /// Used by AI Review across the app for personalized consultation.
+    @Published var investorProfile: InvestorProfile? = nil {
+        didSet { scheduleSave() }
+    }
+
     /// Known OpenAI-compatible provider presets.
     static let aiProviders: [(id: String, label: String)] = [
         ("openai", "OpenAI"),
@@ -1786,6 +1792,7 @@ class StorageService: ObservableObject {
         var aiProvider: String?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
+        var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
         var iCloudSyncEnabled: Bool?
@@ -1843,6 +1850,7 @@ class StorageService: ObservableObject {
             aiProvider: aiProvider,
             aiWorkspacePath: aiWorkspacePath,
             aiDeepseekThinking: aiDeepseekThinking,
+            investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
             portfolioPositionSorts: portfolioPositionSorts,
             iCloudSyncEnabled: iCloudSyncEnabled,
@@ -1951,6 +1959,7 @@ class StorageService: ObservableObject {
         aiProvider = decoded.aiProvider ?? "openai"
         aiWorkspacePath = decoded.aiWorkspacePath ?? ""
         aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+        investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
