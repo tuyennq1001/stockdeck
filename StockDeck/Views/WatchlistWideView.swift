@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 /// Fully custom, desktop-grade watchlist: a hand-built sortable list (clickable
@@ -41,6 +42,8 @@ struct WatchlistWideView: View {
     @State private var alertSymbol: AlertTarget?
     @State private var multiAlertSymbols: [String] = []
     @State private var showMetricCustomizer = false
+    @State private var hoveredSymbol: String? = nil
+    @StateObject private var scrollCoordinator = SyncedScrollCoordinator()
 
     struct WatchRow: Identifiable {
         let id: String
@@ -581,13 +584,15 @@ struct WatchlistWideView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var tableWidth: CGFloat {
-        let base = WCol.padHorizontal + WCol.checkWidth + WCol.spacing + WCol.rankWidth + WCol.spacing + WCol.symbol + WCol.spacing + WCol.price
-        let other = selectedMetrics.filter { $0 != .price }
-        guard !other.isEmpty else { return base + WCol.padHorizontal }
-        let metricWidth = other.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let spacing = CGFloat(other.count) * WCol.spacing
-        return base + spacing + metricWidth + WCol.padHorizontal
+    private var pinnedColumnWidth: CGFloat {
+        WCol.padHorizontal + WCol.checkWidth + WCol.spacing + WCol.rankWidth + WCol.spacing + WCol.symbol + WCol.spacing + WCol.price + WCol.padHorizontal
+    }
+
+    private var metricsColumnsWidth: CGFloat {
+        guard !otherMetrics.isEmpty else { return 0 }
+        let widths = otherMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
+        let spacing = CGFloat(max(0, otherMetrics.count - 1)) * WCol.spacing
+        return widths + spacing + WCol.padHorizontal * 2
     }
 
     private var tableToolbar: some View {
@@ -685,6 +690,7 @@ struct WatchlistWideView: View {
         ScrollView(.vertical, showsIndicators: true) {
             LazyVStack(spacing: 0) {
                 compactHeaderRow
+                    .frame(height: 38)
                 Divider().overlay(DS.hairline)
                 ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
                     ReorderRow(
@@ -705,17 +711,21 @@ struct WatchlistWideView: View {
                         },
                         onCommit: { commitPreviewOrder() },
                         content: {
-                            WatchRowView(
+                            PinnedRowView(
                                 row: row,
                                 position: idx + 1,
                                 showExtended: storageService.showExtendedHours,
                                 percentDecimals: storageService.percentDecimals,
                                 valueDecimals: storageService.valueDecimals,
-                                metrics: selectedMetrics,
                                 isSelected: selectedSymbols.contains(row.symbol),
+                                isHovered: hoveredSymbol == row.symbol,
                                 compact: true,
                                 onOpen: { handleRowClick(row.symbol) },
                                 onToggleSelect: { toggleSelection(of: row.symbol) },
+                                onHover: { hovering in
+                                    if hovering { hoveredSymbol = row.symbol }
+                                    else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
+                                },
                                 menu: { rowMenu(row) }
                             )
                             .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
@@ -743,61 +753,114 @@ struct WatchlistWideView: View {
         .textCase(.uppercase)
     }
 
-    // MARK: - Wide Mode (Horizontally Scrollable Table)
+    // MARK: - Wide Mode (Side-by-side Fixed Pinned & Horizontally Scrollable Panes)
 
     private var wideTableContents: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            VStack(spacing: 0) {
-                headerRow
-                Divider().overlay(DS.hairline)
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
-                            ReorderRow(
-                                id: row.symbol,
-                                draggingId: $draggingSymbol,
-                                isHorizontal: false,
-                                makeDragItem: {
-                                    previewOrder = storageService.watchlist
-                                    draggingSymbols = groupForDrag(row.symbol)
-                                    return NSItemProvider(object: row.symbol as NSString)
-                                },
-                                onMove: { src, tgt, placement in
-                                    if sortKey != .order || !sortAsc {
-                                        storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
-                                    }
-                                    moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
-                                                       beforeOrAfter: tgt, placement: placement)
-                                },
-                                onCommit: { commitPreviewOrder() },
-                                content: {
-                                    WatchRowView(
-                                        row: row,
-                                        position: idx + 1,
-                                        showExtended: storageService.showExtendedHours,
-                                        percentDecimals: storageService.percentDecimals,
-                                        valueDecimals: storageService.valueDecimals,
-                                        metrics: selectedMetrics,
-                                        isSelected: selectedSymbols.contains(row.symbol),
-                                        compact: false,
-                                        onOpen: { handleRowClick(row.symbol) },
-                                        onToggleSelect: { toggleSelection(of: row.symbol) },
-                                        menu: { rowMenu(row) }
-                                    )
-                                    .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
-                                },
-                                dropIndicator: $dropIndicator
-                            )
-                            if idx < visibleRows.count - 1 {
-                                Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
-                            }
+        HStack(alignment: .top, spacing: 0) {
+            leftPinnedPane
+            if !otherMetrics.isEmpty {
+                rightMetricsPane
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var leftPinnedPane: some View {
+        VStack(spacing: 0) {
+            pinnedHeader
+                .frame(height: 38)
+            Divider().overlay(DS.hairline)
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
+                        ReorderRow(
+                            id: row.symbol,
+                            draggingId: $draggingSymbol,
+                            isHorizontal: false,
+                            makeDragItem: {
+                                previewOrder = storageService.watchlist
+                                draggingSymbols = groupForDrag(row.symbol)
+                                return NSItemProvider(object: row.symbol as NSString)
+                            },
+                            onMove: { src, tgt, placement in
+                                if sortKey != .order || !sortAsc {
+                                    storageService.setWatchlistSort(key: WatchlistSortKey.order.rawString, ascending: true, for: storageService.currentWatchlist.id)
+                                }
+                                moveGroupInPreview(draggingSymbols.isEmpty ? [src] : draggingSymbols,
+                                                   beforeOrAfter: tgt, placement: placement)
+                            },
+                            onCommit: { commitPreviewOrder() },
+                            content: {
+                                PinnedRowView(
+                                    row: row,
+                                    position: idx + 1,
+                                    showExtended: storageService.showExtendedHours,
+                                    percentDecimals: storageService.percentDecimals,
+                                    valueDecimals: storageService.valueDecimals,
+                                    isSelected: selectedSymbols.contains(row.symbol),
+                                    isHovered: hoveredSymbol == row.symbol,
+                                    compact: false,
+                                    onOpen: { handleRowClick(row.symbol) },
+                                    onToggleSelect: { toggleSelection(of: row.symbol) },
+                                    onHover: { hovering in
+                                        if hovering { hoveredSymbol = row.symbol }
+                                        else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
+                                    },
+                                    menu: { rowMenu(row) }
+                                )
+                                .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
+                            },
+                            dropIndicator: $dropIndicator
+                        )
+                        if idx < visibleRows.count - 1 {
+                            Divider().overlay(DS.hairline.opacity(0.5)).padding(.leading, 14)
                         }
                     }
                 }
             }
-            .frame(width: tableWidth, alignment: .leading)
+            .background(ScrollViewFinder { sv in
+                scrollCoordinator.setLeft(sv)
+            })
         }
-        .padding(.vertical, 6)
+        .frame(width: pinnedColumnWidth)
+    }
+
+    private var rightMetricsPane: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(spacing: 0) {
+                metricsHeader
+                    .frame(height: 38)
+                Divider().overlay(DS.hairline)
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
+                            MetricsRowView(
+                                row: row,
+                                metrics: otherMetrics,
+                                percentDecimals: storageService.percentDecimals,
+                                valueDecimals: storageService.valueDecimals,
+                                showExtended: storageService.showExtendedHours,
+                                isHovered: hoveredSymbol == row.symbol,
+                                onOpen: { handleRowClick(row.symbol) },
+                                onHover: { hovering in
+                                    if hovering { hoveredSymbol = row.symbol }
+                                    else if hoveredSymbol == row.symbol { hoveredSymbol = nil }
+                                },
+                                menu: { rowMenu(row) }
+                            )
+                            .opacity(draggingSymbols.contains(row.symbol) ? 0 : 1)
+                            if idx < visibleRows.count - 1 {
+                                Divider().overlay(DS.hairline.opacity(0.5)).padding(.horizontal, 14)
+                            }
+                        }
+                    }
+                }
+                .background(ScrollViewFinder { sv in
+                    scrollCoordinator.setRight(sv)
+                })
+            }
+            .frame(minWidth: metricsColumnsWidth, alignment: .leading)
+        }
     }
 
     private func handleRowClick(_ symbol: String) {
@@ -843,12 +906,21 @@ struct WatchlistWideView: View {
         return "minus.square.fill"
     }
 
-    private var headerRow: some View {
+    private var pinnedHeader: some View {
         HStack(spacing: WCol.spacing) {
             selectAllButton
             Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: WCol.rankWidth, alignment: .leading)
             headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
             headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
+        }
+        .padding(.horizontal, WCol.padHorizontal)
+        .padding(.vertical, 10)
+        .textCase(.uppercase)
+        .contextMenu { headerContextMenu }
+    }
+
+    private var metricsHeader: some View {
+        HStack(spacing: WCol.spacing) {
             ForEach(otherMetrics) { metric in
                 metricHeader(metric)
             }
@@ -1116,20 +1188,136 @@ private enum WCol {
     }
 }
 
-/// One custom watchlist row: hover tint, click-to-open, right-click actions.
-private struct WatchRowView<Menu: View>: View {
+/// Pinned row containing [Checkbox, Position #, Symbol, Price].
+private struct PinnedRowView<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
     let position: Int
     let showExtended: Bool
     let percentDecimals: Int
     let valueDecimals: Int
-    let metrics: [WatchlistMetric]
     let isSelected: Bool
+    let isHovered: Bool
     var compact: Bool = false
     let onOpen: () -> Void
     var onToggleSelect: () -> Void = {}
+    var onHover: (Bool) -> Void = { _ in }
     @ViewBuilder let menu: () -> Menu
-    @State private var hover = false
+
+    private func priceDec(_ price: Double) -> Int {
+        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
+    }
+
+    private var isRowExtended: Bool {
+        showExtended && row.extPrice != nil
+    }
+
+    @ViewBuilder
+    private func pairedCell(price: Double, pct: Double?, label: String?, emphasised: Bool) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("\(StorageService.formatNumber(price, decimals: priceDec(price)))")
+                .font(DS.figure)
+                .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
+                .contentTransition(.numericText())
+            if let pct {
+                HStack(spacing: 4) {
+                    if let label, !label.isEmpty {
+                        Text(LocalizedStringKey(label)).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                    }
+                    if emphasised {
+                        ChangePill(value: pct, text: String(format: "%+.\(percentDecimals)f%%", pct))
+                    } else {
+                        Text(String(format: "%+.\(percentDecimals)f%%", pct))
+                            .font(DS.micro).foregroundStyle(DS.pnlColor(pct).opacity(0.55))
+                    }
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: WCol.spacing) {
+                // Checkbox: toggling selection must not open the detail pane
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isSelected ? DS.brand : DS.inkTertiary)
+                    .frame(width: WCol.checkWidth, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(TapGesture().onEnded { onToggleSelect() })
+
+                Text("\(position)")
+                    .font(DS.micro.monospacedDigit())
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(width: WCol.rankWidth, alignment: .leading)
+
+                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
+                let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
+                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
+                let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
+
+                HStack(spacing: 9) {
+                    SymbolLogo(symbol: row.symbol, size: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(titleText)
+                            .font(DS.figure)
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                        if !subTitleText.isEmpty {
+                            Text(subTitleText)
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
+                .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
+
+                if compact {
+                    if row.loaded {
+                        pairedCell(price: row.price, pct: row.changePercent,
+                                   label: nil, emphasised: !isRowExtended)
+                            .frame(width: 96, alignment: .trailing)
+                    } else {
+                        DSSpinner(size: 12)
+                            .frame(width: 96, alignment: .trailing)
+                    }
+                } else {
+                    if row.loaded {
+                        pairedCell(price: row.price, pct: row.changePercent,
+                                   label: nil, emphasised: !isRowExtended)
+                            .frame(width: WCol.price, alignment: .trailing)
+                    } else {
+                        DSSpinner(size: 12)
+                            .frame(width: WCol.price, alignment: .trailing)
+                    }
+                }
+            }
+            .padding(.horizontal, WCol.padHorizontal)
+            .padding(.vertical, 9)
+            .frame(minHeight: 48)
+            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
+            .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { onHover($0) }
+        .contextMenu { menu() }
+    }
+}
+
+/// Horizontally scrollable row containing remaining metric columns.
+private struct MetricsRowView<Menu: View>: View {
+    let row: WatchlistWideView.WatchRow
+    let metrics: [WatchlistMetric]
+    let percentDecimals: Int
+    let valueDecimals: Int
+    let showExtended: Bool
+    let isHovered: Bool
+    let onOpen: () -> Void
+    var onHover: (Bool) -> Void = { _ in }
+    @ViewBuilder let menu: () -> Menu
 
     private func priceDec(_ price: Double) -> Int {
         valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
@@ -1292,83 +1480,107 @@ private struct WatchRowView<Menu: View>: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: WCol.spacing) {
-                // Checkbox: toggling selection must not open the detail pane
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isSelected ? DS.brand : DS.inkTertiary)
-                    .frame(width: WCol.checkWidth, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .highPriorityGesture(TapGesture().onEnded { onToggleSelect() })
-
-                Text("\(position)")
-                    .font(DS.micro.monospacedDigit())
-                    .foregroundStyle(DS.inkTertiary)
-                    .frame(width: WCol.rankWidth, alignment: .leading)
-
-                let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
-                let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
-                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
-                let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
-
-                HStack(spacing: 9) {
-                    SymbolLogo(symbol: row.symbol, size: 28)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(titleText)
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(1)
-                        if !subTitleText.isEmpty {
-                            Text(subTitleText)
-                                .font(DS.micro)
-                                .foregroundStyle(DS.inkTertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
-                .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
-
-                if compact {
-                    if row.loaded {
-                        pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
-                            .frame(width: 96, alignment: .trailing)
-                    } else {
-                        DSSpinner(size: 12)
-                            .frame(width: 96, alignment: .trailing)
-                    }
-                } else {
-                    if row.loaded {
-                        pairedCell(price: row.price, pct: row.changePercent,
-                                   label: nil, emphasised: !isRowExtended)
-                            .frame(width: WCol.price, alignment: .trailing)
-                    } else {
-                        DSSpinner(size: 12)
-                            .frame(width: WCol.price, alignment: .trailing)
-                    }
-
-                    ForEach(metrics.filter { $0 != .price }) { metric in
-                        metricCell(metric)
-                    }
+                ForEach(metrics) { metric in
+                    metricCell(metric)
                 }
             }
             .padding(.horizontal, WCol.padHorizontal)
             .padding(.vertical, 9)
             .frame(minHeight: 48)
-            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
-            .background(
-                Group {
-                    if hover { DS.cardAlt.opacity(0.6) }
-                    else { DS.card }
-                }
-            )
+            .background(isHovered ? DS.cardAlt.opacity(0.6) : DS.card)
             .contentShape(Rectangle())
         }
-        .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
         .buttonStyle(.plain)
         .pointingHandCursor()
-        .onHover { hover = $0 }
+        .onHover { onHover($0) }
         .contextMenu { menu() }
+    }
+}
+
+/// A transparent NSViewRepresentable helper that locates the enclosing NSScrollView.
+private struct ScrollViewFinder: NSViewRepresentable {
+    let onFind: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let sv = view.enclosingScrollView {
+                onFind(sv)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let sv = nsView.enclosingScrollView {
+                onFind(sv)
+            }
+        }
+    }
+}
+
+/// Coordinates vertical scroll offsets between the left pinned table and right scrollable table in AppKit.
+final class SyncedScrollCoordinator: ObservableObject {
+    private var isSyncing = false
+    private weak var leftScrollView: NSScrollView?
+    private weak var rightScrollView: NSScrollView?
+    private var leftObserver: Any?
+    private var rightObserver: Any?
+
+    func setLeft(_ sv: NSScrollView) {
+        guard leftScrollView !== sv else { return }
+        leftScrollView = sv
+        sv.contentView.postsBoundsChangedNotifications = true
+        if let obs = leftObserver { NotificationCenter.default.removeObserver(obs) }
+        leftObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: sv.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.syncFromLeft()
+        }
+    }
+
+    func setRight(_ sv: NSScrollView) {
+        guard rightScrollView !== sv else { return }
+        rightScrollView = sv
+        sv.contentView.postsBoundsChangedNotifications = true
+        if let obs = rightObserver { NotificationCenter.default.removeObserver(obs) }
+        rightObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: sv.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.syncFromRight()
+        }
+    }
+
+    private func syncFromLeft() {
+        guard !isSyncing, let left = leftScrollView, let right = rightScrollView else { return }
+        isSyncing = true
+        let y = left.contentView.bounds.origin.y
+        if abs(right.contentView.bounds.origin.y - y) > 0.1 {
+            right.contentView.bounds.origin.y = y
+            right.reflectScrolledClipView(right.contentView)
+        }
+        isSyncing = false
+    }
+
+    private func syncFromRight() {
+        guard !isSyncing, let left = leftScrollView, let right = rightScrollView else { return }
+        isSyncing = true
+        let y = right.contentView.bounds.origin.y
+        if abs(left.contentView.bounds.origin.y - y) > 0.1 {
+            left.contentView.bounds.origin.y = y
+            left.reflectScrolledClipView(left.contentView)
+        }
+        isSyncing = false
+    }
+
+    deinit {
+        if let leftObserver { NotificationCenter.default.removeObserver(leftObserver) }
+        if let rightObserver { NotificationCenter.default.removeObserver(rightObserver) }
     }
 }
 
