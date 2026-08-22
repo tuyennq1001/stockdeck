@@ -389,14 +389,24 @@ struct AIReviewWideView: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about your portfolio…", text: Binding(
+                TextField("Ask about your portfolio… (Shift+Enter for newline)", text: Binding(
                     get: { vm.draft },
                     set: { vm.draft = $0 }
                 ), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(DS.body)
-                    .lineLimit(1...4)
+                    .lineLimit(2...6)
+                    .frame(minHeight: 44)
                     .focused($composerFocused)
+                    .onKeyPress(.return, phases: .down) { press in
+                        if !press.modifiers.contains(.shift) && !press.modifiers.contains(.option) {
+                            if canSubmit(vm) {
+                                submit(vm)
+                            }
+                            return .handled
+                        }
+                        return .ignored
+                    }
                     .onSubmit { submit(vm) }
 
                 Button {

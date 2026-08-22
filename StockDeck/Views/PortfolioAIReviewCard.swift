@@ -435,11 +435,21 @@ struct PortfolioAIReviewCard: View {
 
     private var composerBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("Hỏi AI về danh mục, mã cổ phiếu, phân bổ rủi ro…", text: $draft, axis: .vertical)
+            TextField("Hỏi AI về danh mục, phân bổ rủi ro… (Enter để gửi, Shift+Enter xuống dòng)", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(DS.body)
-                .lineLimit(2...6)
+                .lineLimit(3...8)
+                .frame(minHeight: 52)
                 .focused($isComposerFocused)
+                .onKeyPress(.return, phases: .down) { press in
+                    if !press.modifiers.contains(.shift) && !press.modifiers.contains(.option) {
+                        if canSubmit {
+                            submitDraft()
+                        }
+                        return .handled
+                    }
+                    return .ignored
+                }
                 .onSubmit {
                     submitDraft()
                 }
@@ -450,7 +460,7 @@ struct PortfolioAIReviewCard: View {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 34, height: 34)
                     .background(
                         Circle().fill(canSubmit ? DS.brand : DS.inkTertiary.opacity(0.35))
                     )
@@ -458,9 +468,10 @@ struct PortfolioAIReviewCard: View {
             .buttonStyle(.plain)
             .disabled(!canSubmit)
             .pointingHandCursor()
+            .help("Gửi câu hỏi (Enter)")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(DS.cardAlt)
