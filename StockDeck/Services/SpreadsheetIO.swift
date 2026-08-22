@@ -803,6 +803,8 @@ enum SpreadsheetIO {
     }
 
     static let japaneseFundNameToCodeMap: [String: String] = [
+        "ひふみプラス": "9C311125",
+        "ひふみ": "9C311125",
         "楽天・プラス・Ｓ＆Ｐ５０0インデックス・ファンド": "9I31223A",
         "楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド": "9I31223A",
         "楽天・プラス・S&P500インデックス・ファンド": "9I31223A",
@@ -849,19 +851,45 @@ enum SpreadsheetIO {
         guard !rows.isEmpty else { return nil }
 
         var headerIdx = -1
-        var fundCol = -1, codeCol = -1, tradeCol = -1, qtyCol = -1, priceCol = -1, accountCol = -1, dateCol = -1
+        var fundCol = -1, codeCol = -1, tradeCol = -1, tradeTypeCol = -1, qtyCol = -1, priceCol = -1, accountCol = -1, dateCol = -1
+        var marketCol = -1, ccyCol = -1
 
         for (idx, r) in rows.enumerated() {
             for (cIdx, cell) in r.enumerated() {
                 let lowerCell = cell.lowercased()
-                if lowerCell.contains("ファンド") || lowerCell.contains("銘柄") || lowerCell == "symbol" || lowerCell.contains("fund") { fundCol = cIdx }
-                // Separate code/ticker column (priority over fund name column for JP/US stocks)
-                if lowerCell.contains("ティッカ") || lowerCell.contains("ticker") || lowerCell.contains("コード") { codeCol = cIdx }
-                if lowerCell.contains("取引") || lowerCell.contains("売買") || lowerCell.contains("trade") || lowerCell.contains("type") { tradeCol = cIdx }
-                if lowerCell.contains("数量") || lowerCell.contains("quantity") || lowerCell.contains("qty") || lowerCell.contains("units") { qtyCol = cIdx }
-                if lowerCell.contains("単価") || lowerCell.contains("avg price") || lowerCell.contains("unit price") || lowerCell.contains("price") { priceCol = cIdx }
-                if lowerCell.contains("口座") || lowerCell.contains("portfolio") || lowerCell.contains("account") { accountCol = cIdx }
-                if lowerCell.contains("約定日") || lowerCell.contains("日付") || lowerCell.contains("purchase date") || lowerCell.contains("date") { dateCol = cIdx }
+                if (lowerCell.contains("ファンド") || lowerCell.contains("銘柄") || lowerCell == "symbol" || lowerCell.contains("fund")) && fundCol == -1 {
+                    fundCol = cIdx
+                }
+                // Separate code/ticker column (priority over fund name column for JP/US/HK stocks)
+                if (lowerCell.contains("ティッカ") || lowerCell.contains("ticker") || lowerCell.contains("コード") || lowerCell == "code") && codeCol == -1 {
+                    codeCol = cIdx
+                }
+                if lowerCell.contains("売買") && tradeCol == -1 {
+                    tradeCol = cIdx
+                }
+                if lowerCell.contains("取引") && tradeTypeCol == -1 {
+                    tradeTypeCol = cIdx
+                }
+                if (lowerCell.contains("数量") || lowerCell.contains("quantity") || lowerCell.contains("qty") || lowerCell.contains("units")) && qtyCol == -1 {
+                    qtyCol = cIdx
+                }
+                // Primary price column (skip margin open price '建単価' / '建手数料')
+                if (lowerCell.contains("単価") || lowerCell.contains("avg price") || lowerCell.contains("unit price") || lowerCell.contains("price")) && !lowerCell.contains("建") && priceCol == -1 {
+                    priceCol = cIdx
+                }
+                if (lowerCell.contains("口座") || lowerCell.contains("portfolio") || lowerCell.contains("account")) && accountCol == -1 {
+                    accountCol = cIdx
+                }
+                // Primary trade date column (skip margin open date '建約定日')
+                if (lowerCell.contains("約定日") || lowerCell.contains("日付") || lowerCell.contains("purchase date") || lowerCell.contains("date")) && !lowerCell.contains("建") && dateCol == -1 {
+                    dateCol = cIdx
+                }
+                if (lowerCell.contains("市場") || lowerCell.contains("market") || lowerCell.contains("exchange")) && marketCol == -1 {
+                    marketCol = cIdx
+                }
+                if (lowerCell.contains("通貨") || lowerCell.contains("currency")) && ccyCol == -1 {
+                    ccyCol = cIdx
+                }
             }
             if (fundCol != -1 || codeCol != -1) && (qtyCol != -1 || priceCol != -1) {
                 headerIdx = idx
@@ -876,6 +904,8 @@ enum SpreadsheetIO {
             let fundName: String
             let symbol: String
             let isBuy: Bool
+            let isTransferOut: Bool
+            let isTransferIn: Bool
             let qty: Double
             let unitPrice: Double
             let date: Date?
@@ -885,33 +915,53 @@ enum SpreadsheetIO {
 
         for i in (headerIdx + 1)..<rows.count {
             let r = rows[i]
-            // Use codeCol first (JP/US stocks), fall back to fundCol (mutual funds)
+            // Use codeCol first (JP/US/HK stocks), fall back to fundCol (mutual funds)
             let idCol = codeCol != -1 ? codeCol : fundCol
             guard r.count > idCol else { continue }
 
             let rawId = r[idCol].trimmingCharacters(in: .whitespacesAndNewlines)
             guard !rawId.isEmpty else { continue }
 
+            let market = marketCol != -1 && r.count > marketCol ? r[marketCol].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            let ccy = ccyCol != -1 && r.count > ccyCol ? r[ccyCol].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            let isHK = market.contains("香港") || market.uppercased().contains("HK") || ccy.uppercased().contains("HK")
+
             let symbol: String
             let cleanFundName: String
 
             if codeCol != -1 {
-                // Broker stock format (JP stock or US stock)
-                // JP numeric codes get .T suffix; US tickers are uppercase as-is
-                let isNumericJPCode = rawId.allSatisfy({ $0.isNumber || ("A"..."Z").contains($0) })
-                    && rawId.count <= 5
-                    && rawId.contains(where: { $0.isNumber })
-                symbol = isNumericJPCode ? (rawId + ".T") : rawId.uppercased()
+                if isHK {
+                    let stripped = rawId.replacingOccurrences(of: "^0+", with: "", options: .regularExpression)
+                    symbol = (stripped.isEmpty ? rawId : stripped) + ".HK"
+                } else {
+                    // Broker stock format (JP stock or US stock)
+                    // JP numeric / alphanumeric codes (4-5 chars, contains digit) get .T suffix; US tickers are uppercase as-is
+                    let isNumericJPCode = rawId.allSatisfy({ $0.isNumber || ("A"..."Z").contains($0) || ("a"..."z").contains($0) })
+                        && rawId.count <= 5
+                        && rawId.contains(where: { $0.isNumber })
+                    symbol = isNumericJPCode ? (rawId.uppercased() + ".T") : rawId.uppercased()
+                }
                 cleanFundName = (fundCol != -1 && r.count > fundCol) ? r[fundCol].trimmingCharacters(in: .whitespacesAndNewlines) : rawId
             } else {
                 // Mutual fund format: resolve fund name to fund code
-                cleanFundName = rawId.components(separatedBy: "(")[0].trimmingCharacters(in: .whitespacesAndNewlines)
+                cleanFundName = rawId.components(separatedBy: "(")[0]
+                    .components(separatedBy: "（")[0]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 let code = resolveJapaneseFundCode(from: rawId)
                 symbol = code ?? cleanFundName
             }
 
-            let tradeType = tradeCol != -1 && r.count > tradeCol ? r[tradeCol].lowercased() : "買付"
-            let isBuy = tradeType.contains("買") || tradeType.contains("積立") || tradeType.contains("buy") || tradeType.contains("purchase") || tradeType.isEmpty || tradeType == "買付"
+            let tradeStr = tradeCol != -1 && r.count > tradeCol ? r[tradeCol].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : ""
+            let tradeTypeStr = tradeTypeCol != -1 && r.count > tradeTypeCol ? r[tradeTypeCol].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : ""
+            let combinedTrade = "\(tradeStr) \(tradeTypeStr)".trimmingCharacters(in: .whitespaces)
+
+            // Buy vs Sell / Transfer:
+            // Sells / Deductions: contains "売", "解約", "出庫", "sell", "withdraw"
+            // Buys / Additions: default or contains "買", "積立", "入庫", "buy", "deposit"
+            let isTransferOut = combinedTrade.contains("出庫") || combinedTrade.contains("withdraw")
+            let isTransferIn = combinedTrade.contains("入庫") || combinedTrade.contains("deposit")
+            let isSell = combinedTrade.contains("売") || combinedTrade.contains("解約") || isTransferOut || combinedTrade.contains("sell")
+            let isBuy = !isSell
 
             let qtyStr = qtyCol != -1 && r.count > qtyCol ? r[qtyCol].replacingOccurrences(of: ",", with: "") : "0"
             let qty = Double(qtyStr) ?? 0.0
@@ -919,7 +969,7 @@ enum SpreadsheetIO {
             let priceStr = priceCol != -1 && r.count > priceCol ? r[priceCol].replacingOccurrences(of: ",", with: "") : "0"
             let price = Double(priceStr) ?? 0.0
 
-            let account = accountCol != -1 && r.count > accountCol && !r[accountCol].isEmpty ? r[accountCol] : "NISA / 投資信託"
+            let account = accountCol != -1 && r.count > accountCol && !r[accountCol].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? r[accountCol].trimmingCharacters(in: .whitespacesAndNewlines) : "NISA / 投資信託"
 
             var pDate: Date? = nil
             if dateCol != -1 && r.count > dateCol {
@@ -927,24 +977,91 @@ enum SpreadsheetIO {
             }
 
             if qty > 0 {
-                records.append(TradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, qty: qty, unitPrice: price, date: pDate))
+                records.append(TradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, isTransferOut: isTransferOut, isTransferIn: isTransferIn, qty: qty, unitPrice: price, date: pDate))
             }
+        }
+
+        // Sort records chronologically, placing transfers out before transfers in on the same date
+        records.sort { (a, b) -> Bool in
+            if let da = a.date, let db = b.date {
+                if da != db { return da < db }
+                if a.isTransferOut != b.isTransferOut { return a.isTransferOut }
+            }
+            return false
         }
 
         struct PositionLot {
             let symbol: String
             var qty: Double
-            let unitPrice: Double
+            var unitPrice: Double
             let date: Date?
         }
 
+        // Known spin-off parent-child pairs & distribution weight:
+        // e.g. "SPGI" -> (child: "MBGL", childRatio: 0.044) (market price ratio: MBGL $19.85 / total $451.14 ~ 4.4%)
+        let knownSpinOffs: [String: (child: String, childRatio: Double)] = [
+            "SPGI": ("MBGL", 0.044)
+        ]
+
         var accountLotsMap: [String: [PositionLot]] = [:]
+        var transferredOutLots: [PositionLot] = []
 
         for rec in records {
             var lots = accountLotsMap[rec.account] ?? []
 
             if rec.isBuy {
-                lots.append(PositionLot(symbol: rec.symbol, qty: rec.qty, unitPrice: rec.unitPrice, date: rec.date))
+                var actualUnitPrice = rec.unitPrice
+                var actualDate = rec.date
+
+                // Handle Transfer In (入庫) with missing/0 price:
+                if actualUnitPrice <= 0 {
+                    let matchingLots = transferredOutLots.filter { $0.symbol == rec.symbol && $0.unitPrice > 0 }
+                    if !matchingLots.isEmpty {
+                        let totalQty = matchingLots.reduce(0.0) { $0 + $1.qty }
+                        let totalCost = matchingLots.reduce(0.0) { $0 + ($1.qty * $1.unitPrice) }
+                        actualUnitPrice = totalQty > 0 ? (totalCost / totalQty) : 0.0
+                        if actualDate == nil { actualDate = matchingLots.first?.date }
+                    } else {
+                        // Check if this symbol is a spin-off child from a recently transferred parent
+                        for (parentSym, config) in knownSpinOffs {
+                            if config.child == rec.symbol {
+                                let parentMatching = transferredOutLots.filter { $0.symbol == parentSym && $0.unitPrice > 0 }
+                                if !parentMatching.isEmpty {
+                                    let parentTotalQty = parentMatching.reduce(0.0) { $0 + $1.qty }
+                                    let parentTotalCost = parentMatching.reduce(0.0) { $0 + ($1.qty * $1.unitPrice) }
+                                    let parentWeightedAvg = parentTotalQty > 0 ? (parentTotalCost / parentTotalQty) : 0.0
+
+                                    actualUnitPrice = (parentWeightedAvg * config.childRatio) * (parentTotalQty / max(rec.qty, 1.0))
+                                    if actualDate == nil { actualDate = parentMatching.first?.date }
+
+                                    // Also adjust the parent's transferred lot unit price in current lots and all accounts proportionally
+                                    lots = lots.map { l in
+                                        if l.symbol == parentSym {
+                                            var adjusted = l
+                                            adjusted.unitPrice = parentWeightedAvg * (1.0 - config.childRatio)
+                                            return adjusted
+                                        }
+                                        return l
+                                    }
+
+                                    for (acctKey, acctLots) in accountLotsMap {
+                                        accountLotsMap[acctKey] = acctLots.map { l in
+                                            if l.symbol == parentSym {
+                                                var adjusted = l
+                                                adjusted.unitPrice = parentWeightedAvg * (1.0 - config.childRatio)
+                                                return adjusted
+                                            }
+                                            return l
+                                        }
+                                    }
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+
+                lots.append(PositionLot(symbol: rec.symbol, qty: rec.qty, unitPrice: actualUnitPrice, date: actualDate))
             } else {
                 // FIFO deduct from existing lots for this symbol
                 var remainingToSell = rec.qty
@@ -953,8 +1070,14 @@ enum SpreadsheetIO {
                     if lot.symbol == rec.symbol && remainingToSell > 0 {
                         if lot.qty <= remainingToSell {
                             remainingToSell -= lot.qty
+                            if rec.isTransferOut {
+                                transferredOutLots.append(PositionLot(symbol: lot.symbol, qty: lot.qty, unitPrice: lot.unitPrice, date: lot.date))
+                            }
                             lot.qty = 0
                         } else {
+                            if rec.isTransferOut {
+                                transferredOutLots.append(PositionLot(symbol: lot.symbol, qty: remainingToSell, unitPrice: lot.unitPrice, date: lot.date))
+                            }
                             lot.qty -= remainingToSell
                             remainingToSell = 0
                             updatedLots.append(lot)

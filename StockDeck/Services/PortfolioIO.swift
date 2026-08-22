@@ -82,21 +82,21 @@ enum PortfolioIO {
     }
 
     #if os(macOS)
-    /// Helper to pick a file and parse standard holdings for preview.
+    /// Helper to pick one or more files and parse holdings for preview.
     static func pickAndParseStandard(
-        storageService: StorageService,
+        storageService: StorageService? = nil,
         restoreActivationPolicy: Bool,
         onParsed: @escaping (ImportResult) -> Void,
         onAlert: @escaping (String) -> Void
     ) {
         let panel = NSOpenPanel()
-        var types: [UTType] = [.json, .commaSeparatedText]
+        var types: [UTType] = [.json, .commaSeparatedText, .plainText, .data]
         if let xlsxType = UTType(filenameExtension: "xlsx") {
             types.append(xlsxType)
         }
         panel.allowedContentTypes = types
-        panel.allowsMultipleSelection = false
-        panel.title = "Import Standard Portfolios (CSV, XLSX, JSON)"
+        panel.allowsMultipleSelection = true
+        panel.title = "Import Portfolios (CSV, XLSX, JSON)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -108,18 +108,18 @@ enum PortfolioIO {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK, !panel.urls.isEmpty else { return }
             Task { @MainActor in
-                if let res = parseStandardFile(fileURL: url, storageService: storageService) {
+                if let res = parseFiles(urls: panel.urls) {
                     onParsed(res)
                 } else {
-                    onAlert("Invalid file format or empty portfolio file.")
+                    onAlert("Invalid file format or empty portfolio file(s).")
                 }
             }
         }
     }
 
-    /// Helper to pick a file and parse Japanese 投資信託 fund holdings for preview.
+    /// Helper to pick one or more Japanese broker / fund files for preview.
     static func pickAndParseJapaneseFunds(
         restoreActivationPolicy: Bool,
         onParsed: @escaping (ImportResult) -> Void,
@@ -131,8 +131,8 @@ enum PortfolioIO {
             types.append(xlsxType)
         }
         panel.allowedContentTypes = types
-        panel.allowsMultipleSelection = false
-        panel.title = "Import 投資信託 (Japanese Funds Trade History CSV/XLSX)"
+        panel.allowsMultipleSelection = true
+        panel.title = "Import 投資信託 / 株式 (Broker Trade History CSV/XLSX)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -144,44 +144,81 @@ enum PortfolioIO {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK, !panel.urls.isEmpty else { return }
             Task { @MainActor in
-                if let res = parseJapaneseFundFile(fileURL: url) {
+                if let res = parseFiles(urls: panel.urls) {
                     onParsed(res)
                 } else {
-                    onAlert("Could not parse 投資信託 file or no valid trades found.")
+                    onAlert("Could not parse broker file(s) or no valid trades found.")
                 }
             }
         }
     }
     #endif
 
-    static func parseStandardFile(fileURL url: URL, storageService: StorageService) -> ImportResult? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        let imported: [Portfolio]?
-        if let spreadsheetImport = SpreadsheetIO.parseStandardPortfolios(from: url) {
-            imported = spreadsheetImport
-        } else {
-            imported = storageService.importPortfolios(from: data)
-        }
-        guard let imported, !imported.isEmpty else { return nil }
+    /// Parses multiple files (CSV, XLSX, JSON) and aggregates all parsed positions.
+    static func parseFiles(urls: [URL], storageService: StorageService? = nil) -> ImportResult? {
+        var allItems: [ParsedImportItem] = []
+        var suggestedNames: [String] = []
 
-        let allHoldings = imported.flatMap { $0.holdings }
-        let items = allHoldings.map { ParsedImportItem(holding: $0, isChecked: true, isFund: false, originalAccountName: nil) }
-        let suggestedName = imported.first?.name
-        return ImportResult(items: items, suggestedPortfolioName: suggestedName, isFundImport: false)
+        for url in urls {
+            // 1. Try Japanese broker / fund format (Rakuten INVST, JP, US, CH etc.)
+            if let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty {
+                for p in imported {
+                    if !p.name.isEmpty && !suggestedNames.contains(p.name) {
+                        suggestedNames.append(p.name)
+                    }
+                    for h in p.holdings {
+                        let isFund = StockService.isJapaneseMutualFund(h.symbol)
+                        allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
+                    }
+                }
+                continue
+            }
+
+            // 2. Try standard portfolio format (CSV / XLSX)
+            if let imported = SpreadsheetIO.parseStandardPortfolios(from: url), !imported.isEmpty {
+                for p in imported {
+                    if !p.name.isEmpty && !suggestedNames.contains(p.name) {
+                        suggestedNames.append(p.name)
+                    }
+                    for h in p.holdings {
+                        let isFund = StockService.isJapaneseMutualFund(h.symbol)
+                        allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
+                    }
+                }
+                continue
+            }
+
+            // 3. Try JSON backup / storage import
+            if let data = try? Data(contentsOf: url),
+               let imported = StorageService.importPortfolios(from: data), !imported.isEmpty {
+                for p in imported {
+                    if !p.name.isEmpty && !suggestedNames.contains(p.name) {
+                        suggestedNames.append(p.name)
+                    }
+                    for h in p.holdings {
+                        let isFund = StockService.isJapaneseMutualFund(h.symbol)
+                        allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
+                    }
+                }
+                continue
+            }
+        }
+
+        guard !allItems.isEmpty else { return nil }
+
+        let suggestedName = suggestedNames.first ?? urls.first?.deletingPathExtension().lastPathComponent
+        let isFundImport = allItems.allSatisfy { $0.isFund }
+        return ImportResult(items: allItems, suggestedPortfolioName: suggestedName, isFundImport: isFundImport)
+    }
+
+    static func parseStandardFile(fileURL url: URL, storageService: StorageService? = nil) -> ImportResult? {
+        parseFiles(urls: [url])
     }
 
     static func parseJapaneseFundFile(fileURL url: URL) -> ImportResult? {
-        guard let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty else { return nil }
-        var items: [ParsedImportItem] = []
-        for p in imported {
-            for h in p.holdings {
-                items.append(ParsedImportItem(holding: h, isChecked: true, isFund: true, originalAccountName: p.name))
-            }
-        }
-        let suggestedName = imported.first?.name
-        return ImportResult(items: items, suggestedPortfolioName: suggestedName, isFundImport: true)
+        parseFiles(urls: [url])
     }
 
     #if os(macOS)
@@ -227,7 +264,7 @@ enum PortfolioIO {
         }
     }
 
-    /// Presents an NSOpenPanel to pick a Watchlist file (CSV/XLSX/TXT) and imports symbols into Watchlists.
+    /// Presents an NSOpenPanel to pick one or more Watchlist files (CSV/XLSX/TXT) and imports symbols into Watchlists.
     /// Supports multiple watchlists in one file (grouped by Watchlist Name column).
     /// If a watchlist with the same name already exists, merges symbols into it.
     static func pickAndParseWatchlist(storageService: StorageService, restoreActivationPolicy: Bool = true, onAlert: ((String) -> Void)? = nil) {
@@ -237,8 +274,8 @@ enum PortfolioIO {
             types.append(xlsxType)
         }
         panel.allowedContentTypes = types
-        panel.allowsMultipleSelection = false
-        panel.title = "Import Watchlist (CSV/XLSX/TXT)"
+        panel.allowsMultipleSelection = true
+        panel.title = "Import Watchlists (CSV/XLSX/TXT)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -250,11 +287,17 @@ enum PortfolioIO {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }
-            guard response == .OK, let url = panel.url else { return }
+            guard response == .OK, !panel.urls.isEmpty else { return }
             Task { @MainActor in
-                if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
+                var allParsed: [(name: String, symbols: [String])] = []
+                for url in panel.urls {
+                    if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
+                        allParsed.append(contentsOf: parsed)
+                    }
+                }
+                if !allParsed.isEmpty {
                     var messages: [String] = []
-                    for (wlName, symbols) in parsed {
+                    for (wlName, symbols) in allParsed {
                         let deduped = Set(symbols)
                         if let existing = storageService.watchlists.first(where: {
                             $0.name.trimmingCharacters(in: .whitespaces).lowercased()
@@ -268,9 +311,9 @@ enum PortfolioIO {
                             messages.append("\(deduped.count) symbols to new “\(wlName)”")
                         }
                     }
-                    onAlert?("Imported \(parsed.count) watchlist(s): " + messages.joined(separator: "; ") + ".")
+                    onAlert?("Imported \(allParsed.count) watchlist(s): " + messages.joined(separator: "; ") + ".")
                 } else {
-                    onAlert?("Could not parse watchlist file or no valid symbols found.")
+                    onAlert?("Could not parse watchlist file(s) or no valid symbols found.")
                 }
             }
         }
