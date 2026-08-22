@@ -2092,14 +2092,16 @@ private struct PositionSummaryRow: View {
 
         case .totalPnl:
             if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
-                VStack(alignment: .trailing, spacing: 1) {
+                VStack(alignment: .trailing, spacing: 2) {
                     Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
                         .font(DS.figure)
+                        .foregroundStyle(DS.pnlColor(totalNativePnl))
                         .contentTransition(.numericText())
-                    Text(String(format: "%+.\(decimals)f%%", totalNativePnlPercent))
-                        .font(DS.micro)
+                    ChangePill(
+                        value: totalNativePnlPercent,
+                        text: String(format: "%+.\(decimals)f%%", totalNativePnlPercent)
+                    )
                 }
-                .foregroundStyle(DS.pnlColor(totalNativePnl))
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
             } else {
                 Text("—")

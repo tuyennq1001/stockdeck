@@ -270,13 +270,15 @@ struct HoldingDetailView: View {
 
                         Group {
                             if vh.holding.hasKnownCostBasis {
-                                VStack(alignment: .trailing, spacing: 1) {
+                                VStack(alignment: .trailing, spacing: 2) {
                                     Text(StorageService.formatAmount(vh.pnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
                                         .font(DS.figure)
-                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent))
-                                        .font(DS.micro)
+                                        .foregroundStyle(DS.pnlColor(vh.pnl))
+                                    ChangePill(
+                                        value: vh.pnlPercent,
+                                        text: String(format: "%+.\(storageService.percentDecimals)f%%", vh.pnlPercent)
+                                    )
                                 }
-                                .foregroundStyle(DS.pnlColor(vh.pnl))
                             } else {
                                 Text("—")
                                     .font(DS.figure)
