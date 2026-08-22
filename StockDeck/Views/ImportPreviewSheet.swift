@@ -183,8 +183,10 @@ struct ImportPreviewSheet: View {
         let h = item.wrappedValue.holding
         let symbol = h.symbol
         let isExisting = currentTargetPortfolio?.holdings.contains(where: { $0.symbol == symbol }) ?? false
-        let currency = isFundImport ? "JPY" : stockService.detectedCurrency(for: symbol)
+        let isFund = item.wrappedValue.isFund || StockService.isJapaneseMutualFund(symbol)
+        let currency = isFund ? "JPY" : stockService.detectedCurrency(for: symbol)
         let currSym = StorageService.currencySymbol(for: currency)
+        let decimals = isFund ? 0 : (currency == "JPY" || currency == "VND" ? 0 : 2)
 
         HStack(spacing: 10) {
             #if os(macOS)
@@ -223,7 +225,7 @@ struct ImportPreviewSheet: View {
                     .foregroundStyle(DS.ink)
 
                 if h.avgPrice > 0 {
-                    Text("Avg: \(currSym)\(StorageService.formatNumber(h.avgPrice, decimals: isFundImport ? 0 : 2))")
+                    Text("Avg: \(currSym)\(StorageService.formatNumber(h.avgPrice, decimals: decimals))")
                         .font(.inter(9, relativeTo: .caption).monospacedDigit())
                         .foregroundStyle(DS.inkSecondary)
                 }

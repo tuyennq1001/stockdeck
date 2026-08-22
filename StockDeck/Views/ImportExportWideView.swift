@@ -16,7 +16,7 @@ struct ImportExportWideView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
                 // Header
                 HStack(spacing: 12) {
                     Image(systemName: "square.and.arrow.down.on.square")
@@ -26,112 +26,111 @@ struct ImportExportWideView: View {
                         Text("Import / Export Hub")
                             .font(.inter(20, weight: .bold, relativeTo: .title2))
                             .foregroundStyle(DS.ink)
-                        Text("Manage your portfolios and watchlists import, export data, and download sample templates.")
+                        Text("Manage your watchlists and portfolios import, export data, and download sample templates.")
                             .font(DS.body)
                             .foregroundStyle(DS.inkSecondary)
                     }
                     Spacer()
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 4)
 
                 // Section 1: Import Data
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("IMPORT DATA")
-                        .font(DS.label)
-                        .foregroundStyle(DS.inkTertiary)
-                        .tracking(0.8)
+                HubTableSection(sectionTitle: "IMPORT DATA", actionHeader: "IMPORT ACTION") {
+                    HubTableRow(
+                        index: "1",
+                        icon: "star.fill",
+                        title: "Import Watchlist",
+                        subtitle: "Import symbol list into a Watchlist from CSV, Excel (.xlsx), or text file",
+                        buttonIcon: "square.and.arrow.down",
+                        buttonTitle: "Import Watchlist…",
+                        action: onImportWatchlist
+                    )
 
-                    VStack(spacing: 10) {
-                        ImportActionRow(
-                            icon: "briefcase.fill",
-                            title: "Import Standard Portfolio",
-                            subtitle: "Import holdings from CSV or Excel (.xlsx) file with Portfolio Name, Symbol, Quantity, Avg Price, Purchase Date",
-                            buttonTitle: "Import Portfolio…",
-                            action: onImportStandard
-                        )
+                    Divider().overlay(DS.hairline)
 
-                        Divider().overlay(DS.hairline)
+                    HubTableRow(
+                        index: "2",
+                        icon: "briefcase.fill",
+                        title: "Import Standard Portfolio",
+                        subtitle: "Import holdings from CSV or Excel (.xlsx) file with Portfolio Name, Symbol, Quantity, Avg Price, Purchase Date",
+                        buttonIcon: "square.and.arrow.down",
+                        buttonTitle: "Import Portfolio…",
+                        action: onImportStandard
+                    )
 
-                        ImportActionRow(
-                            icon: "doc.text.fill",
-                            title: "Import 投資信託 (Japanese Funds)",
-                            subtitle: "Import Japanese mutual funds trade history CSV or Excel (.xlsx) file",
-                            buttonTitle: "Import 投資信託…",
-                            action: onImportJapaneseFunds
-                        )
+                    Divider().overlay(DS.hairline)
 
-                        Divider().overlay(DS.hairline)
-
-                        ImportActionRow(
-                            icon: "star.fill",
-                            title: "Import Watchlist",
-                            subtitle: "Import symbol list into a Watchlist from CSV, Excel (.xlsx), or text file",
-                            buttonTitle: "Import Watchlist…",
-                            action: onImportWatchlist
-                        )
-                    }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(DS.card))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                    HubTableRow(
+                        index: "3",
+                        icon: "doc.text.fill",
+                        title: "Import Transaction History",
+                        subtitle: "Import broker trade history CSV or Excel (.xlsx) file (Rakuten, SBI, Japanese Mutual Funds & Stocks)",
+                        buttonIcon: "square.and.arrow.down",
+                        buttonTitle: "Import History…",
+                        action: onImportJapaneseFunds
+                    )
                 }
 
-                // Section 2: Download Templates
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("DOWNLOAD SAMPLE TEMPLATES")
-                        .font(DS.label)
-                        .foregroundStyle(DS.inkTertiary)
-                        .tracking(0.8)
+                // Section 2: Download Sample Templates
+                HubTableSection(sectionTitle: "DOWNLOAD SAMPLE TEMPLATES", actionHeader: "SAMPLE TEMPLATE") {
+                    HubTableRow(
+                        index: "1",
+                        icon: "star.fill",
+                        title: "Watchlist Template",
+                        subtitle: "Sample file supporting multiple watchlists and grouped symbols (.xlsx)",
+                        buttonIcon: "arrow.down.doc.fill",
+                        buttonTitle: "Download XLSX",
+                        action: onDownloadWatchlistSample
+                    )
 
-                    HStack(spacing: 12) {
-                        TemplateCard(
-                            title: "Standard Portfolio Template",
-                            subtitle: "Sample .xlsx file for standard portfolios",
-                            action: onDownloadSample
-                        )
+                    Divider().overlay(DS.hairline)
 
-                        TemplateCard(
-                            title: "投資信託 Template",
-                            subtitle: "Sample .xlsx file for Japanese mutual funds",
-                            action: onDownloadJapaneseFundSample
-                        )
+                    HubTableRow(
+                        index: "2",
+                        icon: "briefcase.fill",
+                        title: "Standard Portfolio Template",
+                        subtitle: "Sample file with Portfolio Name, Symbol, Quantity, Avg Price, Purchase Date (.xlsx)",
+                        buttonIcon: "arrow.down.doc.fill",
+                        buttonTitle: "Download XLSX",
+                        action: onDownloadSample
+                    )
 
-                        TemplateCard(
-                            title: "Watchlist Template",
-                            subtitle: "Sample .xlsx file for watchlists",
-                            action: onDownloadWatchlistSample
-                        )
-                    }
+                    Divider().overlay(DS.hairline)
+
+                    HubTableRow(
+                        index: "3",
+                        icon: "doc.text.fill",
+                        title: "Transaction History Template",
+                        subtitle: "Sample trade history file for broker trades, stocks, and Japanese mutual funds (.xlsx)",
+                        buttonIcon: "arrow.down.doc.fill",
+                        buttonTitle: "Download XLSX",
+                        action: onDownloadJapaneseFundSample
+                    )
                 }
 
                 // Section 3: Export Data
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("EXPORT DATA")
-                        .font(DS.label)
-                        .foregroundStyle(DS.inkTertiary)
-                        .tracking(0.8)
+                HubTableSection(sectionTitle: "EXPORT DATA", actionHeader: "EXPORT ACTION") {
+                    HubTableRow(
+                        index: "1",
+                        icon: "star.fill",
+                        title: "Export Watchlists",
+                        subtitle: "Export all your watchlists and symbols to Excel (.xlsx)",
+                        buttonIcon: "square.and.arrow.up",
+                        buttonTitle: "Export Watchlists…",
+                        action: onExportWatchlists
+                    )
 
-                    VStack(spacing: 10) {
-                        ImportActionRow(
-                            icon: "square.and.arrow.up.fill",
-                            title: "Export Portfolios",
-                            subtitle: "Export all your portfolios and holdings to Excel (.xlsx)",
-                            buttonTitle: "Export Portfolios (XLSX)…",
-                            action: onExportPortfolios
-                        )
+                    Divider().overlay(DS.hairline)
 
-                        Divider().overlay(DS.hairline)
-
-                        ImportActionRow(
-                            icon: "square.and.arrow.up.fill",
-                            title: "Export Watchlists",
-                            subtitle: "Export all your watchlists and symbols to Excel (.xlsx)",
-                            buttonTitle: "Export Watchlists (XLSX)…",
-                            action: onExportWatchlists
-                        )
-                    }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(DS.card))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                    HubTableRow(
+                        index: "2",
+                        icon: "briefcase.fill",
+                        title: "Export Portfolios",
+                        subtitle: "Export all your portfolios and holdings to Excel (.xlsx)",
+                        buttonIcon: "square.and.arrow.up",
+                        buttonTitle: "Export Portfolios…",
+                        action: onExportPortfolios
+                    )
                 }
             }
             .padding(24)
@@ -140,79 +139,104 @@ struct ImportExportWideView: View {
     }
 }
 
-private struct ImportActionRow: View {
+private struct HubTableSection<Content: View>: View {
+    let sectionTitle: String
+    let actionHeader: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(sectionTitle)
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .tracking(0.8)
+
+            VStack(spacing: 0) {
+                // Table Header
+                HStack(spacing: 14) {
+                    Text("#")
+                        .font(DS.label)
+                        .tracking(0.8)
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(width: 32, alignment: .center)
+
+                    Text("TYPE")
+                        .font(DS.label)
+                        .tracking(0.8)
+                        .foregroundStyle(DS.inkTertiary)
+
+                    Spacer()
+
+                    Text(actionHeader)
+                        .font(DS.label)
+                        .tracking(0.8)
+                        .foregroundStyle(DS.inkTertiary)
+                        .frame(width: 160, alignment: .trailing)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(DS.cardAlt.opacity(0.5))
+
+                Divider().overlay(DS.hairline)
+
+                content()
+            }
+            .background(RoundedRectangle(cornerRadius: 10).fill(DS.card))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+private struct HubTableRow: View {
+    let index: String
     let icon: String
     let title: String
     let subtitle: String
+    let buttonIcon: String
     let buttonTitle: String
     let action: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
+            Text(index)
+                .font(.inter(12, weight: .medium, relativeTo: .caption).monospacedDigit())
+                .foregroundStyle(DS.inkTertiary)
+                .frame(width: 32, alignment: .center)
+
             Image(systemName: icon)
-                .font(.system(size: 18))
+                .font(.system(size: 14))
                 .foregroundStyle(DS.brand)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(DS.brand.opacity(0.1)))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(DS.brand.opacity(0.08)))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.inter(14, weight: .semibold, relativeTo: .body))
+                    .font(.inter(13, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(DS.ink)
                 Text(subtitle)
-                    .font(DS.caption)
+                    .font(DS.micro)
                     .foregroundStyle(DS.inkSecondary)
             }
 
             Spacer()
 
-            Button(buttonTitle, action: action)
-                .buttonStyle(.borderedProminent)
-                .tint(DS.brand)
-                .controlSize(.small)
-                .pointingHandCursor()
-        }
-    }
-}
-
-private struct TemplateCard: View {
-    let title: String
-    let subtitle: String
-    let action: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "doc.badge.plus")
-                    .font(.system(size: 16))
-                    .foregroundStyle(DS.brand)
-                Spacer()
-            }
-            Text(title)
-                .font(.inter(13, weight: .semibold, relativeTo: .body))
-                .foregroundStyle(DS.ink)
-            Text(subtitle)
-                .font(DS.micro)
-                .foregroundStyle(DS.inkSecondary)
-
-            Spacer()
-
             Button(action: action) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down.doc")
-                    Text("Download XLSX")
+                HStack(spacing: 5) {
+                    Image(systemName: buttonIcon)
+                        .font(.system(size: 11))
+                    Text(buttonTitle)
+                        .font(DS.caption)
                 }
-                .font(DS.caption)
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
             .pointingHandCursor()
+            .frame(width: 160, alignment: .trailing)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 120)
-        .background(RoundedRectangle(cornerRadius: 10).fill(DS.card))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 #endif

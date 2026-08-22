@@ -633,12 +633,12 @@ struct UtilitiesView: View {
         #elseif os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            if let res = PortfolioIO.parseFiles(urls: panel.urls) {
                 pendingImportResult = res
             } else {
-                alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
+                alertBannerMessage = "Could not parse broker trade history file(s)."
             }
         }
         #endif
@@ -653,9 +653,11 @@ struct UtilitiesView: View {
         #elseif os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url {
-            handleWatchlistURL(url)
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            for url in panel.urls {
+                handleWatchlistURL(url)
+            }
         }
         #endif
     }

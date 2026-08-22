@@ -597,22 +597,22 @@ struct PortfolioWindowView: View {
     private var importMenuSections: [[DSMenuAction]] {
         var sections: [[DSMenuAction]] = [
             [
+                DSMenuAction(title: "Import Watchlist (CSV/XLSX/TXT)…", icon: "star") { importWatchlist() },
                 DSMenuAction(title: "Import Standard Portfolio (CSV/XLSX)…", icon: "briefcase") { importStandard() },
-                DSMenuAction(title: "Import 投資信託 (Japanese Funds CSV/XLSX)…", icon: "doc.text") { importJapaneseFunds() },
-                DSMenuAction(title: "Import Watchlist (CSV/XLSX/TXT)…", icon: "star") { importWatchlist() }
+                DSMenuAction(title: "Import Transaction History (CSV/XLSX)…", icon: "doc.text") { importJapaneseFunds() }
             ],
             [
+                DSMenuAction(title: "Download Watchlist Sample (XLSX)", icon: "doc.badge.plus") { downloadWatchlistSampleFile() },
                 DSMenuAction(title: "Download Portfolio Sample (XLSX)", icon: "doc.badge.plus") { downloadSampleFile() },
-                DSMenuAction(title: "Download 投資信託 Template (XLSX)", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() },
-                DSMenuAction(title: "Download Watchlist Sample (XLSX)", icon: "doc.badge.plus") { downloadWatchlistSampleFile() }
+                DSMenuAction(title: "Download Transaction History Template (XLSX)", icon: "doc.badge.plus") { downloadJapaneseFundSampleFile() }
             ]
         ]
         var exportActions: [DSMenuAction] = []
-        if !storageService.portfolios.isEmpty {
-            exportActions.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
-        }
         if !storageService.watchlists.isEmpty {
             exportActions.append(DSMenuAction(title: "Export Watchlists (XLSX)…", icon: "square.and.arrow.up") { exportWatchlists(storageService.watchlists) })
+        }
+        if !storageService.portfolios.isEmpty {
+            exportActions.append(DSMenuAction(title: "Export Portfolios (XLSX)…", icon: "square.and.arrow.up") { exportPortfolios(storageService.portfolios) })
         }
         if !exportActions.isEmpty {
             sections.append(exportActions)

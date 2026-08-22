@@ -1705,11 +1705,15 @@ class StorageService: ObservableObject {
         return try? encoder.encode(export)
     }
 
-    func importPortfolios(from data: Data) -> [Portfolio]? {
+    static func importPortfolios(from data: Data) -> [Portfolio]? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let export = try? decoder.decode(PortfolioExport.self, from: data) else { return nil }
         return export.portfolios
+    }
+
+    func importPortfolios(from data: Data) -> [Portfolio]? {
+        Self.importPortfolios(from: data)
     }
 
     func mergeImportedPortfolios(_ imported: [Portfolio]) {
