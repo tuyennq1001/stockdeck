@@ -331,10 +331,6 @@ struct SettingsWideView: View {
                 .foregroundStyle(DS.brand)
             }
             .padding(.vertical, 6)
-            SettingDivider()
-            SettingToggle("Use system color in the menu bar",
-                          caption: "Keeps menu bar text readable on any wallpaper; doesn't affect in-app colors",
-                          isOn: $storageService.menuBarUseSystemColor)
         }
     }
 
