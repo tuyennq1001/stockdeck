@@ -17,6 +17,7 @@ struct SettingsWideView: View {
     @State private var aiTestResult: String?
     @State private var aiTestIsLoading = false
     @State private var showAiKeyHelp = false
+    @State private var showEditProfileSheet = false
     var body: some View {
         PageScaffold("Settings", caption: "Preferences are shared with the menu bar.") {
             EmptyView()
@@ -28,6 +29,7 @@ struct SettingsWideView: View {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         generalCard
                         aiReviewCard
+                        investorProfileCard
                         menuBarCard
                         let withNotifs = storageService.portfolios.filter { !storageService.notifications(for: $0.id).isEmpty }
                         if !withNotifs.isEmpty { portfolioNotifsCard(withNotifs) }
@@ -53,12 +55,77 @@ struct SettingsWideView: View {
         .dsAlert($showClearPortfolioNotifs, title: "Clear all portfolio notifications",
                  message: "This will delete all portfolio notifications across every portfolio. This cannot be undone.",
                  confirmTitle: "Clear all", destructive: true) { storageService.removeAllPortfolioNotifications() }
+        .sheet(isPresented: $showEditProfileSheet) {
+            InvestorProfileEditorSheet(
+                initialProfile: storageService.investorProfile ?? InvestorProfile(),
+                onSave: { updated in
+                    storageService.investorProfile = updated
+                    showEditProfileSheet = false
+                },
+                onCancel: {
+                    showEditProfileSheet = false
+                }
+            )
+        }
         .onAppear {
             storageService.syncLaunchAtLoginStatus()
         }
     }
 
     // MARK: - Cards
+
+    private var investorProfileCard: some View {
+        SettingsCard(title: "Investor Profile & Goals") {
+            if let profile = storageService.investorProfile {
+                SettingRow("Summary", caption: "Used by AI Review for customized portfolio advice") {
+                    Text(profile.summaryDescription)
+                        .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.ink)
+                }
+                SettingDivider()
+                SettingRow("Primary goal", caption: profile.primaryGoal) {
+                    EmptyView()
+                }
+                SettingDivider()
+                HStack {
+                    Button {
+                        storageService.investorProfile = nil
+                    } label: {
+                        Text("Reset profile")
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(DS.down)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+
+                    Spacer()
+
+                    Button {
+                        showEditProfileSheet = true
+                    } label: {
+                        Text("Edit profile…")
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(DS.brand)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+                .padding(.vertical, 2)
+            } else {
+                SettingRow("Status", caption: "Not configured yet. Set up your profile to receive tailored advice.") {
+                    Button {
+                        showEditProfileSheet = true
+                    } label: {
+                        Text("Set up profile…")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(DS.brand)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+            }
+        }
+    }
 
     private var generalCard: some View {
         SettingsCard(title: "General") {

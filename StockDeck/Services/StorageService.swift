@@ -25,7 +25,7 @@ enum InsertPlacement {
 class StorageService: ObservableObject {
     static let shared = StorageService()
 
-    @Published var watchlists: [Watchlist] = [Watchlist(id: UUID(), name: "Watchlist", symbols: [])] {
+    @Published var watchlists: [Watchlist] = [] {
         didSet { scheduleSave() }
     }
 
@@ -438,6 +438,12 @@ class StorageService: ObservableObject {
     /// it off restores the classic fast-chat behavior of the retired
     /// `deepseek-chat` alias. Only sent for DeepSeek.
     @Published var aiDeepseekThinking: Bool = false {
+        didSet { scheduleSave() }
+    }
+
+    /// User's investor profile (age, risk tolerance, investment style, goals).
+    /// Used by AI Review across the app for personalized consultation.
+    @Published var investorProfile: InvestorProfile? = nil {
         didSet { scheduleSave() }
     }
 
@@ -1179,6 +1185,11 @@ class StorageService: ObservableObject {
         }
         isLoading = true
         load()
+        if watchlists.isEmpty {
+            let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+            watchlists = [def]
+            selectedWatchlistId = def.id
+        }
         #if os(macOS)
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
         #endif
@@ -1780,6 +1791,7 @@ class StorageService: ObservableObject {
         var aiProvider: String?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
+        var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
         var iCloudSyncEnabled: Bool?
@@ -1836,6 +1848,7 @@ class StorageService: ObservableObject {
             aiProvider: aiProvider,
             aiWorkspacePath: aiWorkspacePath,
             aiDeepseekThinking: aiDeepseekThinking,
+            investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
             portfolioPositionSorts: portfolioPositionSorts,
             iCloudSyncEnabled: iCloudSyncEnabled,
@@ -1863,6 +1876,9 @@ class StorageService: ObservableObject {
                     seenNames.insert(key)
                 }
             }
+            if cleaned.count > 1 {
+                cleaned.removeAll { $0.symbols.isEmpty && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "watchlist" }
+            }
             watchlists = cleaned.isEmpty ? wls : cleaned
             if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
                 selectedWatchlistId = selId
@@ -1876,6 +1892,7 @@ class StorageService: ObservableObject {
         } else if watchlists.isEmpty {
             let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
             watchlists = [def]
+            selectedWatchlistId = def.id
         }
         portfolios = decoded.portfolios.map { p in
             var updated = p
@@ -1943,6 +1960,7 @@ class StorageService: ObservableObject {
         aiProvider = decoded.aiProvider ?? "openai"
         aiWorkspacePath = decoded.aiWorkspacePath ?? ""
         aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
+        investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))

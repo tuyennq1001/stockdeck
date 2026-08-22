@@ -648,6 +648,8 @@ struct PortfolioOverview: View {
                             topLosersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
                         }
                         positionsCard.id("positions")
+                        PortfolioAIReviewCard(scope: scope, viewModel: viewModel)
+                            .id("aiReview")
                     }
                     .pageColumn()
                     .padding(.top, 4)

@@ -300,6 +300,11 @@ final class iCloudSyncService: ObservableObject {
 
         // 1. Merge Watchlists
         var mergedWatchlists: [Watchlist] = local.watchlists ?? []
+        let localHasOnlyEmptyDefault = (local.watchlists?.count == 1 && local.watchlists?.first?.name.lowercased() == "watchlist" && local.watchlists?.first?.symbols.isEmpty == true)
+        if localHasOnlyEmptyDefault && remote.watchlists?.isEmpty == false {
+            mergedWatchlists = []
+        }
+
         if let remoteWatchlists = remote.watchlists {
             for rw in remoteWatchlists {
                 let trimmedRemoteName = rw.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -317,6 +322,9 @@ final class iCloudSyncService: ObservableObject {
                     mergedWatchlists.append(rw)
                 }
             }
+        }
+        if mergedWatchlists.count > 1 {
+            mergedWatchlists.removeAll { $0.symbols.isEmpty && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "watchlist" }
         }
         if !mergedWatchlists.isEmpty {
             merged.watchlists = mergedWatchlists
@@ -489,6 +497,36 @@ final class iCloudSyncService: ObservableObject {
             var combined = merged.portfolioPositionSorts ?? [:]
             for (k, v) in rSorts { combined[k] = v }
             merged.portfolioPositionSorts = combined
+        }
+        if let mbd = remote.menuBarDisplay, !mbd.isEmpty {
+            merged.menuBarDisplay = mbd
+        }
+        if let aip = remote.aiProvider, !aip.isEmpty {
+            merged.aiProvider = aip
+        }
+        if let aib = remote.aiBaseURL, !aib.isEmpty {
+            merged.aiBaseURL = aib
+        }
+        if let aim = remote.aiModel, !aim.isEmpty {
+            merged.aiModel = aim
+        }
+        if let wsp = remote.aiWorkspacePath {
+            merged.aiWorkspacePath = wsp
+        }
+        if let dst = remote.aiDeepseekThinking {
+            merged.aiDeepseekThinking = dst
+        }
+        if let prof = remote.investorProfile {
+            merged.investorProfile = prof
+        }
+        if let rSections = remote.aiChatSections, !rSections.isEmpty {
+            var combinedSections = merged.aiChatSections ?? []
+            for rs in rSections {
+                if !combinedSections.contains(where: { $0.id == rs.id }) {
+                    combinedSections.append(rs)
+                }
+            }
+            merged.aiChatSections = combinedSections
         }
 
         return merged

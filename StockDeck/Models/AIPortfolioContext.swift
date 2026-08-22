@@ -159,10 +159,22 @@ enum AIPortfolioContext {
             }
         }
 
+        // Money-weighted return (XIRR vs S&P 500 equivalent timing)
+        let mwResult: InvestmentEffectiveness.Result?
+        if let vm = viewModel, let res = vm.moneyWeightedResult {
+            mwResult = res
+        } else if !portfolios.isEmpty {
+            let hs = portfolios.flatMap { $0.holdings }
+            mwResult = InvestmentEffectiveness.evaluate(holdings: hs, stockService: stockService, storageService: storageService)
+        } else {
+            mwResult = nil
+        }
+
         let pnlPct = abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
         let ret = Output(
             contextText: self.renderText(portfolios: portfolios, totals: totals, pnlPct: pnlPct,
                                          today: today, topPositions: topPositions, perfPct: perfPct,
+                                         moneyWeighted: mwResult,
                                          currency: storageService.preferredCurrency,
                                          storage: storageService, stockService: stockService),
             totalValue: totals.value,
@@ -240,6 +252,7 @@ enum AIPortfolioContext {
                                    today: (gain: Double, percent: Double),
                                    topPositions: [PositionRow],
                                    perfPct: [(period: String, portfolio: Double?, spx: Double?)],
+                                   moneyWeighted: InvestmentEffectiveness.Result?,
                                    currency: String,
                                    storage: StorageService,
                                    stockService: StockService) -> String {
@@ -277,10 +290,24 @@ enum AIPortfolioContext {
         }
         lines.append("")
 
+        if let mw = moneyWeighted, let pXIRR = mw.portfolioXIRR {
+            lines.append("ACTUAL MONEY-WEIGHTED RETURN (XIRR / Real Cash Flow Performance):")
+            lines.append(" - Your Annualized Return (XIRR): \(fmtPct(pXIRR)) (annualized money-weighted return factoring in your actual purchase dates and amounts)")
+            if let bXIRR = mw.benchmarkXIRR {
+                let diff = pXIRR - bXIRR
+                let verdict = diff >= 0 ? "Outperforming S&P 500 by \(fmtPct(diff))" : "Underperforming S&P 500 by \(fmtPct(abs(diff)))"
+                lines.append(" - S&P 500 Equivalent Benchmark: \(fmtPct(bXIRR)) (\(verdict) under identical cash flow timing)")
+            }
+            if mw.excludedHoldingsCount > 0 {
+                lines.append(" (Note: \(mw.excludedHoldingsCount) position(s) without purchase dates excluded from XIRR calculation)")
+            }
+            lines.append("")
+        }
+
         if !perfPct.isEmpty {
             let hasAny = perfPct.contains { $0.portfolio != nil || $0.spx != nil }
             if hasAny {
-                lines.append("PERFORMANCE (portfolio vs S&P 500; '-' means insufficient history — never guess):")
+                lines.append("PERIOD MARKET PRICE PERFORMANCE (portfolio vs S&P 500; '-' means insufficient history — never guess):")
                 for p in perfPct {
                     let pf = p.portfolio.map { fmtPct($0) } ?? "-"
                     let sp = p.spx.map { fmtPct($0) } ?? "-"
@@ -290,8 +317,16 @@ enum AIPortfolioContext {
         }
         lines.append("")
 
+        if let profile = storage.investorProfile {
+            lines.append(profile.promptContextText(preferredCurrency: currency))
+            lines.append("")
+        }
+
         lines.append("INSTRUCTIONS")
         lines.append("Answer about the user's portfolio using ONLY this context and the user's questions. Be honest: if a figure is '-', say the history is insufficient rather than inventing one. Do not recommend specific trades with certainty — this is not regulated financial advice. When asked to review health, structure the reply with clear short sections and a concise 'Next steps' list.")
+        if storage.investorProfile != nil {
+            lines.append("When evaluating portfolio health, asset allocation, and risk, always tailor your analysis and actionable suggestions to the user's age, risk tolerance, and financial goals from their profile.")
+        }
         if let notes = storage.aiWorkspaceContextText() {
             lines.append("")
             lines.append("WORKSPACE NOTES (durable user memory — always present, never ask for them again):")

@@ -324,12 +324,26 @@ struct AIReviewWideView: View {
         case .user:
             HStack {
                 Spacer()
-                Text(message.content)
-                    .font(DS.body)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Capsule().fill(DS.brand))
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .trailing, spacing: 6) {
+                    if let base64 = message.imageBase64,
+                       let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")),
+                       let nsImg = NSImage(data: data) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 240, maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                    }
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .font(DS.body)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         case .assistant:
             HStack(alignment: .top, spacing: 8) {
@@ -388,15 +402,83 @@ struct AIReviewWideView: View {
                     Spacer()
                 }
             }
+
+            // Image attachment preview
+            if let data = vm.attachedImageData, let nsImg = NSImage(data: data) {
+                HStack(spacing: 10) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DS.hairline, lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Image attached")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(DS.ink)
+                        Text("Will be analyzed along with your question")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        vm.attachedImageData = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(DS.cardAlt.opacity(0.8)))
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Ask about your portfolio…", text: Binding(
+                // Attach image button
+                Button {
+                    chooseOrPasteImage(vm)
+                } label: {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(vm.attachedImageData != nil ? DS.brand : DS.inkSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Attach or paste image from clipboard (Cmd+V)")
+
+                TextField("Ask about your portfolio… (Shift+Enter for newline)", text: Binding(
                     get: { vm.draft },
                     set: { vm.draft = $0 }
                 ), axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(DS.body)
-                    .lineLimit(1...4)
+                    .lineLimit(2...6)
+                    .frame(minHeight: 44)
                     .focused($composerFocused)
+                    .onKeyPress(.return, phases: .down) { press in
+                        if !press.modifiers.contains(.shift) && !press.modifiers.contains(.option) {
+                            if canSubmit(vm) {
+                                submit(vm)
+                            }
+                            return .handled
+                        }
+                        return .ignored
+                    }
+                    .onKeyPress(.init("v"), phases: .down) { press in
+                        if press.modifiers == .command {
+                            if pasteImageFromClipboard(vm) {
+                                return .handled
+                            }
+                        }
+                        return .ignored
+                    }
                     .onSubmit { submit(vm) }
 
                 Button {
@@ -444,7 +526,7 @@ struct AIReviewWideView: View {
     }
 
     private func canSubmit(_ vm: AIReviewViewModel) -> Bool {
-        !vm.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !vm.isSending
+        (!vm.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.attachedImageData != nil) && !vm.isSending
     }
 
     private func canSaveWorkspace(_ vm: AIReviewViewModel) -> Bool {
@@ -454,6 +536,44 @@ struct AIReviewWideView: View {
     private func submit(_ vm: AIReviewViewModel) {
         guard canSubmit(vm) else { return }
         Task { await vm.sendCurrentMessage() }
+    }
+
+    @discardableResult
+    private func pasteImageFromClipboard(_ vm: AIReviewViewModel) -> Bool {
+        #if os(macOS)
+        let pb = NSPasteboard.general
+        if let image = NSImage(pasteboard: pb) {
+            if let tiff = image.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                vm.attachedImageData = jpeg
+                return true
+            }
+        }
+        #endif
+        return false
+    }
+
+    private func chooseOrPasteImage(_ vm: AIReviewViewModel) {
+        if pasteImageFromClipboard(vm) { return }
+        #if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image, .png, .jpeg]
+        panel.prompt = "Attach"
+        if panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url) {
+            if let img = NSImage(data: data),
+               let tiff = img.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff),
+               let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                vm.attachedImageData = jpeg
+            } else {
+                vm.attachedImageData = data
+            }
+        }
+        #endif
     }
 
     // MARK: - Rename sheet
@@ -487,8 +607,6 @@ struct AIReviewWideView: View {
 /// numbered lists) as ONE `AttributedString` inside a single `Text`. A single
 /// text run is what makes multi-line selection & copy work reliably on macOS.
 /// `baseFont` becomes the default for unstyled runs; inline attributes (bold,
-/// headers) override it. Do NOT apply `.font()` from the caller — it overrides
-/// every attribute inside the AttributedString.
 private struct MarkdownText: View {
     let content: String
     let baseFont: Font
@@ -498,129 +616,210 @@ private struct MarkdownText: View {
         self.baseFont = baseFont
     }
 
-    var body: some View {
-        Text(attributed())
-            .textSelection(.enabled)
+    private enum MarkdownBlock {
+        case header(level: Int, text: String)
+        case paragraph(text: String)
+        case bullet(text: String)
+        case numbered(index: Int, text: String)
+        case table(headers: [String], rows: [[String]])
+        case divider
     }
 
-    private func attributed() -> AttributedString {
-        let lines = content.components(separatedBy: "\n")
-        var out = AttributedString()
-        for (index, rawLine) in lines.enumerated() {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            var attributed = AttributedString()
+    var body: some View {
+        let blocks = parseBlocks(content)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(blocks.indices, id: \.self) { idx in
+                renderBlock(blocks[idx])
+            }
+        }
+        .textSelection(.enabled)
+    }
 
+    @ViewBuilder
+    private func renderBlock(_ block: MarkdownBlock) -> some View {
+        switch block {
+        case .header(let level, let text):
+            Text(inlineAttr(text))
+                .font(.inter(level == 1 ? 14 : (level == 2 ? 13 : 12), weight: .semibold, relativeTo: .body))
+                .foregroundStyle(DS.ink)
+                .padding(.top, level <= 2 ? 4 : 2)
+
+        case .paragraph(let text):
+            Text(inlineAttr(text))
+                .font(baseFont)
+                .foregroundStyle(DS.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+        case .bullet(let text):
+            HStack(alignment: .top, spacing: 6) {
+                Text("•")
+                    .font(.inter(12, weight: .bold, relativeTo: .body))
+                    .foregroundStyle(DS.brand)
+                    .frame(width: 12, alignment: .center)
+                Text(inlineAttr(text))
+                    .font(baseFont)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+        case .numbered(let index, let text):
+            HStack(alignment: .top, spacing: 6) {
+                Text("\(index).")
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .body))
+                    .foregroundStyle(DS.inkSecondary)
+                    .frame(minWidth: 16, alignment: .trailing)
+                Text(inlineAttr(text))
+                    .font(baseFont)
+                    .foregroundStyle(DS.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+        case .table(let headers, let rows):
+            renderTable(headers: headers, rows: rows)
+
+        case .divider:
+            Divider()
+                .overlay(DS.hairline)
+                .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func renderTable(headers: [String], rows: [[String]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                if !headers.isEmpty {
+                    GridRow {
+                        ForEach(0..<headers.count, id: \.self) { c in
+                            Text(inlineAttr(headers[c]))
+                                .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                                .foregroundStyle(DS.ink)
+                        }
+                    }
+                    Divider()
+                        .gridCellColumns(max(headers.count, 1))
+                }
+
+                ForEach(0..<rows.count, id: \.self) { r in
+                    let row = rows[r]
+                    GridRow {
+                        ForEach(0..<headers.count, id: \.self) { c in
+                            let cellText = c < row.count ? row[c] : ""
+                            Text(inlineAttr(cellText))
+                                .font(.inter(11, weight: .regular, relativeTo: .caption))
+                                .foregroundStyle(DS.inkSecondary)
+                        }
+                    }
+                    if r < rows.count - 1 {
+                        Divider()
+                            .opacity(0.3)
+                            .gridCellColumns(max(headers.count, 1))
+                    }
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(DS.cardAlt.opacity(0.7))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(DS.hairline, lineWidth: 1)
+            )
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func inlineAttr(_ text: String) -> AttributedString {
+        if let attr = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return attr
+        }
+        return AttributedString(text)
+    }
+
+    private func parseBlocks(_ raw: String) -> [MarkdownBlock] {
+        let lines = raw.components(separatedBy: "\n")
+        var blocks: [MarkdownBlock] = []
+        var i = 0
+
+        func isSeparatorRow(_ line: String) -> Bool {
+            guard line.contains("|") else { return false }
+            let cells = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            guard cells.count >= 2 else { return false }
+            return cells.allSatisfy { cell in
+                cell.allSatisfy { " -:".contains($0) }
+            }
+        }
+
+        func isTableRow(_ line: String) -> Bool {
+            guard line.contains("|") && !isSeparatorRow(line) else { return false }
+            let cells = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            return cells.count >= 2
+        }
+
+        func isHorizontalRule(_ line: String) -> Bool {
+            let stripped = line.filter { $0 != " " }
+            guard stripped.count >= 3 else { return false }
+            let set = Set(stripped)
+            return set.count == 1 && set.first != nil && "*-_=~".contains(set.first!)
+        }
+
+        while i < lines.count {
+            let line = lines[i].trimmingCharacters(in: .whitespaces)
             if line.isEmpty {
-                attributed = AttributedString()
-            } else if isHorizontalRule(line) {
-                // `---`, `***`, `___` → blank line keeps the visual break clean.
-                attributed = AttributedString()
-            } else if line.contains("|"), isTableSeparatorRow(line) {
-                // Markdown table separator row (| --- | --- |) → skip entirely.
-                attributed = AttributedString()
-            } else if line.hasPrefix("#") {
-                // Header: keep the level text, drop the "#" marker.
+                i += 1
+                continue
+            }
+
+            // Table check (header row + separator row)
+            if isTableRow(line) && i + 1 < lines.count && isSeparatorRow(lines[i + 1]) {
+                let headers = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                i += 2 // skip header and separator
+                var rows: [[String]] = []
+                while i < lines.count && isTableRow(lines[i]) {
+                    let rowCells = lines[i].split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    rows.append(rowCells)
+                    i += 1
+                }
+                blocks.append(.table(headers: headers, rows: rows))
+                continue
+            }
+
+            if isHorizontalRule(line) {
+                blocks.append(.divider)
+                i += 1
+                continue
+            }
+
+            if line.hasPrefix("#") {
                 let level = line.prefix { $0 == "#" }.count
                 let text = String(line.dropFirst(level)).trimmingCharacters(in: .whitespaces)
-                var header = applyBold(AttributedString(text))
-                header.font = .inter(level >= 3 ? 13 : 14, weight: .semibold, relativeTo: .body)
-                attributed = header
-            } else if line.contains("|"), isTableRow(line) {
-                attributed = tableRow(line)
-            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
-                let item = applyBold(AttributedString(String(line.dropFirst(2))))
-                var bullet = AttributedString("•  ")
-                bullet.font = .inter(12.5, weight: .bold, relativeTo: .body)
-                bullet.foregroundColor = DS.brand
-                attributed = bullet + item
-            } else if let dot = line.firstIndex(of: "."),
-                      let num = Int(line[..<dot]), line[dot...].hasPrefix(". ") {
-                let item = applyBold(AttributedString(String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces)))
-                attributed = AttributedString("\(num).  ") + item
-            } else {
-                attributed = applyBold(AttributedString(line))
+                blocks.append(.header(level: level, text: text))
+                i += 1
+                continue
             }
 
-            out += attributed
-            if index < lines.count - 1 {
-                out += AttributedString("\n")
+            if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                let text = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                blocks.append(.bullet(text: text))
+                i += 1
+                continue
             }
-        }
 
-        // Give every unstyled run the base font so plain text doesn't fall back
-        // to the system default. Explicit fonts (bold, headers, bullets) win.
-        var styled = out
-        for run in styled.runs where run.font == nil {
-            styled[run.range].font = baseFont
-        }
-        return styled
-    }
-
-    private func isHorizontalRule(_ line: String) -> Bool {
-        let stripped = line.filter { $0 != " " }
-        guard stripped.count >= 3 else { return false }
-        let set = Set(stripped)
-        return set.count == 1 && set.first != nil && "*-_=~".contains(set.first!)
-    }
-
-    /// A markdown table has pipes and at least two cells; the separator row
-    /// (`| --- | --- |`) is skipped entirely.
-    private func isTableSeparatorRow(_ line: String) -> Bool {
-        guard line.contains("|") else { return false }
-        let cells = line.split(separator: "|").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        guard cells.count >= 2 else { return false }
-        return cells.allSatisfy { $0.filter { !" -:".contains($0) }.isEmpty }
-    }
-
-    private func isTableRow(_ line: String) -> Bool {
-        guard !isTableSeparatorRow(line) else { return false }
-        let cells = line.split(separator: "|").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        return cells.count >= 2
-    }
-
-    private func tableRow(_ line: String) -> AttributedString {
-        let cells = line.split(separator: "|").map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }.filter { !$0.isEmpty }
-        var row = AttributedString()
-        for (i, cell) in cells.enumerated() {
-            let rendered = applyBold(AttributedString(cell))
-            // First row = header → semibold, like a markdown table header.
-            row += rendered
-            if i < cells.count - 1 {
-                row += AttributedString("   ")
+            if let dotIndex = line.firstIndex(of: "."),
+               let num = Int(line[..<dotIndex]),
+               line[dotIndex...].hasPrefix(". ") {
+                let text = String(line[line.index(after: dotIndex)...]).trimmingCharacters(in: .whitespaces)
+                blocks.append(.numbered(index: num, text: text))
+                i += 1
+                continue
             }
-        }
-        return row
-    }
 
-    /// Bold on `**…**` runs — renders only the captured content, dropping the
-    /// literal asterisks. Everything else passes through unchanged. Extracts
-    /// the characters via `.characters` (NOT `.description`, which appends the
-    /// attribute containers as literal `{ … }` text), and advances past the
-    /// whole `**…**` match so no stray asterisk survives.
-    private func applyBold(_ attributed: AttributedString) -> AttributedString {
-        let text = String(attributed.characters)
-        var result = AttributedString()
-        let pattern = "\\*\\*(.+?)\\*\\*"
-        var cursor = text.startIndex
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return attributed }
-        let nsRange = NSRange(text.startIndex..., in: text)
-        for match in regex.matches(in: text, range: nsRange) {
-            guard let full = Range(match.range, in: text),
-                  match.numberOfRanges >= 2,
-                  let inner = Range(match.range(at: 1), in: text) else { continue }
-            if full.lowerBound > cursor {
-                result += AttributedString(String(text[cursor..<full.lowerBound]))
-            }
-            var bold = AttributedString(String(text[inner]))
-            bold.font = Font.inter(12.5, weight: .semibold, relativeTo: .body)
-            result += bold
-            cursor = full.upperBound
+            // Regular paragraph line
+            blocks.append(.paragraph(text: line))
+            i += 1
         }
-        if cursor < text.endIndex {
-            result += AttributedString(String(text[cursor...]))
-        }
-        return result.characters.isEmpty ? attributed : result
+
+        return blocks
     }
 }
