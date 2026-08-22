@@ -4,6 +4,7 @@ import SwiftUI
 struct ImportExportWideView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
+    @ObservedObject private var syncService = iCloudSyncService.shared
 
     let onImportStandard: () -> Void
     let onImportJapaneseFunds: () -> Void
@@ -33,6 +34,9 @@ struct ImportExportWideView: View {
                     Spacer()
                 }
                 .padding(.bottom, 4)
+
+                // Section 0: iCloud Sync
+                iCloudSyncSection
 
                 // Section 1: Import Data
                 HubTableSection(sectionTitle: "IMPORT DATA", actionHeader: "IMPORT ACTION") {
@@ -136,6 +140,142 @@ struct ImportExportWideView: View {
             .padding(24)
         }
         .background(DS.ground)
+    }
+
+    private var iCloudSyncSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ICLOUD SYNCHRONIZATION")
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .tracking(0.8)
+
+            VStack(alignment: .leading, spacing: 16) {
+                // Toggle Row
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: "icloud.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(DS.brand)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(DS.brand.opacity(0.1)))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("iCloud Sync")
+                            .font(.inter(13, weight: .semibold, relativeTo: .body))
+                            .foregroundStyle(DS.ink)
+                        Text("Automatically synchronizes portfolios, watchlists, alerts, and notes across all your Macs, iPhones, and iPads via iCloud.")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $storageService.iCloudSyncEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .onChange(of: storageService.iCloudSyncEnabled) {
+                            syncService.onSyncToggleChanged(enabled: storageService.iCloudSyncEnabled)
+                        }
+                }
+
+                if storageService.iCloudSyncEnabled {
+                    Divider().overlay(DS.hairline)
+
+                    if !syncService.isiCloudAvailable {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(DS.gold)
+                                .font(.system(size: 14))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("iCloud Not Signed In")
+                                    .font(DS.bodyStrong)
+                                    .foregroundStyle(DS.ink)
+                                Text("This device is not signed in to an Apple ID. Please sign in to iCloud in macOS System Settings to enable sync.")
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkSecondary)
+                            }
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(DS.gold.opacity(0.12)))
+
+                        Divider().overlay(DS.hairline)
+                    }
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(syncService.syncStatus.contains("Fail") ? Color.red : Color.green)
+                                    .frame(width: 7, height: 7)
+                                Text(syncService.syncStatus)
+                                    .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                    .foregroundStyle(DS.ink)
+                            }
+                            if let lastDate = syncService.lastSyncDate {
+                                Text("Last sync: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkSecondary)
+                            } else {
+                                Text("Not synced yet")
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 8) {
+                            Button {
+                                syncService.pushLocalData()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.icloud")
+                                        .font(.system(size: 11))
+                                    Text("Push to iCloud")
+                                        .font(DS.caption)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .pointingHandCursor()
+
+                            Button {
+                                syncService.pullAndMerge(force: true)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.down.icloud")
+                                        .font(.system(size: 11))
+                                    Text("Pull from iCloud")
+                                        .font(DS.caption)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .pointingHandCursor()
+
+                            Button {
+                                syncService.pullAndMerge(force: true)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 11))
+                                    Text(syncService.isSyncing ? "Syncing…" : "Sync Now")
+                                        .font(DS.caption)
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DS.brand)
+                            .controlSize(.small)
+                            .pointingHandCursor()
+                            .disabled(syncService.isSyncing)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 10).fill(DS.card))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
     }
 }
 
