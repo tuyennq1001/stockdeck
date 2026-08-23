@@ -268,6 +268,7 @@ struct PortfolioWindowView: View {
             }
             .padding(.top, 12).padding(.trailing, 12).padding(.bottom, 2)
             brand
+            Divider().overlay(DS.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     if storageService.showNewsTab {
@@ -405,9 +406,10 @@ struct PortfolioWindowView: View {
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
+            Divider().overlay(DS.hairline)
             NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                    selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
-                .padding(.horizontal, 12).padding(.top, 2).padding(.bottom, 6)
+                .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
             TotalFooter(value: aggregateValue(for: storageService.portfolios),
                         cost: aggregateCost(for: storageService.portfolios),
                         pnl: totalPnlValue,
