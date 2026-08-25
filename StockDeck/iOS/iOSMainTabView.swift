@@ -58,8 +58,8 @@ struct iOSMainTabView: View {
                         }
                     }
                     .sheet(isPresented: $showWatchlistCustomizer) {
-                        WatchlistMetricCustomizer(initialMetrics: storageService.watchlistMetrics) { newMetrics in
-                            storageService.setWatchlistMetrics(newMetrics)
+                        WatchlistMetricCustomizer(initialMetrics: storageService.resolvedIOSWatchlistMetrics) { newMetrics in
+                            storageService.setIOSWatchlistMetrics(newMetrics)
                         }
                     }
             }
@@ -96,8 +96,8 @@ struct iOSMainTabView: View {
                         }
                     }
                     .sheet(isPresented: $showPortfolioColumnCustomizer) {
-                        PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { newColumns in
-                            storageService.setPortfolioColumns(newColumns)
+                        PortfolioColumnCustomizer(initialColumns: storageService.resolvedIOSPortfolioColumns) { newColumns in
+                            storageService.setIOSPortfolioColumns(newColumns)
                         }
                     }
             }
