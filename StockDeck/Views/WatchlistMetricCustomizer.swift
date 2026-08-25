@@ -188,7 +188,11 @@ struct WatchlistMetricCustomizer: View {
             .padding(.horizontal, 28)
             .padding(.vertical, 16)
         }
+        #if os(macOS)
         .frame(width: 720, height: 600)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
         .background(DS.ground)
     }
 
@@ -246,6 +250,7 @@ struct WatchlistMetricCustomizer: View {
 
     @ViewBuilder
     private func categorySection(category: WatchlistMetricCategory) -> some View {
+        #if os(macOS)
         HStack(alignment: .top, spacing: 24) {
             Text(category.rawValue)
                 .font(.system(size: 13, weight: .bold))
@@ -253,44 +258,59 @@ struct WatchlistMetricCustomizer: View {
                 .frame(width: 110, alignment: .leading)
                 .padding(.top, 6)
 
-            FlowLayout(spacing: 8) {
-                ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price && $0.category == category }) { metric in
-                    let isSelected = metrics.contains(metric)
-                    Button {
-                        withAnimation(.spring(response: 0.2)) {
-                            if isSelected {
-                                metrics.removeAll { $0 == metric }
-                            } else {
-                                metrics.append(metric)
-                            }
-                            selectedPreset = .custom
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(metric.title)
-                                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
-                                .foregroundStyle(isSelected ? DS.brand : DS.ink)
+            categoryPills(category: category)
+        }
+        #else
+        VStack(alignment: .leading, spacing: 8) {
+            Text(category.rawValue)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(DS.inkSecondary)
+                .padding(.top, 4)
 
-                            if isSelected {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(DS.brand)
-                            }
+            categoryPills(category: category)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func categoryPills(category: WatchlistMetricCategory) -> some View {
+        FlowLayout(spacing: 8) {
+            ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price && $0.category == category }) { metric in
+                let isSelected = metrics.contains(metric)
+                Button {
+                    withAnimation(.spring(response: 0.2)) {
+                        if isSelected {
+                            metrics.removeAll { $0 == metric }
+                        } else {
+                            metrics.append(metric)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? DS.brand.opacity(0.12) : DS.cardAlt)
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(isSelected ? DS.brand.opacity(0.3) : Color.clear, lineWidth: 1)
-                        )
+                        selectedPreset = .custom
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(metric.title)
+                            .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                            .foregroundStyle(isSelected ? DS.brand : DS.ink)
+
+                        if isSelected {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(DS.brand)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? DS.brand.opacity(0.12) : DS.cardAlt)
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(isSelected ? DS.brand.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
                 }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
         }
     }

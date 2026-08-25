@@ -326,14 +326,26 @@ struct AIReviewWideView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
                     if let base64 = message.imageBase64,
-                       let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")),
-                       let nsImg = NSImage(data: data) {
-                        Image(nsImage: nsImg)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 240, maxHeight: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                       let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")) {
+                        #if os(macOS)
+                        if let nsImg = NSImage(data: data) {
+                            Image(nsImage: nsImg)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 240, maxHeight: 180)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                        }
+                        #else
+                        if let uiImg = UIImage(data: data) {
+                            Image(uiImage: uiImg)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 240, maxHeight: 180)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
+                        }
+                        #endif
                     }
                     if !message.content.isEmpty {
                         Text(message.content)
@@ -404,14 +416,28 @@ struct AIReviewWideView: View {
             }
 
             // Image attachment preview
-            if let data = vm.attachedImageData, let nsImg = NSImage(data: data) {
+            #if os(macOS)
+            let thumbnailImg: NSImage? = vm.attachedImageData.flatMap { NSImage(data: $0) }
+            #else
+            let thumbnailImg: UIImage? = vm.attachedImageData.flatMap { UIImage(data: $0) }
+            #endif
+            if let thumbnailImg {
                 HStack(spacing: 10) {
-                    Image(nsImage: nsImg)
+                    #if os(macOS)
+                    Image(nsImage: thumbnailImg)
                         .resizable()
                         .scaledToFill()
                         .frame(width: 44, height: 44)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DS.hairline, lineWidth: 1))
+                    #else
+                    Image(uiImage: thumbnailImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DS.hairline, lineWidth: 1))
+                    #endif
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Image attached")
@@ -550,8 +576,15 @@ struct AIReviewWideView: View {
                 return true
             }
         }
-        #endif
         return false
+        #else
+        if let image = UIPasteboard.general.image,
+           let jpeg = image.jpegData(compressionQuality: 0.8) {
+            vm.attachedImageData = jpeg
+            return true
+        }
+        return false
+        #endif
     }
 
     private func chooseOrPasteImage(_ vm: AIReviewViewModel) {
@@ -571,6 +604,19 @@ struct AIReviewWideView: View {
                 vm.attachedImageData = jpeg
             } else {
                 vm.attachedImageData = data
+            }
+        }
+        #else
+        presentNativeDocumentPicker(allowedContentTypes: [.image, .png, .jpeg]) { url in
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? Data(contentsOf: url) {
+                if let img = UIImage(data: data),
+                   let jpeg = img.jpegData(compressionQuality: 0.8) {
+                    vm.attachedImageData = jpeg
+                } else {
+                    vm.attachedImageData = data
+                }
             }
         }
         #endif

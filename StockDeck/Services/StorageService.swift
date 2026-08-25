@@ -93,6 +93,34 @@ class StorageService: ObservableObject {
         portfolioColumns = columns
     }
 
+    // MARK: - iOS Specific Column Customizations
+
+    @Published var iosWatchlistMetrics: [WatchlistMetric]? = nil {
+        didSet { scheduleSave() }
+    }
+
+    var resolvedIOSWatchlistMetrics: [WatchlistMetric] {
+        iosWatchlistMetrics ?? [.price, .todayChange, .chart30d, .oneMonth]
+    }
+
+    func setIOSWatchlistMetrics(_ metrics: [WatchlistMetric]) {
+        objectWillChange.send()
+        iosWatchlistMetrics = metrics
+    }
+
+    @Published var iosPortfolioColumns: [PortfolioColumnMetric]? = nil {
+        didSet { scheduleSave() }
+    }
+
+    var resolvedIOSPortfolioColumns: [PortfolioColumnMetric] {
+        iosPortfolioColumns ?? [.cost, .price, .value, .totalPnl]
+    }
+
+    func setIOSPortfolioColumns(_ columns: [PortfolioColumnMetric]) {
+        objectWillChange.send()
+        iosPortfolioColumns = columns
+    }
+
     @Published var portfolios: [Portfolio] = [] {
         didSet { scheduleSave() }
     }
@@ -1747,6 +1775,8 @@ class StorageService: ObservableObject {
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
         var portfolioColumns: [String]?
+        var iosWatchlistMetrics: [String]?
+        var iosPortfolioColumns: [String]?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -1804,6 +1834,8 @@ class StorageService: ObservableObject {
             watchlists: watchlists,
             selectedWatchlistId: selectedWatchlistId,
             portfolioColumns: portfolioColumns?.map(\.rawValue),
+            iosWatchlistMetrics: iosWatchlistMetrics?.map(\.rawValue),
+            iosPortfolioColumns: iosPortfolioColumns?.map(\.rawValue),
             portfolios: portfolios,
             preferredCurrency: preferredCurrency,
             stockPriceCurrency: stockPriceCurrency,
@@ -1965,6 +1997,10 @@ class StorageService: ObservableObject {
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
+        let decodedIOSWlMetrics = decoded.iosWatchlistMetrics?.compactMap(WatchlistMetric.init(rawValue:))
+        iosWatchlistMetrics = (decodedIOSWlMetrics?.isEmpty == false) ? decodedIOSWlMetrics : nil
+        let decodedIOSPortCols = decoded.iosPortfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+        iosPortfolioColumns = (decodedIOSPortCols?.isEmpty == false) ? decodedIOSPortCols : nil
         if let syncEnabled = decoded.iCloudSyncEnabled {
             iCloudSyncEnabled = syncEnabled
         }

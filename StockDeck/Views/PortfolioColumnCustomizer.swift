@@ -201,7 +201,11 @@ struct PortfolioColumnCustomizer: View {
             .padding(.horizontal, 28)
             .padding(.vertical, 16)
         }
+        #if os(macOS)
         .frame(width: 720, height: 600)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
         .background(DS.ground)
     }
 
@@ -259,6 +263,7 @@ struct PortfolioColumnCustomizer: View {
 
     @ViewBuilder
     private func categorySection(category: PortfolioColumnCategory) -> some View {
+        #if os(macOS)
         HStack(alignment: .top, spacing: 24) {
             Text(category.rawValue)
                 .font(.system(size: 13, weight: .bold))
@@ -266,44 +271,59 @@ struct PortfolioColumnCustomizer: View {
                 .frame(width: 110, alignment: .leading)
                 .padding(.top, 6)
 
-            FlowLayout(spacing: 8) {
-                ForEach(PortfolioColumnMetric.allCases.filter { $0.category == category }) { column in
-                    let isSelected = columns.contains(column)
-                    Button {
-                        withAnimation(.spring(response: 0.2)) {
-                            if isSelected {
-                                columns.removeAll { $0 == column }
-                            } else {
-                                columns.append(column)
-                            }
-                            selectedPreset = .custom
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(column.title)
-                                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
-                                .foregroundStyle(isSelected ? DS.brand : DS.ink)
+            categoryPills(category: category)
+        }
+        #else
+        VStack(alignment: .leading, spacing: 8) {
+            Text(category.rawValue)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(DS.inkSecondary)
+                .padding(.top, 4)
 
-                            if isSelected {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(DS.brand)
-                            }
+            categoryPills(category: category)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func categoryPills(category: PortfolioColumnCategory) -> some View {
+        FlowLayout(spacing: 8) {
+            ForEach(PortfolioColumnMetric.allCases.filter { $0.category == category }) { column in
+                let isSelected = columns.contains(column)
+                Button {
+                    withAnimation(.spring(response: 0.2)) {
+                        if isSelected {
+                            columns.removeAll { $0 == column }
+                        } else {
+                            columns.append(column)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? DS.brand.opacity(0.12) : DS.cardAlt)
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(isSelected ? DS.brand.opacity(0.3) : Color.clear, lineWidth: 1)
-                        )
+                        selectedPreset = .custom
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(column.title)
+                            .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
+                            .foregroundStyle(isSelected ? DS.brand : DS.ink)
+
+                        if isSelected {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(DS.brand)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? DS.brand.opacity(0.12) : DS.cardAlt)
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(isSelected ? DS.brand.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
                 }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
         }
     }
