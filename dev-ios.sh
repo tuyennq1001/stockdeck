@@ -25,7 +25,19 @@ for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/"
 done
 
+# Compile asset catalog (AppIcon and assets)
+echo "Compiling asset catalog..."
+xcrun --sdk iphonesimulator actool StockDeck/Assets.xcassets \
+    --compile "$APP" \
+    --output-partial-info-plist "$APP/assetcatalog_generated_info.plist" \
+    --platform iphonesimulator \
+    --target-device iphone \
+    --target-device ipad \
+    --minimum-deployment-target 17.0 \
+    --app-icon AppIcon 2>/dev/null || true
+
 # Copy icons & images if available
+cp StockDeck/Assets.xcassets/AppIcon.appiconset/*.png "$APP/" 2>/dev/null || true
 cp "StockDeck/Resources/AppIcon.png" "$APP/" 2>/dev/null || true
 cp "StockDeck/Resources/AppLogo.png" "$APP/" 2>/dev/null || true
 
@@ -49,6 +61,31 @@ cat > "$APP/Info.plist" << 'PLISTEOF'
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon60x60</string>
+            </array>
+            <key>CFBundleIconName</key>
+            <string>AppIcon</string>
+        </dict>
+    </dict>
+    <key>CFBundleIcons~ipad</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon60x60</string>
+                <string>AppIcon76x76</string>
+            </array>
+            <key>CFBundleIconName</key>
+            <string>AppIcon</string>
+        </dict>
+    </dict>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIDeviceFamily</key>

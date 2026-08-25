@@ -470,9 +470,14 @@ struct BrandMark: View {
 #else
     private static let appIcon: UIImage? = {
         if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let data = try? Data(contentsOf: url),
            let img = UIImage(data: data) {
+            return img
+        }
+        if let img = UIImage(named: "AppIcon") {
             return img
         }
         return nil
