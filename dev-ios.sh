@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP=".build/StockDeck-iOS.app"
+APP="$(pwd)/.build/StockDeck-iOS.app"
 SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
 TRIPLE="arm64-apple-ios17.0-simulator"
 BUNDLE_ID="com.terry.stockdeck.ios"
