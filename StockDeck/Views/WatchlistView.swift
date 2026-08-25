@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 private enum WatchlistCol {
     static let symbol: CGFloat = 108
@@ -46,8 +45,6 @@ struct WatchlistView: View {
     @State private var alertSymbol: String? = nil
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
-    @State private var showFileImporter: Bool = false
-    @State private var importAlertMessage: String? = nil
 
     private var currentSortKey: WatchlistSortKey {
         WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
@@ -441,46 +438,6 @@ struct WatchlistView: View {
                     await stockService.ensureSparklines(for: newWatchlist)
                 }
             }
-            .fileImporter(
-                isPresented: $showFileImporter,
-                allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-            ) { result in
-                switch result {
-                case .success(let url):
-                    let accessed = url.startAccessingSecurityScopedResource()
-                    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                    if let parsed = SpreadsheetIO.parseWatchlistsFile(from: url) {
-                        var messages: [String] = []
-                        for (wlName, symbols) in parsed {
-                            let deduped = Set(symbols)
-                            if let existing = storageService.watchlists.first(where: {
-                                $0.name.trimmingCharacters(in: .whitespaces).lowercased()
-                                == wlName.trimmingCharacters(in: .whitespaces).lowercased()
-                            }) {
-                                storageService.addMultipleToWatchlist(deduped, targetWatchlistId: existing.id)
-                                messages.append("\(deduped.count) symbols merged into “\(wlName)”")
-                            } else {
-                                let created = storageService.createWatchlist(name: wlName)
-                                storageService.addMultipleToWatchlist(deduped, targetWatchlistId: created.id)
-                                messages.append("\(deduped.count) symbols to new “\(wlName)”")
-                            }
-                        }
-                        importAlertMessage = "Imported \(parsed.count) watchlist(s): " + messages.joined(separator: "; ")
-                    } else {
-                        importAlertMessage = "Could not parse watchlist file or no valid symbols found."
-                    }
-                case .failure(let error):
-                    importAlertMessage = "Failed to import file: \(error.localizedDescription)"
-                }
-            }
-            .alert("Watchlist Import", isPresented: Binding<Bool>(
-                get: { importAlertMessage != nil },
-                set: { if !$0 { importAlertMessage = nil } }
-            )) {
-                Button("OK") { importAlertMessage = nil }
-            } message: {
-                if let msg = importAlertMessage { Text(msg) }
-            }
     }
 
     /// The watchlist tabs in order: the local drag preview while dragging, else the
@@ -563,26 +520,10 @@ struct WatchlistView: View {
                         }
                     }
 
-                    Menu {
-                        Button {
-                            newWatchlistName = ""
-                            showNewWatchlistAlert = true
-                        } label: {
-                            Label("New Watchlist", systemImage: "plus")
-                        }
-
-                        Button {
-                            #if os(macOS)
-                            PortfolioIO.pickAndParseWatchlist(storageService: storageService, restoreActivationPolicy: true) { msg in
-                                importAlertMessage = msg
-                            }
-                            #else
-                            showFileImporter = true
-                            #endif
-                        } label: {
-                            Label("Import Watchlist (CSV/XLSX/TXT)…", systemImage: "square.and.arrow.down")
-                        }
-                    } label: {
+                    Button(action: {
+                        newWatchlistName = ""
+                        showNewWatchlistAlert = true
+                    }) {
                         Image(systemName: "plus")
                             .font(.inter(10, weight: .bold, relativeTo: .caption))
                             .foregroundColor(DS.brand)
@@ -591,9 +532,9 @@ struct WatchlistView: View {
                             .background(Capsule().fill(DS.brand.opacity(0.12)))
                             .contentShape(Capsule())
                     }
-                    .menuStyle(.borderlessButton)
+                    .buttonStyle(.plain)
                     .pointingHandCursor()
-                    .help("Add or import watchlist")
+                    .help("New watchlist")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
