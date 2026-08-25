@@ -179,7 +179,7 @@ struct WatchlistView: View {
                 HStack(spacing: 5) {
                     SymbolLogo(symbol: symbol, size: 20)
                     Text(StockService.beautifiedSymbol(symbol))
-                        .font(.inter(14.5, relativeTo: .body).monospacedDigit())
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)
                 }
@@ -288,7 +288,7 @@ struct WatchlistView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
+        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
         .foregroundColor(.secondary)
         .tracking(0.8)
         .textCase(.uppercase)
@@ -515,10 +515,15 @@ struct WatchlistView: View {
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.15)) {
                                     storageService.selectWatchlist(id: wl.id)
+                                    proxy.scrollTo(wl.id, anchor: .center)
                                 }
                             }) {
                                 Text(wl.name)
+                                    #if os(iOS)
                                     .font(.inter(13, weight: selected ? .bold : .medium, relativeTo: .subheadline))
+                                    #else
+                                    .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                                    #endif
                                     .foregroundColor(selected ? .white : DS.ink)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)
@@ -593,9 +598,18 @@ struct WatchlistView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
             }
-            .onChange(of: storageService.selectedWatchlistId) { _, newId in
-                if let newId {
-                    withAnimation { proxy.scrollTo(newId, anchor: .center) }
+            .onAppear {
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(storageService.currentWatchlist.id, anchor: .center)
+                    }
+                }
+            }
+            .onChange(of: storageService.currentWatchlist.id) { _, newId in
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(newId, anchor: .center)
+                    }
                 }
             }
         }
@@ -1162,12 +1176,12 @@ struct QuoteRow: View {
             SymbolLogo(symbol: quote.symbol, size: 20)
             VStack(alignment: .leading, spacing: 0) {
                 Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                    .font(.inter(14.5, relativeTo: .body).monospacedDigit())
+                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                     .fontWeight(.bold)
                     .lineLimit(1)
                 if storageService.showCompanyName {
                     Text(isDisplayAsset ? quote.symbol : quote.name)
-                        .font(.inter(11.5, relativeTo: .caption))
+                        .font(.inter(10, relativeTo: .caption2))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -1183,13 +1197,13 @@ struct QuoteRow: View {
 
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
             if let extPct {
                 let isPre = quote.marketState.hasPrefix("PRE")
                 HStack(spacing: 0) {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
@@ -1197,7 +1211,7 @@ struct QuoteRow: View {
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         .padding(.horizontal, 1)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                 }
@@ -1205,7 +1219,7 @@ struct QuoteRow: View {
                 .minimumScaleFactor(0.8)
             } else {
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
                     .fontWeight(.semibold)
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
@@ -1219,7 +1233,7 @@ struct QuoteRow: View {
         let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
         let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
         Text((quote.change >= 0 ? "+" : "") + formatted)
-            .font(.inter(14, relativeTo: .body).monospacedDigit())
+            .font(.inter(11.5, relativeTo: .body).monospacedDigit())
             .fontWeight(.medium)
             .foregroundColor(quote.isPositive ? DS.up : DS.down)
             .lineLimit(1)

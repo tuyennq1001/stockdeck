@@ -33,15 +33,15 @@ struct PortfolioListView: View {
         case .avgPrice:
             Text("Avg Price").frame(width: 68, alignment: .trailing)
         case .cost:
-            Text("Cost").frame(width: 68, alignment: .trailing)
+            Text("Cost").frame(width: 66, alignment: .trailing)
         case .price:
-            Text("Price").frame(width: 82, alignment: .trailing)
+            Text("Price").frame(width: 95, alignment: .trailing)
         case .value:
-            Text("Value").frame(width: 78, alignment: .trailing)
+            Text("Value").frame(width: 75, alignment: .trailing)
         case .todayPnl:
-            Text("Today P&L").frame(width: 80, alignment: .trailing)
+            Text("Today P&L").frame(width: 88, alignment: .trailing)
         case .totalPnl:
-            Text("Total P&L").frame(width: 80, alignment: .trailing)
+            Text("Total P&L").frame(width: 88, alignment: .trailing)
         case .ext:
             Text("Ext").frame(width: 62, alignment: .trailing)
         case .shares:
@@ -118,36 +118,60 @@ struct PortfolioListView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Total value")
+                                #if os(iOS)
                                 .font(.inter(11, relativeTo: .caption))
+                                #else
+                                .font(.inter(10, relativeTo: .caption))
+                                #endif
                                 .foregroundColor(.secondary)
                             Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
+                                #if os(iOS)
                                 .font(.inter(15, relativeTo: .body).monospacedDigit())
+                                #else
+                                .font(.inter(13.5, relativeTo: .body).monospacedDigit())
+                                #endif
                                 .fontWeight(.bold)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 3) {
                             HStack(spacing: 6) {
                                 Text("Today P&L")
+                                    #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
+                                    #else
+                                    .font(.inter(10, relativeTo: .caption))
+                                    #endif
                                     .foregroundColor(.secondary)
                                 HStack(spacing: 2) {
                                     Text(StorageService.formatAmount(todayGain, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
                                     Text(String(format: "(%.\(storageService.percentDecimals)f%%)", todayPct))
                                 }
+                                #if os(iOS)
                                 .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                #else
+                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                #endif
                                 .fontWeight(.semibold)
                                 .foregroundColor(todayGain >= 0 ? DS.up : DS.down)
                             }
 
                             HStack(spacing: 6) {
                                 Text("Total P&L")
+                                    #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
+                                    #else
+                                    .font(.inter(10, relativeTo: .caption))
+                                    #endif
                                     .foregroundColor(.secondary)
                                 HStack(spacing: 2) {
                                     Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
                                     Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
                                 }
+                                #if os(iOS)
                                 .font(.inter(12, relativeTo: .caption).monospacedDigit())
+                                #else
+                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                                #endif
                                 .fontWeight(.bold)
                                 .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                             }
@@ -175,7 +199,11 @@ struct PortfolioListView: View {
                                     columnHeader(col)
                                 }
                             }
+                            #if os(iOS)
                             .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
+                            #else
+                            .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+                            #endif
                             .foregroundColor(.secondary)
                             .tracking(0.8)
                             .textCase(.uppercase)
@@ -364,10 +392,15 @@ struct PortfolioListView: View {
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             selectedPortfolioId = nil
+                            proxy.scrollTo("all_portfolios_tab", anchor: .center)
                         }
                     }) {
                         Text("All Portfolios")
+                            #if os(iOS)
                             .font(.inter(13, weight: isAllSelected ? .bold : .medium, relativeTo: .subheadline))
+                            #else
+                            .font(.inter(11.5, weight: isAllSelected ? .semibold : .medium, relativeTo: .caption))
+                            #endif
                             .foregroundColor(isAllSelected ? .white : DS.ink)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 5)
@@ -399,10 +432,15 @@ struct PortfolioListView: View {
                             Button(action: {
                                 withAnimation(.easeInOut(duration: 0.15)) {
                                     selectedPortfolioId = p.id
+                                    proxy.scrollTo(p.id, anchor: .center)
                                 }
                             }) {
                                 Text(p.name)
+                                    #if os(iOS)
                                     .font(.inter(13, weight: selected ? .bold : .medium, relativeTo: .subheadline))
+                                    #else
+                                    .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                                    #endif
                                     .foregroundColor(selected ? .white : DS.ink)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)
@@ -420,6 +458,28 @@ struct PortfolioListView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if let pId = selectedPortfolioId {
+                            proxy.scrollTo(pId, anchor: .center)
+                        } else {
+                            proxy.scrollTo("all_portfolios_tab", anchor: .center)
+                        }
+                    }
+                }
+            }
+            .onChange(of: selectedPortfolioId) { _, newId in
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if let newId {
+                            proxy.scrollTo(newId, anchor: .center)
+                        } else {
+                            proxy.scrollTo("all_portfolios_tab", anchor: .center)
+                        }
+                    }
+                }
             }
         }
     }
@@ -722,22 +782,38 @@ struct PortfolioSection: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Total value")
+                        #if os(iOS)
                         .font(.inter(11, relativeTo: .caption))
+                        #else
+                        .font(.inter(10, relativeTo: .caption))
+                        #endif
                         .foregroundColor(.secondary)
                     Text(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))
+                        #if os(iOS)
                         .font(.inter(15, relativeTo: .body).monospacedDigit())
+                        #else
+                        .font(.inter(13.5, relativeTo: .body).monospacedDigit())
+                        #endif
                         .fontWeight(.bold)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Total P&L")
+                        #if os(iOS)
                         .font(.inter(11, relativeTo: .caption))
+                        #else
+                        .font(.inter(10, relativeTo: .caption))
+                        #endif
                         .foregroundColor(.secondary)
                     HStack(spacing: 2) {
                         Text(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))
                         Text(String(format: "(%.\(storageService.percentDecimals)f%%)", totalPnlPercent))
                     }
+                    #if os(iOS)
                     .font(.inter(13, relativeTo: .body).monospacedDigit())
+                    #else
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    #endif
                     .fontWeight(.bold)
                     .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
                 }
@@ -754,7 +830,11 @@ struct PortfolioSection: View {
                     Text("Value / P&L")
                         .frame(width: 120, alignment: .trailing)
                 }
+                #if os(iOS)
                 .font(.inter(11, weight: .medium, relativeTo: .caption))
+                #else
+                .font(.inter(10, weight: .medium, relativeTo: .caption2))
+                #endif
                 .foregroundColor(.secondary)
                 .tracking(0.8)
                 .textCase(.uppercase)
@@ -1266,6 +1346,54 @@ struct PortfolioQuoteRow: View {
         return stockService.priceRate(from: q.currency)
     }
 
+    private var symbolFont: Font {
+        #if os(iOS)
+        return .inter(14.5, relativeTo: .body).monospacedDigit()
+        #else
+        return .inter(12.5, relativeTo: .body).monospacedDigit()
+        #endif
+    }
+
+    private var subtitleFont: Font {
+        #if os(iOS)
+        return .inter(11.5, relativeTo: .caption)
+        #else
+        return .inter(10, relativeTo: .caption2)
+        #endif
+    }
+
+    private var metricFont: Font {
+        #if os(iOS)
+        return .inter(14, relativeTo: .body).monospacedDigit()
+        #else
+        return .inter(11.5, relativeTo: .body).monospacedDigit()
+        #endif
+    }
+
+    private var metricSubFont: Font {
+        #if os(iOS)
+        return .inter(11, relativeTo: .caption).monospacedDigit()
+        #else
+        return .inter(10.5, relativeTo: .caption).monospacedDigit()
+        #endif
+    }
+
+    private var metricCaption2Font: Font {
+        #if os(iOS)
+        return .inter(11, relativeTo: .caption2).monospacedDigit()
+        #else
+        return .inter(10, relativeTo: .caption2).monospacedDigit()
+        #endif
+    }
+
+    private var extFont: Font {
+        #if os(iOS)
+        return .inter(13, relativeTo: .body).monospacedDigit()
+        #else
+        return .inter(11.5, relativeTo: .body).monospacedDigit()
+        #endif
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Logo + symbol + name
@@ -1278,12 +1406,12 @@ struct PortfolioQuoteRow: View {
                 SymbolLogo(symbol: globalPos.symbol, size: 20)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(titleText)
-                        .font(.inter(14.5, relativeTo: .body).monospacedDigit())
+                        .font(symbolFont)
                         .fontWeight(.bold)
                         .lineLimit(1)
                     if storageService.showCompanyName, !subTitleText.isEmpty {
                         Text(subTitleText)
-                            .font(.inter(11.5, relativeTo: .caption))
+                            .font(subtitleFont)
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
@@ -1311,7 +1439,7 @@ struct PortfolioQuoteRow: View {
         case .avgPrice:
             let avgPrice = globalPos.hasCostBasis && globalPos.shares > 0 ? (globalPos.cost / globalPos.shares) : 0
             Text(globalPos.hasCostBasis ? StorageService.formatCompactNumber(avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: avgPrice)) : "—")
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -1326,19 +1454,19 @@ struct PortfolioQuoteRow: View {
                     signed: false,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 68, alignment: .trailing)
+                .frame(width: 66, alignment: .trailing)
             } else {
                 Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
+                    .font(metricFont)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 68, alignment: .trailing)
+                    .frame(width: 66, alignment: .trailing)
             }
 
         case .price:
@@ -1346,7 +1474,7 @@ struct PortfolioQuoteRow: View {
                 if let quote {
                     let displayPrice = quote.price * priceRate
                     Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(metricFont)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -1359,7 +1487,7 @@ struct PortfolioQuoteRow: View {
                         let isPre = quote.marketState.hasPrefix("PRE")
                         HStack(spacing: 0) {
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                                .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                                .font(metricCaption2Font)
                                 .fontWeight(.semibold)
                                 .foregroundColor(quote.isPositive ? DS.up : DS.down)
                             Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
@@ -1367,7 +1495,7 @@ struct PortfolioQuoteRow: View {
                                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                                 .padding(.horizontal, 1)
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                                .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                                .font(metricCaption2Font)
                                 .fontWeight(.semibold)
                                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         }
@@ -1375,7 +1503,7 @@ struct PortfolioQuoteRow: View {
                         .minimumScaleFactor(0.8)
                     } else {
                         Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                            .font(metricSubFont)
                             .fontWeight(.semibold)
                             .foregroundColor(quote.isPositive ? DS.up : DS.down)
                             .lineLimit(1)
@@ -1385,7 +1513,7 @@ struct PortfolioQuoteRow: View {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 82, alignment: .trailing)
+            .frame(width: 95, alignment: .trailing)
 
         case .value:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1395,7 +1523,7 @@ struct PortfolioQuoteRow: View {
                     signed: false,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -1407,43 +1535,43 @@ struct PortfolioQuoteRow: View {
                     signed: true,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                .font(metricCaption2Font)
                 .fontWeight(.semibold)
                 .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 78, alignment: .trailing)
+            .frame(width: 75, alignment: .trailing)
 
         case .totalPnl:
             VStack(alignment: .trailing, spacing: 1) {
                 if globalPos.hasCostBasis {
                     Text(StorageService.formatCompactAmount(globalPos.pnl, symbol: globalPos.priceSymbol, signed: true, decimals: storageService.amountDecimals))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(metricFont)
                         .fontWeight(.medium)
                         .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .font(metricSubFont)
                         .fontWeight(.semibold)
                         .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 } else {
                     Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .font(metricFont)
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                     Text("—")
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .font(metricSubFont)
                         .fontWeight(.semibold)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: 88, alignment: .trailing)
 
         case .todayPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1453,7 +1581,7 @@ struct PortfolioQuoteRow: View {
                     signed: true,
                     decimals: storageService.amountDecimals
                 ))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
@@ -1461,14 +1589,14 @@ struct PortfolioQuoteRow: View {
 
                 if let quote {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                        .font(metricSubFont)
                         .fontWeight(.semibold)
                         .foregroundColor(quote.isPositive ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: 88, alignment: .trailing)
 
         case .ext:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1478,14 +1606,14 @@ struct PortfolioQuoteRow: View {
                         Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
                             .font(.system(size: 8, weight: .semibold))
                         Text(String(format: "%+.\(storageService.percentDecimals)f%%", extChange))
-                            .font(.inter(13, relativeTo: .body).monospacedDigit())
+                            .font(extFont)
                             .fontWeight(.medium)
                     }
                     .foregroundColor(extChange >= 0 ? DS.up : DS.down)
                     .lineLimit(1)
                 } else {
                     Text("—")
-                        .font(.inter(13, relativeTo: .body).monospacedDigit())
+                        .font(extFont)
                         .foregroundColor(.secondary)
                 }
             }
@@ -1494,7 +1622,7 @@ struct PortfolioQuoteRow: View {
         case .shares:
             let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)
             Text(StorageService.formatNumber(globalPos.shares, decimals: qtyDecimals))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -1503,7 +1631,7 @@ struct PortfolioQuoteRow: View {
 
         case .lots:
             Text("\(globalPos.lotsCount)")
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
@@ -1511,7 +1639,7 @@ struct PortfolioQuoteRow: View {
 
         case .weight:
             Text(String(format: "%.1f%%", globalPos.weight))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
+                .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
