@@ -20,6 +20,8 @@ struct PortfolioListView: View {
     @State private var showStandardFileImporter = false
     @State private var showJapaneseFundFileImporter = false
 
+    static let defaultPopoverColumns: [PortfolioColumnMetric] = [.price, .change, .value, .totalPnl]
+
     var filteredPortfolios: [Portfolio] {
         guard !searchText.isEmpty else { return storageService.portfolios }
         let query = searchText.lowercased()
@@ -37,7 +39,9 @@ struct PortfolioListView: View {
         case .cost:
             Text("Cost").frame(width: 66, alignment: .trailing)
         case .price:
-            Text("Price").frame(width: 95, alignment: .trailing)
+            Text("Price").frame(width: 80, alignment: .trailing)
+        case .change:
+            Text("Change").frame(width: 68, alignment: .trailing)
         case .value:
             Text("Value").frame(width: 75, alignment: .trailing)
         case .todayPnl:
@@ -193,7 +197,7 @@ struct PortfolioListView: View {
                             #if os(iOS)
                             let activeCols = storageService.resolvedIOSPortfolioColumns
                             #else
-                            let activeCols: [PortfolioColumnMetric] = [.cost, .price, .value, .totalPnl]
+                            let activeCols = PortfolioListView.defaultPopoverColumns
                             #endif
                             HStack(spacing: 0) {
                                 Text("Symbol")
@@ -1463,7 +1467,7 @@ struct PortfolioQuoteRow: View {
             #if os(iOS)
             let activeCols = storageService.resolvedIOSPortfolioColumns
             #else
-            let activeCols: [PortfolioColumnMetric] = [.cost, .price, .value, .totalPnl]
+            let activeCols = PortfolioListView.defaultPopoverColumns
             #endif
 
             ForEach(activeCols, id: \.self) { col in
@@ -1514,10 +1518,35 @@ struct PortfolioQuoteRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     let displayPrice = quote.price * priceRate
-                    Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+                    let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)
+                    let formattedChange = StorageService.formatCompactNumber(quote.change * priceRate, decimals: dec, stripTrailingZeros: true)
+
+                    Text(StorageService.formatCompactNumber(displayPrice, decimals: dec))
                         .font(metricFont)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+
+                    Text((quote.change >= 0 ? "+" : "") + formattedChange)
+                        .font(metricSubFont)
+                        .fontWeight(.semibold)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                } else {
+                    ProgressView().scaleEffect(0.5)
+                }
+            }
+            .frame(width: 80, alignment: .trailing)
+
+        case .change:
+            VStack(alignment: .trailing, spacing: 1) {
+                if let quote {
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                        .font(metricFont)
+                        .fontWeight(.medium)
+                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
 
@@ -1526,35 +1555,22 @@ struct PortfolioQuoteRow: View {
 
                     if let extPct {
                         let isPre = quote.marketState.hasPrefix("PRE")
-                        HStack(spacing: 0) {
-                            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                                .font(metricCaption2Font)
-                                .fontWeight(.semibold)
-                                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        HStack(spacing: 1) {
                             Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
                                 .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                                .padding(.horizontal, 1)
                             Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
                                 .font(metricCaption2Font)
                                 .fontWeight(.semibold)
-                                .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         }
+                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    } else {
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                            .font(metricSubFont)
-                            .fontWeight(.semibold)
-                            .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
                     }
                 } else {
                     ProgressView().scaleEffect(0.5)
                 }
             }
-            .frame(width: 95, alignment: .trailing)
+            .frame(width: 68, alignment: .trailing)
 
         case .value:
             VStack(alignment: .trailing, spacing: 1) {

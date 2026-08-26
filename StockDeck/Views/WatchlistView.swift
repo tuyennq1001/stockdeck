@@ -1,10 +1,11 @@
 import SwiftUI
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 108
-    static let sparkline: CGFloat = 80
-    static let price: CGFloat = 120
-    static let change: CGFloat = 82
+    static let symbol: CGFloat = 114
+    static let price: CGFloat = 80
+    static let change: CGFloat = 68
+    static let oneYear: CGFloat = 67
+    static let threeYears: CGFloat = 67
 }
 
 #if os(iOS)
@@ -18,7 +19,7 @@ private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
     case .ath, .atl: return 78
     case .fromAth, .fromAtl: return 68
     case .marketCap: return 78
-    case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d: return 70
+    case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y: return 70
     }
 }
 #endif
@@ -182,20 +183,12 @@ struct WatchlistView: View {
                 }
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
 
-                if storageService.showWatchlistSparkline {
-                    Color.clear.frame(width: WatchlistCol.sparkline).padding(.leading, 6)
-                }
-
-                if storageService.showAbsoluteChange {
-                    Color.clear.frame(width: WatchlistCol.price)
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(width: WatchlistCol.change, alignment: .trailing)
-                } else {
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
+                Color.clear.frame(width: WatchlistCol.price)
+                Color.clear.frame(width: WatchlistCol.change)
+                Color.clear.frame(width: WatchlistCol.oneYear)
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: WatchlistCol.threeYears, alignment: .trailing)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 3)
@@ -260,7 +253,7 @@ struct WatchlistView: View {
         case .marketCap:
             sortHeader("Mkt Cap", column: .metric(.marketCap))
                 .frame(width: width, alignment: .trailing)
-        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
             Text(metric.title)
                 .frame(width: width, alignment: .center)
         }
@@ -270,20 +263,14 @@ struct WatchlistView: View {
         HStack(spacing: 0) {
             sortHeader("Symbol", column: .symbol)
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
-            if storageService.showWatchlistSparkline {
-                Text("30D")
-                    .padding(.leading, 6)
-                    .frame(width: WatchlistCol.sparkline, alignment: .center)
-            }
-            if storageService.showAbsoluteChange {
-                sortHeader("Price", column: .price)
-                    .frame(width: WatchlistCol.price, alignment: .trailing)
-                sortHeader("Change", column: .metric(.todayChange))
-                    .frame(width: WatchlistCol.change, alignment: .trailing)
-            } else {
-                sortHeader("Price", column: .price)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
+            sortHeader("Price", column: .price)
+                .frame(width: WatchlistCol.price, alignment: .trailing)
+            sortHeader("Change", column: .metric(.today))
+                .frame(width: WatchlistCol.change, alignment: .trailing)
+            sortHeader("1Y", column: .metric(.oneYear))
+                .frame(width: WatchlistCol.oneYear, alignment: .trailing)
+            sortHeader("3Y", column: .metric(.threeYears))
+                .frame(width: WatchlistCol.threeYears, alignment: .trailing)
         }
         .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
         .foregroundColor(.secondary)
@@ -897,6 +884,26 @@ struct QuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
 
+    private func periodChange(_ metric: WatchlistMetric) -> Double? {
+        let calendar = Calendar.current
+        let now = Date()
+        let boundary: Date?
+        switch metric {
+        case .oneMonth: boundary = calendar.date(byAdding: .month, value: -1, to: now)
+        case .threeMonths: boundary = calendar.date(byAdding: .month, value: -3, to: now)
+        case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
+        case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
+        case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
+        case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
+        case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+        case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
+        default: boundary = nil
+        }
+        guard let boundary else { return nil }
+        let hist = stockService.watchlistHistory[quote.symbol] ?? stockService.priceHistoryMax[quote.symbol] ?? []
+        return PriceHistory.percentChange(points: hist, currentPrice: quote.price, since: boundary)
+    }
+
     #if os(iOS)
     private var iosSymbolCell: some View {
         let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
@@ -918,69 +925,29 @@ struct QuoteRow: View {
         .frame(width: 78, alignment: .leading)
     }
 
-    private func periodChange(_ metric: WatchlistMetric) -> Double? {
-        let calendar = Calendar.current
-        let now = Date()
-        let boundary: Date?
-        switch metric {
-        case .oneMonth: boundary = calendar.date(byAdding: .month, value: -1, to: now)
-        case .threeMonths: boundary = calendar.date(byAdding: .month, value: -3, to: now)
-        case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
-        case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
-        case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
-        case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
-        case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
-        case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
-        default: boundary = nil
-        }
-        guard let boundary else { return nil }
-        let hist = stockService.watchlistHistory[quote.symbol] ?? stockService.priceHistoryMax[quote.symbol] ?? []
-        return PriceHistory.percentChange(points: hist, currentPrice: quote.price, since: boundary)
-    }
-
     @ViewBuilder
     private func iosMetricCell(for metric: WatchlistMetric) -> some View {
         let width = iosMetricColumnWidth(metric)
         switch metric {
         case .price:
             let displayPrice = quote.price
-            let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
-            let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
+            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)
+            let formattedChange = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
 
             VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+                Text(StorageService.formatCompactNumber(displayPrice, decimals: dec))
                     .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
-                if let extPct {
-                    let isPre = quote.marketState.hasPrefix("PRE")
-                    HStack(spacing: 0) {
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.semibold)
-                            .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                            .padding(.horizontal, 1)
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.semibold)
-                            .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                    }
+                Text((quote.change >= 0 ? "+" : "") + formattedChange)
+                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.semibold)
+                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                } else {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                        .fontWeight(.semibold)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
+                    .minimumScaleFactor(0.85)
             }
             .frame(width: width, alignment: .trailing)
 
@@ -1014,25 +981,30 @@ struct QuoteRow: View {
             }
             .frame(width: width, alignment: .trailing)
 
-        case .today:
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
-                .fontWeight(.medium)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .frame(width: width, alignment: .trailing)
+        case .today, .todayChange:
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                    .font(.inter(14, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
-        case .todayChange:
-            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
-            let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
-            Text((quote.change >= 0 ? "+" : "") + formatted)
-                .font(.inter(14, relativeTo: .body).monospacedDigit())
-                .fontWeight(.medium)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(width: width, alignment: .trailing)
+                if storageService.showExtendedHours, quote.isExtendedHours, let extChange = quote.extendedChangePercent {
+                    let isPre = quote.marketState.hasPrefix("PRE")
+                    HStack(spacing: 2) {
+                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extChange))
+                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(extChange >= 0 ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(width: width, alignment: .trailing)
 
         case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears:
             let pct = periodChange(metric)
@@ -1083,6 +1055,12 @@ struct QuoteRow: View {
                 .frame(width: width, alignment: .center)
         case .chart90d:
             Sparkline(symbol: quote.symbol, days: 90, width: width, height: 20)
+                .frame(width: width, alignment: .center)
+        case .chartYtd:
+            Sparkline(symbol: quote.symbol, isYTD: true, width: width, height: 20)
+                .frame(width: width, alignment: .center)
+        case .chart1y:
+            Sparkline(symbol: quote.symbol, days: 365, width: width, height: 20)
                 .frame(width: width, alignment: .center)
 
         case .ath:
@@ -1197,52 +1175,65 @@ struct QuoteRow: View {
 
     private var macOSPriceCell: some View {
         let displayPrice = quote.price
-        let extPrice: Double? = (storageService.showExtendedHours && quote.isExtendedHours) ? quote.effectivePrice : nil
-        let extPct: Double? = extPrice == nil ? nil : quote.extendedChangePercent
+        let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)
+        let formattedChange = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
 
         return VStack(alignment: .trailing, spacing: 1) {
-            Text(StorageService.formatCompactNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))
+            Text(StorageService.formatCompactNumber(displayPrice, decimals: dec))
                 .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
-            if let extPct {
-                let isPre = quote.marketState.hasPrefix("PRE")
-                HStack(spacing: 0) {
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                        .fontWeight(.semibold)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                        .padding(.horizontal, 1)
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
-                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                        .fontWeight(.semibold)
-                        .foregroundColor(extPct >= 0 ? DS.up : DS.down)
-                }
+            Text((quote.change >= 0 ? "+" : "") + formattedChange)
+                .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                .fontWeight(.semibold)
+                .foregroundColor(quote.isPositive ? DS.up : DS.down)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            } else {
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                    .fontWeight(.semibold)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
+                .minimumScaleFactor(0.85)
         }
     }
 
-    @ViewBuilder
     private var macOSChangeCell: some View {
-        let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: quote.price)
-        let formatted = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
-        Text((quote.change >= 0 ? "+" : "") + formatted)
-            .font(.inter(11.5, relativeTo: .body).monospacedDigit())
-            .fontWeight(.medium)
-            .foregroundColor(quote.isPositive ? DS.up : DS.down)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            if storageService.showExtendedHours, quote.isExtendedHours, let extPct = quote.extendedChangePercent {
+                let isPre = quote.marketState.hasPrefix("PRE")
+                HStack(spacing: 1) {
+                    Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            }
+        }
+    }
+    private func macOSPeriodCell(for metric: WatchlistMetric, width: CGFloat) -> some View {
+        let pct = periodChange(metric)
+        return Group {
+            if let pct {
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(pct >= 0 ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            } else {
+                Text("—")
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: width, alignment: .trailing)
     }
     #endif
 
@@ -1261,20 +1252,10 @@ struct QuoteRow: View {
         #else
         HStack(spacing: 0) {
             macOSSymbolCell
-
-            // Col 2: 30D Sparkline (add 6pt left padding to separate from Symbol)
-            if storageService.showWatchlistSparkline {
-                Sparkline(symbol: quote.symbol, days: 30, width: WatchlistCol.sparkline, height: 20)
-                    .padding(.leading, 6)
-            }
-
-            // Col 3: Price & Col 4: Change
-            if storageService.showAbsoluteChange {
-                macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
-                macOSChangeCell.frame(width: WatchlistCol.change, alignment: .trailing)
-            } else {
-                macOSPriceCell.frame(maxWidth: .infinity, alignment: .trailing)
-            }
+            macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
+            macOSChangeCell.frame(width: WatchlistCol.change, alignment: .trailing)
+            macOSPeriodCell(for: .oneYear, width: WatchlistCol.oneYear)
+            macOSPeriodCell(for: .threeYears, width: WatchlistCol.threeYears)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4.5)

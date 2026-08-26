@@ -328,7 +328,7 @@ struct PortfolioOverview: View {
     private func sortColumn(for metric: PortfolioColumnMetric) -> PositionSortColumn {
         switch metric {
         case .avgPrice: return .avgPrice
-        case .price: return .price
+        case .price, .change: return .price
         case .ext: return .extended
         case .cost: return .cost
         case .value: return .value
@@ -353,7 +353,7 @@ struct PortfolioOverview: View {
         let symbolIdealWidth: CGFloat = 200
         let metricIdealWidth: (PortfolioColumnMetric) -> CGFloat = { metric in
             switch metric {
-            case .avgPrice, .price, .ext: return 110
+            case .avgPrice, .price, .change, .ext: return 110
             case .cost, .value, .todayPnl, .totalPnl: return 120
             case .shares, .lots: return 100
             case .weight: return 115
@@ -373,7 +373,7 @@ struct PortfolioOverview: View {
         case .avgPrice:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
-        case .price:
+        case .price, .change:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
         case .ext:
@@ -2055,6 +2055,27 @@ private struct PositionSummaryRow: View {
                 percent: liveQuote?.changePercent,
                 emphasised: !isExtendedSession
             )
+            .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
+
+        case .change:
+            VStack(alignment: .trailing, spacing: 2) {
+                let pct = liveQuote?.changePercent ?? 0
+                Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
+                    .font(DS.figure)
+                    .foregroundStyle(DS.pnlColor(pct))
+                    .lineLimit(1)
+                if showExtendedHours, let extPct = liveQuote?.extendedChangePercent, liveQuote?.isExtendedHours == true {
+                    let isPre = liveQuote?.marketState.hasPrefix("PRE") ?? false
+                    HStack(spacing: 2) {
+                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                            .font(.system(size: 9))
+                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                            .font(DS.micro)
+                    }
+                    .foregroundStyle(DS.pnlColor(extPct))
+                    .lineLimit(1)
+                }
+            }
             .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
 
         case .ext:

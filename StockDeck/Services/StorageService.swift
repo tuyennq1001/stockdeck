@@ -101,7 +101,7 @@ class StorageService: ObservableObject {
     }
 
     var resolvedIOSWatchlistMetrics: [WatchlistMetric] {
-        iosWatchlistMetrics ?? [.price, .todayChange, .chart30d, .oneMonth]
+        iosWatchlistMetrics ?? [.price, .todayChange, .oneYear, .threeYears]
     }
 
     func setIOSWatchlistMetrics(_ metrics: [WatchlistMetric]) {
@@ -114,7 +114,7 @@ class StorageService: ObservableObject {
     }
 
     var resolvedIOSPortfolioColumns: [PortfolioColumnMetric] {
-        iosPortfolioColumns ?? [.cost, .price, .value, .totalPnl]
+        iosPortfolioColumns ?? [.price, .change, .value, .totalPnl]
     }
 
     func setIOSPortfolioColumns(_ columns: [PortfolioColumnMetric]) {
@@ -1127,7 +1127,7 @@ class StorageService: ObservableObject {
                     return max(0.0, (priceConverted - atl) / atl * 100)
                 case .marketCap:
                     return q?.marketCap.map { $0 * mRate }
-                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
                     return nil
                 }
             }

@@ -378,13 +378,19 @@ struct Sparkline: View {
     @ObservedObject private var stockService = StockService.shared
     let symbol: String
     var days: Int = 30
+    var isYTD: Bool = false
     var width: CGFloat? = 64
     var height: CGFloat? = 22
 
     private var points: [PricePoint] {
-        guard let all = stockService.watchlistHistory[symbol],
-              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-        else { return [] }
+        guard let all = stockService.watchlistHistory[symbol] ?? stockService.priceHistoryMax[symbol] else { return [] }
+        if isYTD {
+            let cal = Calendar.current
+            let now = Date()
+            guard let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) else { return [] }
+            return all.filter { $0.date >= jan1 }
+        }
+        guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return [] }
         return all.filter { $0.date >= cutoff }
     }
 

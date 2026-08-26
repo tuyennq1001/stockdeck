@@ -4,7 +4,7 @@ import Foundation
 /// Rank (#) and Symbol stay fixed; this list controls the investment
 /// metrics that follow them.
 enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiable {
-    case avgPrice, price, ext
+    case avgPrice, price, change, ext
     case cost, value, todayPnl, totalPnl, shares, lots
     case weight
 
@@ -14,6 +14,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
         switch self {
         case .avgPrice: return "Avg Price"
         case .price: return "Price"
+        case .change: return "Change"
         case .ext: return "Ext"
         case .cost: return "Total Cost"
         case .value: return "Total Value"
@@ -27,7 +28,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
 
     var category: PortfolioColumnCategory {
         switch self {
-        case .avgPrice, .price, .ext:
+        case .avgPrice, .price, .change, .ext:
             return .price
         case .cost, .value, .todayPnl, .totalPnl, .shares, .lots:
             return .position
@@ -37,7 +38,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
     }
 
     static let defaultSelection: [PortfolioColumnMetric] = [
-        .avgPrice, .price, .ext, .cost, .value, .todayPnl, .totalPnl, .weight
+        .avgPrice, .price, .change, .ext, .cost, .value, .todayPnl, .totalPnl, .weight
     ]
 }
 
