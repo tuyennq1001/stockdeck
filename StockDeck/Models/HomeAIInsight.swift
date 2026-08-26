@@ -63,6 +63,30 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         case .crypto: return "🪙"
         }
     }
+
+    var benchmarkSymbols: [(name: String, symbol: String)] {
+        switch self {
+        case .us:
+            return [
+                ("S&P 500", "^GSPC"),
+                ("Nasdaq", "^IXIC"),
+                ("Dow Jones", "^DJI")
+            ]
+        case .japan:
+            return [
+                ("Nikkei 225", "^N225")
+            ]
+        case .vietnam:
+            return [
+                ("VN-Index", "^VNINDEX.VN")
+            ]
+        case .crypto:
+            return [
+                ("Bitcoin", "BTC-USD"),
+                ("Ethereum", "ETH-USD")
+            ]
+        }
+    }
 }
 
 /// Explanation for a single symbol's price movement.

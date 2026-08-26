@@ -396,7 +396,7 @@ final class HomeAIInsightService {
         2. Sau đó, giải thích nguyên nhân tăng/giảm trực diện cho TỪNG MÃ TÀI SẢN trong danh mục.
 
         NGUYÊN TẮC PHÂN TÍCH VÀ BẢO ĐẢM TÍNH TRUNG THỰC (QUAN TRỌNG NHẤT):
-        1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính (Ví dụ: Mỹ bứt phá nhờ nhóm công nghệ trên S&P 500 & Nasdaq; Nhật Bản tăng theo đà Nikkei 225; VN-Index giằng co quanh mốc tâm lý; Crypto tăng theo nhịp của Bitcoin).
+        1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính, nêu rõ mức tăng/giảm cụ thể của các chỉ số đại diện (Ví dụ: "Thị trường Mỹ tăng điểm tích cực khi S&P 500 tăng +0.76%, Nasdaq tăng +1.12% nhờ lực kéo từ nhóm công nghệ..."; "VN-Index tăng +1.67% lên 1,280 điểm nhờ lực cầu lan tỏa nhóm vốn hóa lớn..."; "Thị trường Crypto giữ vững nhịp tăng với Bitcoin tăng +0.32% quanh vùng 79,000 USD...").
         2. TỪNG MÃ TÀI SẢN ("items"):
            - Nếu có tin tức báo chí được cung cấp: Trích xuất và giải thích đi thẳng vào sự kiện cốt lõi (KQKD, hợp đồng, kế hoạch mua lại cổ phiếu, tin tức ngành...).
            - Nếu KHÔNG CÓ tin tức báo chí trong dữ liệu: BẮT BUỘC giải thích dựa trên đà tăng/giảm đồng pha với chỉ số chung của thị trường hoặc nhóm ngành/cung cầu kỹ thuật. TUYỆT ĐỐI KHÔNG tự bịa đặt, suy đoán tin đồn hay bịa ra các sự kiện doanh nghiệp không có trong dữ liệu đầu vào.
@@ -406,10 +406,10 @@ final class HomeAIInsightService {
         {
           "portfolioSummary": "Tóm tắt 1-2 câu ngắn gọn, sắc bén bằng tiếng Việt về toàn cảnh các thị trường và danh mục hôm nay.",
           "marketOverviews": {
-            "US": "1-2 câu tiếng Việt phân tích bối cảnh chuyển động của thị trường Mỹ dựa trên S&P 500, Nasdaq, Dow Jones.",
-            "JP": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Nhật Bản dựa trên Nikkei 225.",
-            "VN": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Việt Nam dựa trên VN-Index.",
-            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Tiền mã hóa dựa trên Bitcoin & Ethereum."
+            "US": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của S&P 500, Nasdaq, Dow Jones.",
+            "JP": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Nikkei 225.",
+            "VN": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của VN-Index.",
+            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Bitcoin & Ethereum."
           },
           "items": [
             {

@@ -124,32 +124,105 @@ struct MarketSectionHeader: View {
     }
 }
 
-/// Banner/card displaying the AI market context for a specific market category (e.g. S&P 500, Nasdaq, Nikkei, VN-Index, Bitcoin).
+/// Pill displaying an individual benchmark index's price and gain/loss.
+struct MarketBenchmarkPill: View {
+    let name: String
+    let quote: StockQuote
+
+    private var changeColor: Color {
+        DS.pnlColor(quote.changePercent)
+    }
+
+    private var formattedPrice: String {
+        let isIndex = quote.symbol.hasPrefix("^")
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let numStr = formatter.string(from: NSNumber(value: quote.price)) ?? String(format: "%.2f", quote.price)
+        return isIndex ? numStr : "$\(numStr)"
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(name)
+                .font(.inter(11, weight: .bold, relativeTo: .caption))
+                .foregroundStyle(DS.ink)
+
+            Text(formattedPrice)
+                .font(.inter(11, weight: .semibold, relativeTo: .caption).monospacedDigit())
+                .foregroundStyle(DS.inkSecondary)
+
+            HStack(spacing: 2) {
+                Image(systemName: quote.changePercent >= 0 ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 8, weight: .bold))
+                Text(String(format: "%+0.2f%%", quote.changePercent))
+                    .font(.inter(10.5, weight: .bold, relativeTo: .caption2).monospacedDigit())
+            }
+            .foregroundStyle(changeColor)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                Capsule()
+                    .fill(changeColor.opacity(0.12))
+            )
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(DS.card)
+                .shadow(color: .black.opacity(0.04), radius: 1, y: 0.5)
+        )
+    }
+}
+
+/// Banner/card displaying the AI market context and main benchmark indices for a specific market category (e.g. S&P 500, Nasdaq, Nikkei, VN-Index, Bitcoin).
 struct MarketOverviewCard: View {
+    @EnvironmentObject var stockService: StockService
     let category: MarketCategory
     let overview: String
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(DS.brand)
-                .padding(.top, 2)
+    private var benchmarkQuotes: [(name: String, quote: StockQuote)] {
+        category.benchmarkSymbols.compactMap { item in
+            guard let q = stockService.quotes[item.symbol] ?? stockService.quotes[item.symbol.uppercased()],
+                  q.price.isFinite, q.price > 0 else { return nil }
+            return (item.name, q)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(DS.brand)
+
                 Text("Bối cảnh chung thị trường")
                     .font(.inter(10, weight: .bold, relativeTo: .caption2))
                     .tracking(0.8)
                     .foregroundStyle(DS.brand)
 
-                Text(overview)
-                    .font(.inter(12.5, weight: .medium, relativeTo: .body))
-                    .foregroundStyle(DS.ink)
-                    .lineSpacing(2.5)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
             }
 
-            Spacer()
+            // Benchmark index metrics listing specific gains / losses
+            if !benchmarkQuotes.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(benchmarkQuotes, id: \.quote.symbol) { bench in
+                            MarketBenchmarkPill(name: bench.name, quote: bench.quote)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+            }
+
+            Text(overview)
+                .font(.inter(12.5, weight: .medium, relativeTo: .body))
+                .foregroundStyle(DS.ink)
+                .lineSpacing(2.5)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
