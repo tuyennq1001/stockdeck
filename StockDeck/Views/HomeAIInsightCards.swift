@@ -276,6 +276,8 @@ struct SymbolInsightCard: View {
                 .padding(.horizontal, 4)
             }
 
+            Spacer(minLength: 0)
+
             // Sources
             if !item.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -325,7 +327,7 @@ struct SymbolInsightCard: View {
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(DS.card)
