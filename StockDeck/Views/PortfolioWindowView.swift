@@ -669,15 +669,13 @@ struct PortfolioWindowView: View {
             )
         case .portfoliosAll:
             NavigationStack(path: $portfolioPath) {
-                let vm = PortfolioViewModel(scope: .all, stockService: stockService, storageService: storageService)
-                PortfolioOverview(viewModel: vm)
-                    .onAppear { activeOverviewVM = vm }
+                PortfolioOverview(scope: .all)
+                    .id("all")
             }
         case .portfolio(let id):
             NavigationStack(path: $portfolioPath) {
-                let vm = PortfolioViewModel(scope: .portfolio(id), stockService: stockService, storageService: storageService)
-                PortfolioOverview(viewModel: vm)
-                    .onAppear { activeOverviewVM = vm }
+                PortfolioOverview(scope: .portfolio(id))
+                    .id(id)
             }
         case .aiReview:
             AIReviewWideView(onOpenSettings: { navigate(to: .settings) })
