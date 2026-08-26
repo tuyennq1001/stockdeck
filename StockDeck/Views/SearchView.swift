@@ -167,7 +167,6 @@ struct SearchView: View {
             if queryLooksLikeISIN {
                 storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: result.symbol)
             }
-            isPresented = false
             Task {
                 await stockService.fetchQuotes(symbols: [result.symbol])
             }

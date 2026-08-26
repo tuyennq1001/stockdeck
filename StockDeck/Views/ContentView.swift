@@ -121,9 +121,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if showSearch {
-                SearchView(mode: .watchlist, isPresented: $showSearch)
-            } else if let portfolioId = addHoldingPortfolioId {
+            if let portfolioId = addHoldingPortfolioId {
                 AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
             } else {
                 mainContent

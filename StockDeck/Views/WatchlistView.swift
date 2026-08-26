@@ -306,14 +306,20 @@ struct WatchlistView: View {
                     Image(systemName: "star")
                         .font(.inter(32, relativeTo: .largeTitle))
                         .foregroundColor(.secondary)
-                    Text("No stocks in \(storageService.currentWatchlist.name)")
+                    Text("No symbols in \(storageService.currentWatchlist.name)")
                         .foregroundColor(.secondary)
-                    Button("Add stock") {
+                    Button("Add symbol") {
                         showSearch = true
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .pointingHandCursor()
+                    #if os(macOS)
+                    .popover(isPresented: $showSearch) {
+                        SearchView(mode: .watchlist, isPresented: $showSearch)
+                            .frame(width: 380, height: 420)
+                    }
+                    #endif
                     Spacer()
                 }
             } else {
@@ -337,16 +343,48 @@ struct WatchlistView: View {
 
                 Divider()
 
-                Button(action: { showSearch = true }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add stock")
+                HStack(spacing: 12) {
+                    Button(action: {
+                        newWatchlistName = ""
+                        showNewWatchlistAlert = true
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Add Watchlist")
+                        }
+                        #if os(iOS)
+                        .font(.inter(12, relativeTo: .caption))
+                        #else
+                        .font(.inter(10, relativeTo: .caption))
+                        #endif
                     }
-                    .font(.inter(10, relativeTo: .caption))
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+
+                    Button(action: { showSearch = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("Add Symbol")
+                        }
+                        #if os(iOS)
+                        .font(.inter(12, relativeTo: .caption))
+                        #else
+                        .font(.inter(10, relativeTo: .caption))
+                        #endif
+                    }
+                    .buttonStyle(.borderless)
+                    .pointingHandCursor()
+                    #if os(macOS)
+                    .popover(isPresented: $showSearch) {
+                        SearchView(mode: .watchlist, isPresented: $showSearch)
+                            .frame(width: 380, height: 420)
+                    }
+                    #endif
+
+                    Spacer()
                 }
-                .buttonStyle(.borderless)
-                .pointingHandCursor()
-                .padding(8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
         .sheet(item: Binding<AddToPortfolioItem?>(
