@@ -271,11 +271,6 @@ struct PortfolioWindowView: View {
             Divider().overlay(DS.hairline)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    if storageService.showNewsTab {
-                        NavRow(icon: "newspaper", title: "Home", helpText: "Financial news for your symbols  ⌘1",
-                               selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
-                    }
-
                     watchlistsHeader
                     ForEach(displayedWatchlists) { wl in
                         ReorderRow(
@@ -407,9 +402,15 @@ struct PortfolioWindowView: View {
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
             Divider().overlay(DS.hairline)
-            NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
-                   selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
-                .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
+            VStack(alignment: .leading, spacing: 2) {
+                if storageService.showNewsTab {
+                    NavRow(icon: "newspaper", title: "Home", helpText: "Financial news & AI market insights  ⌘1",
+                           selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
+                }
+                NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
+                       selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
+            }
+            .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
             TotalFooter(value: aggregateValue(for: storageService.portfolios),
                         cost: aggregateCost(for: storageService.portfolios),
                         pnl: totalPnlValue,

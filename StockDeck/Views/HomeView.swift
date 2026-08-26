@@ -167,6 +167,10 @@ struct HomeView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     MarketSectionHeader(category: cat, count: items.count)
 
+                                    if let overview = insight.overview(for: cat), !overview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        MarketOverviewCard(category: cat, overview: overview)
+                                    }
+
                                     ForEach(items) { item in
                                         SymbolInsightCard(item: item) { activeLink = InAppWebLink(url: $0) }
                                     }

@@ -7,8 +7,10 @@ final class WatchlistViewModel {
     private var stockService: StockService?
     private var storageService: StorageService?
     
+#if os(macOS)
     private(set) var rows: [WatchlistWideView.WatchRow] = []
     private(set) var visibleRows: [WatchlistWideView.WatchRow] = []
+#endif
     private(set) var displaySymbols: [String] = [] // For WatchlistView (compact)
     
     private var refreshTask: Task<Void, Never>?
@@ -49,9 +51,11 @@ final class WatchlistViewModel {
     
     private func recomputeAll() {
         guard let stockService = stockService, let storageService = storageService else { return }
+        let currentWatchlist = storageService.watchlist
+        
+#if os(macOS)
         // 1. Build WatchlistWideView.WatchRow
         var newRows: [WatchlistWideView.WatchRow] = []
-        let currentWatchlist = storageService.watchlist
         
         // Re-use current time boundary to avoid recalculating per symbol
         let calendar = Calendar.current
@@ -92,8 +96,9 @@ final class WatchlistViewModel {
         }
         
         self.rows = newRows
+#endif
         
-        // 2. Sort rows for WatchlistWideView
+        // 2. Sort rows
         let sortKey = WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
         let sortAsc = storageService.currentWatchlist.sortAsc ?? true
         
@@ -109,8 +114,10 @@ final class WatchlistViewModel {
             showExtendedHours: storageService.showExtendedHours
         )
         
+#if os(macOS)
         let rowsBySymbol = Dictionary(uniqueKeysWithValues: newRows.map { ($0.symbol, $0) })
         self.visibleRows = sortedSymbols.compactMap { rowsBySymbol[$0] }
+#endif
         
         // 3. For WatchlistView (compact)
         self.displaySymbols = sortedSymbols

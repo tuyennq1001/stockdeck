@@ -124,6 +124,7 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
     let date: Date
     let dateString: String // YYYY-MM-DD
     let portfolioSummary: String
+    let marketOverviews: [String: String]? // [MarketCategory.rawValue: "Overview of SPX/Nasdaq/DJI/Nikkei/VNINDEX..."]
     let items: [SymbolInsightItem]
     let generatedAt: Date
 
@@ -131,6 +132,7 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
         date: Date = Date(),
         dateString: String? = nil,
         portfolioSummary: String,
+        marketOverviews: [String: String]? = nil,
         items: [SymbolInsightItem],
         generatedAt: Date = Date()
     ) {
@@ -143,7 +145,32 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
             self.dateString = f.string(from: date)
         }
         self.portfolioSummary = portfolioSummary
+        self.marketOverviews = marketOverviews
         self.items = items
         self.generatedAt = generatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case date, dateString, portfolioSummary, marketOverviews, items, generatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.date = try container.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+        if let ds = try container.decodeIfPresent(String.self, forKey: .dateString) {
+            self.dateString = ds
+        } else {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            self.dateString = f.string(from: self.date)
+        }
+        self.portfolioSummary = try container.decode(String.self, forKey: .portfolioSummary)
+        self.marketOverviews = try container.decodeIfPresent([String: String].self, forKey: .marketOverviews)
+        self.items = try container.decodeIfPresent([SymbolInsightItem].self, forKey: .items) ?? []
+        self.generatedAt = try container.decodeIfPresent(Date.self, forKey: .generatedAt) ?? Date()
+    }
+
+    func overview(for category: MarketCategory) -> String? {
+        marketOverviews?[category.rawValue] ?? marketOverviews?[category.rawValue.lowercased()]
     }
 }

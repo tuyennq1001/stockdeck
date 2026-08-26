@@ -22,6 +22,7 @@ struct HomeWideView: View {
     }
 
     private let columns = [GridItem(.adaptive(minimum: 320, maximum: 420), spacing: DS.gap)]
+    private let insightColumns = [GridItem(.adaptive(minimum: 340, maximum: .infinity), spacing: DS.gap)]
 
     /// Filters news by free text — matches the headline, the tickers (source +
     /// related), and the publisher — so you can search by name or by stock.
@@ -165,7 +166,11 @@ struct HomeWideView: View {
                                 VStack(alignment: .leading, spacing: 10) {
                                     MarketSectionHeader(category: cat, count: items.count)
 
-                                    LazyVGrid(columns: columns, spacing: DS.gap) {
+                                    if let overview = insight.overview(for: cat), !overview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        MarketOverviewCard(category: cat, overview: overview)
+                                    }
+
+                                    LazyVGrid(columns: insightColumns, spacing: DS.gap) {
                                         ForEach(items) { item in
                                             SymbolInsightCard(item: item) { open($0) }
                                         }
