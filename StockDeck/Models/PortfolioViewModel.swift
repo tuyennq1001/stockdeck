@@ -1,6 +1,54 @@
 import SwiftUI
 import Combine
 
+/// Hero chart range — a pure UI filter over the value series.
+enum ChartRange: String, CaseIterable {
+    case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
+    var days: Int? {
+        switch self {
+        case .week: return 7
+        case .month: return 30
+        case .threeMonths: return 90
+        case .sixMonths: return 180
+        case .ytd:
+            let cal = Calendar.current
+            let now = Date()
+            let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
+            return max(1, cal.dateComponents([.day], from: jan1, to: now).day ?? 30)
+        case .year: return 365
+        case .threeYears: return 365 * 3
+        case .fiveYears: return 365 * 5
+        case .all: return nil
+        }
+    }
+    /// Suffix for the hero pill, describing the span it measures.
+    var changeLabel: String {
+        switch self {
+        case .week: return "past 7d"
+        case .month: return "past 1M"
+        case .threeMonths: return "past 3M"
+        case .sixMonths: return "past 6M"
+        case .ytd: return "YTD"
+        case .year: return "past 1Y"
+        case .threeYears: return "past 3Y"
+        case .fiveYears: return "past 5Y"
+        case .all: return "all-time"
+        }
+    }
+    var performancePeriod: PortfolioOverview.PerformancePeriod? {
+        switch self {
+        case .month: return .m1
+        case .threeMonths: return .m3
+        case .sixMonths: return .m6
+        case .ytd: return .ytd
+        case .year: return .y1
+        case .threeYears: return .y3
+        case .fiveYears: return .y5
+        case .week, .all: return nil
+        }
+    }
+}
+
 /// Cached, throttled view model for PortfolioOverview to eliminate redundant
 /// heavy computation on every real-time quote update during market hours.
 @MainActor
@@ -8,8 +56,8 @@ import Combine
 final class PortfolioViewModel {
     let scope: PortfolioScope
 
-    private let stockService: StockService
-    private let storageService: StorageService
+    private var stockService: StockService?
+    private var storageService: StorageService?
 
     /// Debounced, pre-computed valuation — updated at most once per ~500ms, not per tick.
     private(set) var valuationCache: ValuationBundle = .empty
@@ -25,15 +73,21 @@ final class PortfolioViewModel {
 
     /// Money-weighted return — session-cached.
     private(set) var moneyWeightedResult: InvestmentEffectiveness.Result? = nil
-
-    /// Pending task handle for throttled valuation refresh.
+    
+    /// Cached display series per chart range, cleared on valuation update.
+    @ObservationIgnored
+    private var displaySeriesCache: [ChartRange: [ValuePoint]] = [:]
     private var refreshTask: Task<Void, Never>?
 
     /// Subscription bag for Combine observation of quote changes.
     private var cancellable: AnyCancellable?
 
-    init(scope: PortfolioScope, stockService: StockService, storageService: StorageService) {
+    init(scope: PortfolioScope) {
         self.scope = scope
+    }
+
+    func setup(stockService: StockService, storageService: StorageService) {
+        guard self.stockService == nil else { return } // Setup only once
         self.stockService = stockService
         self.storageService = storageService
 
@@ -51,6 +105,7 @@ final class PortfolioViewModel {
     // MARK: - Derived accessors
 
     var portfolios: [Portfolio] {
+        guard let storageService = storageService else { return [] }
         switch scope {
         case .all: return storageService.portfolios
         case .portfolio(let id): return storageService.portfolios.filter { $0.id == id }
@@ -58,6 +113,7 @@ final class PortfolioViewModel {
     }
 
     var title: String {
+        guard let storageService = storageService else { return "Portfolio" }
         switch scope {
         case .all: return "Portfolio"
         case .portfolio(let id): return storageService.portfolios.first { $0.id == id }?.name ?? "Portfolio"
@@ -71,8 +127,11 @@ final class PortfolioViewModel {
         }
     }
 
-    var currencySymbol: String { StorageService.currencySymbol(for: storageService.preferredCurrency) }
-    var decimals: Int { storageService.percentDecimals }
+    var currencySymbol: String {
+        guard let storageService = storageService else { return "$" }
+        return StorageService.currencySymbol(for: storageService.preferredCurrency) 
+    }
+    var decimals: Int { storageService?.percentDecimals ?? 2 }
 
     var totalValue: Double { valuationCache.totalValue }
     var totalCost: Double { valuationCache.totalCost }
@@ -138,6 +197,8 @@ final class PortfolioViewModel {
     }
 
     private func recomputeValuation() {
+        guard let stockService = stockService, let storageService = storageService else { return }
+        displaySeriesCache.removeAll(keepingCapacity: true)
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
@@ -281,6 +342,7 @@ final class PortfolioViewModel {
     // MARK: - Performance & Benchmark
 
     private func recomputePerformance() {
+        guard let stockService = stockService else { return }
         let hs = portfolios.flatMap { $0.holdings }
         let holdingsFingerprint = hs.map {
             "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
@@ -385,6 +447,7 @@ final class PortfolioViewModel {
     // MARK: - Money-weighted return
 
     private func recomputeMoneyWeightedReturn() {
+        guard let stockService = stockService, let storageService = storageService else { return }
         let hs = portfolios.flatMap { $0.holdings }
         let holdingsFingerprint = hs.map {
             "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
@@ -403,6 +466,7 @@ final class PortfolioViewModel {
     // MARK: - Value series helpers (used by PortfolioOverview still)
 
     func valueSeries(from histBySymbol: [String: [PricePoint]]) -> [ValuePoint] {
+        guard let stockService = stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
         var rate: [String: Double] = [:]
         var hist: [String: [PricePoint]] = [:]
@@ -412,5 +476,80 @@ final class PortfolioViewModel {
             if let ph = histBySymbol[h.symbol] { hist[h.symbol] = ph }
         }
         return PortfolioBackfill.series(holdings: hs, historyBySymbol: hist, rateBySymbol: rate)
+    }
+
+    /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
+    /// Uses the unified valueSeries representing the true market value trajectory of the portfolio.
+    func displaySeries(for chartRange: ChartRange) -> [ValuePoint] {
+        guard let stockService = stockService else { return [] }
+        if let cached = displaySeriesCache[chartRange] {
+            return cached
+        }
+
+        let computed: [ValuePoint]
+        if chartRange == .week {
+            computed = valueSeries(from: stockService.intradayWeek)
+        } else {
+            var cutoff: Date? = nil
+            if let days = chartRange.days {
+                cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+            } else if chartRange == .all {
+                if let purchaseDate = earliestPurchaseDate {
+                    cutoff = Calendar.current.startOfDay(for: purchaseDate)
+                } else {
+                    cutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date())
+                }
+            }
+
+            let allHoldingsDated = !portfolios.flatMap(\.holdings).contains(where: { $0.purchaseDate == nil })
+            if allHoldingsDated, let purchaseDate = earliestPurchaseDate {
+                let absoluteCutoff = Calendar.current.startOfDay(for: purchaseDate)
+                if let current = cutoff {
+                    cutoff = max(current, absoluteCutoff)
+                } else {
+                    cutoff = absoluteCutoff
+                }
+            }
+
+            let daysSpan: Int
+            if let c = cutoff {
+                daysSpan = Calendar.current.dateComponents([.day], from: c, to: Date()).day ?? 9999
+            } else {
+                daysSpan = 9999
+            }
+
+            let useMax = daysSpan > 730
+            let originalSource = useMax ? stockService.priceHistoryMax : stockService.priceHistory
+
+            var source = originalSource
+            if let cutoffDate = cutoff {
+                var hasData = false
+                for (sym, points) in source {
+                    var filtered = points.filter { $0.date >= cutoffDate }
+                    if let before = points.last(where: { $0.date < cutoffDate }) {
+                        filtered.insert(before, at: 0)
+                    }
+                    source[sym] = filtered
+                    if filtered.count > 1 { hasData = true }
+                }
+
+                if !hasData && chartRange == .all {
+                    if let fallbackCutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                        source = originalSource
+                        for (sym, points) in source {
+                            var filtered = points.filter { $0.date >= fallbackCutoff }
+                            if let before = points.last(where: { $0.date < fallbackCutoff }) {
+                                filtered.insert(before, at: 0)
+                            }
+                            source[sym] = filtered
+                        }
+                    }
+                }
+            }
+            computed = valueSeries(from: source)
+        }
+
+        displaySeriesCache[chartRange] = computed
+        return computed
     }
 }
