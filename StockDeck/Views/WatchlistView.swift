@@ -317,7 +317,7 @@ struct WatchlistView: View {
                     #if os(macOS)
                     .popover(isPresented: $showSearch) {
                         SearchView(mode: .watchlist, isPresented: $showSearch)
-                            .frame(width: 380, height: 420)
+                            .frame(width: 440, height: 460)
                     }
                     #endif
                     Spacer()
@@ -377,7 +377,7 @@ struct WatchlistView: View {
                     #if os(macOS)
                     .popover(isPresented: $showSearch) {
                         SearchView(mode: .watchlist, isPresented: $showSearch)
-                            .frame(width: 380, height: 420)
+                            .frame(width: 440, height: 460)
                     }
                     #endif
 

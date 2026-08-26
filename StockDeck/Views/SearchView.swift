@@ -16,7 +16,6 @@ struct SearchView: View {
     @State private var results: [SearchResult] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
-    @FocusState private var isFieldFocused: Bool
     @State private var filter: WatchlistSearchSheet.AssetFilter = .all
     @State private var hoveredSymbol: String? = nil
 
@@ -37,125 +36,132 @@ struct SearchView: View {
         }
     }
 
+    private var queryLooksLikeISIN: Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.count == 12 && q.prefix(2).allSatisfy(\.isLetter) && q.dropFirst(2).allSatisfy { $0.isLetter || $0.isNumber }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Search")
-                    .font(.inter(13, weight: .bold, relativeTo: .headline))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Add to watchlist")
+                    .font(DS.titleXL)
+                    .tracking(-0.3)
+                    .foregroundStyle(DS.ink)
                 Spacer()
-                Button("Close") { isPresented = false }
-                    .buttonStyle(.borderless)
+                Button("Done") { isPresented = false }
+                    .buttonStyle(.plain)
+                    .font(.inter(12, weight: .medium, relativeTo: .body))
+                    .foregroundStyle(DS.brand)
                     .pointingHandCursor()
+                    .keyboardShortcut(.cancelAction)
             }
-            .padding()
 
-            TextField("Symbol, name or ISIN (e.g. AAPL, Tesla, IE00B4L5Y983)", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .focused($isFieldFocused)
-                .padding(.horizontal)
-                .onAppear {
-                    isFieldFocused = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isFieldFocused = true
-                    }
-                }
-                .onChange(of: query) { _, newValue in
-                    searchTask?.cancel()
-                    guard newValue.count >= 2 else {
-                        results = []
-                        return
-                    }
-                    searchTask = Task {
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        guard !Task.isCancelled else { return }
-                        isSearching = true
-                        let searchResults = await stockService.search(query: newValue)
-                        guard !Task.isCancelled else { return }
-                        results = searchResults
-                        isSearching = false
-                    }
-                }
+            DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)", text: $query)
+                .onChange(of: query) { _, new in runSearch(new) }
 
-            // Asset Filter tabs
+            // Filter tabs
             HStack(spacing: 4) {
                 ForEach(WatchlistSearchSheet.AssetFilter.allCases, id: \.self) { f in
                     Button(f.label) { filter = f }
-                        .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
                         .foregroundStyle(filter == f ? DS.ink : DS.inkTertiary)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill(filter == f ? DS.cardAlt : Color.clear)
                         )
                 }
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
-            .padding(.horizontal, 12).padding(.top, 6)
-
-            Divider()
-                .padding(.top, 6)
 
             if isSearching {
-                Spacer()
-                ProgressView("Searching...")
-                Spacer()
+                HStack { Spacer(); DSSpinner(size: 20); Spacer() }.frame(maxHeight: .infinity)
             } else if filteredResults.isEmpty && query.count >= 2 {
-                Spacer()
-                Text("No results")
-                    .foregroundColor(.secondary)
-                Spacer()
+                VStack {
+                    Spacer()
+                    Text("No results")
+                        .font(DS.caption)
+                        .foregroundStyle(DS.inkSecondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(filteredResults) { result in
-                    Button(action: { addResult(result) }) {
-                        HStack(spacing: 8) {
-                            SymbolLogo(symbol: result.symbol, size: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(StockService.beautifiedSymbol(result.symbol))
-                                    .font(.inter(13, relativeTo: .body).monospacedDigit())
-                                    .fontWeight(.semibold)
-                                Text(result.name)
-                                    .font(.inter(10, relativeTo: .caption))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-
-                            if !result.exchange.isEmpty {
-                                Text(WatchlistSearchSheet.friendlyExchange(result.exchange))
-                                    .font(.inter(9, relativeTo: .caption2))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            if isAlreadyAdded(result.symbol) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.inter(10, relativeTo: .caption))
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredResults) { r in
+                            Button { addResult(r) } label: { resultRow(r) }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .onHover { inside in hoveredSymbol = inside ? r.id : nil }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(hoveredSymbol == r.id ? DS.brand.opacity(0.06) : Color.clear)
+                                )
+                            if r.id != filteredResults.last?.id {
+                                Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                             }
                         }
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                    .onHover { inside in
-                        hoveredSymbol = inside ? result.id : nil
-                    }
-                    .listRowBackground(
-                        hoveredSymbol == result.id
-                            ? DS.brand.opacity(0.06)
-                            : Color.clear
-                    )
                 }
-                .listStyle(.plain)
+                .frame(maxHeight: .infinity)
             }
         }
+        .padding(18)
+        .background(DS.ground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var queryLooksLikeISIN: Bool {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        return q.count == 12 && q.prefix(2).allSatisfy(\.isLetter) && q.dropFirst(2).allSatisfy { $0.isLetter || $0.isNumber }
+    private func resultRow(_ r: SearchResult) -> some View {
+        HStack(spacing: 10) {
+            SymbolLogo(symbol: r.symbol, size: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(StockService.beautifiedSymbol(r.symbol))
+                    .font(DS.figure)
+                    .foregroundStyle(DS.ink)
+                Text(r.name)
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            if !r.exchange.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "building.columns")
+                        .font(.system(size: 9))
+                        .foregroundStyle(DS.inkTertiary)
+                    Text(WatchlistSearchSheet.friendlyExchange(r.exchange))
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                }
+            }
+            if isAlreadyAdded(r.symbol) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(DS.up)
+                    .font(.system(size: 12))
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .contentShape(Rectangle())
+    }
+
+    private func runSearch(_ q: String) {
+        searchTask?.cancel()
+        guard q.count >= 2 else {
+            results = []
+            return
+        }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            isSearching = true
+            let searchResults = await stockService.search(query: q)
+            guard !Task.isCancelled else { return }
+            results = searchResults
+            isSearching = false
+        }
     }
 
     private func addResult(_ result: SearchResult) {
