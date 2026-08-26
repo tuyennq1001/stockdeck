@@ -105,8 +105,6 @@ struct WatchlistWideView: View {
             switch metric {
             case .price:
                 return price
-            case .ext:
-                return extChangePercent
             case .today:
                 return changePercent
             case .todayChange:
@@ -1122,7 +1120,6 @@ WatchRowView(row: row,
 private enum WCol {
     static let symbol: CGFloat = 180
     static let price: CGFloat = 116
-    static let ext: CGFloat = 116
     static let period: CGFloat = 68
     static let trend: CGFloat = 56
     static let range: CGFloat = 100
@@ -1131,7 +1128,7 @@ private enum WCol {
     static func width(for metric: WatchlistMetric) -> CGFloat {
         switch metric {
         case .price: return price
-        case .ext: return ext
+        case .today, .todayChange: return 82
         default: return metric.isChart ? 76 : (metric.category == .price ? 92 : period)
         }
     }
@@ -1159,29 +1156,49 @@ private struct WatchRowView<Menu: View>: View {
         valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
     }
 
-    /// A price stacked over its own % move (same baseline, so they always agree).
-    /// `emphasised` = the live session: the price goes ink-dark and the % becomes
-    /// a coloured pill. Otherwise both dim so the active session reads first.
     @ViewBuilder
-    private func pairedCell(price: Double, pct: Double?, label: String?, emphasised: Bool) -> some View {
+    private var priceCell: some View {
+        let dec = priceDec(row.price)
+        let formattedChange = StorageService.formatNumber(row.change, decimals: dec, stripTrailingZeros: true)
         VStack(alignment: .trailing, spacing: 2) {
-            Text("\(StorageService.formatNumber(price, decimals: priceDec(price)))")
+            Text("\(StorageService.formatNumber(row.price, decimals: dec))")
                 .font(DS.figure)
-                .foregroundStyle(emphasised ? DS.ink : DS.inkTertiary)
+                .foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
-            if let pct {
-                HStack(spacing: 4) {
-                    if let label, !label.isEmpty {
-                        Text(LocalizedStringKey(label)).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                .lineLimit(1)
+            Text((row.change >= 0 ? "+" : "") + formattedChange)
+                .font(DS.micro)
+                .fontWeight(.semibold)
+                .foregroundStyle(DS.pnlColor(row.change))
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private var todayPercentCell: some View {
+        if row.loaded {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(String(format: "%+.\(percentDecimals)f%%", row.changePercent))
+                    .font(DS.figure.monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundStyle(DS.pnlColor(row.changePercent))
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                if showExtended, let q = row.quote, q.isExtendedHours, let extPct = q.extendedChangePercent {
+                    let isPre = q.marketState.hasPrefix("PRE")
+                    HStack(spacing: 2) {
+                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
+                            .font(.system(size: 9))
+                        Text(String(format: "%+.\(percentDecimals)f%%", extPct))
+                            .font(DS.micro)
+                            .fontWeight(.semibold)
                     }
-                    if emphasised {
-                        ChangePill(value: pct, text: String(format: "%+.\(percentDecimals)f%%", pct))
-                    } else {
-                        Text(String(format: "%+.\(percentDecimals)f%%", pct))
-                            .font(DS.micro).foregroundStyle(DS.pnlColor(pct).opacity(0.55))
-                    }
+                    .foregroundStyle(DS.pnlColor(extPct))
+                    .lineLimit(1)
                 }
             }
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
         }
     }
 
@@ -1216,33 +1233,17 @@ private struct WatchRowView<Menu: View>: View {
         return PriceHistory.percentChange(points: row.history, currentPrice: row.quote?.price ?? 0, since: boundary)
     }
 
-    private var isRowExtended: Bool {
-        showExtended && row.extPrice != nil
-    }
-
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
             switch metric {
             case .price:
                 if row.loaded {
-                    pairedCell(price: row.price, pct: row.changePercent,
-                               label: nil, emphasised: !isRowExtended)
+                    priceCell
                 } else {
                     DSSpinner(size: 12)
                 }
-            case .ext:
-                if showExtended {
-                    if let ext = row.extPrice {
-                        pairedCell(price: ext, pct: row.extChangePercent,
-                                   label: row.extLabel, emphasised: isRowExtended)
-                    } else {
-                        Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
-                    }
-                }
-            case .today:
-                periodCell(row.changePercent)
-            case .todayChange:
-                todayChangeCell
+            case .today, .todayChange:
+                todayPercentCell
             case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
                 periodCell(periodChange(metric))
             case .ath:
@@ -1354,8 +1355,7 @@ private struct WatchRowView<Menu: View>: View {
 
                     if compact {
                         if row.loaded {
-                            pairedCell(price: row.price, pct: row.changePercent,
-                                       label: nil, emphasised: !isRowExtended)
+                            priceCell
                                 .frame(width: 96, alignment: .trailing)
                         } else {
                             DSSpinner(size: 12)

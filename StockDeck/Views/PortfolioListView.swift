@@ -41,15 +41,13 @@ struct PortfolioListView: View {
         case .price:
             Text("Price").frame(width: 80, alignment: .trailing)
         case .change:
-            Text("Change").frame(width: 68, alignment: .trailing)
+            Text("Today %").frame(width: 68, alignment: .trailing)
         case .value:
             Text("Value").frame(width: 75, alignment: .trailing)
         case .todayPnl:
             Text("Today P&L").frame(width: 88, alignment: .trailing)
         case .totalPnl:
             Text("Total P&L").frame(width: 88, alignment: .trailing)
-        case .ext:
-            Text("Ext").frame(width: 62, alignment: .trailing)
         case .shares:
             Text("Shares").frame(width: 62, alignment: .trailing)
         case .lots:
@@ -1654,27 +1652,6 @@ struct PortfolioQuoteRow: View {
                 }
             }
             .frame(width: 88, alignment: .trailing)
-
-        case .ext:
-            VStack(alignment: .trailing, spacing: 1) {
-                if let quote, quote.isExtendedHours, let extChange = quote.extendedChangePercent {
-                    let isPre = quote.marketState.hasPrefix("PRE")
-                    HStack(spacing: 2) {
-                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 8, weight: .semibold))
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extChange))
-                            .font(extFont)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(extChange >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                } else {
-                    Text("—")
-                        .font(extFont)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .frame(width: 62, alignment: .trailing)
 
         case .shares:
             let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)
