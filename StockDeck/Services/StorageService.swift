@@ -1,5 +1,6 @@
 import Foundation
 #if os(macOS)
+import AppKit
 import ServiceManagement
 #endif
 
@@ -233,6 +234,41 @@ class StorageService: ObservableObject {
     @Published var menuBarDisplay: String = "pnl" {
         didSet { scheduleSave() }
     }
+
+    #if os(macOS)
+    /// Direct callback for when hotkey triggers.
+    var onHotKeyTriggered: (() -> Void)?
+
+    /// Global keyboard shortcut to toggle/show the menu bar popover.
+    @Published var menuBarShortcut: MenuBarShortcut? = nil {
+        didSet {
+            scheduleSave()
+            updateHotKeyRegistration()
+        }
+    }
+
+    /// Updates the global Carbon hotkey registration with the current setting.
+    func updateHotKeyRegistration() {
+        guard !isLoading else { return }
+        if let shortcut = menuBarShortcut {
+            GlobalHotKeyManager.shared.register(shortcut: shortcut) { [weak self] in
+                Task { @MainActor in
+                    if let callback = self?.onHotKeyTriggered {
+                        callback()
+                    } else if let appDelegate = NSApp.delegate as? AppDelegate {
+                        appDelegate.togglePopover()
+                    }
+                }
+            }
+        } else {
+            GlobalHotKeyManager.shared.unregister()
+        }
+    }
+    #else
+    @Published var menuBarShortcut: MenuBarShortcut? = nil {
+        didSet { scheduleSave() }
+    }
+    #endif
 
     // MARK: - Menu bar colors (issue #7.1)
     /// Hex color for gains/up moves. Empty = use the system green (dynamic).
@@ -1222,6 +1258,9 @@ class StorageService: ObservableObject {
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
         #endif
         isLoading = false
+        #if os(macOS)
+        updateHotKeyRegistration()
+        #endif
     }
 
     func addToWatchlist(_ symbol: String, targetWatchlistId: UUID? = nil) {
@@ -1697,6 +1736,7 @@ class StorageService: ObservableObject {
         aiProvider = "openai"
         aiWorkspacePath = ""
         aiDeepseekThinking = false
+        menuBarShortcut = nil
         #if os(macOS)
         if launchAtLogin {
             launchAtLogin = false
@@ -1824,6 +1864,7 @@ class StorageService: ObservableObject {
         var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
+        var menuBarShortcut: MenuBarShortcut?
         var iCloudSyncEnabled: Bool?
         var lastiCloudSyncDate: Date?
     }
@@ -1883,6 +1924,7 @@ class StorageService: ObservableObject {
             investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
             portfolioPositionSorts: portfolioPositionSorts,
+            menuBarShortcut: menuBarShortcut,
             iCloudSyncEnabled: iCloudSyncEnabled,
             lastiCloudSyncDate: lastiCloudSyncDate
         )
@@ -1995,6 +2037,7 @@ class StorageService: ObservableObject {
         investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
+        menuBarShortcut = decoded.menuBarShortcut
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
         let decodedIOSWlMetrics = decoded.iosWatchlistMetrics?.compactMap(WatchlistMetric.init(rawValue:))

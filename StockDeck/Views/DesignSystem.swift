@@ -448,15 +448,29 @@ struct BrandMark: View {
 #if os(macOS)
     /// Loaded once from the app's bundled icon (works in dev and release).
     private static let appIcon: NSImage? = {
-        if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
-                     Bundle.main.url(forResource: "AppIcon", withExtension: "png") ??
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
                      Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let img = NSImage(contentsOf: url) {
             return img
         }
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") ??
-                     Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+        #endif
+        if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            return img
+        }
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icns = NSImage(contentsOf: url) {
+            let res = NSImage(size: NSSize(width: 512, height: 512))
+            res.lockFocus()
+            icns.draw(in: NSRect(x: 0, y: 0, width: 512, height: 512))
+            res.unlockFocus()
+            return res
+        }
+        #endif
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let icns = NSImage(contentsOf: url) {
             let res = NSImage(size: NSSize(width: 512, height: 512))
             res.lockFocus()
@@ -469,12 +483,23 @@ struct BrandMark: View {
     }()
 #else
     private static let appIcon: UIImage? = {
+        if let img = UIImage(named: "AppIcon") {
+            return img
+        }
         if let url = Bundle.main.url(forResource: "AppLogo", withExtension: "png") ??
                      Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
            let data = try? Data(contentsOf: url),
            let img = UIImage(data: data) {
             return img
         }
+        #if SWIFT_PACKAGE
+        if let url = Bundle.module.url(forResource: "AppLogo", withExtension: "png") ??
+                     Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let data = try? Data(contentsOf: url),
+           let img = UIImage(data: data) {
+            return img
+        }
+        #endif
         return nil
     }()
 #endif

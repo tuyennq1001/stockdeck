@@ -376,6 +376,10 @@ struct SettingsWideView: View {
                 }
             }
             SettingDivider()
+            SettingRow("Global shortcut", caption: "Press anywhere on macOS to open or close the menu bar popup") {
+                ShortcutRecorderView(shortcut: $storageService.menuBarShortcut)
+            }
+            SettingDivider()
             SettingRow("Gain color", caption: "Applies across the whole app — menu bar, watchlist and portfolios") {
                 DSColorWell(color: Binding(
                     get: { Color(nsColor: storageService.gainColor) },

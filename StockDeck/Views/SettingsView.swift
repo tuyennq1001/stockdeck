@@ -407,6 +407,14 @@ struct SettingsView: View {
                         caption("Order in which watchlist entries cycle in the menu bar.")
                     }
 
+                    subHeader("Global shortcut")
+                    HStack {
+                        Text("Toggle menu bar")
+                        Spacer()
+                        ShortcutRecorderView(shortcut: $storageService.menuBarShortcut)
+                    }
+                    caption("Press anywhere on macOS to open or close the menu bar popup.")
+
                     subHeader("Colors")
                     #if os(macOS)
                     ColorPicker("Gain color", selection: Binding(
