@@ -309,17 +309,13 @@ struct WatchlistView: View {
                     Text("No symbols in \(storageService.currentWatchlist.name)")
                         .foregroundColor(.secondary)
                     Button("Add symbol") {
-                        showSearch = true
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showSearch = true
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .pointingHandCursor()
-                    #if os(macOS)
-                    .popover(isPresented: $showSearch) {
-                        SearchView(mode: .watchlist, isPresented: $showSearch)
-                            .frame(width: 440, height: 460)
-                    }
-                    #endif
                     Spacer()
                 }
             } else {
@@ -361,7 +357,11 @@ struct WatchlistView: View {
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
 
-                    Button(action: { showSearch = true }) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showSearch = true
+                        }
+                    }) {
                         HStack(spacing: 4) {
                             Image(systemName: "plus.circle.fill")
                             Text("Add Symbol")
@@ -374,12 +374,6 @@ struct WatchlistView: View {
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
-                    #if os(macOS)
-                    .popover(isPresented: $showSearch) {
-                        SearchView(mode: .watchlist, isPresented: $showSearch)
-                            .frame(width: 440, height: 460)
-                    }
-                    #endif
 
                     Spacer()
                 }
@@ -476,6 +470,38 @@ struct WatchlistView: View {
                     await stockService.ensureSparklines(for: newWatchlist)
                 }
             }
+            .overlay {
+                if showSearch {
+                    ZStack {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showSearch = false
+                                }
+                            }
+
+                        SearchView(mode: .watchlist, isPresented: $showSearch)
+                            #if os(macOS)
+                            .frame(width: 370, height: 430)
+                            #else
+                            .frame(maxWidth: 360, maxHeight: 520)
+                            .padding(.horizontal, 16)
+                            #endif
+                            .background(DS.ground)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(DS.hairline.opacity(0.8), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.22), radius: 20, y: 10)
+                            .transition(.scale(scale: 0.95).combined(with: .opacity))
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: showSearch)
     }
 
     /// The watchlist tabs in order: the local drag preview while dragging, else the

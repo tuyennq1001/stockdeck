@@ -49,12 +49,16 @@ struct SearchView: View {
                     .tracking(-0.3)
                     .foregroundStyle(DS.ink)
                 Spacer()
-                Button("Done") { isPresented = false }
-                    .buttonStyle(.plain)
-                    .font(.inter(12, weight: .medium, relativeTo: .body))
-                    .foregroundStyle(DS.brand)
-                    .pointingHandCursor()
-                    .keyboardShortcut(.cancelAction)
+                Button("Done") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPresented = false
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.inter(12, weight: .medium, relativeTo: .body))
+                .foregroundStyle(DS.brand)
+                .pointingHandCursor()
+                .keyboardShortcut(.cancelAction)
             }
 
             DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)", text: $query)
