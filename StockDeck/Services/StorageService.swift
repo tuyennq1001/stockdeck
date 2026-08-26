@@ -12,6 +12,44 @@ struct Watchlist: Identifiable, Codable, Equatable {
     var metrics: [WatchlistMetric]? = nil
     var sortKey: String? = nil
     var sortAsc: Bool? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, symbols, metrics, sortKey, sortAsc
+    }
+
+    init(id: UUID = UUID(), name: String, symbols: [String], metrics: [WatchlistMetric]? = nil, sortKey: String? = nil, sortAsc: Bool? = nil) {
+        self.id = id
+        self.name = name
+        self.symbols = symbols
+        self.metrics = metrics
+        self.sortKey = sortKey
+        self.sortAsc = sortAsc
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try container.decode(String.self, forKey: .name)
+        self.symbols = try container.decode([String].self, forKey: .symbols)
+        if let rawMetrics = try container.decodeIfPresent([String].self, forKey: .metrics) {
+            let decoded = rawMetrics.compactMap(WatchlistMetric.init(rawValue:))
+            self.metrics = decoded.isEmpty ? nil : decoded
+        } else {
+            self.metrics = nil
+        }
+        self.sortKey = try container.decodeIfPresent(String.self, forKey: .sortKey)
+        self.sortAsc = try container.decodeIfPresent(Bool.self, forKey: .sortAsc)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(symbols, forKey: .symbols)
+        try container.encodeIfPresent(metrics?.map(\.rawValue), forKey: .metrics)
+        try container.encodeIfPresent(sortKey, forKey: .sortKey)
+        try container.encodeIfPresent(sortAsc, forKey: .sortAsc)
+    }
 }
 
 /// Where a dragged item lands relative to its drop target: before it, or after
@@ -1066,9 +1104,6 @@ class StorageService: ObservableObject {
                 switch m {
                 case .price:
                     return q != nil ? regularPrice * pRate : nil
-                case .ext:
-                    guard showExtendedHours, let q, q.isExtendedHours else { return nil }
-                    return q.extendedChangePercent
                 case .today:
                     return q?.changePercent
                 case .todayChange:

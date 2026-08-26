@@ -3,7 +3,7 @@ import Foundation
 /// Optional columns a user can add to a watchlist. Rank, symbol, and price stay fixed;
 /// this list controls the investment metrics that follow them.
 enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
-    case price, ext
+    case price
     case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears
     case ath, fromAth, atl, fromAtl
     case marketCap
@@ -14,9 +14,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .price: return "Price"
-        case .ext: return "Ext"
-        case .today: return "Today %"
-        case .todayChange: return "Change"
+        case .today, .todayChange: return "Today %"
         case .oneMonth: return "1M %"
         case .threeMonths: return "3M %"
         case .ytd: return "YTD %"
@@ -42,7 +40,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var category: WatchlistMetricCategory {
         switch self {
-        case .price, .ext:
+        case .price:
             return .core
         case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
             return .change
@@ -57,7 +55,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         category == .chart
     }
 
-    static let defaultSelection: [WatchlistMetric] = [.ext, .todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
+    static let defaultSelection: [WatchlistMetric] = [.todayChange, .oneMonth, .threeMonths, .ytd, .chart7d]
 }
 
 enum WatchlistMetricCategory: String, CaseIterable, Identifiable {

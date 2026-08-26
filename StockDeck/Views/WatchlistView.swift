@@ -12,7 +12,6 @@ private enum WatchlistCol {
 private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
     switch metric {
     case .price: return 82
-    case .ext: return 68
     case .today: return 68
     case .todayChange: return 78
     case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears: return 68
@@ -226,14 +225,8 @@ struct WatchlistView: View {
         case .price:
             sortHeader("Price", column: .price)
                 .frame(width: width, alignment: .trailing)
-        case .ext:
-            sortHeader("Ext", column: .metric(.ext))
-                .frame(width: width, alignment: .trailing)
-        case .today:
+        case .today, .todayChange:
             sortHeader("Today %", column: .metric(.today))
-                .frame(width: width, alignment: .trailing)
-        case .todayChange:
-            sortHeader("Change", column: .metric(.todayChange))
                 .frame(width: width, alignment: .trailing)
         case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears:
             sortHeader(metric.title, column: .metric(metric))
@@ -265,7 +258,7 @@ struct WatchlistView: View {
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
             sortHeader("Price", column: .price)
                 .frame(width: WatchlistCol.price, alignment: .trailing)
-            sortHeader("Change", column: .metric(.today))
+            sortHeader("Today %", column: .metric(.today))
                 .frame(width: WatchlistCol.change, alignment: .trailing)
             sortHeader("1Y", column: .metric(.oneYear))
                 .frame(width: WatchlistCol.oneYear, alignment: .trailing)
@@ -948,36 +941,6 @@ struct QuoteRow: View {
                     .foregroundColor(quote.isPositive ? DS.up : DS.down)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-            }
-            .frame(width: width, alignment: .trailing)
-
-        case .ext:
-            VStack(alignment: .trailing, spacing: 1) {
-                if quote.isExtendedHours, let extChange = quote.extendedChangePercent {
-                    let extPrice = quote.effectivePrice
-                    let isPre = quote.marketState.hasPrefix("PRE")
-                    Text(StorageService.formatCompactNumber(extPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: extPrice)))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    HStack(spacing: 2) {
-                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 8, weight: .semibold))
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extChange))
-                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(extChange >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                } else {
-                    Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
             }
             .frame(width: width, alignment: .trailing)
 
