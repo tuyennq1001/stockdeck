@@ -162,7 +162,7 @@ enum MonthlyPnlRange: String, CaseIterable {
 }
 
 struct PortfolioOverview: View {
-    @EnvironmentObject var stockService: StockService
+    let stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Environment(\.editHoldingAction) private var editHoldingAction
     @Environment(\.addHoldingAction) private var addHoldingAction
@@ -171,9 +171,10 @@ struct PortfolioOverview: View {
     let scope: PortfolioScope
     @State private var viewModel: PortfolioViewModel
 
-    init(scope: PortfolioScope) {
+    init(scope: PortfolioScope, stockService: StockService) {
+        self.stockService = stockService
         self.scope = scope
-        self._viewModel = State(wrappedValue: PortfolioViewModel(scope: scope))
+        self._viewModel = State(initialValue: PortfolioViewModel(scope: scope))
     }
 
 
@@ -436,80 +437,12 @@ struct PortfolioOverview: View {
         )
     }
 
-    /// Per-month P&L bars (window per `monthlyPnlRange`; `all` extends as far
-    /// as real history covers), computed once per scope from real cost basis ×
-    /// price history. Keyed by scope + range + holdings + rate fingerprint so a
-    /// fresh scope, changed range, or changed positions recompute.
     private var monthlyPnlRows: [MonthlyPnlRow] {
-        let hs = viewModel.portfolios.flatMap { $0.holdings }
-        let hFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
-        }.joined(separator: ";")
-        let rateFingerprint = hs.map {
-            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
-        }.joined(separator: ";")
-        let key = "\(scopeKey):m:\(monthlyPnlRange.rawValue):\(hFingerprint):\(rateFingerprint)"
-        return MonthlyPnlCache.rows(for: key) {
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
-                    ?? stockService.priceHistory[h.symbol]
-                    ?? []
-            }
-            // For `all`, anchor the window on the earliest real purchase date —
-            // not on the longest price history. A stock bought last year has 20
-            // years of quotes; showing those earlier months would fabricate
-            // P&L for a position that didn't exist yet. Without any purchase
-            // date (e.g. synced balances), fall back to the price-history span.
-            let monthCount: Int
-            if let fixed = monthlyPnlRange.fixedMonthCount {
-                monthCount = fixed
-            } else {
-                // `All` extends to the furthest real history: the earliest
-                // purchase date OR the earliest price history, whichever is
-                // older (capped at 240). `MonthlyPnl.rows` trims any month
-                // that carries no data, so nothing fabricated is ever shown.
-                let today = Date()
-                let calendar = Calendar.current
-                var span = 1
-                if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
-                   let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
-                    span = max(span, months + 1)
-                }
-                let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
-                monthCount = min(max(span, historySpan), 240)
-            }
-            var rateBySymbol: [String: Double] = [:]
-            for h in hs {
-                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-            }
-            return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
-        }
+        viewModel.monthlyPnlRows(for: monthlyPnlRange)
     }
 
-    /// Per-day P&L bars (window per `dailyPnlRange`), the daily counterpart of
-    /// `monthlyPnlRows` — computed once per scope using the same fingerprint so
-    /// quote ticks never recompute it.
     private var dailyPnlRows: [DailyPnlRow] {
-        let hs = viewModel.portfolios.flatMap { $0.holdings }
-        let hFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
-        }.joined(separator: ";")
-        let rateFingerprint = hs.map {
-            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
-        }.joined(separator: ";")
-        let key = "\(scopeKey):d:\(dailyPnlRange.rawValue):\(hFingerprint):\(rateFingerprint)"
-        return DailyPnlCache.rows(for: key) {
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
-            }
-            var rateBySymbol: [String: Double] = [:]
-            for h in hs {
-                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-            }
-            return DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: dailyPnlRange.dayCount)
-        }
+        viewModel.dailyPnlRows(for: dailyPnlRange)
     }
 
     var body: some View {
@@ -1296,22 +1229,11 @@ struct PortfolioOverview: View {
 
     // MARK: - Allocation (donut + legend + type strip)
 
-    private struct AllocationSlice: Identifiable {
-        let id: String
-        let symbol: String
-        let value: Double
-        let fraction: Double
-    }
-    private var allocation: [AllocationSlice] {
-        let total = holdings.reduce(0) { $0 + abs($1.value) }
-        guard total >= 0.01 else { return [] }
-        var bySymbol: [String: Double] = [:]
-        for h in holdings { bySymbol[h.symbol, default: 0] += abs(h.value) }
-        return bySymbol.map { AllocationSlice(id: $0.key, symbol: $0.key, value: $0.value, fraction: $0.value / total) }
-            .sorted { $0.value > $1.value }
+    private var allocation: [PortfolioViewModel.AllocationSlice] {
+        viewModel.allocation
     }
 
-    private func allocationRow(_ slice: AllocationSlice) -> some View {
+    private func allocationRow(_ slice: PortfolioViewModel.AllocationSlice) -> some View {
         HStack(spacing: 9) {
             RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
             SymbolLogo(symbol: slice.symbol, size: 20)
@@ -1415,16 +1337,14 @@ struct PortfolioOverview: View {
 
     private func topGainersCard(proxy: ScrollViewProxy) -> some View {
         Card(title: "Top Gainers") {
-            var seen = Set<String>()
-            let gainers = holdings.filter { $0.dayChangePercent > 0 && seen.insert($0.symbol).inserted }
-                .sorted { $0.dayChangePercent > $1.dayChangePercent }
+            let gainers = viewModel.topGainers
             let maxAbs = gainers.map { abs($0.dayChangePercent) }.max() ?? 1
             if gainers.isEmpty {
                 emptyLine
             } else {
                 VStack(spacing: 0) {
-                    ForEach(gainers.prefix(5)) { h in
-                        moverRow(h, maxAbs: maxAbs, lastId: gainers.prefix(5).last?.id)
+                    ForEach(gainers) { h in
+                        moverRow(h, maxAbs: maxAbs, lastId: gainers.last?.id)
                     }
                 }
             }
@@ -1433,16 +1353,14 @@ struct PortfolioOverview: View {
 
     private func topLosersCard(proxy: ScrollViewProxy) -> some View {
         Card(title: "Top Losers") {
-            var seen = Set<String>()
-            let losers = holdings.filter { $0.dayChangePercent < 0 && seen.insert($0.symbol).inserted }
-                .sorted { $0.dayChangePercent < $1.dayChangePercent }
+            let losers = viewModel.topLosers
             let maxAbs = losers.map { abs($0.dayChangePercent) }.max() ?? 1
             if losers.isEmpty {
                 emptyLine
             } else {
                 VStack(spacing: 0) {
-                    ForEach(losers.prefix(5)) { h in
-                        moverRow(h, maxAbs: maxAbs, lastId: losers.prefix(5).last?.id)
+                    ForEach(losers) { h in
+                        moverRow(h, maxAbs: maxAbs, lastId: losers.last?.id)
                     }
                 }
             }
@@ -1451,7 +1369,7 @@ struct PortfolioOverview: View {
 
     @ViewBuilder
     private func moverRow(_ h: ValuedHolding, maxAbs: Double, lastId: UUID?) -> some View {
-        let isJpFund = h.quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol)
+        let isJpFund = h.quote.isJapaneseFund || StockService.isJapaneseMutualFund(h.symbol)
         let isDisplayAsset = StockService.isDisplayNameAsset(h.symbol)
         NavigationLink(value: h.id) {
             HStack(spacing: 10) {
@@ -1532,61 +1450,8 @@ struct PortfolioOverview: View {
         .background(DS.card)
     }
 
-    private func sortedSymbols(groupedValued: [String: [ValuedHolding]]) -> [String] {
-        if sortColumn == .manual {
-            return insertionOrderedSymbols.filter { groupedValued[$0] != nil }
-        }
-        return groupedValued.keys.sorted { sym1, sym2 in
-            let isAsc = sortAscending
-
-            switch sortColumn {
-            case .manual:
-                return false
-            case .symbol:
-                return isAsc ? sym1 < sym2 : sym1 > sym2
-            case .avgPrice:
-                let a1 = viewModel.symbolAggregates[sym1]?.avgPrice ?? .nan
-                let a2 = viewModel.symbolAggregates[sym2]?.avgPrice ?? .nan
-                return isAsc ? a1 < a2 : a1 > a2
-            case .price:
-                let p1 = groupedValued[sym1]?.first?.quote.changePercent ?? 0
-                let p2 = groupedValued[sym2]?.first?.quote.changePercent ?? 0
-                return isAsc ? p1 < p2 : p1 > p2
-            case .extended:
-                let e1 = groupedValued[sym1]?.first?.quote.extendedChangePercent
-                let e2 = groupedValued[sym2]?.first?.quote.extendedChangePercent
-                switch (e1, e2) {
-                case let (l?, r?): return isAsc ? l < r : l > r
-                case (_?, nil): return true
-                case (nil, _?): return false
-                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
-                }
-            case .cost:
-                let c1 = viewModel.symbolAggregates[sym1]?.nativeCost ?? groupedValued[sym1]?.reduce(0) { $0 + $1.cost } ?? 0
-                let c2 = viewModel.symbolAggregates[sym2]?.nativeCost ?? groupedValued[sym2]?.reduce(0) { $0 + $1.cost } ?? 0
-                return isAsc ? c1 < c2 : c1 > c2
-            case .value:
-                let v1 = viewModel.symbolAggregates[sym1]?.value ?? groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0
-                let v2 = viewModel.symbolAggregates[sym2]?.value ?? groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0
-                return isAsc ? v1 < v2 : v1 > v2
-            case .todayPnl:
-                let t1 = todayPnl(for: sym1, grouped: groupedValued)
-                let t2 = todayPnl(for: sym2, grouped: groupedValued)
-                return isAsc ? t1 < t2 : t1 > t2
-            case .pnl:
-                let pnl1 = viewModel.symbolAggregates[sym1]?.pnl ?? groupedValued[sym1]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
-                let pnl2 = viewModel.symbolAggregates[sym2]?.pnl ?? groupedValued[sym2]?.reduce(0) { $0 + ($1.value - $1.cost) } ?? 0
-                return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
-            case .shares:
-                let s1 = viewModel.symbolAggregates[sym1]?.totalQuantity ?? groupedValued[sym1]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
-                let s2 = viewModel.symbolAggregates[sym2]?.totalQuantity ?? groupedValued[sym2]?.reduce(0) { $0 + $1.holding.quantity } ?? 0
-                return isAsc ? s1 < s2 : s1 > s2
-            case .weight:
-                let w1 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym1]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
-                let w2 = abs(totalValue) >= 0.01 ? (abs(groupedValued[sym2]?.reduce(0) { $0 + $1.value } ?? 0) / abs(totalValue) * 100) : 0
-                return isAsc ? w1 < w2 : w1 > w2
-            }
-        }
+    private func sortedSymbols() -> [String] {
+        return viewModel.sortedSymbols(column: sortColumn, ascending: sortAscending, manualOrder: insertionOrderedSymbols)
     }
 
     private var positionsCard: some View {
@@ -1609,7 +1474,7 @@ struct PortfolioOverview: View {
                 let minTableWidth: CGFloat = positionsTableNaturalWidth
                 let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
                 let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
-                let symbolsList = sortedSymbols(groupedValued: groupedValued)
+                let symbolsList = sortedSymbols()
 
                 ScrollView(.horizontal, showsIndicators: true) {
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
@@ -1683,17 +1548,6 @@ struct PortfolioOverview: View {
         .buttonStyle(.plain)
         .pointingHandCursor()
         .help("Customize portfolio columns")
-    }
-
-    /// Today's regular-session P&L (native currency) for a symbol group.
-    private func todayPnl(for symbol: String, grouped: [String: [ValuedHolding]]) -> Double {
-        guard let group = grouped[symbol] else { return 0 }
-        return group.reduce(0) { sum, h in
-            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
-            let isJpFund = q.isJapaneseFund || stockService.isJapaneseMutualFund(h.holding.symbol) || h.holding.isJapaneseFund
-            let scale = isJpFund ? 10000.0 : 1.0
-            return sum + (q.change / scale) * h.holding.quantity * h.holding.effectiveLeverage
-        }
     }
 
     @ViewBuilder private var addHoldingButton: some View {
@@ -1803,7 +1657,6 @@ private enum PositionColumnWidth {
 
 private struct PositionSummaryRow: View {
     @EnvironmentObject var storageService: StorageService
-    @EnvironmentObject var stockService: StockService
     let position: Int
     let symbol: String
     let holdings: [ValuedHolding]
@@ -1823,16 +1676,11 @@ private struct PositionSummaryRow: View {
     private var first: ValuedHolding? { holdings.first }
 
     private var liveQuote: StockQuote? {
-        if let holdingSymbol = holdings.first?.holding.symbol,
-           let quote = stockService.quotes[holdingSymbol] ?? stockService.quotes[holdingSymbol.uppercased()] {
-            return quote
-        }
-        return stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()] ?? first?.quote
+        return first?.quote
     }
 
     private var nativeCurrencySymbol: String {
-        let curr = stockService.detectedCurrency(for: symbol)
-        return StorageService.currencySymbol(for: curr)
+        return aggregate?.nativeCurrencySymbol ?? "$"
     }
 
     /// Use pre-computed aggregate when available, fall back to per-row computation.
@@ -1848,7 +1696,7 @@ private struct PositionSummaryRow: View {
             return agg.nativeValue
         }
         return holdings.reduce(0) { sum, h in
-            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let q = h.quote
             let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.marketValue(currentPrice: price)
         }
@@ -1859,7 +1707,7 @@ private struct PositionSummaryRow: View {
             return agg.nativePnl
         }
         return holdings.reduce(0) { sum, h in
-            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
+            let q = h.quote
             let price = q.price > 0 ? q.price : h.holding.avgPrice
             return sum + h.holding.pnl(currentPrice: price)
         }
@@ -1867,9 +1715,12 @@ private struct PositionSummaryRow: View {
 
     /// Today's regular-session P&L per symbol (native currency, change × quantity × leverage).
     private var totalNativeTodayPnl: Double {
-        holdings.reduce(0) { sum, h in
-            let q = stockService.quotes[h.holding.symbol] ?? stockService.quotes[h.holding.symbol.uppercased()] ?? h.quote
-            let scale = (q.isJapaneseFund || stockService.isJapaneseMutualFund(h.holding.symbol) || h.holding.isJapaneseFund) ? 10000.0 : 1.0
+        if let agg = aggregate {
+            return agg.todayPnl
+        }
+        return holdings.reduce(0) { sum, h in
+            let q = h.quote
+            let scale = (q.isJapaneseFund || h.holding.isJapaneseFund) ? 10000.0 : 1.0
             return sum + (q.change / scale) * h.holding.quantity * h.holding.effectiveLeverage
         }
     }
@@ -2028,7 +1879,7 @@ private struct PositionSummaryRow: View {
                 .frame(width: PositionColumnWidth.number, alignment: .leading)
 
             // Symbol column
-            let isJpFund = (liveQuote?.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
+            let isJpFund = (liveQuote?.isJapaneseFund ?? false) || StockService.isJapaneseMutualFund(symbol)
             let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
             let titleText = (isJpFund || isDisplayAsset) ? (liveQuote?.displayName ?? StockService.beautifiedSymbol(symbol)) : symbol
             let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : (liveQuote?.name ?? ""))

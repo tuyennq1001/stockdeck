@@ -68,6 +68,16 @@ final class PortfolioViewModel {
     /// Aggregated per-symbol data for position rows, piggybacked on valuation.
     private(set) var symbolAggregates: [String: SymbolAggregate] = [:]
 
+    struct AllocationSlice: Identifiable, Sendable {
+        let id: String
+        let symbol: String
+        let value: Double
+        let fraction: Double
+    }
+    private(set) var allocation: [AllocationSlice] = []
+    private(set) var topGainers: [ValuedHolding] = []
+    private(set) var topLosers: [ValuedHolding] = []
+
     /// Performance & benchmark matrix — session-cached.
     private(set) var cachedPerformance: (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?])? = nil
 
@@ -170,7 +180,7 @@ final class PortfolioViewModel {
 
     // MARK: - Valuation (single-pass, cached)
 
-    struct SymbolAggregate {
+    struct SymbolAggregate: Sendable {
         let value: Double
         let cost: Double
         let pnl: Double
@@ -182,6 +192,10 @@ final class PortfolioViewModel {
         /// divided by the 10,000 scale so the number is a per-口 price).
         let avgPrice: Double
         let totalQuantity: Double
+        let todayPnl: Double
+        let changePercent: Double
+        let extendedChangePercent: Double?
+        let nativeCurrencySymbol: String
     }
 
     struct ValuationBundle {
@@ -202,7 +216,7 @@ final class PortfolioViewModel {
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double)] = [:]
+        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?)] = [:]
         var missingCostSymbols: Set<String> = []
 
         for portfolio in portfolios {
@@ -248,7 +262,7 @@ final class PortfolioViewModel {
                 if !hasCost {
                     missingCostSymbols.insert(sym)
                 }
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, quote.changePercent, quote.extendedChangePercent)
                 existing.value += value
                 existing.cost += cost
                 // P&L only for holdings with a known cost basis — a Binance
@@ -262,6 +276,7 @@ final class PortfolioViewModel {
                     existing.nativeQty += abs(qty * lev)
                 }
                 existing.totalQty += qty
+                existing.todayPnl += (quote.change / scale) * qty * lev
                 bySymbol[sym] = existing
 
                 // ValuedHolding still stores preferred-currency value/cost for legacy compatibility
@@ -324,6 +339,7 @@ final class PortfolioViewModel {
         for (sym, data) in bySymbol {
             let pnlPctSym = abs(data.cost) >= 0.01 ? (data.pnl / abs(data.cost)) * 100 : 0
             let avg = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
+            let curr = stockService.detectedCurrency(for: sym)
             symAggs[sym] = SymbolAggregate(
                 value: data.value,
                 cost: data.cost,
@@ -333,10 +349,103 @@ final class PortfolioViewModel {
                 nativeValue: data.nativeValue,
                 nativePnl: data.nativePnl,
                 avgPrice: avg,
-                totalQuantity: data.totalQty
+                totalQuantity: data.totalQty,
+                todayPnl: data.todayPnl,
+                changePercent: data.changePercent,
+                extendedChangePercent: data.extendedChangePercent,
+                nativeCurrencySymbol: StorageService.currencySymbol(for: curr)
             )
         }
         symbolAggregates = symAggs
+
+        // Compute Allocation
+        if abs(totalVal) >= 0.01 {
+            var allocMap: [String: Double] = [:]
+            for (sym, agg) in symAggs {
+                allocMap[sym] = abs(agg.value)
+            }
+            allocation = allocMap.map { AllocationSlice(id: $0.key, symbol: $0.key, value: $0.value, fraction: $0.value / abs(totalVal)) }
+                .sorted { $0.value > $1.value }
+        } else {
+            allocation = []
+        }
+
+        // Compute Top Gainers / Losers
+        var seen = Set<String>()
+        var gainers: [ValuedHolding] = []
+        var losers: [ValuedHolding] = []
+        let sortedDesc = valued.sorted { $0.dayChangePercent > $1.dayChangePercent }
+        
+        for h in sortedDesc {
+            if seen.insert(h.symbol).inserted {
+                if h.dayChangePercent > 0 { gainers.append(h) }
+            }
+        }
+        topGainers = Array(gainers.prefix(5))
+
+        seen.removeAll()
+        for h in sortedDesc.reversed() {
+            if seen.insert(h.symbol).inserted {
+                if h.dayChangePercent < 0 { losers.append(h) }
+            }
+        }
+        topLosers = Array(losers.prefix(5))
+    }
+
+    func sortedSymbols(column: PortfolioOverview.PositionSortColumn, ascending: Bool, manualOrder: [String]) -> [String] {
+        if column == .manual {
+            return manualOrder.filter { symbolAggregates[$0] != nil }
+        }
+        return symbolAggregates.keys.sorted { sym1, sym2 in
+            let isAsc = ascending
+            switch column {
+            case .manual:
+                return false
+            case .symbol:
+                return isAsc ? sym1 < sym2 : sym1 > sym2
+            case .avgPrice:
+                let a1 = symbolAggregates[sym1]?.avgPrice ?? .nan
+                let a2 = symbolAggregates[sym2]?.avgPrice ?? .nan
+                return isAsc ? a1 < a2 : a1 > a2
+            case .price:
+                let p1 = symbolAggregates[sym1]?.changePercent ?? 0
+                let p2 = symbolAggregates[sym2]?.changePercent ?? 0
+                return isAsc ? p1 < p2 : p1 > p2
+            case .extended:
+                let e1 = symbolAggregates[sym1]?.extendedChangePercent
+                let e2 = symbolAggregates[sym2]?.extendedChangePercent
+                switch (e1, e2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .cost:
+                let c1 = symbolAggregates[sym1]?.nativeCost ?? 0
+                let c2 = symbolAggregates[sym2]?.nativeCost ?? 0
+                return isAsc ? c1 < c2 : c1 > c2
+            case .value:
+                let v1 = symbolAggregates[sym1]?.value ?? 0
+                let v2 = symbolAggregates[sym2]?.value ?? 0
+                return isAsc ? v1 < v2 : v1 > v2
+            case .todayPnl:
+                let t1 = symbolAggregates[sym1]?.todayPnl ?? 0
+                let t2 = symbolAggregates[sym2]?.todayPnl ?? 0
+                return isAsc ? t1 < t2 : t1 > t2
+            case .pnl:
+                let pnl1 = symbolAggregates[sym1]?.pnl ?? 0
+                let pnl2 = symbolAggregates[sym2]?.pnl ?? 0
+                return isAsc ? pnl1 < pnl2 : pnl1 > pnl2
+            case .shares:
+                let s1 = symbolAggregates[sym1]?.totalQuantity ?? 0
+                let s2 = symbolAggregates[sym2]?.totalQuantity ?? 0
+                return isAsc ? s1 < s2 : s1 > s2
+            case .weight:
+                let w1 = abs(totalValue) >= 0.01 ? (abs(symbolAggregates[sym1]?.value ?? 0) / abs(totalValue) * 100) : 0
+                let w2 = abs(totalValue) >= 0.01 ? (abs(symbolAggregates[sym2]?.value ?? 0) / abs(totalValue) * 100) : 0
+                return isAsc ? w1 < w2 : w1 > w2
+            }
+        }
     }
 
     // MARK: - Performance & Benchmark
@@ -480,6 +589,68 @@ final class PortfolioViewModel {
 
     /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
     /// Uses the unified valueSeries representing the true market value trajectory of the portfolio.
+    func dailyPnlRows(for range: DailyPnlRange) -> [DailyPnlRow] {
+        guard let stockService = stockService else { return [] }
+        let hs = portfolios.flatMap { $0.holdings }
+        let hFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let rateFingerprint = hs.map {
+            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
+        }.joined(separator: ";")
+        let key = "\(scopeKey):d:\(range.rawValue):\(hFingerprint):\(rateFingerprint)"
+        return DailyPnlCache.rows(for: key) {
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
+            }
+            var rateBySymbol: [String: Double] = [:]
+            for h in hs {
+                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            }
+            return DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: range.dayCount)
+        }
+    }
+
+    func monthlyPnlRows(for range: MonthlyPnlRange) -> [MonthlyPnlRow] {
+        guard let stockService = stockService else { return [] }
+        let hs = portfolios.flatMap { $0.holdings }
+        let hFingerprint = hs.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
+        }.joined(separator: ";")
+        let rateFingerprint = hs.map {
+            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
+        }.joined(separator: ";")
+        let key = "\(scopeKey):m:\(range.rawValue):\(hFingerprint):\(rateFingerprint)"
+        return MonthlyPnlCache.rows(for: key) {
+            var histBySymbol: [String: [PricePoint]] = [:]
+            for h in hs {
+                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
+                    ?? stockService.priceHistory[h.symbol]
+                    ?? []
+            }
+            let monthCount: Int
+            if let fixed = range.fixedMonthCount {
+                monthCount = fixed
+            } else {
+                let today = Date()
+                let calendar = Calendar.current
+                var span = 1
+                if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
+                   let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
+                    span = max(span, months + 1)
+                }
+                let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
+                monthCount = min(max(span, historySpan), 240)
+            }
+            var rateBySymbol: [String: Double] = [:]
+            for h in hs {
+                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+            }
+            return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        }
+    }
+
     func displaySeries(for chartRange: ChartRange) -> [ValuePoint] {
         guard let stockService = stockService else { return [] }
         if let cached = displaySeriesCache[chartRange] {

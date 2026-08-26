@@ -669,12 +669,12 @@ struct PortfolioWindowView: View {
             )
         case .portfoliosAll:
             NavigationStack(path: $portfolioPath) {
-                PortfolioOverview(scope: .all)
+                PortfolioOverview(scope: .all, stockService: stockService)
                     .id("all")
             }
         case .portfolio(let id):
             NavigationStack(path: $portfolioPath) {
-                PortfolioOverview(scope: .portfolio(id))
+                PortfolioOverview(scope: .portfolio(id), stockService: stockService)
                     .id(id)
             }
         case .aiReview:
