@@ -87,6 +87,7 @@
 
 /* Watchlist / portfolio views */
 "No stocks in watchlist" = "Aucune action dans la liste de suivi";
+"No symbols in watchlist" = "Aucun symbole dans la liste de suivi";
 "No results" = "Aucun résultat";
 "No portfolios" = "Aucun portefeuille";
 "Total value" = "Valeur totale";
@@ -97,6 +98,10 @@
 "Remove from Watchlist" = "Retirer de la liste de suivi";
 "Set Price Alert…" = "Définir une alerte de prix…";
 "Add stock" = "Ajouter une action";
+"Add Watchlist" = "Ajouter une liste";
+"Add Portfolio" = "Ajouter un portefeuille";
+"Add Symbol" = "Ajouter un symbole";
+"Add symbol" = "Ajouter un symbole";
 "Add holding" = "Ajouter une position";
 "Value / P&L" = "Valeur / P&L";
 "Avg cost" = "Prix moyen";

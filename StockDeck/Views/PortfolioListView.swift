@@ -11,6 +11,8 @@ struct PortfolioListView: View {
     @State private var importAlert: String?
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var confirmDeletePortfolio: Portfolio? = nil
+    @State private var renamingPortfolio: Portfolio? = nil
+    @State private var renamePortfolioName = ""
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
     @State private var draggingPortfolioId: UUID? = nil
@@ -69,7 +71,7 @@ struct PortfolioListView: View {
 
     var body: some View {
         Group {
-        if storageService.portfolios.isEmpty && !showNewPortfolio {
+        if storageService.portfolios.isEmpty {
             VStack(spacing: 12) {
                 Spacer()
                 Image(systemName: "briefcase")
@@ -78,6 +80,7 @@ struct PortfolioListView: View {
                 Text("No portfolios")
                     .foregroundColor(.secondary)
                 Button("Create portfolio") {
+                    newPortfolioName = ""
                     showNewPortfolio = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -214,25 +217,6 @@ struct PortfolioListView: View {
 
                             ScrollView(.vertical, showsIndicators: true) {
                                 LazyVStack(spacing: 0) {
-                                    if showNewPortfolio {
-                                        HStack {
-                                            TextField("Portfolio name", text: $newPortfolioName)
-                                                .textFieldStyle(.roundedBorder)
-                                                .onSubmit {
-                                                    createPortfolio()
-                                                }
-                                            Button("OK") {
-                                                createPortfolio()
-                                            }
-                                            .buttonStyle(.borderedProminent)
-                                            .controlSize(.small)
-                                            .pointingHandCursor()
-                                            .disabled(newPortfolioName.isEmpty)
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                    }
-
                                     ForEach(globals) { p in
                                         PortfolioQuoteRow(globalPos: p)
                                         if p.id != globals.last?.id {
@@ -248,24 +232,6 @@ struct PortfolioListView: View {
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {
-                            if showNewPortfolio {
-                                HStack {
-                                    TextField("Portfolio name", text: $newPortfolioName)
-                                        .textFieldStyle(.roundedBorder)
-                                        .onSubmit {
-                                            createPortfolio()
-                                        }
-                                    Button("OK") {
-                                        createPortfolio()
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                    .pointingHandCursor()
-                                    .disabled(newPortfolioName.isEmpty)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                            }
                         }
                     }
                 }
@@ -273,30 +239,42 @@ struct PortfolioListView: View {
                 Divider()
 
                 HStack(spacing: 12) {
-                    Button(action: { showNewPortfolio = true }) {
-                        HStack {
+                    Button(action: {
+                        newPortfolioName = ""
+                        showNewPortfolio = true
+                    }) {
+                        HStack(spacing: 4) {
                             Image(systemName: "plus.circle.fill")
-                            Text("New portfolio")
+                            Text("Add Portfolio")
                         }
+                        #if os(iOS)
+                        .font(.inter(12, relativeTo: .caption))
+                        #else
                         .font(.inter(10, relativeTo: .caption))
+                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
 
                     Button(action: { showBinanceSheet = true }) {
-                        HStack {
+                        HStack(spacing: 4) {
                             Image(systemName: "circle.hexagongrid.fill")
                                 .foregroundColor(.yellow)
                             Text("Connect Binance")
                         }
+                        #if os(iOS)
+                        .font(.inter(12, relativeTo: .caption))
+                        #else
                         .font(.inter(10, relativeTo: .caption))
+                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
 
                     Spacer()
                 }
-                .padding(8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
         }
@@ -363,6 +341,30 @@ struct PortfolioListView: View {
             }
         } message: {
             Text("Are you sure you want to delete portfolio '\(confirmDeletePortfolio?.name ?? "")'? This action cannot be undone.")
+        }
+        .alert("New Portfolio", isPresented: $showNewPortfolio) {
+            TextField("Portfolio name", text: $newPortfolioName)
+            Button("Cancel", role: .cancel) { }
+            Button("Create") {
+                createPortfolio()
+            }
+        } message: {
+            Text("Enter a name for the new portfolio:")
+        }
+        .alert("Rename Portfolio", isPresented: Binding(
+            get: { renamingPortfolio != nil },
+            set: { if !$0 { renamingPortfolio = nil } }
+        )) {
+            TextField("Portfolio name", text: $renamePortfolioName)
+            Button("Cancel", role: .cancel) { renamingPortfolio = nil }
+            Button("Save") {
+                if let p = renamingPortfolio {
+                    storageService.renamePortfolio(id: p.id, name: renamePortfolioName)
+                    renamingPortfolio = nil
+                }
+            }
+        } message: {
+            Text("Enter a new name for this portfolio:")
         }
         .alert("Delete Holding", isPresented: deleteHoldingAlertBinding) {
             Button("Cancel", role: .cancel) { confirmDeleteHolding = nil }
@@ -452,9 +454,48 @@ struct PortfolioListView: View {
                             }
                             .buttonStyle(.plain)
                             .pointingHandCursor()
-                            .id(p.id)
+                            .contextMenu {
+                                Button("Rename…") {
+                                    renamingPortfolio = p
+                                    renamePortfolioName = p.name
+                                }
+                                if let idx = storageService.portfolios.firstIndex(where: { $0.id == p.id }) {
+                                    if idx > 0 {
+                                        Button("Move Left") {
+                                            let prevId = storageService.portfolios[idx - 1].id
+                                            storageService.movePortfolio(from: p.id, beforeOrAfter: prevId)
+                                        }
+                                    }
+                                    if idx < storageService.portfolios.count - 1 {
+                                        Button("Move Right") {
+                                            let nextId = storageService.portfolios[idx + 1].id
+                                            storageService.movePortfolio(from: nextId, beforeOrAfter: p.id)
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("Delete Portfolio", role: .destructive) {
+                                    confirmDeletePortfolio = p
+                                }
+                            }
                         }
                     }
+
+                    Button(action: {
+                        newPortfolioName = ""
+                        showNewPortfolio = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.inter(10, weight: .bold, relativeTo: .caption))
+                            .foregroundColor(DS.brand)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(DS.brand.opacity(0.12)))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help("New portfolio")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)

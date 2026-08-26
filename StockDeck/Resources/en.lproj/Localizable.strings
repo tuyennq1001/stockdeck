@@ -87,6 +87,7 @@
 
 /* Watchlist / portfolio views */
 "No stocks in watchlist" = "No stocks in watchlist";
+"No symbols in watchlist" = "No symbols in watchlist";
 "No results" = "No results";
 "No portfolios" = "No portfolios";
 "Total value" = "Total value";
@@ -97,6 +98,10 @@
 "Remove from Watchlist" = "Remove from Watchlist";
 "Set Price Alert…" = "Set Price Alert…";
 "Add stock" = "Add stock";
+"Add Watchlist" = "Add Watchlist";
+"Add Portfolio" = "Add Portfolio";
+"Add Symbol" = "Add Symbol";
+"Add symbol" = "Add symbol";
 "Add holding" = "Add holding";
 "Value / P&L" = "Value / P&L";
 "Avg cost" = "Avg cost";

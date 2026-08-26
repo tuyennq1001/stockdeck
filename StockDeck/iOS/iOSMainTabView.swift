@@ -42,19 +42,14 @@ struct iOSMainTabView: View {
                                     Image(systemName: "slider.horizontal.3")
                                 }
                                 Button {
-                                    showSearch = true
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showSearch = true
+                                    }
                                 } label: {
                                     Image(systemName: "magnifyingglass")
                                 }
                                 refreshButton
                             }
-                        }
-                    }
-                    .sheet(isPresented: $showSearch) {
-                        NavigationStack {
-                            SearchView(mode: .watchlist, isPresented: $showSearch)
-                                .navigationTitle("Search Tickers")
-                                .navigationBarTitleDisplayMode(.inline)
                         }
                     }
                     .sheet(isPresented: $showWatchlistCustomizer) {
