@@ -16,7 +16,7 @@ enum PortfolioColumnPreset: String, CaseIterable, Identifiable {
         case .defaultPreset:
             return PortfolioColumnMetric.defaultSelection
         case .overview:
-            return [.price, .ext, .todayPnl, .totalPnl, .weight]
+            return [.price, .change, .ext, .todayPnl, .totalPnl, .weight]
         case .minimal:
             return [.price, .totalPnl]
         }

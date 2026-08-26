@@ -7,7 +7,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears
     case ath, fromAth, atl, fromAtl
     case marketCap
-    case chart24h, chart7d, chart30d, chart60d, chart90d
+    case chart24h, chart7d, chart30d, chart60d, chart90d, chartYtd, chart1y
 
     var id: String { rawValue }
 
@@ -35,6 +35,8 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         case .chart30d: return "30d chart"
         case .chart60d: return "60d chart"
         case .chart90d: return "90d chart"
+        case .chartYtd: return "YTD chart"
+        case .chart1y: return "1Y chart"
         }
     }
 
@@ -46,7 +48,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
             return .change
         case .ath, .fromAth, .atl, .fromAtl, .marketCap:
             return .price
-        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
             return .chart
         }
     }

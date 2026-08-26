@@ -141,7 +141,7 @@ struct WatchlistWideView: View {
                 return fromAthPercent
             case .fromAtl:
                 return fromAtlPercent
-            case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d:
+            case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
                 return nil
             }
         }
@@ -1265,6 +1265,10 @@ private struct WatchRowView<Menu: View>: View {
                 Sparkline(symbol: row.symbol, days: 60)
             case .chart90d:
                 Sparkline(symbol: row.symbol, days: 90)
+            case .chartYtd:
+                Sparkline(symbol: row.symbol, isYTD: true)
+            case .chart1y:
+                Sparkline(symbol: row.symbol, days: 365)
             }
         }
         .frame(width: WCol.width(for: metric), alignment: .trailing)
