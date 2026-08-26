@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct WatchlistWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @State private var viewModel = WatchlistViewModel()
     @Binding var showSearch: Bool
 
     typealias SortKey = WatchlistSortKey
@@ -153,50 +154,13 @@ struct WatchlistWideView: View {
     @State private var activeDetailSymbol: String? = nil
     @State private var hScrollOffset: CGFloat = 0
 
-    private var rows: [WatchRow] {
-        let order = (draggingSymbol != nil && !previewOrder.isEmpty) ? previewOrder : storageService.watchlist
-        return order.enumerated().map { index, symbol in
-            let q = stockService.quotes[symbol]
-            let rate = q.map { stockService.priceRate(from: $0.currency) } ?? 1
-            let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
-            let history = stockService.watchlistHistory[symbol] ?? []
-            let calendar = Calendar.current
-            let now = Date()
-            let monthStart = calendar.date(byAdding: .month, value: -1, to: now) ?? now
-            let threeMonthStart = calendar.date(byAdding: .month, value: -3, to: now) ?? now
-            let yearStart = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
-            let regularPrice = q?.price ?? 0
-            let indexFlag = q.map { StorageService.isIndex(symbol: $0.symbol, type: storageService.type(for: $0.symbol)) } ?? StorageService.isIndex(symbol: symbol, type: storageService.type(for: symbol))
-            return WatchRow(
-                id: symbol, order: index, symbol: symbol,
-                name: q?.name ?? "",
-                currency: indexFlag ? "" : ((storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? ""),
-                isIndex: indexFlag,
-                rate: rate,
-                price: (q?.price ?? 0) * rate,
-                extPrice: ext,
-                extChangePercent: ext != nil ? q?.extendedChangePercent : nil,
-                extLabel: q?.marketStateLabel ?? "",
-                change: (q?.change ?? 0) * rate,
-                changePercent: q?.changePercent ?? 0,
-                oneMonthChangePercent: PriceHistory.percentChange(
-                    points: history, currentPrice: regularPrice, since: monthStart
-                ),
-                threeMonthChangePercent: PriceHistory.percentChange(
-                    points: history, currentPrice: regularPrice, since: threeMonthStart
-                ),
-                ytdChangePercent: PriceHistory.percentChange(
-                    points: history, currentPrice: regularPrice, since: yearStart
-                ),
-                history: history,
-                allTimeHistory: stockService.priceHistoryMax[symbol] ?? [],
-                loaded: q != nil, quote: q,
-                marketCap: q?.marketCap.map { $0 * (q.map { stockService.rate(from: $0.currency) } ?? 1) }
-            )
+    private var visibleRows: [WatchRow] {
+        if draggingSymbol != nil && !previewOrder.isEmpty {
+            let bySymbol = Dictionary(uniqueKeysWithValues: viewModel.rows.map { ($0.symbol, $0) })
+            return previewOrder.compactMap { bySymbol[$0] }
         }
+        return viewModel.visibleRows
     }
-
-    private var visibleRows: [WatchRow] { sortedRows() }
 
     private var selectedMetrics: [WatchlistMetric] { storageService.watchlistMetrics }
 
@@ -206,23 +170,6 @@ struct WatchlistWideView: View {
     private var extendedSession: Bool {
         storageService.showExtendedHours &&
         storageService.watchlist.contains { stockService.quotes[$0]?.isExtendedHours == true }
-    }
-
-    private func sortedRows() -> [WatchRow] {
-        let base = rows
-        let sortedSymbols = StorageService.sortWatchlistSymbols(
-            base.map(\.symbol),
-            key: sortKey,
-            ascending: sortAsc,
-            quotes: stockService.quotes,
-            history: stockService.watchlistHistory,
-            priceHistoryMax: stockService.priceHistoryMax,
-            priceRate: { stockService.priceRate(from: $0) },
-            rate: { stockService.rate(from: $0) },
-            showExtendedHours: storageService.showExtendedHours
-        )
-        let rowsBySymbol = Dictionary(uniqueKeysWithValues: base.map { ($0.symbol, $0) })
-        return sortedSymbols.compactMap { rowsBySymbol[$0] }
     }
 
     private func toggleSort(_ key: WatchlistSortKey) {
@@ -262,6 +209,9 @@ struct WatchlistWideView: View {
             }
         }
         .navigationTitle(storageService.currentWatchlist.name)
+        .task {
+            viewModel.setup(stockService: stockService, storageService: storageService)
+        }
         .task(id: Set(storageService.watchlist)) {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
