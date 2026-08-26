@@ -252,21 +252,87 @@ final class HomeAIInsightService {
             selectedMovers = Array((stockCandidates + cryptoCandidates).prefix(5))
         }
 
-        // 3. Fetch symbol-specific news for top movers if not yet cached
+        // 3. Fetch benchmark quotes for active markets to provide macro context
+        let activeMarkets = Set(selectedMovers.map(\.marketCategory))
+        var benchmarkSymbols: [String] = []
+        if activeMarkets.contains(.us) {
+            benchmarkSymbols.append(contentsOf: ["^GSPC", "^IXIC", "^DJI"])
+        }
+        if activeMarkets.contains(.japan) {
+            benchmarkSymbols.append("^N225")
+        }
+        if activeMarkets.contains(.vietnam) {
+            benchmarkSymbols.append("^VNINDEX.VN")
+        }
+        if activeMarkets.contains(.crypto) {
+            benchmarkSymbols.append(contentsOf: ["BTC-USD", "ETH-USD"])
+        }
+
+        let missingBenchmarks = benchmarkSymbols.filter {
+            stockService.quotes[$0] == nil && stockService.quotes[$0.uppercased()] == nil
+        }
+        if !missingBenchmarks.isEmpty {
+            await stockService.fetchQuotes(symbols: missingBenchmarks)
+        }
+
+        var marketBenchmarks: [MarketCategory: [(name: String, symbol: String, price: Double, changePercent: Double)]] = [:]
+        for cat in activeMarkets {
+            switch cat {
+            case .us:
+                var list: [(name: String, symbol: String, price: Double, changePercent: Double)] = []
+                for (sym, label) in [("^GSPC", "S&P 500"), ("^IXIC", "Nasdaq"), ("^DJI", "Dow Jones")] {
+                    if let q = stockService.quotes[sym] ?? stockService.quotes[sym.uppercased()], q.price.isFinite {
+                        list.append((label, sym, q.price, q.changePercent))
+                    }
+                }
+                marketBenchmarks[.us] = list
+            case .japan:
+                var list: [(name: String, symbol: String, price: Double, changePercent: Double)] = []
+                for (sym, label) in [("^N225", "Nikkei 225")] {
+                    if let q = stockService.quotes[sym] ?? stockService.quotes[sym.uppercased()], q.price.isFinite {
+                        list.append((label, sym, q.price, q.changePercent))
+                    }
+                }
+                marketBenchmarks[.japan] = list
+            case .vietnam:
+                var list: [(name: String, symbol: String, price: Double, changePercent: Double)] = []
+                for (sym, label) in [("^VNINDEX.VN", "VN-Index")] {
+                    if let q = stockService.quotes[sym] ?? stockService.quotes[sym.uppercased()], q.price.isFinite {
+                        list.append((label, sym, q.price, q.changePercent))
+                    }
+                }
+                marketBenchmarks[.vietnam] = list
+            case .crypto:
+                var list: [(name: String, symbol: String, price: Double, changePercent: Double)] = []
+                for (sym, label) in [("BTC-USD", "Bitcoin (BTC)"), ("ETH-USD", "Ethereum (ETH)")] {
+                    if let q = stockService.quotes[sym] ?? stockService.quotes[sym.uppercased()], q.price.isFinite {
+                        list.append((label, sym, q.price, q.changePercent))
+                    }
+                }
+                marketBenchmarks[.crypto] = list
+            }
+        }
+
+        // 4. Fetch symbol-specific news with smart localized parameters
         await withTaskGroup(of: Void.self) { group in
             for mover in selectedMovers {
                 let symKey = mover.originalSymbol.uppercased()
                 if stockService.newsBySymbol[symKey] == nil || stockService.newsBySymbol[symKey]?.isEmpty == true {
                     group.addTask {
-                        await stockService.refreshNews(for: mover.originalSymbol)
+                        await stockService.refreshNews(
+                            for: mover.originalSymbol,
+                            displayName: mover.name,
+                            marketCategory: mover.marketCategory
+                        )
                     }
                 }
             }
         }
 
-        // 4. Filter news in the last 24h (or 72h on Mondays)
-        let isMonday = Calendar.current.component(.weekday, from: Date()) == 2
-        let maxAgeSeconds: TimeInterval = isMonday ? (72 * 3600) : (24 * 3600)
+        // 5. Filter news in the last 72h (or 120h on Mondays/weekends) to capture major weekend/recent events
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let isMondayOrSunday = (weekday == 2 || weekday == 1)
+        let maxAgeSeconds: TimeInterval = isMondayOrSunday ? (120 * 3600) : (72 * 3600)
         let now = Date()
 
         var articlesBySymbol: [String: [NewsArticle]] = [:]
@@ -281,17 +347,18 @@ final class HomeAIInsightService {
             let combined = Array(Set(symNews + generalNews))
                 .filter { now.timeIntervalSince($0.publishedAt) <= maxAgeSeconds }
                 .sorted { $0.publishTime > $1.publishTime }
-            articlesBySymbol[mover.symbol] = Array(combined.prefix(3))
+            articlesBySymbol[mover.symbol] = Array(combined.prefix(4))
         }
 
-        // 5. Build prompt
+        // 6. Build prompt with market benchmarks and movers
         let prompt = buildPrompt(
             movers: selectedMovers,
+            marketBenchmarks: marketBenchmarks,
             articlesBySymbol: articlesBySymbol,
             storageService: storageService
         )
 
-        // 6. Send to AI
+        // 7. Send to AI
         let request = AIReviewService.Request(
             baseURL: storageService.aiBaseURL,
             apiKey: storageService.aiApiKey,
@@ -304,81 +371,105 @@ final class HomeAIInsightService {
 
         let reply = try await aiService.send(request: request)
 
-        // 7. Parse response
+        // 8. Parse response
         let insight = try parseAIResponse(
             reply: reply,
             movers: selectedMovers,
             articlesBySymbol: articlesBySymbol
         )
 
-        // 8. Cache in storage
+        // 9. Cache in storage
         storageService.saveDailyAIInsight(insight)
         return insight
     }
 
     func buildPrompt(
         movers: [SymbolCandidate],
+        marketBenchmarks: [MarketCategory: [(name: String, symbol: String, price: Double, changePercent: Double)]] = [:],
         articlesBySymbol: [String: [NewsArticle]],
         storageService: StorageService
     ) -> (systemContext: String, userMessage: String) {
         let sys = """
         Bạn là một chuyên gia phân tích thị trường tài chính cấp cao của StockDeck.
-        Nhiệm vụ của bạn là phân tích biến động giá trong phiên hôm nay cho các mã theo từng thị trường (Chứng khoán Mỹ, Chứng khoán & Quỹ Nhật, Chứng khoán Việt Nam, Tiền mã hóa), và giải thích trực diện TẠI SAO từng mã lại tăng hoặc giảm.
+        Nhiệm vụ của bạn:
+        1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (ví dụ: Mỹ dựa trên S&P 500, Nasdaq, Dow Jones; Nhật dựa trên Nikkei 225; Việt Nam dựa trên VN-Index; Crypto dựa trên Bitcoin).
+        2. Sau đó, giải thích nguyên nhân tăng/giảm trực diện cho TỪNG MÃ TÀI SẢN trong danh mục.
 
-        NGUYÊN TẮC PHÂN TÍCH THEO THỊ TRƯỜNG:
-        1. Dựa trên số liệu thực tế, giá đóng cửa phiên chính và tin tức tài chính được cung cấp trong 24 giờ qua.
-        2. TUYỆT ĐỐI KHÔNG bịa đặt thông tin hay tin tức giả mạo. Nếu một mã không có tin tức riêng lẻ cụ thể, hãy phân tích dựa trên dòng tiền thị trường, tâm lý nhóm ngành hoặc vĩ mô.
-        3. Phân loại chuẩn xác marketCategory cho từng mã:
-           - "US": Chứng khoán, ETF, chỉ số Mỹ
-           - "JP": Chứng khoán, quỹ mở, chỉ số Nhật Bản
-           - "VN": Cổ phiếu, ETF, chỉ số Việt Nam
-           - "CRYPTO": Tiền mã hóa (BTC, ETH, SOL, v.v.)
-        4. Đối với crypto: Phân tích dựa trên xu hướng chung của Bitcoin (BTC), dòng tiền ETF crypto hoặc hệ sinh thái token (không phân biệt các cặp USD/USDT/USDC).
-
-        YÊU CẦU NGÔN NGỮ (BẮT BUỘC):
-        TOÀN BỘ nội dung phản hồi PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp.
+        NGUYÊN TẮC PHÂN TÍCH VÀ BẢO ĐẢM TÍNH TRUNG THỰC (QUAN TRỌNG NHẤT):
+        1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính (Ví dụ: Mỹ bứt phá nhờ nhóm công nghệ trên S&P 500 & Nasdaq; Nhật Bản tăng theo đà Nikkei 225; VN-Index giằng co quanh mốc tâm lý; Crypto tăng theo nhịp của Bitcoin).
+        2. TỪNG MÃ TÀI SẢN ("items"):
+           - Nếu có tin tức báo chí được cung cấp: Trích xuất và giải thích đi thẳng vào sự kiện cốt lõi (KQKD, hợp đồng, kế hoạch mua lại cổ phiếu, tin tức ngành...).
+           - Nếu KHÔNG CÓ tin tức báo chí trong dữ liệu: BẮT BUỘC giải thích dựa trên đà tăng/giảm đồng pha với chỉ số chung của thị trường hoặc nhóm ngành/cung cầu kỹ thuật. TUYỆT ĐỐI KHÔNG tự bịa đặt, suy đoán tin đồn hay bịa ra các sự kiện doanh nghiệp không có trong dữ liệu đầu vào.
+        3. TOÀN BỘ nội dung phản hồi PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp.
 
         Cấu trúc JSON phản hồi bắt buộc đúng 100% định dạng sau:
         {
-          "portfolioSummary": "Tóm tắt 1-2 câu ngắn gọn, sắc bén bằng tiếng Việt về toàn cảnh các thị trường hôm nay.",
+          "portfolioSummary": "Tóm tắt 1-2 câu ngắn gọn, sắc bén bằng tiếng Việt về toàn cảnh các thị trường và danh mục hôm nay.",
+          "marketOverviews": {
+            "US": "1-2 câu tiếng Việt phân tích bối cảnh chuyển động của thị trường Mỹ dựa trên S&P 500, Nasdaq, Dow Jones.",
+            "JP": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Nhật Bản dựa trên Nikkei 225.",
+            "VN": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Việt Nam dựa trên VN-Index.",
+            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh thị trường Tiền mã hóa dựa trên Bitcoin & Ethereum."
+          },
           "items": [
             {
               "symbol": "SYMBOL",
               "name": "Tên công ty / Quỹ / Tài sản",
-              "marketCategory": "US",
-              "changePercent": 3.5,
               "coreDriver": "Một câu tiếng Việt ngắn gọn, đi thẳng vào nguyên nhân chính khiến mã tăng hoặc giảm hôm nay.",
               "bulletPoints": [
                 "Luận điểm số liệu / tin tức cụ thể hỗ trợ bằng tiếng Việt",
-                "Bối cảnh dòng tiền / nhóm ngành hỗ trợ bằng tiếng Việt"
+                "Bối cảnh dòng tiền / nhóm ngành / chỉ số chung hỗ trợ bằng tiếng Việt"
               ],
               "sentiment": "positive",
-              "sourcePublisher": "Tên nguồn báo chí (ví dụ: 'Reuters', 'Bloomberg') hoặc 'Dòng tiền thị trường'"
+              "sourcePublisher": "Tên nguồn báo chí (ví dụ: 'Reuters', 'Bloomberg') hoặc 'Xu hướng chỉ số / Dòng tiền thị trường'"
             }
           ]
         }
         Chỉ trả về duy nhất chuỗi JSON hợp lệ. Không thêm bất kỳ lời dẫn hay văn bản thừa bên ngoài.
         """
 
-        var user = "Dưới đây là danh sách các mã tài sản kèm biến động giá hôm nay và tin tức 24h gần nhất:\n\n"
-        for mover in movers {
-            let sign = mover.changePercent >= 0 ? "+" : ""
-            let pctStr = String(format: "%@%.2f%%", sign, mover.changePercent)
-            user += "Mã: \(mover.symbol) | Tên: \(mover.name) | Thị trường: \(mover.marketCategory.title)\n"
-            user += "Giá: \(mover.price) \(mover.currency), Biến động hôm nay: \(pctStr)\n"
-            let news = articlesBySymbol[mover.symbol] ?? articlesBySymbol[mover.originalSymbol] ?? []
-            if news.isEmpty {
-                user += "Tin tức 24h: Chưa có tin tức riêng lẻ trực tiếp.\n\n"
-            } else {
-                user += "Tin tức 24h:\n"
-                for (idx, article) in news.enumerated() {
-                    user += "  [\(idx + 1)] \"\(article.title)\" (Nguồn: \(article.publisher))"
-                    if !article.content.isEmpty {
-                        user += " - \(article.content.prefix(150))"
+        var user = "Dưới đây là dữ liệu biến động các chỉ số thị trường và tin tức gần nhất:\n\n"
+
+        // Add Market Benchmarks
+        if !marketBenchmarks.isEmpty {
+            user += "=== BỐI CẢNH CÁC CHỈ SỐ THỊ TRƯỜNG HÔM NAY ===\n"
+            for cat in MarketCategory.allCases {
+                if let benchmarks = marketBenchmarks[cat], !benchmarks.isEmpty {
+                    let desc = benchmarks.map { item in
+                        let sign = item.changePercent >= 0 ? "+" : ""
+                        return "\(item.name): \(sign)\(String(format: "%.2f%%", item.changePercent))"
+                    }.joined(separator: " | ")
+                    user += "• \(cat.title): \(desc)\n"
+                }
+            }
+            user += "\n"
+        }
+
+        // Add Symbols grouped by market
+        user += "=== DANH SÁCH MÃ BIẾN ĐỘNG THEO TỪNG THỊ TRƯỜNG ===\n\n"
+        let grouped = Dictionary(grouping: movers, by: \.marketCategory)
+        for cat in MarketCategory.allCases {
+            guard let items = grouped[cat], !items.isEmpty else { continue }
+            user += "--- [\(cat.title.uppercased())] ---\n"
+            for mover in items {
+                let sign = mover.changePercent >= 0 ? "+" : ""
+                let pctStr = String(format: "%@%.2f%%", sign, mover.changePercent)
+                user += "Mã: \(mover.symbol) | Tên: \(mover.name)\n"
+                user += "Giá: \(mover.price) \(mover.currency), Biến động hôm nay: \(pctStr)\n"
+                let news = articlesBySymbol[mover.symbol] ?? articlesBySymbol[mover.originalSymbol] ?? []
+                if news.isEmpty {
+                    user += "Tin tức: Chưa có tin tức báo chí trực tiếp riêng lẻ.\n\n"
+                } else {
+                    user += "Tin tức báo chí:\n"
+                    for (idx, article) in news.enumerated() {
+                        user += "  [\(idx + 1)] \"\(article.title)\" (Nguồn: \(article.publisher))"
+                        if !article.content.isEmpty {
+                            user += " - \(article.content.prefix(160))"
+                        }
+                        user += "\n"
                     }
                     user += "\n"
                 }
-                user += "\n"
             }
         }
 
@@ -414,6 +505,7 @@ final class HomeAIInsightService {
                 let sourcePublisher: String?
             }
             let portfolioSummary: String
+            let marketOverviews: [String: String]?
             let items: [ItemDTO]
         }
 
@@ -430,10 +522,9 @@ final class HomeAIInsightService {
             let price = mover?.price
             let symbolKey = mover?.symbol ?? item.symbol
 
+            // Strict deterministic market category from system data - do not allow AI hallucination to override
             let market: MarketCategory
-            if let catRaw = item.marketCategory, let cat = MarketCategory(rawValue: catRaw.uppercased()) {
-                market = cat
-            } else if let mover = mover {
+            if let mover = mover {
                 market = mover.marketCategory
             } else {
                 market = Self.detectMarketCategory(symbol: symbolKey, isCrypto: false)
@@ -474,6 +565,7 @@ final class HomeAIInsightService {
         return HomeAIInsight(
             date: Date(),
             portfolioSummary: decoded.portfolioSummary,
+            marketOverviews: decoded.marketOverviews,
             items: finalItems,
             generatedAt: Date()
         )

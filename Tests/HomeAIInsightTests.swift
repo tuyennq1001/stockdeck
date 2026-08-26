@@ -176,4 +176,81 @@ final class HomeAIInsightTests: XCTestCase {
         XCTAssertEqual(HomeAIInsightService.detectMarketCategory(symbol: "BTC-USD", isCrypto: true), .crypto)
         XCTAssertEqual(HomeAIInsightService.detectMarketCategory(symbol: "ETHUSDT", isCrypto: false), .crypto)
     }
+
+    func testDeterministicCategoryNeverOverriddenByAI() throws {
+        // SKHY is a US stock candidate, but AI hallucinates and labels it "CRYPTO"
+        let mover = HomeAIInsightService.SymbolCandidate(
+            symbol: "SKHY",
+            name: "SK hynix",
+            price: 185.0,
+            changePercent: 3.5,
+            currency: "USD",
+            isCrypto: false,
+            marketCategory: .us
+        )
+
+        let aiReplyWithHallucinatedCrypto = """
+        {
+          "portfolioSummary": "Thị trường hôm nay tích cực.",
+          "marketOverviews": {
+            "US": "S&P 500 và Nasdaq tăng điểm nhờ nhóm bán dẫn."
+          },
+          "items": [
+            {
+              "symbol": "SKHY",
+              "name": "SK hynix",
+              "marketCategory": "CRYPTO",
+              "changePercent": 3.5,
+              "coreDriver": "Kế hoạch mua lại cổ phiếu 28.6 tỷ USD tạo đà tăng trưởng mạnh.",
+              "bulletPoints": [
+                "SK hynix công bố mua lại lượng lớn cổ phiếu",
+                "Hưởng lợi từ làn sóng nhu cầu bộ nhớ băng thông cao HBM"
+              ],
+              "sentiment": "positive",
+              "sourcePublisher": "Yahoo Finance"
+            }
+          ]
+        }
+        """
+
+        let parsed = try HomeAIInsightService.shared.parseAIResponse(
+            reply: aiReplyWithHallucinatedCrypto,
+            movers: [mover],
+            articlesBySymbol: [:]
+        )
+
+        XCTAssertEqual(parsed.marketOverviews?["US"], "S&P 500 và Nasdaq tăng điểm nhờ nhóm bán dẫn.")
+        XCTAssertEqual(parsed.overview(for: .us), "S&P 500 và Nasdaq tăng điểm nhờ nhóm bán dẫn.")
+        let item = try XCTUnwrap(parsed.items.first)
+        // Must strictly remain .us, NOT .crypto!
+        XCTAssertEqual(item.marketCategory, .us)
+        XCTAssertEqual(item.symbol, "SKHY")
+        XCTAssertEqual(item.coreDriver, "Kế hoạch mua lại cổ phiếu 28.6 tỷ USD tạo đà tăng trưởng mạnh.")
+    }
+
+    func testSmartNewsParametersLocalization() {
+        // Vietnam Stock
+        let vn = StockService.smartNewsParameters(symbol: "HPG.VN", displayName: "Hòa Phát", marketCategory: .vietnam)
+        XCTAssertEqual(vn.language, "vi")
+        XCTAssertEqual(vn.region, "VN")
+        XCTAssertEqual(vn.ceid, "VN:vi")
+        XCTAssertTrue(vn.query.contains("HPG"))
+
+        // Japan Stock
+        let jp = StockService.smartNewsParameters(symbol: "7203.T", displayName: "Toyota", marketCategory: .japan)
+        XCTAssertEqual(jp.language, "ja")
+        XCTAssertEqual(jp.region, "JP")
+        XCTAssertEqual(jp.ceid, "JP:ja")
+        XCTAssertTrue(jp.query.contains("株価"))
+
+        // Crypto
+        let crypto = StockService.smartNewsParameters(symbol: "BTC-USD", displayName: "Bitcoin", marketCategory: .crypto)
+        XCTAssertEqual(crypto.language, "en-US")
+        XCTAssertTrue(crypto.query.contains("Bitcoin") && crypto.query.contains("crypto"))
+
+        // US Stock
+        let us = StockService.smartNewsParameters(symbol: "SKHY", displayName: "SK Hynix", marketCategory: .us)
+        XCTAssertEqual(us.language, "en-US")
+        XCTAssertEqual(us.query, "SK Hynix stock")
+    }
 }

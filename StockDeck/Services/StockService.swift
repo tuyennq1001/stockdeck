@@ -2793,10 +2793,16 @@ class StockService: ObservableObject {
         lastNewsFetch = Date()
     }
 
-    private func fetchNewsChunk(query: String, sourceSymbol: String?) async -> [NewsArticle] {
-        // Google News RSS search feed: symbol-aware, publisher-diverse, no key.
+    private func fetchNewsChunk(
+        query: String,
+        sourceSymbol: String?,
+        language: String = "en-US",
+        region: String = "US",
+        ceid: String = "US:en"
+    ) async -> [NewsArticle] {
+        // Google News RSS search feed: symbol-aware, publisher-diverse, localized.
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-        guard let url = URL(string: "https://news.google.com/rss/search?q=\(encoded)&hl=en-US&gl=US&ceid=US:en") else { return [] }
+        guard let url = URL(string: "https://news.google.com/rss/search?q=\(encoded)&hl=\(language)&gl=\(region)&ceid=\(ceid)") else { return [] }
         do {
             let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
@@ -2812,10 +2818,67 @@ class StockService: ObservableObject {
         }
     }
 
-    /// Refresh news for a single symbol (used by the symbol detail page).
-    /// Fetches from Google News RSS, throttled to at most once every 5 minutes
-    /// per symbol, and stores the result in `newsBySymbol`.
-    func refreshNews(for symbol: String) async {
+    /// Generates the most accurate search query and localization parameters for a financial asset.
+    static func smartNewsParameters(
+        symbol: String,
+        displayName: String? = nil,
+        marketCategory: MarketCategory? = nil
+    ) -> (query: String, language: String, region: String, ceid: String) {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCategory = marketCategory ?? HomeAIInsightService.detectMarketCategory(symbol: upper, isCrypto: false)
+
+        let cleanName = (displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasName = !cleanName.isEmpty && cleanName.uppercased() != upper
+
+        switch resolvedCategory {
+        case .vietnam:
+            let cleanTicker = upper.replacingOccurrences(of: ".VN", with: "").replacingOccurrences(of: "^", with: "")
+            let q: String
+            if hasName {
+                q = "\(cleanTicker) \(cleanName)"
+            } else {
+                q = "\(cleanTicker) cổ phiếu"
+            }
+            return (query: q, language: "vi", region: "VN", ceid: "VN:vi")
+
+        case .japan:
+            let cleanTicker = upper.replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".JP", with: "")
+            let q: String
+            if hasName {
+                q = "\(cleanName) 株価"
+            } else {
+                q = "\(cleanTicker) 株価"
+            }
+            return (query: q, language: "ja", region: "JP", ceid: "JP:ja")
+
+        case .crypto:
+            let base = HomeAIInsightService.cryptoBaseAsset(for: upper) ?? upper
+            let name = HomeAIInsightService.cryptoDisplayName(for: base, fallback: cleanName.isEmpty ? base : cleanName)
+            let q = "\(name) crypto"
+            return (query: q, language: "en-US", region: "US", ceid: "US:en")
+
+        case .us:
+            let cleanTicker = upper.replacingOccurrences(of: ".US", with: "")
+            let q: String
+            if hasName {
+                let words = cleanName.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                let shortName = words.prefix(4).joined(separator: " ")
+                q = "\(shortName) stock"
+            } else {
+                q = "\(cleanTicker) stock"
+            }
+            return (query: q, language: "en-US", region: "US", ceid: "US:en")
+        }
+    }
+
+    /// Refresh news for a single symbol (used by the symbol detail page and AI insights).
+    /// Fetches from Google News RSS using smart localized queries, throttled to at most once
+    /// every 5 minutes per symbol, and stores the result in `newsBySymbol`.
+    func refreshNews(
+        for symbol: String,
+        displayName: String? = nil,
+        marketCategory: MarketCategory? = nil
+    ) async {
         let key = symbol.uppercased()
         if let existing = newsBySymbol[key], !existing.isEmpty,
            let last = lastSymbolNewsFetch[key],
@@ -2826,10 +2889,18 @@ class StockService: ObservableObject {
         isLoadingSymbolNews.insert(key)
         defer { isLoadingSymbolNews.remove(key) }
 
-        let articles = await fetchNewsChunk(query: symbol, sourceSymbol: key)
+        let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
+        let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
+        let articles = await fetchNewsChunk(
+            query: params.query,
+            sourceSymbol: key,
+            language: params.language,
+            region: params.region,
+            ceid: params.ceid
+        )
         let deduped = articles.filter { !$0.title.isEmpty }
             .sorted { $0.publishTime > $1.publishTime }
-        newsBySymbol[key] = Array(deduped.prefix(5))
+        newsBySymbol[key] = Array(deduped.prefix(10))
         lastSymbolNewsFetch[key] = Date()
     }
 }

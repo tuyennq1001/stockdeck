@@ -124,6 +124,46 @@ struct MarketSectionHeader: View {
     }
 }
 
+/// Banner/card displaying the AI market context for a specific market category (e.g. S&P 500, Nasdaq, Nikkei, VN-Index, Bitcoin).
+struct MarketOverviewCard: View {
+    let category: MarketCategory
+    let overview: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DS.brand)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Bối cảnh chung thị trường")
+                    .font(.inter(10, weight: .bold, relativeTo: .caption2))
+                    .tracking(0.8)
+                    .foregroundStyle(DS.brand)
+
+                Text(overview)
+                    .font(.inter(12.5, weight: .medium, relativeTo: .body))
+                    .foregroundStyle(DS.ink)
+                    .lineSpacing(2.5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(DS.cardAlt.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(DS.brand.opacity(0.12), lineWidth: 1)
+                )
+        )
+    }
+}
+
 // MARK: - Symbol Insight Card
 
 /// Card showing the specific AI reasoning and drivers for a single symbol's price movement.
