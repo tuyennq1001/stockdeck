@@ -1,7 +1,10 @@
 # Project Rules
 
-## Git Automation Rule
-- Từ nay về sau, mỗi khi chỉnh sửa/bổ sung tính năng và chạy kiểm thử (`swift test`) thành công, tự động thực hiện `git add .`, `git commit` với mô tả rõ ràng, và `git push origin <branch>` lên GitHub mà không cần chờ nhắc nhở.
+## Git Automation & Branching Rule
+- **Tuyệt đối không commit trực tiếp vào `main`**.
+- Mọi công việc sửa lỗi hoặc phát triển tính năng mới bắt buộc phải tạo nhánh riêng (`feature/<tên>` hoặc `fix/<tên>`) từ `main`.
+- Sau khi kiểm thử (`swift test`) và build (`./dev.sh`) thành công, commit trên nhánh riêng đó, push và tạo PR (`gh pr create`).
+- Chỉ merge vào `main` khi có yêu cầu/xác nhận từ người dùng (`gh pr merge`).
 
 ## Native Currency trong Bảng Positions (Positions Table Currency)
 - Trong bảng vị thế (Positions Table / Positions Card), các cột **Cost basis**, **Market Value**, và **P&L** của mỗi vị thế **bắt buộc dùng nguyên đồng tiền gốc (Native Currency)** của symbol đó (ví dụ: `₫` / VND cho mã Việt Nam, `$` / USD cho mã Mỹ, `¥` / JPY cho mã Nhật), **không được tự động quy đổi (convert)** sang đồng tiền ưu tiên danh mục (`preferredCurrency`).
