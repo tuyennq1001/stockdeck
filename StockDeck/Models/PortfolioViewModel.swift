@@ -54,7 +54,11 @@ enum ChartRange: String, CaseIterable {
 @MainActor
 @Observable
 final class PortfolioViewModel {
-    let scope: PortfolioScope
+    var scope: PortfolioScope {
+        didSet {
+            recomputeValuation()
+        }
+    }
 
     private var stockService: StockService?
     private var storageService: StorageService?
@@ -180,7 +184,9 @@ final class PortfolioViewModel {
 
     // MARK: - Valuation (single-pass, cached)
 
-    struct SymbolAggregate: Sendable {
+    struct SymbolAggregate: Sendable, Identifiable {
+        let id: String
+        var symbol: String { id }
         let value: Double
         let cost: Double
         let pnl: Double
@@ -196,6 +202,9 @@ final class PortfolioViewModel {
         let changePercent: Double
         let extendedChangePercent: Double?
         let nativeCurrencySymbol: String
+        let lotsCount: Int
+        let hasCostBasis: Bool
+        let quote: StockQuote?
     }
 
     struct ValuationBundle {
@@ -216,15 +225,11 @@ final class PortfolioViewModel {
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?)] = [:]
+        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?, lotsCount: Int, quote: StockQuote?)] = [:]
         var missingCostSymbols: Set<String> = []
 
         for portfolio in portfolios {
             for holding in portfolio.holdings {
-                // Missing live quote → price .nan, identical to
-                // PortfolioValuation.resolveInputs(). An unpriced holding must
-                // contribute 0 to value/P&L here, exactly like the menu bar,
-                // sidebar, and popover — never a phantom value at avgPrice.
                 let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
                     symbol: holding.symbol,
                     name: holding.symbol,
@@ -242,10 +247,6 @@ final class PortfolioViewModel {
                 let lev = holding.effectiveLeverage
                 let qty = holding.quantity
                 let hasCost = holding.hasKnownCostBasis
-                // Match PortfolioValuation.totals() exactly: market value depends
-                // only on a live price, never on cost basis. A holding with a
-                // quote but no known cost (e.g. Binance balances without order
-                // history) still counts toward Total Value; only its cost is 0.
                 let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
                 let cost = hasCost
                     ? (holding.avgPrice / scale) * qty * lev * costRate
@@ -253,7 +254,6 @@ final class PortfolioViewModel {
 
                 totalVal += value
 
-                // Native-currency aggregates for position rows
                 let nativeVal = price.isFinite ? holding.marketValue(currentPrice: price) : 0
                 let nativeCst = holding.costBasisLocal
                 let nativePnl = holding.pnl(currentPrice: price)
@@ -262,12 +262,9 @@ final class PortfolioViewModel {
                 if !hasCost {
                     missingCostSymbols.insert(sym)
                 }
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, quote.changePercent, quote.extendedChangePercent)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, quote.changePercent, quote.extendedChangePercent, 0, quote)
                 existing.value += value
                 existing.cost += cost
-                // P&L only for holdings with a known cost basis — a Binance
-                // balance without order history has cost 0, so value − cost would
-                // fabricate the entire market value as profit.
                 existing.pnl += (hasCost && price.isFinite) ? (value - cost) : 0
                 existing.nativeCost += nativeCst
                 existing.nativeValue += nativeVal
@@ -277,9 +274,9 @@ final class PortfolioViewModel {
                 }
                 existing.totalQty += qty
                 existing.todayPnl += (quote.change / scale) * qty * lev
+                existing.lotsCount += 1
                 bySymbol[sym] = existing
 
-                // ValuedHolding still stores preferred-currency value/cost for legacy compatibility
                 valued.append(ValuedHolding(
                     id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
                     value: value, cost: cost, dayChangePercent: quote.changePercent,
@@ -341,6 +338,7 @@ final class PortfolioViewModel {
             let avg = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
             let curr = stockService.detectedCurrency(for: sym)
             symAggs[sym] = SymbolAggregate(
+                id: sym,
                 value: data.value,
                 cost: data.cost,
                 pnl: data.pnl,
@@ -353,7 +351,10 @@ final class PortfolioViewModel {
                 todayPnl: data.todayPnl,
                 changePercent: data.changePercent,
                 extendedChangePercent: data.extendedChangePercent,
-                nativeCurrencySymbol: StorageService.currencySymbol(for: curr)
+                nativeCurrencySymbol: StorageService.currencySymbol(for: curr),
+                lotsCount: data.lotsCount,
+                hasCostBasis: !missingCostSymbols.contains(sym),
+                quote: data.quote
             )
         }
         symbolAggregates = symAggs

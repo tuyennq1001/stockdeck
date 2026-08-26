@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct PortfolioListView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @State private var viewModel = PortfolioViewModel(scope: .all)
     @State private var showNewPortfolio = false
     @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
@@ -100,25 +101,11 @@ struct PortfolioListView: View {
                 // Total summary for selected tab
                 if storageService.portfolios.count > 0 {
                     let currSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
-                    let activePortfolios = activePortfoliosForSummary
-                    let totals = portfolioTotals(for: activePortfolios)
-                    let totalVal = totals.value
-                    let totalCost = totals.cost
-                    let pnl = totals.pnl
-                    let pnlPct = abs(totalCost) >= 0.01 ? (pnl / abs(totalCost)) * 100 : 0
-
-                    let todayInputs = activePortfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
-                        guard let quote = stockService.quotes[holding.symbol] else { return nil }
-                        return TodayPerformance.Input(
-                            holding: holding,
-                            regularPrice: quote.price,
-                            previousClose: quote.previousClose,
-                            rate: stockService.rate(from: quote.currency)
-                        )
-                    }
-                    let today = TodayPerformance.totals(todayInputs)
-                    let todayGain = today.gain
-                    let todayPct = today.percent
+                    let totalVal = viewModel.valuationCache.totalValue
+                    let pnl = viewModel.valuationCache.totalPnl
+                    let pnlPct = viewModel.valuationCache.totalPnlPercent
+                    let todayGain = viewModel.valuationCache.dayChangeValue
+                    let todayPct = viewModel.valuationCache.dayChangePercent
 
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -220,7 +207,7 @@ struct PortfolioListView: View {
                             ScrollView(.vertical, showsIndicators: true) {
                                 LazyVStack(spacing: 0) {
                                     ForEach(globals) { p in
-                                        PortfolioQuoteRow(globalPos: p)
+                                        PortfolioQuoteRow(stockService: stockService, globalPos: p)
                                         if p.id != globals.last?.id {
                                             Divider().padding(.leading, 72)
                                         }
@@ -279,6 +266,17 @@ struct PortfolioListView: View {
                 .padding(.vertical, 8)
             }
         }
+        }
+        
+        .onChange(of: selectedPortfolioId) { _, newValue in
+            if let id = newValue {
+                viewModel.scope = .portfolio(id)
+            } else {
+                viewModel.scope = .all
+            }
+        }
+        .task {
+            viewModel.setup(stockService: stockService, storageService: storageService)
         }
         .onChange(of: draggingPortfolioId) { _, newValue in
             if newValue == nil { previewPortfolioIds = [] }
@@ -606,97 +604,42 @@ struct PortfolioListView: View {
         let shares: Double
         let lotsCount: Int
         var weight: Double
+        let quote: StockQuote?
         var symbol: String { id }
     }
 
     /// Per-symbol weighted-average buy price across ALL portfolios, with the
     /// current price return vs. that average. Sorted by market value.
     private var globalPositions: [GlobalPosition] {
-        var qty: [String: Double] = [:]
-        var qtyPrice: [String: Double] = [:]
-        var lotsMap: [String: Int] = [:]
-        var totalVal: [String: Double] = [:]
-        var totalCost: [String: Double] = [:]
-        var nativeCostMap: [String: Double] = [:]
-        var nativeValMap: [String: Double] = [:]
-        var nativeTodayPnlMap: [String: Double] = [:]
-        var hasMissingCostMap: [String: Bool] = [:]
-        var orderMap: [String: Int] = [:]
-        var order = 0
-
-        for portfolio in activePortfoliosForSummary {
-            for h in portfolio.holdings {
-                let sym = h.symbol.uppercased()
-                if orderMap[sym] == nil {
-                    orderMap[sym] = order
-                    order += 1
-                }
-                qty[sym, default: 0] += h.quantity
-                lotsMap[sym, default: 0] += 1
-                if h.hasKnownCostBasis {
-                    qtyPrice[sym, default: 0] += h.quantity * h.avgPrice
-                }
-
-                let quote = stockService.quotes[h.symbol] ?? stockService.quotes[sym] ?? StockQuote(
-                    symbol: h.symbol, name: h.symbol, price: h.avgPrice, change: 0, changePercent: 0,
-                    currency: stockService.detectedCurrency(for: h.symbol)
-                )
-                let currency = stockService.detectedCurrency(for: h.symbol)
-                let rate = stockService.rate(from: currency)
-                let costRate = stockService.rate(from: currency, for: h.purchaseDate)
-                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(h.symbol) || h.isJapaneseFund
-                let scale = isJpFund ? 10000.0 : 1.0
-                let lev = h.effectiveLeverage
-                let q = h.quantity
-                let val = (quote.price / scale) * q * lev * rate
-                let cst = h.hasKnownCostBasis
-                    ? (h.avgPrice / scale) * q * lev * costRate
-                    : 0
-                totalVal[sym, default: 0] += val
-                totalCost[sym, default: 0] += cst
-
-                let nativeCst = h.hasKnownCostBasis ? h.costBasisLocal : 0
-                let nativeVal = h.marketValue(currentPrice: quote.price)
-                let nativeTodayPnl = (quote.change / scale) * q * lev
-                nativeCostMap[sym, default: 0] += nativeCst
-                nativeValMap[sym, default: 0] += nativeVal
-                nativeTodayPnlMap[sym, default: 0] += nativeTodayPnl
-                if !h.hasKnownCostBasis {
-                    hasMissingCostMap[sym] = true
-                }
-            }
-        }
-        let sumVal = totalVal.values.reduce(0, +)
-        return qty.compactMap { symbol, q -> GlobalPosition? in
-            guard abs(q) >= 1e-9 else { return nil }
-            let quote = stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()]
-            let weightedPrice = qtyPrice[symbol, default: 0]
-            let avg = abs(weightedPrice) > 0 ? weightedPrice / q : .nan
-            let price = quote?.price ?? avg
-            let val = totalVal[symbol, default: 0]
-
-            let nativeCst = nativeCostMap[symbol, default: 0]
-            let nativeVal = nativeValMap[symbol, default: 0]
-            let nativeTodayPnl = nativeTodayPnlMap[symbol, default: 0]
-            let hasCompleteCost = !(hasMissingCostMap[symbol] ?? false)
-            let nativePnl = hasCompleteCost ? nativeVal - nativeCst : 0
-            let pct = hasCompleteCost && abs(nativeCst) >= 0.01 ? (nativePnl / abs(nativeCst)) * 100 : 0
-            let hasCostBasis = hasCompleteCost
-
-            let assetCurr = stockService.detectedCurrency(for: symbol)
-            let quoteCurr = (quote?.currency.isEmpty == false) ? quote!.currency : assetCurr
-            let nativeSymbol = StorageService.currencySymbol(for: quoteCurr)
-
-            let extPrice: Double? = (quote?.isExtendedHours == true) ? quote?.alertPrice : nil
-            let extChangePercent: Double? = (quote?.isExtendedHours == true) ? quote?.extendedChangePercent : nil
-            let weight = sumVal > 0 ? (val / sumVal) * 100 : 0
-
-            return GlobalPosition(id: symbol, avgPrice: avg, cost: nativeCst, valueLocal: nativeVal, todayPnl: nativeTodayPnl,
-                                  priceSymbol: nativeSymbol, hasCostBasis: hasCostBasis,
-                                  pct: pct, pnl: nativePnl,
-                                  currentPrice: price, priceChangePercent: quote?.changePercent ?? 0,
-                                  extPrice: extPrice, extChangePercent: extChangePercent,
-                                  value: val, shares: q, lotsCount: lotsMap[symbol, default: 1], weight: weight)
+        let aggDict = viewModel.symbolAggregates
+        let totalVal = viewModel.valuationCache.totalValue
+        
+        return aggDict.values.compactMap { agg -> GlobalPosition? in
+            guard abs(agg.totalQuantity) >= 1e-9 || agg.value > 0 else { return nil }
+            let weight = abs(totalVal) >= 0.01 ? (abs(agg.value) / abs(totalVal) * 100) : 0
+            let extPrice: Double? = (agg.quote?.isExtendedHours == true) ? agg.quote?.alertPrice : nil
+            let extChangePercent: Double? = (agg.quote?.isExtendedHours == true) ? agg.extendedChangePercent : nil
+            
+            return GlobalPosition(
+                id: agg.symbol,
+                avgPrice: agg.avgPrice,
+                cost: agg.nativeCost,
+                valueLocal: agg.nativeValue,
+                todayPnl: agg.todayPnl,
+                priceSymbol: agg.nativeCurrencySymbol,
+                hasCostBasis: agg.hasCostBasis,
+                pct: agg.pnlPercent,
+                pnl: agg.nativePnl,
+                currentPrice: agg.quote?.price ?? agg.avgPrice,
+                priceChangePercent: agg.changePercent,
+                extPrice: extPrice,
+                extChangePercent: extChangePercent,
+                value: agg.value,
+                shares: agg.totalQuantity,
+                lotsCount: agg.lotsCount,
+                weight: weight,
+                quote: agg.quote
+            )
         }
         .sorted { $0.value > $1.value }
     }
@@ -795,31 +738,19 @@ struct PortfolioSection: View {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
 
-    var totalValue: Double {
+    private var valuationTotals: (value: Double, cost: Double, pnl: Double, pnlPercent: Double) {
         let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs).value
-    }
-
-    var totalPnl: Double {
-        // Unify with every other surface: P&L = value − cost, where cost uses the
-        // historical FX rate at purchase. Holdings without a known cost basis
-        // (e.g. Binance balances without order history) contribute 0 P&L — we
-        // can't report a gain/loss without the purchase price.
-        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs).pnl
-    }
-
-    var totalCost: Double {
-        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs).cost
-    }
-
-    var totalPnlPercent: Double {
-        guard abs(totalCost) >= 0.01 else { return 0 }
-        return (totalPnl / abs(totalCost)) * 100
+        let totals = PortfolioValuation.totals(inputs)
+        let pct = abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
+        return (totals.value, totals.cost, totals.pnl, pct)
     }
 
     var body: some View {
+        let totals = valuationTotals
+        let totalValue = totals.value
+        let totalPnl = totals.pnl
+        let totalPnlPercent = totals.pnlPercent
+
         Section {
             // Summary row
             HStack {
@@ -1376,13 +1307,11 @@ struct GroupedHoldingRow: View {
 // MARK: - Row Views
 
 struct PortfolioQuoteRow: View {
-    @EnvironmentObject var stockService: StockService
+    let stockService: StockService
     @EnvironmentObject var storageService: StorageService
     let globalPos: PortfolioListView.GlobalPosition
 
-    var quote: StockQuote? {
-        stockService.quotes[globalPos.symbol]
-    }
+    var quote: StockQuote? { globalPos.quote }
 
     private var priceRate: Double {
         guard let q = quote else { return 1.0 }
@@ -1440,7 +1369,7 @@ struct PortfolioQuoteRow: View {
     var body: some View {
         HStack(spacing: 0) {
             // Col 1: Logo + symbol + name
-            let isJpFund = stockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
+            let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
             let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
             let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(globalPos.symbol)) : globalPos.symbol
             let subTitleText = isDisplayAsset ? globalPos.symbol : (isJpFund ? "" : (quote?.name ?? ""))
