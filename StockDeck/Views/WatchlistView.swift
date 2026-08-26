@@ -26,6 +26,7 @@ private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @State private var viewModel = WatchlistViewModel()
     @Binding var showSearch: Bool
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
@@ -68,29 +69,11 @@ struct WatchlistView: View {
         setSort(key, ascending: newAsc)
     }
 
-    var sortedSymbols: [String] {
-        StorageService.sortWatchlistSymbols(
-            storageService.watchlist,
-            key: currentSortKey,
-            ascending: currentSortAsc,
-            quotes: stockService.quotes,
-            history: stockService.watchlistHistory,
-            priceHistoryMax: stockService.priceHistoryMax,
-            priceRate: { stockService.priceRate(from: $0) },
-            rate: { stockService.rate(from: $0) },
-            showExtendedHours: storageService.showExtendedHours
-        )
-    }
-
-    var filteredSymbols: [String] { sortedSymbols }
-
-    /// The rows to render: the local drag preview while dragging (live reorder,
-    /// zero storage writes), else the sorted/column projection.
     private var displaySymbols: [String] {
         if draggingSymbol != nil && !previewSymbolOrder.isEmpty {
             return previewSymbolOrder
         }
-        return filteredSymbols
+        return viewModel.displaySymbols
     }
 
     /// The flat list: drag/drop column sort, delete, move.
@@ -437,6 +420,7 @@ struct WatchlistView: View {
             ))
             .onAppear {
                 Task {
+                    viewModel.setup(stockService: stockService, storageService: storageService)
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
             }
