@@ -18,6 +18,7 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var filter: WatchlistSearchSheet.AssetFilter = .all
     @State private var hoveredSymbol: String? = nil
+    @FocusState private var isFieldFocused: Bool
 
     private var filteredResults: [SearchResult] {
         switch filter {
@@ -61,8 +62,12 @@ struct SearchView: View {
                 .keyboardShortcut(.cancelAction)
             }
 
-            DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)", text: $query)
-                .onChange(of: query) { _, new in runSearch(new) }
+            DSTextField(
+                placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)",
+                text: $query,
+                isFocusedBinding: $isFieldFocused
+            )
+            .onChange(of: query) { _, new in runSearch(new) }
 
             // Filter tabs
             HStack(spacing: 4) {
@@ -115,6 +120,11 @@ struct SearchView: View {
         .padding(18)
         .background(DS.ground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                isFieldFocused = true
+            }
+        }
     }
 
     private func resultRow(_ r: SearchResult) -> some View {
