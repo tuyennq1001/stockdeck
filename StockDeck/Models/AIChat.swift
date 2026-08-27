@@ -39,13 +39,14 @@ enum AIReviewScope: Hashable {
 
 /// Known OpenAI-compatible provider presets used by the AI Review settings.
 enum AIProviderOption: String, CaseIterable, Identifiable {
-    case openai, deepseek, groq, openrouter, custom
+    case openai, gemini, deepseek, groq, openrouter, custom
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .openai: return "OpenAI"
+        case .gemini: return "Google Gemini"
         case .deepseek: return "DeepSeek"
         case .groq: return "Groq"
         case .openrouter: return "OpenRouter"

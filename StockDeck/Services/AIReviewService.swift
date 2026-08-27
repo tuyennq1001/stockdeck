@@ -63,12 +63,24 @@ final class AIReviewService {
 
     /// Sends the conversation + context to the provider and returns the assistant reply.
     func send(request: Request) async throws -> String {
-        guard !request.apiKey.isEmpty, !request.baseURL.isEmpty else {
+        let cleanApiKey = request.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBaseURL = request.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanApiKey.isEmpty, !cleanBaseURL.isEmpty else {
             throw AIReviewError.noConfiguration
         }
-        guard let url = URL(string: request.baseURL.hasSuffix("/") ? request.baseURL : request.baseURL + "/")?
-            .appendingPathComponent("chat/completions") else {
+        let baseString = cleanBaseURL.hasSuffix("/") ? cleanBaseURL : cleanBaseURL + "/"
+        guard var url = URL(string: baseString)?.appendingPathComponent("chat/completions") else {
             throw AIReviewError.invalidURL
+        }
+
+        // Google Gemini API Gateway expects x-goog-api-key or ?key=
+        if cleanBaseURL.contains("googleapis.com"), var components = URLComponents(url: url, resolvingAgainstBaseURL: true) {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "key", value: cleanApiKey))
+            components.queryItems = items
+            if let u = components.url {
+                url = u
+            }
         }
 
         var payload = [String: Any]()
@@ -82,7 +94,8 @@ final class AIReviewService {
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
-        req.setValue("Bearer \(request.apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(cleanApiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(cleanApiKey, forHTTPHeaderField: "x-goog-api-key")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
@@ -129,6 +142,100 @@ final class AIReviewService {
         } catch {
             NSLog("[AIReview] Decode failed. Body: \(String(bodyText.prefix(500)))")
             throw AIReviewError.decoding("\(error.localizedDescription). Body: \(String(bodyText.prefix(300)))")
+        }
+    }
+
+    /// Fetches the available models from the provider's /models endpoint (OpenAI-compatible).
+    func fetchModels(baseURL: String, apiKey: String) async throws -> [String] {
+        let cleanApiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanApiKey.isEmpty, !cleanBaseURL.isEmpty else {
+            throw AIReviewError.noConfiguration
+        }
+        let baseString = cleanBaseURL.hasSuffix("/") ? cleanBaseURL : cleanBaseURL + "/"
+        guard var url = URL(string: baseString)?.appendingPathComponent("models") else {
+            throw AIReviewError.invalidURL
+        }
+
+        // Google Gemini API Gateway expects x-goog-api-key or ?key=
+        if cleanBaseURL.contains("googleapis.com"), var components = URLComponents(url: url, resolvingAgainstBaseURL: true) {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "key", value: cleanApiKey))
+            components.queryItems = items
+            if let u = components.url {
+                url = u
+            }
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(cleanApiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(cleanApiKey, forHTTPHeaderField: "x-goog-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw AIReviewError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIReviewError.network("No HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            NSLog("[AIReview] fetchModels HTTP \(http.statusCode) body: \(String(body.prefix(500)))")
+            throw AIReviewError.badStatus(http.statusCode, body)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIReviewError.decoding("Invalid JSON in /models response")
+        }
+
+        var rawList: [String] = []
+        if let dataArr = json["data"] as? [[String: Any]] {
+            for item in dataArr {
+                if let id = item["id"] as? String {
+                    rawList.append(id)
+                }
+            }
+        } else if let modelsArr = json["models"] as? [[String: Any]] {
+            for item in modelsArr {
+                if let id = item["id"] as? String ?? item["name"] as? String {
+                    rawList.append(id)
+                }
+            }
+        }
+
+        var cleaned: [String] = []
+        for raw in rawList {
+            var item = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if item.hasPrefix("models/") {
+                item = String(item.dropFirst(7))
+            }
+            if cleanBaseURL.contains("googleapis.com") {
+                let lower = item.lowercased()
+                if lower.contains("embedding") || lower.contains("aqa") || lower.contains("imagen") || lower.contains("tts") || lower.contains("whisper") {
+                    continue
+                }
+            }
+            if !item.isEmpty && !cleaned.contains(item) {
+                cleaned.append(item)
+            }
+        }
+
+        // Sort intelligently: prioritize Gemini chat models
+        return cleaned.sorted { a, b in
+            if cleanBaseURL.contains("googleapis.com") {
+                let scoreA = a.hasPrefix("gemini-2.5") ? 0 : (a.hasPrefix("gemini-2.0") ? 1 : (a.hasPrefix("gemini-1.5") ? 2 : 3))
+                let scoreB = b.hasPrefix("gemini-2.5") ? 0 : (b.hasPrefix("gemini-2.0") ? 1 : (b.hasPrefix("gemini-1.5") ? 2 : 3))
+                if scoreA != scoreB {
+                    return scoreA < scoreB
+                }
+            }
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
         }
     }
 
