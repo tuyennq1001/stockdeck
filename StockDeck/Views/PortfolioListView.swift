@@ -984,6 +984,7 @@ struct PortfolioSection: View {
 struct HoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
@@ -1001,96 +1002,111 @@ struct HoldingRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Col 1: Ticker + Qty@Avg
-            HStack(spacing: 6) {
-                SymbolLogo(symbol: holding.symbol, size: 22)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 3) {
-                        Text(StockService.beautifiedSymbol(holding.symbol))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                        if holding.isShort {
-                            Text("SHORT")
-                                .font(.inter(9, weight: .bold, relativeTo: .caption2))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 3)
-                                .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 2).fill(DS.down))
+        Button(action: {
+            showSymbolDetail.perform(holding.symbol)
+        }) {
+            HStack(spacing: 0) {
+                // Col 1: Ticker + Qty@Avg
+                HStack(spacing: 6) {
+                    SymbolLogo(symbol: holding.symbol, size: 22)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 3) {
+                            Text(StockService.beautifiedSymbol(holding.symbol))
+                                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                                .fontWeight(.bold)
+                            if holding.isShort {
+                                Text("SHORT")
+                                    .font(.inter(9, weight: .bold, relativeTo: .caption2))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 3)
+                                    .padding(.vertical, 1)
+                                    .background(RoundedRectangle(cornerRadius: 2).fill(DS.down))
+                            }
+                            if holding.effectiveLeverage != 1 {
+                                Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
+                                    .font(.inter(9, weight: .bold, relativeTo: .caption2))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 3)
+                                    .padding(.vertical, 1)
+                                    .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
+                            }
                         }
-                        if holding.effectiveLeverage != 1 {
-                            Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
-                                .font(.inter(9, weight: .bold, relativeTo: .caption2))
+                        Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .frame(width: 125, alignment: .leading)
+
+                if let quote {
+                    let assetCurr = stockService.detectedCurrency(for: holding.symbol)
+                    let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
+                    let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+
+                    // Col 2: Price + badge
+                    HStack(spacing: 3) {
+                        Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.medium)
+                        if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
+                            Text(quote.marketStateLabel)
+                                .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 3)
                                 .padding(.vertical, 1)
-                                .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
+                                .background(
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
+                                )
                         }
                     }
-                    Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
-                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                    // Col 3: Value + P&L in native currency
+                    let nativeVal = holding.marketValue(currentPrice: displayPrice)
+                    let nativeCost = holding.costBasisLocal
+                    let pnl = nativeVal - nativeCost
+                    let pnlPct = abs(nativeCost) >= 0.01 ? (pnl / abs(nativeCost)) * 100 : 0
+                    let nativeSym = StorageService.currencySymbol(for: quoteCurr)
+
+                    let dec = storageService.amountDecimals
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.medium)
+                        Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(pnl >= 0 ? DS.up : DS.down)
+                    }
+                    .frame(width: 125, alignment: .trailing)
+                } else {
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.5)
                 }
             }
-            .frame(width: 125, alignment: .leading)
-
-            if let quote {
-                let assetCurr = stockService.detectedCurrency(for: holding.symbol)
-                let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-
-                // Col 2: Price + badge
-                HStack(spacing: 3) {
-                    Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
-                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                    if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                        Text(quote.marketStateLabel)
-                            .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 3)
-                            .padding(.vertical, 1)
-                            .background(
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
-                            )
-                    }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .contextMenu {
+            Button {
+                showSymbolDetail.perform(holding.symbol)
+            } label: {
+                Label("View Details", systemImage: "chart.xyaxis.line")
+            }
+            if !isReadOnly {
+                Divider()
+                Button(role: .destructive) {
+                    confirmDeleteHolding = (holding, portfolioId)
+                } label: {
+                    Label("Delete", systemImage: "trash")
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-
-                // Col 3: Value + P&L in native currency
-                let nativeVal = holding.marketValue(currentPrice: displayPrice)
-                let nativeCost = holding.costBasisLocal
-                let pnl = nativeVal - nativeCost
-                let pnlPct = abs(nativeCost) >= 0.01 ? (pnl / abs(nativeCost)) * 100 : 0
-                let nativeSym = StorageService.currencySymbol(for: quoteCurr)
-
-                let dec = storageService.amountDecimals
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                    Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
-                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(pnl >= 0 ? DS.up : DS.down)
-                }
-                .frame(width: 125, alignment: .trailing)
-            } else {
-                Spacer()
-                ProgressView()
-                    .scaleEffect(0.5)
             }
         }
-        .padding(.vertical, 4)
-        .contextMenu(isReadOnly ? nil : ContextMenu {
-            Button(role: .destructive) {
-                confirmDeleteHolding = (holding, portfolioId)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        })
     }
 }
 
@@ -1098,6 +1114,7 @@ struct GroupedHoldingRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Environment(\.addHoldingAction) var addHoldingAction
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
 
     let symbol: String
     let holdings: [Holding]
@@ -1143,79 +1160,101 @@ struct GroupedHoldingRow: View {
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
-                // Col 1: Ticker + Lot Count + Chevron
-                HStack(spacing: 6) {
+                // Chevron Button (Explicit toggle only)
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isExpanded.toggle()
+                    }
+                }) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(DS.brand)
-                    SymbolLogo(symbol: symbol, size: 20)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(StockService.beautifiedSymbol(symbol))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
-                                .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                            if holdings.count > 1 {
-                                Text("\(holdings.count) lots")
-                                    .font(.inter(8.5, weight: .semibold, relativeTo: .caption2))
-                                    .foregroundColor(DS.brand)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                        .frame(width: 20, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+
+                // Clickable content triggering Symbol Details
+                Button(action: {
+                    showSymbolDetail.perform(symbol)
+                }) {
+                    HStack(spacing: 0) {
+                        // Col 1: Ticker + Lot Count
+                        HStack(spacing: 6) {
+                            SymbolLogo(symbol: symbol, size: 20)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(StockService.beautifiedSymbol(symbol))
+                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                                    .fontWeight(.bold)
+                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
+                                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                    if holdings.count > 1 {
+                                        Text("\(holdings.count) lots")
+                                            .font(.inter(8.5, weight: .semibold, relativeTo: .caption2))
+                                            .foregroundColor(DS.brand)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
+                                    }
+                                }
                             }
                         }
+                        .frame(width: 120, alignment: .leading)
+
+                        if let quote {
+                            let assetCurr = stockService.detectedCurrency(for: symbol)
+                            let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
+                            let pRate = stockService.priceRate(from: quoteCurr)
+
+                            // Col 2: Price (regular closing price formatted as integer)
+                            HStack(spacing: 3) {
+                                Text("\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
+                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                            // Col 3: Total Market Value & Total P&L in native currency
+                            let displayPrice = quote.price
+                            let nativeTotals = PortfolioValuation.nativeTotals(holdings: holdings, currentPrice: displayPrice)
+                            let nativeVal = nativeTotals.value
+                            let nativeCost = nativeTotals.cost
+                            let totalPnl = nativeTotals.pnl
+                            let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
+                            let nativeSym = StorageService.currencySymbol(for: quoteCurr)
+
+                            let dec = storageService.amountDecimals
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
+                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                                    .fontWeight(.medium)
+                                Text("\(StorageService.formatAmount(totalPnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
+                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                                    .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
+                            }
+                            .frame(width: 120, alignment: .trailing)
+                        } else {
+                            Spacer()
+                            ProgressView().scaleEffect(0.5)
+                        }
                     }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: 140, alignment: .leading)
-
-                if let quote {
-                    let assetCurr = stockService.detectedCurrency(for: symbol)
-                    let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                    let pRate = stockService.priceRate(from: quoteCurr)
-
-                    // Col 2: Price (regular closing price formatted as integer)
-                    HStack(spacing: 3) {
-                        Text("\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.medium)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-
-                    // Col 3: Total Market Value & Total P&L in native currency
-                    let displayPrice = quote.price
-                    let nativeTotals = PortfolioValuation.nativeTotals(holdings: holdings, currentPrice: displayPrice)
-                    let nativeVal = nativeTotals.value
-                    let nativeCost = nativeTotals.cost
-                    let totalPnl = nativeTotals.pnl
-                    let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
-                    let nativeSym = StorageService.currencySymbol(for: quoteCurr)
-
-                    let dec = storageService.amountDecimals
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.medium)
-                        Text("\(StorageService.formatAmount(totalPnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
-                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
-                    }
-                    .frame(width: 120, alignment: .trailing)
-                } else {
-                    Spacer()
-                    ProgressView().scaleEffect(0.5)
-                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
             }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-            .pointingHandCursor()
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.toggle()
+            .contextMenu {
+                Button {
+                    showSymbolDetail.perform(symbol)
+                } label: {
+                    Label("View Details", systemImage: "chart.xyaxis.line")
                 }
             }
 
@@ -1309,6 +1348,7 @@ struct GroupedHoldingRow: View {
 struct PortfolioQuoteRow: View {
     let stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
     let globalPos: PortfolioListView.GlobalPosition
 
     var quote: StockQuote? { globalPos.quote }
@@ -1367,42 +1407,56 @@ struct PortfolioQuoteRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Col 1: Logo + symbol + name
-            let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
-            let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
-            let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(globalPos.symbol)) : globalPos.symbol
-            let subTitleText = isDisplayAsset ? globalPos.symbol : (isJpFund ? "" : (quote?.name ?? ""))
+        Button(action: {
+            showSymbolDetail.perform(globalPos.symbol)
+        }) {
+            HStack(spacing: 0) {
+                // Col 1: Logo + symbol + name
+                let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
+                let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
+                let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(globalPos.symbol)) : globalPos.symbol
+                let subTitleText = isDisplayAsset ? globalPos.symbol : (isJpFund ? "" : (quote?.name ?? ""))
 
-            HStack(spacing: 4) {
-                SymbolLogo(symbol: globalPos.symbol, size: 20)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(titleText)
-                        .font(symbolFont)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                    if storageService.showCompanyName, !subTitleText.isEmpty {
-                        Text(subTitleText)
-                            .font(subtitleFont)
-                            .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    SymbolLogo(symbol: globalPos.symbol, size: 20)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(titleText)
+                            .font(symbolFont)
+                            .fontWeight(.bold)
                             .lineLimit(1)
+                        if storageService.showCompanyName, !subTitleText.isEmpty {
+                            Text(subTitleText)
+                                .font(subtitleFont)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .frame(width: 72, alignment: .leading)
+
+                #if os(iOS)
+                let activeCols = storageService.resolvedIOSPortfolioColumns
+                #else
+                let activeCols = PortfolioListView.defaultPopoverColumns
+                #endif
+
+                ForEach(activeCols, id: \.self) { col in
+                    metricCell(for: col)
+                }
             }
-            .frame(width: 72, alignment: .leading)
-
-            #if os(iOS)
-            let activeCols = storageService.resolvedIOSPortfolioColumns
-            #else
-            let activeCols = PortfolioListView.defaultPopoverColumns
-            #endif
-
-            ForEach(activeCols, id: \.self) { col in
-                metricCell(for: col)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .contextMenu {
+            Button {
+                showSymbolDetail.perform(globalPos.symbol)
+            } label: {
+                Label("View Details", systemImage: "chart.xyaxis.line")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
     }
 
     @ViewBuilder
