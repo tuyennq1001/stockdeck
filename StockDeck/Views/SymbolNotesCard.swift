@@ -94,6 +94,32 @@ final class EditorModel: ObservableObject {
             self?.insertImageMarkdown(filename: filename)
         }
     }
+
+    func focus() {
+        #if os(macOS)
+        DispatchQueue.main.async { [weak self] in
+            guard let tv = self?.textView else { return }
+            if let window = tv.window {
+                window.makeFirstResponder(tv)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    tv.window?.makeFirstResponder(tv)
+                }
+            }
+            let len = (tv.string as NSString).length
+            tv.setSelectedRange(NSRange(location: len, length: 0))
+        }
+        #else
+        DispatchQueue.main.async { [weak self] in
+            guard let tv = self?.textView else { return }
+            tv.becomeFirstResponder()
+            let len = tv.text?.count ?? 0
+            if let pos = tv.position(from: tv.beginningOfDocument, offset: len) {
+                tv.selectedTextRange = tv.textRange(from: pos, to: pos)
+            }
+        }
+        #endif
+    }
 }
 
 // MARK: - WYSIWYG Markdown Editor
@@ -102,6 +128,7 @@ final class EditorModel: ObservableObject {
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     var model: EditorModel
+    var autoFocus: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, model: model)
@@ -119,6 +146,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.textContainerInset = NSSize(width: 8, height: 8)
         context.coordinator.textView = textView
         model.textView = textView
+        if autoFocus {
+            model.focus()
+        }
         return scrollView
     }
 
@@ -151,6 +181,7 @@ struct MarkdownEditor: NSViewRepresentable {
 struct MarkdownEditor: UIViewRepresentable {
     @Binding var text: String
     var model: EditorModel
+    var autoFocus: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, model: model)
@@ -166,6 +197,9 @@ struct MarkdownEditor: UIViewRepresentable {
         context.coordinator.textView = textView
         model.textView = textView
         textView.text = text
+        if autoFocus {
+            model.focus()
+        }
         return textView
     }
 
@@ -441,7 +475,7 @@ struct SymbolNotesCard: View {
                                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
                         } else {
-                            MarkdownEditor(text: $editorText, model: newModel)
+                            MarkdownEditor(text: $editorText, model: newModel, autoFocus: true)
                                 .frame(minHeight: 80)
                                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
@@ -475,6 +509,7 @@ struct SymbolNotesCard: View {
                 } else if editingNoteId == nil {
                     Button {
                         isEditingNew = true; editorTitle = ""; editorText = ""; previewNew = false
+                        newModel.focus()
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "plus.circle").font(.system(size: 12, weight: .medium))
@@ -524,6 +559,7 @@ struct SymbolNotesCard: View {
     private func startEditing(_ note: SymbolNote) {
         isEditingNew = false
         editingNoteId = note.id; editTitle = note.title; editText = note.content; previewEdit = false
+        editModel.focus()
     }
 }
 
@@ -560,7 +596,7 @@ private struct NoteRowView: View {
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
                     } else {
-                        MarkdownEditor(text: $editText, model: editModel)
+                        MarkdownEditor(text: $editText, model: editModel, autoFocus: true)
                             .frame(minHeight: 80)
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
@@ -595,8 +631,11 @@ private struct NoteRowView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         if !note.title.isEmpty { Text(note.title).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink) }
-                        MarkdownNoteView(markdown: note.content).pointingHandCursor()
+                        MarkdownNoteView(markdown: note.content)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { onEdit() }
+                    .pointingHandCursor()
                     Spacer(minLength: 8)
                     HStack(spacing: 2) {
                         Button(action: onEdit) { Image(systemName: "pencil").font(.system(size: 10, weight: .medium)).foregroundStyle(DS.inkTertiary) }
