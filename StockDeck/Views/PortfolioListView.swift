@@ -628,7 +628,7 @@ struct PortfolioListView: View {
                 todayPnl: agg.todayPnl,
                 priceSymbol: agg.nativeCurrencySymbol,
                 hasCostBasis: agg.hasCostBasis,
-                pct: agg.pnlPercent,
+                pct: agg.nativePnlPercent,
                 pnl: agg.nativePnl,
                 currentPrice: agg.quote?.price ?? agg.avgPrice,
                 priceChangePercent: agg.changePercent,
@@ -1463,7 +1463,7 @@ struct PortfolioQuoteRow: View {
     private func metricCell(for col: PortfolioColumnMetric) -> some View {
         switch col {
         case .avgPrice:
-            let avgPrice = globalPos.hasCostBasis && globalPos.shares > 0 ? (globalPos.cost / globalPos.shares) : 0
+            let avgPrice = globalPos.hasCostBasis ? globalPos.avgPrice : 0
             Text(globalPos.hasCostBasis ? StorageService.formatCompactNumber(avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: avgPrice)) : "—")
                 .font(metricFont)
                 .fontWeight(.medium)
@@ -1593,7 +1593,7 @@ struct PortfolioQuoteRow: View {
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
                         .font(metricSubFont)
                         .fontWeight(.semibold)
-                        .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
+                        .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 } else {
