@@ -126,6 +126,7 @@ struct MarketSectionHeader: View {
 
 /// Pill displaying an individual benchmark index's price and gain/loss.
 struct MarketBenchmarkPill: View {
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
     let name: String
     let quote: StockQuote
 
@@ -144,36 +145,45 @@ struct MarketBenchmarkPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(name)
-                .font(.inter(11, weight: .bold, relativeTo: .caption))
-                .foregroundStyle(DS.ink)
+         Button(action: {
+            showSymbolDetail.perform(quote.symbol)
+        }) {
+            HStack(spacing: 6) {
+                SymbolLogo(symbol: quote.symbol, size: 16)
 
-            Text(formattedPrice)
-                .font(.inter(11, weight: .semibold, relativeTo: .caption).monospacedDigit())
-                .foregroundStyle(DS.inkSecondary)
+                Text(name)
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    .foregroundStyle(DS.ink)
 
-            HStack(spacing: 2) {
-                Image(systemName: quote.changePercent >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    .font(.system(size: 8, weight: .bold))
-                Text(String(format: "%+0.2f%%", quote.changePercent))
-                    .font(.inter(10.5, weight: .bold, relativeTo: .caption2).monospacedDigit())
+                Text(formattedPrice)
+                    .font(.inter(11.5, weight: .bold, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.ink)
+
+                HStack(spacing: 2) {
+                    Image(systemName: quote.changePercent >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 8, weight: .bold))
+                    Text(String(format: "%+0.2f%%", quote.changePercent))
+                        .font(.inter(10.5, weight: .bold, relativeTo: .caption2).monospacedDigit())
+                }
+                .foregroundStyle(changeColor)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule()
+                        .fill(changeColor.opacity(0.12))
+                )
             }
-            .foregroundStyle(changeColor)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
-                Capsule()
-                    .fill(changeColor.opacity(0.12))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(DS.card)
+                    .shadow(color: .black.opacity(0.04), radius: 1, y: 0.5)
             )
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(DS.card)
-                .shadow(color: .black.opacity(0.04), radius: 1, y: 0.5)
-        )
+        .buttonStyle(.plain)
+        .pointingHandCursor()
     }
 }
 
@@ -241,6 +251,7 @@ struct MarketOverviewCard: View {
 
 /// Card showing the specific AI reasoning and drivers for a single symbol's price movement.
 struct SymbolInsightCard: View {
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
     let item: SymbolInsightItem
     let onOpenURL: (URL) -> Void
     @State private var hovered = false
@@ -261,19 +272,28 @@ struct SymbolInsightCard: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header: Symbol, Name, Change Badge, Sentiment Chip
             HStack(alignment: .center, spacing: 10) {
-                SymbolLogo(symbol: item.symbol, size: 28)
+                Button(action: {
+                    showSymbolDetail.perform(item.symbol)
+                }) {
+                    HStack(spacing: 10) {
+                        SymbolLogo(symbol: item.symbol, size: 28)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(item.symbol)
-                            .font(.inter(14, weight: .bold, relativeTo: .body))
-                            .foregroundStyle(DS.ink)
-                        Text(item.name)
-                            .font(DS.caption)
-                            .foregroundStyle(DS.inkSecondary)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(item.symbol)
+                                    .font(.inter(14, weight: .bold, relativeTo: .body))
+                                    .foregroundStyle(DS.ink)
+                                Text(item.name)
+                                    .font(DS.caption)
+                                    .foregroundStyle(DS.inkSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
 
                 Spacer()
 

@@ -9,6 +9,8 @@ struct PriceChartCard: View {
     @EnvironmentObject var storageService: StorageService
     let symbol: String
     let quote: StockQuote
+    var chartHeight: CGFloat = 280
+    var showStylePicker: Bool = true
 
     enum ChartRange: String, CaseIterable {
         case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
@@ -23,7 +25,8 @@ struct PriceChartCard: View {
                 let cal = Calendar.current
                 let now = Date()
                 let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) ?? now
-                return max(1, cal.dateComponents([.day], from: jan1, to: now).day ?? 30)
+                let days = cal.dateComponents([.day], from: jan1, to: now).day ?? 30
+                return max(days, 1)
             case .year: return 365
             case .threeYears: return 365 * 3
             case .fiveYears: return 365 * 5
@@ -57,6 +60,10 @@ struct PriceChartCard: View {
     @State private var chartStyle: ChartStyle = .line
     @State private var hoverPoint: PricePoint?
     @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveChartStyle: ChartStyle {
+        showStylePicker ? chartStyle : .line
+    }
 
     /// The TradingView widget symbol for the current stock, or nil when the
     /// symbol has no reliable TradingView listing (e.g. Japanese mutual funds),
@@ -176,7 +183,7 @@ struct PriceChartCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             // Row 1: Last Price & Change Pill (left) + style picker (right), so
             // the chart below gets the full card width and a taller frame.
             let info = displayedPriceInfo
@@ -186,10 +193,11 @@ struct PriceChartCard: View {
                     let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: info.price)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(StorageService.formatAmount(info.price, symbol: priceSymbol, decimals: dec))
-                            .font(.inter(26, weight: .bold, relativeTo: .title).monospacedDigit())
+                            .font(.inter(24, weight: .bold, relativeTo: .title).monospacedDigit())
                             .tracking(-0.4)
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                             .contentTransition(.numericText())
                             .animation(.spring(response: 0.5, dampingFraction: 0.9), value: info.price)
 
@@ -200,26 +208,28 @@ struct PriceChartCard: View {
                                 .font(DS.caption.monospacedDigit())
                                 .foregroundStyle(DS.pnlColor(info.diff))
                                 .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                     }
                 }
-                Spacer(minLength: 8)
-                stylePicker
+                if showStylePicker {
+                    Spacer(minLength: 8)
+                    stylePicker
+                }
             }
 
-            // Row 2: Chart. The line chart's range picker floats at the bottom-left
-            // inside the chart — the same corner TradingView uses — and TradingView
-            // mode has its own ranges, so no overlay is drawn there.
+            // Row 2: Range Picker (7D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, All) placed above chart
+            if effectiveChartStyle == .line || tradingViewSymbol == nil {
+                rangePicker
+                    .padding(.top, 2)
+            }
+
+            // Row 3: Chart.
             chart
-                .overlay(alignment: .bottomLeading) {
-                    if (chartStyle == .line || tradingViewSymbol == nil) && (stockService.priceHistory[symbol]?.count ?? 0) >= 2 {
-                        rangePicker
-                            .padding(.leading, 12).padding(.bottom, 16)
-                    }
-                }
-                .frame(height: 500)
+                .frame(height: chartHeight)
         }
-        .padding(DS.pad)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .premiumCard()
         .task(id: symbol) { await stockService.ensurePriceHistory(for: symbol) }
@@ -285,7 +295,7 @@ struct PriceChartCard: View {
     }
 
     @ViewBuilder private var chart: some View {
-        if chartStyle == .tradingview, let tvSymbol = tradingViewSymbol {
+        if effectiveChartStyle == .tradingview, let tvSymbol = tradingViewSymbol {
             TradingViewChartView(tvSymbol: tvSymbol,
                                  theme: colorScheme == .dark ? "dark" : "light",
                                  interval: "D")
@@ -293,7 +303,6 @@ struct PriceChartCard: View {
                 // can never leave the previous symbol's chart on screen.
                 .id(tvSymbol)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .padding(.horizontal, DS.pad)
                 .padding(.bottom, 10)
         } else if history.count >= 2 {
             let periodUp = (history.last?.close ?? 0) >= (history.first?.close ?? 0)
@@ -337,7 +346,7 @@ struct PriceChartCard: View {
             .chartOverlay { proxy in chartCrosshair(proxy, tint: tint) }
             .id("\(chartRange.rawValue)-\(chartStyle.rawValue)")
             .transition(.opacity.animation(.easeInOut(duration: 0.28)))
-            .padding(.horizontal, DS.pad).padding(.bottom, 12)
+            .padding(.bottom, 8)
         } else {
             ZStack {
                 DS.cardAlt

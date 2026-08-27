@@ -26,6 +26,7 @@ private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
     @State private var viewModel = WatchlistViewModel()
     @Binding var showSearch: Bool
     @State private var showNewWatchlistAlert = false
@@ -122,64 +123,70 @@ struct WatchlistView: View {
     @ViewBuilder
     private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
         if let quote = stockService.quotes[symbol] {
-            QuoteRow(quote: quote)
-                .contentShape(Rectangle())
-                .pointingHandCursor()
-                .contextMenu {
-                    watchlistContextMenu(symbol: symbol)
-                }
+            Button(action: {
+                showSymbolDetail.perform(quote.symbol)
+            }) {
+                QuoteRow(quote: quote)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .contextMenu {
+                watchlistContextMenu(symbol: symbol)
+            }
         } else {
-            #if os(iOS)
-            let activeCols = storageService.resolvedIOSWatchlistMetrics
-            HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    SymbolLogo(symbol: symbol, size: 20)
-                    Text(StockService.beautifiedSymbol(symbol))
-                        .font(.inter(14.5, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                }
-                .frame(width: 78, alignment: .leading)
+            Button(action: {
+                showSymbolDetail.perform(symbol)
+            }) {
+                #if os(iOS)
+                let activeCols = storageService.resolvedIOSWatchlistMetrics
+                HStack(spacing: 0) {
+                    HStack(spacing: 4) {
+                        SymbolLogo(symbol: symbol, size: 20)
+                        Text(StockService.beautifiedSymbol(symbol))
+                            .font(.inter(14.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                    }
+                    .frame(width: 78, alignment: .leading)
 
-                ForEach(activeCols, id: \.self) { metric in
+                    ForEach(activeCols, id: \.self) { metric in
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: iosMetricColumnWidth(metric), alignment: .trailing)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+                #else
+                HStack(spacing: 0) {
+                    HStack(spacing: 5) {
+                        SymbolLogo(symbol: symbol, size: 20)
+                        Text(StockService.beautifiedSymbol(symbol))
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                    }
+                    .frame(width: WatchlistCol.symbol, alignment: .leading)
+
+                    Color.clear.frame(width: WatchlistCol.price)
+                    Color.clear.frame(width: WatchlistCol.change)
+                    Color.clear.frame(width: WatchlistCol.oneYear)
                     ProgressView()
                         .scaleEffect(0.6)
-                        .frame(width: iosMetricColumnWidth(metric), alignment: .trailing)
+                        .frame(width: WatchlistCol.threeYears, alignment: .trailing)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+                #endif
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
             .pointingHandCursor()
             .contextMenu {
                 watchlistContextMenu(symbol: symbol)
             }
-            #else
-            HStack(spacing: 0) {
-                HStack(spacing: 5) {
-                    SymbolLogo(symbol: symbol, size: 20)
-                    Text(StockService.beautifiedSymbol(symbol))
-                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                }
-                .frame(width: WatchlistCol.symbol, alignment: .leading)
-
-                Color.clear.frame(width: WatchlistCol.price)
-                Color.clear.frame(width: WatchlistCol.change)
-                Color.clear.frame(width: WatchlistCol.oneYear)
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(width: WatchlistCol.threeYears, alignment: .trailing)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
-            .pointingHandCursor()
-            .contextMenu {
-                watchlistContextMenu(symbol: symbol)
-            }
-            #endif
         }
     }
 
@@ -604,6 +611,13 @@ struct WatchlistView: View {
 
     @ViewBuilder
     private func watchlistContextMenu(symbol: String) -> some View {
+        Button {
+            showSymbolDetail.perform(symbol)
+        } label: {
+            Label("View Details", systemImage: "chart.xyaxis.line")
+        }
+        Divider()
+
         Menu {
             ForEach(storageService.watchlists) { wl in
                 Button {

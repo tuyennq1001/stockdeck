@@ -38,6 +38,14 @@ extension Tab {
 }
 
 // Environment keys for navigation from child views
+struct ShowSymbolDetailAction {
+    let perform: (String) -> Void
+}
+
+private struct ShowSymbolDetailActionKey: EnvironmentKey {
+    static let defaultValue = ShowSymbolDetailAction { _ in }
+}
+
 struct AddHoldingAction {
     let performHandler: (UUID, String?) -> Void
 
@@ -91,6 +99,10 @@ private struct PortfolioActionsKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
+    var showSymbolDetail: ShowSymbolDetailAction {
+        get { self[ShowSymbolDetailActionKey.self] }
+        set { self[ShowSymbolDetailActionKey.self] = newValue }
+    }
     var addHoldingAction: AddHoldingAction {
         get { self[AddHoldingActionKey.self] }
         set { self[AddHoldingActionKey.self] = newValue }
@@ -118,15 +130,37 @@ struct ContentView: View {
     @State private var selectedTab: Tab = .watchlist
     @State private var showSearch = false
     @State private var addHoldingPortfolioId: UUID?
+    @State private var selectedDetailSymbol: String?
 
     var body: some View {
         Group {
-            if let portfolioId = addHoldingPortfolioId {
+            if let symbol = selectedDetailSymbol {
+                SymbolDetailView(
+                    symbol: symbol,
+                    onAddToPortfolio: { portfolioId in
+                        addHoldingPortfolioId = portfolioId
+                    },
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedDetailSymbol = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
+            } else if let portfolioId = addHoldingPortfolioId {
                 AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
             } else {
                 mainContent
             }
         }
+        .environment(\.showSymbolDetail, ShowSymbolDetailAction { symbol in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selectedDetailSymbol = symbol
+            }
+        })
         .frame(width: 420, height: 520)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         .onAppear {

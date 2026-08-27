@@ -9,6 +9,7 @@ struct iOSMainTabView: View {
     @State private var showWatchlistCustomizer = false
     @State private var showPortfolioColumnCustomizer = false
     @State private var addHoldingPortfolioId: UUID?
+    @State private var selectedDetailSymbol: String?
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -122,9 +123,28 @@ struct iOSMainTabView: View {
             .tag(Tab.settings)
         }
         .tint(DS.brand)
+        .environment(\.showSymbolDetail, ShowSymbolDetailAction { symbol in
+            selectedDetailSymbol = symbol
+        })
         .environment(\.addHoldingAction, AddHoldingAction { portfolioId, _ in
             addHoldingPortfolioId = portfolioId
         })
+        .sheet(isPresented: Binding(
+            get: { selectedDetailSymbol != nil },
+            set: { if !$0 { selectedDetailSymbol = nil } }
+        )) {
+            if let sym = selectedDetailSymbol {
+                SymbolDetailView(
+                    symbol: sym,
+                    onAddToPortfolio: { portfolioId in
+                        addHoldingPortfolioId = portfolioId
+                    },
+                    onDismiss: {
+                        selectedDetailSymbol = nil
+                    }
+                )
+            }
+        }
         .onAppear {
             selectedTab = Tab.resolve(stored: storageService.lastSelectedTab,
                                       showNews: storageService.showNewsTab)

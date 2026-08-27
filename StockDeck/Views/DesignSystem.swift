@@ -415,9 +415,13 @@ struct ChangePill: View {
         HStack(spacing: 3) {
             Image(systemName: value >= 0 ? "arrow.up.right" : "arrow.down.right")
                 .font(.system(size: 9, weight: .bold))
-            Text(text).font(.inter(11.5, weight: .semibold, relativeTo: .caption).monospacedDigit())
+            Text(text)
+                .font(.inter(11.5, weight: .semibold, relativeTo: .caption).monospacedDigit())
+                .lineLimit(1)
                 .contentTransition(.numericText())
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .foregroundStyle(DS.pnlColor(value))
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(Capsule().fill(value >= 0 ? DS.upSoft : DS.downSoft))

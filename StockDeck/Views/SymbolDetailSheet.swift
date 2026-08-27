@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Full chart sheet for any watchlist symbol (double-click a row): the shared
-/// price chart card plus the 52-week range and day facts — the same look as the
-/// holding detail, without a position.
-struct SymbolDetailSheet: View {
+/// Full chart view for any symbol inside the menu bar popover and iOS sheet:
+/// compact header (< Back, SymbolLogo, Ticker, Name, Add to Portfolio, Refresh),
+/// native price chart card without style picker, 52-week range, day facts, notes, and news.
+struct SymbolDetailView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     let symbol: String
@@ -13,78 +13,118 @@ struct SymbolDetailSheet: View {
     private var quote: StockQuote? { stockService.quotes[symbol] }
 
     var body: some View {
-        ZStack {
-            // Full background container with tap gesture: clicking outside the card content dismisses the popup sheet
-            Color.black.opacity(0.001)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onDismiss()
-                }
+        VStack(spacing: 0) {
+            headerBar
+            Divider()
 
-            VStack(alignment: .leading, spacing: DS.gap) {
-                HStack(alignment: .firstTextBaseline) {
-                    SymbolLogo(symbol: symbol, size: 38)
-                    let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
-                    let titleText = isDisplayAsset ? StockService.beautifiedSymbol(symbol) : (StockService.codeToFundNameMap[symbol] ?? symbol)
-                    let subTitleText = isDisplayAsset ? symbol : (quote?.name ?? "")
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
-                        if !subTitleText.isEmpty {
-                            Text(subTitleText).font(DS.caption).foregroundStyle(DS.inkTertiary)
+            if let quote {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DS.gap) {
+                        PriceChartCard(symbol: symbol, quote: quote, chartHeight: 240, showStylePicker: false)
+                        if storageService.show52WeekBar {
+                            fiftyTwoWeekCard(quote)
                         }
+                        factsCard(quote)
+                        SymbolNotesCard(storageService: storageService, symbol: symbol)
+                        SymbolNewsCard(stockService: stockService, symbol: symbol)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                }
+            } else {
+                VStack(spacing: 12) {
                     Spacer()
-                    if !storageService.portfolios.isEmpty {
-                        DSMenu(width: 220, sections: [storageService.portfolios.map { p in
-                            DSMenuAction(title: p.name, icon: "briefcase") { onAddToPortfolio(p.id) }
-                        }]) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "plus").font(.system(size: 10, weight: .bold))
-                                Text("Add to Portfolio").font(.inter(12, weight: .semibold, relativeTo: .body))
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Capsule().fill(DS.brand))
-                        }
-                        .pointingHandCursor()
-                        .help("Add this stock as a position in a portfolio")
-                    }
-                    Button("Done", action: onDismiss)
-                        .buttonStyle(.plain)
-                        .font(.inter(12, weight: .semibold, relativeTo: .body))
+                    ProgressView()
+                    Text("Đang tải dữ liệu...")
+                        .font(DS.caption)
                         .foregroundStyle(DS.inkSecondary)
-                        .pointingHandCursor()
-                        .keyboardShortcut(.defaultAction)
+                    Spacer()
                 }
-
-                if let quote {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: DS.gap) {
-                            PriceChartCard(symbol: symbol, quote: quote)
-                            HStack(alignment: .top, spacing: DS.gap) {
-                                if storageService.show52WeekBar { fiftyTwoWeekCard(quote).frame(maxWidth: .infinity) }
-                                factsCard(quote).frame(maxWidth: .infinity)
-                            }
-                            SymbolNotesCard(storageService: storageService, symbol: symbol)
-                                SymbolNewsCard(stockService: stockService, symbol: symbol)
-                        }
-                        .padding(.bottom, 24)
-                    }
-                } else {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-                }
-            }
-            .padding(24)
-            .frame(width: 680, height: 700)
-            .background(DS.ground)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // Intercept tap gesture on card content so clicking inside does not dismiss
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DS.ground)
+        .task(id: symbol) {
+            await stockService.ensurePriceHistory(for: symbol)
+        }
+    }
+
+    private var headerBar: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button(action: onDismiss) {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Back")
+                        .font(.inter(12, weight: .medium, relativeTo: .body))
+                }
+                .foregroundStyle(DS.brand)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .keyboardShortcut(.cancelAction)
+
+            Divider().frame(height: 14)
+
+            SymbolLogo(symbol: symbol, size: 22)
+
+            let isJpFund = (quote?.isJapaneseFund ?? false) || stockService.isJapaneseMutualFund(symbol)
+            let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+            let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(symbol)) : (StockService.codeToFundNameMap[symbol] ?? StockService.beautifiedSymbol(symbol))
+            let subTitleText = isDisplayAsset ? symbol : (quote?.name ?? "")
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(titleText)
+                    .font(.inter(13, weight: .bold, relativeTo: .headline))
+                    .tracking(-0.2)
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                if !subTitleText.isEmpty {
+                    Text(subTitleText)
+                        .font(.inter(10, weight: .regular, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            if !storageService.portfolios.isEmpty {
+                DSMenu(width: 200, sections: [storageService.portfolios.map { p in
+                    DSMenuAction(title: p.name, icon: "briefcase") { onAddToPortfolio(p.id) }
+                }]) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                        Text("Portfolio").font(.inter(11, weight: .semibold, relativeTo: .caption))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill(DS.brand))
+                }
+                .pointingHandCursor()
+                .help("Add this stock as a position in a portfolio")
+            }
+
+            Button(action: {
+                Task {
+                    await stockService.refreshAll(storageService: storageService)
+                    await stockService.ensurePriceHistory(for: symbol)
+                }
+            }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.inter(12, relativeTo: .callout))
+                    .foregroundStyle(DS.inkSecondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(stockService.isLoading)
+            .pointingHandCursor()
+            .help("Refresh quotes")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
@@ -153,3 +193,6 @@ struct SymbolDetailSheet: View {
         .padding(.vertical, 8)
     }
 }
+
+/// Backwards compatibility alias if referenced anywhere
+typealias SymbolDetailSheet = SymbolDetailView
