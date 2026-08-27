@@ -26,6 +26,44 @@ struct SettingsView: View {
     @AppStorage("settings.group.icloud") private var groupICloud = false
     @State private var showEditProfileSheet = false
     @ObservedObject private var syncService = iCloudSyncService.shared
+    @State private var fetchedModels: [String] = []
+    @State private var isLoadingModels = false
+    @State private var modelFetchError: String? = nil
+
+    private var availableModelOptions: [String] {
+        var list: [String] = []
+        if !fetchedModels.isEmpty {
+            list = fetchedModels
+        } else {
+            list = StorageService.aiModelOptions.map(\.0)
+        }
+        if !storageService.aiModel.isEmpty && !list.contains(storageService.aiModel) {
+            list.insert(storageService.aiModel, at: 0)
+        }
+        return list
+    }
+
+    private func loadModels() {
+        guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else { return }
+        isLoadingModels = true
+        modelFetchError = nil
+        Task {
+            do {
+                let models = try await AIReviewService.shared.fetchModels(
+                    baseURL: storageService.aiBaseURL,
+                    apiKey: storageService.aiApiKey
+                )
+                self.fetchedModels = models
+                self.isLoadingModels = false
+                if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
+                    self.storageService.aiModel = first
+                }
+            } catch {
+                self.modelFetchError = error.localizedDescription
+                self.isLoadingModels = false
+            }
+        }
+    }
 
     /// Small secondary caption used throughout the settings list.
     private func caption(_ text: String) -> some View {
@@ -261,12 +299,35 @@ struct SettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                         }
                         subHeader("Model")
-                        Picker("Model", selection: $storageService.aiModel) {
-                            ForEach(StorageService.aiModelOptions, id: \.0) { option in
-                                Text(option.0).tag(option.0)
+                        HStack(spacing: 8) {
+                            Picker("Model", selection: $storageService.aiModel) {
+                                ForEach(availableModelOptions, id: \.self) { option in
+                                    Text(option).tag(option)
+                                }
                             }
+                            .pickerStyle(.menu)
+
+                            Button {
+                                loadModels()
+                            } label: {
+                                if isLoadingModels {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
+                            .help("Load available models from provider")
                         }
-                        .pickerStyle(.menu)
+                        if let err = modelFetchError {
+                            caption("Lỗi tải danh sách model: \(err)")
+                                .foregroundStyle(DS.down)
+                        } else if !fetchedModels.isEmpty {
+                            caption("Đã tải \(fetchedModels.count) models từ server")
+                                .foregroundStyle(DS.up)
+                        }
                         if storageService.aiProvider == "deepseek" {
                             Toggle("Thinking mode (V4)", isOn: $storageService.aiDeepseekThinking)
                                 .toggleStyle(.switch)

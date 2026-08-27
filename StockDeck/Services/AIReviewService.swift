@@ -132,6 +132,72 @@ final class AIReviewService {
         }
     }
 
+    /// Fetches the available models from the provider's /models endpoint (OpenAI-compatible).
+    func fetchModels(baseURL: String, apiKey: String) async throws -> [String] {
+        guard !apiKey.isEmpty, !baseURL.isEmpty else {
+            throw AIReviewError.noConfiguration
+        }
+        guard let url = URL(string: baseURL.hasSuffix("/") ? baseURL : baseURL + "/")?
+            .appendingPathComponent("models") else {
+            throw AIReviewError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw AIReviewError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIReviewError.network("No HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            NSLog("[AIReview] fetchModels HTTP \(http.statusCode) body: \(String(body.prefix(500)))")
+            throw AIReviewError.badStatus(http.statusCode, body)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AIReviewError.decoding("Invalid JSON in /models response")
+        }
+
+        var rawList: [String] = []
+        if let dataArr = json["data"] as? [[String: Any]] {
+            for item in dataArr {
+                if let id = item["id"] as? String {
+                    rawList.append(id)
+                }
+            }
+        } else if let modelsArr = json["models"] as? [[String: Any]] {
+            for item in modelsArr {
+                if let id = item["id"] as? String ?? item["name"] as? String {
+                    rawList.append(id)
+                }
+            }
+        }
+
+        var cleaned: [String] = []
+        for raw in rawList {
+            var item = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if item.hasPrefix("models/") {
+                item = String(item.dropFirst(7))
+            }
+            if !item.isEmpty && !cleaned.contains(item) {
+                cleaned.append(item)
+            }
+        }
+
+        // Sort alphabetically
+        return cleaned.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     private static func buildMessages(systemContext: String, messages: [AIChatSection.APIMessage]) -> [[String: Any]] {
         var out: [[String: Any]] = []
         out.append(["role": "system", "content": systemContext])

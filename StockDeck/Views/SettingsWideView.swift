@@ -18,6 +18,44 @@ struct SettingsWideView: View {
     @State private var aiTestIsLoading = false
     @State private var showAiKeyHelp = false
     @State private var showEditProfileSheet = false
+    @State private var fetchedModels: [String] = []
+    @State private var isLoadingModels = false
+    @State private var modelFetchError: String? = nil
+
+    private var availableModelOptions: [(String, String)] {
+        var list: [String] = []
+        if !fetchedModels.isEmpty {
+            list = fetchedModels
+        } else {
+            list = StorageService.aiModelOptions.map(\.0)
+        }
+        if !storageService.aiModel.isEmpty && !list.contains(storageService.aiModel) {
+            list.insert(storageService.aiModel, at: 0)
+        }
+        return list.map { ($0, $0) }
+    }
+
+    private func loadModels() {
+        guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else { return }
+        isLoadingModels = true
+        modelFetchError = nil
+        Task {
+            do {
+                let models = try await AIReviewService.shared.fetchModels(
+                    baseURL: storageService.aiBaseURL,
+                    apiKey: storageService.aiApiKey
+                )
+                self.fetchedModels = models
+                self.isLoadingModels = false
+                if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
+                    self.storageService.aiModel = first
+                }
+            } catch {
+                self.modelFetchError = error.localizedDescription
+                self.isLoadingModels = false
+            }
+        }
+    }
     var body: some View {
         PageScaffold("Settings", caption: "Preferences are shared with the menu bar.") {
             EmptyView()
@@ -204,7 +242,43 @@ struct SettingsWideView: View {
                 SettingDivider()
             }
             SettingRow("Model") {
-                DSPicker(options: StorageService.aiModelOptions, selection: $storageService.aiModel, width: 200)
+                HStack(spacing: 8) {
+                    DSPicker(options: availableModelOptions, selection: $storageService.aiModel, width: 200)
+
+                    Button {
+                        loadModels()
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isLoadingModels {
+                                DSSpinner(size: 10)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            Text("Load")
+                                .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                        }
+                        .foregroundStyle(DS.brand)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
+                    .pointingHandCursor()
+                    .help("Fetch available models from provider")
+                }
+            }
+            if let err = modelFetchError {
+                Text("Lỗi tải danh sách model: \(err)")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.down)
+                    .padding(.horizontal, 16)
+            } else if !fetchedModels.isEmpty {
+                Text("Đã tải \(fetchedModels.count) models từ server")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.up)
+                    .padding(.horizontal, 16)
             }
             if storageService.aiProvider == "deepseek" {
                 SettingDivider()

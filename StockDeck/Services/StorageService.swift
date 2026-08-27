@@ -552,6 +552,7 @@ class StorageService: ObservableObject {
     /// Known OpenAI-compatible provider presets.
     static let aiProviders: [(id: String, label: String)] = [
         ("openai", "OpenAI"),
+        ("gemini", "Google Gemini"),
         ("deepseek", "DeepSeek"),
         ("groq", "Groq"),
         ("openrouter", "OpenRouter"),
@@ -561,6 +562,7 @@ class StorageService: ObservableObject {
     /// Sensible default models for the preset providers.
     static let aiProviderDefaults: [String: String] = [
         "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.5-flash",
         "deepseek": "deepseek-v4-flash",
         "groq": "llama-3.1-8b-instant",
         "openrouter": "openai/gpt-4o-mini"
@@ -569,6 +571,7 @@ class StorageService: ObservableObject {
     /// Base URL for the preset providers (without trailing slash).
     static let aiProviderBaseURLs: [String: String] = [
         "openai": "https://api.openai.com/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
         "deepseek": "https://api.deepseek.com/v1",
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1"
@@ -581,6 +584,9 @@ class StorageService: ObservableObject {
     static let aiModelOptions: [(String, String)] = [
         ("gpt-4o-mini", "gpt-4o-mini"),
         ("gpt-4o", "gpt-4o"),
+        ("gemini-2.5-flash", "gemini-2.5-flash"),
+        ("gemini-2.5-pro", "gemini-2.5-pro"),
+        ("gemini-2.0-flash", "gemini-2.0-flash"),
         ("deepseek-v4-flash", "deepseek-v4-flash"),
         ("deepseek-v4-pro", "deepseek-v4-pro"),
         ("llama-3.1-8b-instant", "llama-3.1-8b-instant"),
