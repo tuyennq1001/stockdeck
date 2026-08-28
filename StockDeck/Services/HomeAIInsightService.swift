@@ -365,7 +365,7 @@ final class HomeAIInsightService {
             model: storageService.aiModel,
             systemContext: prompt.systemContext,
             messages: [AIChatSection.APIMessage(role: "user", content: prompt.userMessage)],
-            thinking: false,
+            thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
             maxTokens: 4096
         )
 

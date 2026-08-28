@@ -1726,7 +1726,10 @@ private struct PositionSummaryRow: View {
     }
 
     private var totalNativePnlPercent: Double {
-        abs(totalNativeCost) >= 0.01 ? (totalNativePnl / abs(totalNativeCost)) * 100 : 0
+        if let agg = aggregate, agg.nativeCost != 0 {
+            return agg.nativePnlPercent
+        }
+        return abs(totalNativeCost) >= 0.01 ? (totalNativePnl / abs(totalNativeCost)) * 100 : 0
     }
 
     private var amountDec: Int { valueDecimals >= 0 ? valueDecimals : 2 }

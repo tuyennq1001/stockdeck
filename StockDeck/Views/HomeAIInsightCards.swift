@@ -13,8 +13,7 @@ struct AIInsightPulseHeroCard: View {
     private var formattedDate: String {
         let f = DateFormatter()
         f.locale = locale
-        f.dateStyle = .medium
-        f.timeStyle = .none
+        f.dateFormat = "HH:mm · dd/MM/yyyy"
         return f.string(from: insight.date)
     }
 
@@ -37,7 +36,7 @@ struct AIInsightPulseHeroCard: View {
                         .fill(DS.brand.opacity(0.12))
                 )
 
-                Text("· \(formattedDate)")
+                Text("· Cập nhật: \(formattedDate)")
                     .font(DS.caption)
                     .foregroundStyle(DS.inkTertiary)
 
@@ -71,10 +70,10 @@ struct AIInsightPulseHeroCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 6) {
-                Image(systemName: "checkmark.shield")
+                Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 11))
                     .foregroundStyle(DS.brand)
-                Text("Luận điểm sinh tự động dựa trên tin tức 24h & giá đóng cửa phiên chính.")
+                Text("Phân tích lúc \(formattedDate) dựa trên tin tức 24h & giá phiên chính.")
                     .font(DS.micro)
                     .foregroundStyle(DS.inkTertiary)
             }

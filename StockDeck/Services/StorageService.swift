@@ -549,6 +549,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// Dynamic models fetched from provider server, cached by provider key.
+    @Published var cachedModelsByProvider: [String: [String]] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// Known OpenAI-compatible provider presets.
     static let aiProviders: [(id: String, label: String)] = [
         ("openai", "OpenAI"),
@@ -562,10 +567,47 @@ class StorageService: ObservableObject {
     /// Sensible default models for the preset providers.
     static let aiProviderDefaults: [String: String] = [
         "openai": "gpt-4o-mini",
-        "gemini": "gemini-2.5-flash",
+        "gemini": "gemini-2.0-flash",
         "deepseek": "deepseek-v4-flash",
-        "groq": "llama-3.1-8b-instant",
-        "openrouter": "openai/gpt-4o-mini"
+        "groq": "llama-3.3-70b-versatile",
+        "openrouter": "google/gemini-2.0-flash-001"
+    ]
+
+    /// Preset standard models per provider (used when server list is not yet loaded).
+    static let providerPresetModels: [String: [String]] = [
+        "openai": [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gpt-4.5-preview",
+            "o3-mini",
+            "o1-mini",
+            "o1"
+        ],
+        "gemini": [
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-2.0-flash-lite"
+        ],
+        "deepseek": [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner"
+        ],
+        "groq": [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768"
+        ],
+        "openrouter": [
+            "google/gemini-2.0-flash-001",
+            "openai/gpt-4o-mini",
+            "anthropic/claude-3.5-sonnet",
+            "meta-llama/llama-3.3-70b-instruct"
+        ]
     ]
 
     /// Base URL for the preset providers (without trailing slash).
@@ -577,23 +619,16 @@ class StorageService: ObservableObject {
         "openrouter": "https://openrouter.ai/api/v1"
     ]
 
-    /// Model options offered in Settings, all OpenAI-compatible. DeepSeek's
-    /// legacy `deepseek-chat`/`deepseek-reasoner` aliases were retired on
-    /// 2026-07-24; the current IDs are `deepseek-v4-flash` and `deepseek-v4-pro`
-    /// (thinking mode is controlled separately via `aiDeepseekThinking`).
-    static let aiModelOptions: [(String, String)] = [
-        ("gpt-4o-mini", "gpt-4o-mini"),
-        ("gpt-4o", "gpt-4o"),
-        ("gemini-2.5-flash", "gemini-2.5-flash"),
-        ("gemini-2.5-pro", "gemini-2.5-pro"),
-        ("gemini-2.0-flash", "gemini-2.0-flash"),
-        ("deepseek-v4-flash", "deepseek-v4-flash"),
-        ("deepseek-v4-pro", "deepseek-v4-pro"),
-        ("llama-3.1-8b-instant", "llama-3.1-8b-instant"),
-        ("llama-3.3-70b-versatile", "llama-3.3-70b-versatile"),
-        ("openai/gpt-4o-mini", "openai/gpt-4o-mini"),
-        ("meta-llama/llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct")
-    ]
+    /// Legacy flat model list (kept for backwards compatibility).
+    static var aiModelOptions: [(String, String)] {
+        var all: [String] = []
+        for (_, models) in providerPresetModels {
+            for m in models {
+                if !all.contains(m) { all.append(m) }
+            }
+        }
+        return all.map { ($0, $0) }
+    }
 
     private static let aiApiKeyKeychainKey = "aiReview_apiKey"
 
@@ -607,6 +642,10 @@ class StorageService: ObservableObject {
                 _ = KeychainService.delete(key: Self.aiApiKeyKeychainKey)
             } else {
                 _ = KeychainService.saveString(trimmed, forKey: Self.aiApiKeyKeychainKey)
+                // Auto-detect provider if key has distinctive prefix and user is on default
+                if let detected = Self.autoDetectProvider(from: trimmed), detected != aiProvider {
+                    applyAIPreset(detected)
+                }
             }
         }
     }
@@ -615,15 +654,49 @@ class StorageService: ObservableObject {
         !aiApiKey.isEmpty && !aiBaseURL.isEmpty
     }
 
-    /// When the user picks a known provider preset, fill its base URL and a
-    /// sensible default model (kept in sync with the preset). Does nothing for
-    /// the "custom" option, which exposes the free-form fields.
+    /// Auto-detects AI provider based on known API key patterns.
+    static func autoDetectProvider(from key: String) -> String? {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("AIzaSy") {
+            return "gemini"
+        }
+        if trimmed.hasPrefix("gsk_") {
+            return "groq"
+        }
+        if trimmed.hasPrefix("sk-or-") {
+            return "openrouter"
+        }
+        return nil
+    }
+
+    /// Returns the live or preset models for a given provider.
+    func availableModels(for provider: String) -> [String] {
+        var list: [String] = []
+        if let cached = cachedModelsByProvider[provider], !cached.isEmpty {
+            list = cached
+        } else if let presets = Self.providerPresetModels[provider] {
+            list = presets
+        }
+        if !aiModel.isEmpty && !list.contains(aiModel) && aiProvider == provider {
+            list.insert(aiModel, at: 0)
+        }
+        return list
+    }
+
+    /// Updates the cached server models for a specific provider.
+    func setCachedModels(_ models: [String], for provider: String) {
+        guard !models.isEmpty else { return }
+        cachedModelsByProvider[provider] = models
+        scheduleSave()
+    }
+
     func applyAIPreset(_ provider: String) {
+        aiProvider = provider
         if let url = Self.aiProviderBaseURLs[provider] {
             aiBaseURL = url
         }
-        if let model = Self.aiProviderDefaults[provider] {
-            aiModel = model
+        if let defaultModel = Self.aiProviderDefaults[provider] {
+            aiModel = defaultModel
         }
     }
 
@@ -1775,6 +1848,7 @@ class StorageService: ObservableObject {
         aiBaseURL = "https://api.openai.com/v1"
         aiModel = "gpt-4o-mini"
         aiProvider = "openai"
+        cachedModelsByProvider = [:]
         aiWorkspacePath = ""
         aiDeepseekThinking = false
         menuBarShortcut = nil
@@ -1900,6 +1974,7 @@ class StorageService: ObservableObject {
         var aiBaseURL: String?
         var aiModel: String?
         var aiProvider: String?
+        var cachedModelsByProvider: [String: [String]]?
         var aiWorkspacePath: String?
         var aiDeepseekThinking: Bool?
         var investorProfile: InvestorProfile?
@@ -1960,6 +2035,7 @@ class StorageService: ObservableObject {
             aiBaseURL: aiBaseURL,
             aiModel: aiModel,
             aiProvider: aiProvider,
+            cachedModelsByProvider: cachedModelsByProvider.isEmpty ? nil : cachedModelsByProvider,
             aiWorkspacePath: aiWorkspacePath,
             aiDeepseekThinking: aiDeepseekThinking,
             investorProfile: investorProfile,
@@ -2073,6 +2149,7 @@ class StorageService: ObservableObject {
         aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
         aiModel = decoded.aiModel ?? "gpt-4o-mini"
         aiProvider = decoded.aiProvider ?? "openai"
+        cachedModelsByProvider = decoded.cachedModelsByProvider ?? [:]
         aiWorkspacePath = decoded.aiWorkspacePath ?? ""
         aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
         investorProfile = decoded.investorProfile

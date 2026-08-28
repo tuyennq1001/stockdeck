@@ -18,41 +18,43 @@ struct SettingsWideView: View {
     @State private var aiTestIsLoading = false
     @State private var showAiKeyHelp = false
     @State private var showEditProfileSheet = false
-    @State private var fetchedModels: [String] = []
     @State private var isLoadingModels = false
     @State private var modelFetchError: String? = nil
+    @State private var showCustomModelField = false
+    @State private var showApiKeyText = false
 
     private var availableModelOptions: [(String, String)] {
-        var list: [String] = []
-        if !fetchedModels.isEmpty {
-            list = fetchedModels
-        } else {
-            list = StorageService.aiModelOptions.map(\.0)
-        }
-        if !storageService.aiModel.isEmpty && !list.contains(storageService.aiModel) {
-            list.insert(storageService.aiModel, at: 0)
-        }
+        let list = storageService.availableModels(for: storageService.aiProvider)
         return list.map { ($0, $0) }
     }
 
-    private func loadModels() {
+    private func loadModels(silent: Bool = false) {
         guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else { return }
-        isLoadingModels = true
+        if !silent {
+            isLoadingModels = true
+        }
         modelFetchError = nil
+        let currentProvider = storageService.aiProvider
         Task {
             do {
                 let models = try await AIReviewService.shared.fetchModels(
                     baseURL: storageService.aiBaseURL,
                     apiKey: storageService.aiApiKey
                 )
-                self.fetchedModels = models
-                self.isLoadingModels = false
-                if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
-                    self.storageService.aiModel = first
+                await MainActor.run {
+                    self.storageService.setCachedModels(models, for: currentProvider)
+                    self.isLoadingModels = false
+                    if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
+                        self.storageService.aiModel = first
+                    }
                 }
             } catch {
-                self.modelFetchError = error.localizedDescription
-                self.isLoadingModels = false
+                await MainActor.run {
+                    if !silent {
+                        self.modelFetchError = error.localizedDescription
+                    }
+                    self.isLoadingModels = false
+                }
             }
         }
     }
@@ -200,12 +202,45 @@ struct SettingsWideView: View {
         SettingsCard(title: "AI Review") {
             SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
                 HStack(spacing: 8) {
-                    SecureField("sk-…", text: Binding(
-                        get: { storageService.aiApiKey },
-                        set: { storageService.aiApiKey = $0 }))
-                        .textFieldStyle(.plain)
-                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                        .focused($aiApiKeyFocused)
+                    if showApiKeyText {
+                        TextField("sk-… / AIzaSy…", text: Binding(
+                            get: { storageService.aiApiKey },
+                            set: {
+                                storageService.aiApiKey = $0
+                                if !storageService.aiApiKey.isEmpty {
+                                    loadModels(silent: true)
+                                }
+                            }))
+                            .textFieldStyle(.plain)
+                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                            .focused($aiApiKeyFocused)
+                    } else {
+                        SecureField("sk-… / AIzaSy…", text: Binding(
+                            get: { storageService.aiApiKey },
+                            set: {
+                                storageService.aiApiKey = $0
+                                if !storageService.aiApiKey.isEmpty {
+                                    loadModels(silent: true)
+                                }
+                            }))
+                            .textFieldStyle(.plain)
+                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                            .focused($aiApiKeyFocused)
+                    }
+
+                    Button {
+                        withAnimation {
+                            showApiKeyText.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showApiKeyText ? "eye.slash" : "eye")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help(showApiKeyText ? "Hide API key" : "Show API key")
+
                     Button {
                         storageService.aiApiKey = ""
                     } label: {
@@ -224,11 +259,12 @@ struct SettingsWideView: View {
                     .strokeBorder(aiApiKeyFocused ? DS.brand : .clear, lineWidth: 1.5))
             }
             SettingDivider()
-            SettingRow("Provider", caption: "OpenAI first — compatible with DeepSeek, Groq, OpenRouter, etc.") {
+            SettingRow("Provider", caption: "Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, etc.") {
                 DSPicker(options: AIProviderOption.all.map { ($0.value.rawValue, $0.label) },
                          selection: $storageService.aiProvider, width: 200)
                     .onChange(of: storageService.aiProvider) { _, newValue in
                         storageService.applyAIPreset(newValue)
+                        loadModels(silent: true)
                     }
             }
             SettingDivider()
@@ -243,7 +279,17 @@ struct SettingsWideView: View {
             }
             SettingRow("Model") {
                 HStack(spacing: 8) {
-                    DSPicker(options: availableModelOptions, selection: $storageService.aiModel, width: 200)
+                    if showCustomModelField {
+                        TextField("Model ID (e.g. gemini-2.0-flash)", text: $storageService.aiModel)
+                            .textFieldStyle(.plain)
+                            .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                            .frame(width: 200)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                    } else {
+                        DSPicker(options: availableModelOptions, selection: $storageService.aiModel, width: 200)
+                    }
 
                     Button {
                         loadModels()
@@ -267,6 +313,22 @@ struct SettingsWideView: View {
                     .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
                     .pointingHandCursor()
                     .help("Fetch available models from provider")
+
+                    Button {
+                        withAnimation {
+                            showCustomModelField.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showCustomModelField ? "list.bullet" : "pencil")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(DS.inkSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                    }
+                    .buttonStyle(.plain)
+                    .pointingHandCursor()
+                    .help(showCustomModelField ? "Switch to model dropdown" : "Type custom model ID")
                 }
             }
             if let err = modelFetchError {
@@ -274,8 +336,8 @@ struct SettingsWideView: View {
                     .font(DS.micro)
                     .foregroundStyle(DS.down)
                     .padding(.horizontal, 16)
-            } else if !fetchedModels.isEmpty {
-                Text("Đã tải \(fetchedModels.count) models từ server")
+            } else if let cached = storageService.cachedModelsByProvider[storageService.aiProvider], !cached.isEmpty {
+                Text("Đã tải \(cached.count) models từ server")
                     .font(DS.micro)
                     .foregroundStyle(DS.up)
                     .padding(.horizontal, 16)
@@ -293,7 +355,10 @@ struct SettingsWideView: View {
             SettingDivider()
             HStack {
                 if let result = aiTestResult {
-                    Text(result).font(DS.micro).foregroundStyle(result.hasPrefix("✓") ? DS.up : DS.down)
+                    Text(result)
+                        .font(DS.micro)
+                        .foregroundStyle(result.hasPrefix("✓") ? DS.up : DS.down)
+                        .lineLimit(2)
                     Spacer()
                 } else {
                     Spacer()
@@ -322,8 +387,8 @@ struct SettingsWideView: View {
         aiTestIsLoading = true
         aiTestResult = nil
         defer { aiTestIsLoading = false }
-        let result = await TestAI.quickCheck(storageService: storageService)
-        aiTestResult = result ? "✓ Connected — model reached." : "✗ Test failed. Check the key, URL and model."
+        let result = await TestAI.testConnection(storageService: storageService)
+        aiTestResult = result.message
     }
 
     @ViewBuilder

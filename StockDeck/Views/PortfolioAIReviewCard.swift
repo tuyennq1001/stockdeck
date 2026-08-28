@@ -301,15 +301,28 @@ struct PortfolioAIReviewCard: View {
 
             // Error message if any
             if let error = errorMessage {
-                HStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundStyle(DS.down)
-                    Text(error)
-                        .font(DS.micro)
-                        .foregroundStyle(DS.down)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Lỗi phản hồi từ AI")
+                            .font(.inter(11, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(DS.down)
+                        Text(error)
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Spacer()
+                    Button("Đóng") {
+                        errorMessage = nil
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(DS.down.opacity(0.1)))
             }
 
             // Composer
@@ -389,7 +402,11 @@ struct PortfolioAIReviewCard: View {
         .pointingHandCursor()
     }
 
-    // MARK: - Chat Bubble
+    private static let messageTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm · dd/MM"
+        return f
+    }()
 
     @ViewBuilder
     private func chatMessageBubble(_ message: AIChatMessage) -> some View {
@@ -397,7 +414,7 @@ struct PortfolioAIReviewCard: View {
         case .user:
             HStack {
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
+                VStack(alignment: .trailing, spacing: 3) {
                     if let base64 = message.imageBase64,
                        let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")) {
                         #if os(macOS)
@@ -429,16 +446,32 @@ struct PortfolioAIReviewCard: View {
                             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Text(Self.messageTimeFormatter.string(from: message.createdAt))
+                        .font(.inter(9.5, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .padding(.trailing, 4)
                 }
             }
         case .assistant, .report:
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top, spacing: 8) {
-                    AIMarkdownRenderer(content: message.content)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        AIMarkdownRenderer(content: message.content)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 9))
+                                .foregroundStyle(DS.inkTertiary)
+                            Text("Phân tích lúc \(Self.messageTimeFormatter.string(from: message.createdAt))")
+                                .font(.inter(9.5, relativeTo: .caption2))
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .padding(.leading, 4)
+                    }
 
                     Button {
                         copyToClipboard(message.content)
@@ -929,7 +962,32 @@ struct InvestorProfileInlineSetupView: View {
 
             // Save Action
             HStack {
+                Button {
+                    let defaultProfile = InvestorProfile(
+                        age: 28,
+                        maritalStatus: "Độc thân",
+                        riskTolerance: .aggressive,
+                        investmentStyle: .dcaBuyAndHold,
+                        investmentHorizon: .longTerm,
+                        primaryGoal: "Tự do tài chính và tăng trưởng tài sản dài hạn",
+                        monthlyContribution: nil,
+                        customNotes: "",
+                        updatedAt: Date()
+                    )
+                    onSave(defaultProfile)
+                } label: {
+                    Text("Dùng mặc định")
+                        .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.inkSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+
                 Spacer()
+
                 Button {
                     let age = Int(ageText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 27
                     let profile = InvestorProfile(

@@ -26,43 +26,54 @@ struct SettingsView: View {
     @AppStorage("settings.group.icloud") private var groupICloud = false
     @State private var showEditProfileSheet = false
     @ObservedObject private var syncService = iCloudSyncService.shared
-    @State private var fetchedModels: [String] = []
     @State private var isLoadingModels = false
     @State private var modelFetchError: String? = nil
+    @State private var aiTestResult: String? = nil
+    @State private var aiTestIsLoading = false
+    @State private var showCustomModelField = false
+    @State private var showApiKeyText = false
 
     private var availableModelOptions: [String] {
-        var list: [String] = []
-        if !fetchedModels.isEmpty {
-            list = fetchedModels
-        } else {
-            list = StorageService.aiModelOptions.map(\.0)
-        }
-        if !storageService.aiModel.isEmpty && !list.contains(storageService.aiModel) {
-            list.insert(storageService.aiModel, at: 0)
-        }
-        return list
+        storageService.availableModels(for: storageService.aiProvider)
     }
 
-    private func loadModels() {
+    private func loadModels(silent: Bool = false) {
         guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else { return }
-        isLoadingModels = true
+        if !silent {
+            isLoadingModels = true
+        }
         modelFetchError = nil
+        let currentProvider = storageService.aiProvider
         Task {
             do {
                 let models = try await AIReviewService.shared.fetchModels(
                     baseURL: storageService.aiBaseURL,
                     apiKey: storageService.aiApiKey
                 )
-                self.fetchedModels = models
-                self.isLoadingModels = false
-                if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
-                    self.storageService.aiModel = first
+                await MainActor.run {
+                    self.storageService.setCachedModels(models, for: currentProvider)
+                    self.isLoadingModels = false
+                    if let first = models.first, (self.storageService.aiModel.isEmpty || !models.contains(self.storageService.aiModel)) {
+                        self.storageService.aiModel = first
+                    }
                 }
             } catch {
-                self.modelFetchError = error.localizedDescription
-                self.isLoadingModels = false
+                await MainActor.run {
+                    if !silent {
+                        self.modelFetchError = error.localizedDescription
+                    }
+                    self.isLoadingModels = false
+                }
             }
         }
+    }
+
+    private func runAITest() async {
+        aiTestIsLoading = true
+        aiTestResult = nil
+        defer { aiTestIsLoading = false }
+        let result = await TestAI.testConnection(storageService: storageService)
+        aiTestResult = result.message
     }
 
     /// Small secondary caption used throughout the settings list.
@@ -292,6 +303,7 @@ struct SettingsView: View {
                         .pickerStyle(.menu)
                         .onChange(of: storageService.aiProvider) { _, newValue in
                             storageService.applyAIPreset(newValue)
+                            loadModels(silent: true)
                         }
                         if storageService.aiProvider == "custom" {
                             caption("Custom base URL")
@@ -299,47 +311,99 @@ struct SettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                         }
                         subHeader("Model")
-                        HStack(spacing: 8) {
-                            Picker("Model", selection: $storageService.aiModel) {
-                                ForEach(availableModelOptions, id: \.self) { option in
-                                    Text(option).tag(option)
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Button {
-                                loadModels()
-                            } label: {
-                                if isLoadingModels {
-                                    ProgressView().controlSize(.small)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                if showCustomModelField {
+                                    TextField("Model ID (e.g. gemini-2.0-flash)", text: $storageService.aiModel)
+                                        .textFieldStyle(.roundedBorder)
                                 } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 11, weight: .semibold))
+                                    Picker("Model", selection: $storageService.aiModel) {
+                                        ForEach(availableModelOptions, id: \.self) { option in
+                                            Text(option).tag(option)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
                                 }
+
+                                Button {
+                                    loadModels()
+                                } label: {
+                                    if isLoadingModels {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 11, weight: .semibold))
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
+                                .help("Load available models from provider")
+
+                                Button {
+                                    withAnimation {
+                                        showCustomModelField.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: showCustomModelField ? "list.bullet" : "pencil")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .buttonStyle(.bordered)
+                                .help(showCustomModelField ? "Switch to model dropdown" : "Type custom model ID")
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
-                            .help("Load available models from provider")
+
+                            if let err = modelFetchError {
+                                caption("Lỗi tải danh sách model: \(err)")
+                                    .foregroundStyle(DS.down)
+                            } else if let cached = storageService.cachedModelsByProvider[storageService.aiProvider], !cached.isEmpty {
+                                caption("Đã tải \(cached.count) models từ server")
+                                    .foregroundStyle(DS.up)
+                            }
                         }
-                        if let err = modelFetchError {
-                            caption("Lỗi tải danh sách model: \(err)")
-                                .foregroundStyle(DS.down)
-                        } else if !fetchedModels.isEmpty {
-                            caption("Đã tải \(fetchedModels.count) models từ server")
-                                .foregroundStyle(DS.up)
-                        }
+
                         if storageService.aiProvider == "deepseek" {
                             Toggle("Thinking mode (V4)", isOn: $storageService.aiDeepseekThinking)
                                 .toggleStyle(.switch)
                             caption("DeepSeek V4 defaults to thinking on. Turn off for fast chat (like the retired deepseek-chat).")
                         }
                         subHeader("API key")
-                        SecureField("sk-…", text: Binding(
-                            get: { storageService.aiApiKey },
-                            set: { storageService.aiApiKey = $0 }))
-                            .textFieldStyle(.roundedBorder)
-                            .disableAutocorrection(true)
-                        caption("Stored securely in the macOS Keychain. Never persisted as plaintext. An OpenAI-compatible key works with OpenAI, DeepSeek, Groq, OpenRouter, etc.")
+                        HStack(spacing: 8) {
+                            if showApiKeyText {
+                                TextField("sk-… / AIzaSy…", text: Binding(
+                                    get: { storageService.aiApiKey },
+                                    set: {
+                                        storageService.aiApiKey = $0
+                                        if !storageService.aiApiKey.isEmpty {
+                                            loadModels(silent: true)
+                                        }
+                                    }))
+                                    .textFieldStyle(.roundedBorder)
+                                    .disableAutocorrection(true)
+                            } else {
+                                SecureField("sk-… / AIzaSy…", text: Binding(
+                                    get: { storageService.aiApiKey },
+                                    set: {
+                                        storageService.aiApiKey = $0
+                                        if !storageService.aiApiKey.isEmpty {
+                                            loadModels(silent: true)
+                                        }
+                                    }))
+                                    .textFieldStyle(.roundedBorder)
+                                    .disableAutocorrection(true)
+                            }
+
+                            Button {
+                                withAnimation {
+                                    showApiKeyText.toggle()
+                                }
+                            } label: {
+                                Image(systemName: showApiKeyText ? "eye.slash" : "eye")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .help(showApiKeyText ? "Hide API key" : "Show API key")
+                        }
+                        caption("Stored securely in the macOS Keychain. Never persisted as plaintext. An OpenAI-compatible key works with OpenAI, DeepSeek, Groq, OpenRouter, Google Gemini, etc.")
+
                         subHeader("Workspace folder")
                         HStack(spacing: 8) {
                             Button("Choose…") {
@@ -363,6 +427,33 @@ struct SettingsView: View {
                             }
                         }
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
+
+                        subHeader("Connection Diagnostic")
+                        HStack {
+                            if let result = aiTestResult {
+                                Text(result)
+                                    .font(DS.micro)
+                                    .foregroundStyle(result.hasPrefix("✓") ? DS.up : DS.down)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer()
+                            } else {
+                                Spacer()
+                            }
+                            if aiTestIsLoading {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text("Testing…").font(DS.micro).foregroundStyle(DS.inkSecondary)
+                                }
+                            } else {
+                                Button("Test connection") {
+                                    Task { await runAITest() }
+                                }
+                                .buttonStyle(.bordered)
+                                .font(.inter(11, weight: .medium, relativeTo: .caption))
+                                .disabled(!storageService.hasAIConfiguration)
+                            }
+                        }
+                        .padding(.top, 2)
                 }
 
                 // MARK: - Investor Profile

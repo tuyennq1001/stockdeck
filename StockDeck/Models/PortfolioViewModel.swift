@@ -194,6 +194,7 @@ final class PortfolioViewModel {
         let nativeCost: Double
         let nativeValue: Double
         let nativePnl: Double
+        let nativePnlPercent: Double
         /// Weighted-average buy price in the asset's native currency (JPY funds
         /// divided by the 10,000 scale so the number is a per-口 price).
         let avgPrice: Double
@@ -334,7 +335,7 @@ final class PortfolioViewModel {
         // Build symbol aggregates from our single pass
         var symAggs: [String: SymbolAggregate] = [:]
         for (sym, data) in bySymbol {
-            let pnlPctSym = abs(data.cost) >= 0.01 ? (data.pnl / abs(data.cost)) * 100 : 0
+            let nativePnlPct = abs(data.nativeCost) >= 0.01 ? (data.nativePnl / abs(data.nativeCost)) * 100 : 0
             let avg = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
             let curr = stockService.detectedCurrency(for: sym)
             symAggs[sym] = SymbolAggregate(
@@ -342,10 +343,11 @@ final class PortfolioViewModel {
                 value: data.value,
                 cost: data.cost,
                 pnl: data.pnl,
-                pnlPercent: pnlPctSym,
+                pnlPercent: nativePnlPct,
                 nativeCost: data.nativeCost,
                 nativeValue: data.nativeValue,
                 nativePnl: data.nativePnl,
+                nativePnlPercent: nativePnlPct,
                 avgPrice: avg,
                 totalQuantity: data.totalQty,
                 todayPnl: data.todayPnl,
