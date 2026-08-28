@@ -3,45 +3,46 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP="$(pwd)/.build/StockDeck-iOS.app"
-SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-TRIPLE="arm64-apple-ios17.0-simulator"
+APP="$(pwd)/.build/StockDeck-Device.app"
+SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+TRIPLE="arm64-apple-ios17.0"
 BUNDLE_ID="com.terry.stockdeck.ios"
+SIGN_ID="Apple Development: tuyennq1001@gmail.com (DGWT97FSZ4)"
 
-echo "Building StockDeck for iOS Simulator..."
+echo "==> 1. Building StockDeck for physical iOS Device (arm64)..."
 swift build --triple "$TRIPLE" --sdk "$SDK_PATH"
 
-PRODUCTS=".build/arm64-apple-ios-simulator/debug"
+PRODUCTS=".build/arm64-apple-ios/debug"
 
-echo "Assembling iOS app bundle..."
+echo "==> 2. Assembling iOS device app bundle..."
 rm -rf "$APP"
 mkdir -p "$APP"
 
 cp "$PRODUCTS/StockDeck" "$APP/StockDeck"
 chmod +x "$APP/StockDeck"
 
-# Copy resources & bundles
+# Copy resource bundles
 for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/"
 done
 
-# Compile asset catalog (AppIcon and assets)
-echo "Compiling asset catalog..."
-xcrun --sdk iphonesimulator actool StockDeck/Assets.xcassets \
+# Compile asset catalog for iphoneos
+echo "==> 3. Compiling asset catalog for device..."
+xcrun --sdk iphoneos actool StockDeck/Assets.xcassets \
     --compile "$APP" \
     --output-partial-info-plist "$APP/assetcatalog_generated_info.plist" \
-    --platform iphonesimulator \
+    --platform iphoneos \
     --target-device iphone \
     --target-device ipad \
     --minimum-deployment-target 17.0 \
     --app-icon AppIcon 2>/dev/null || true
 
-# Copy icons & images if available
+# Copy icons & resources
 cp StockDeck/Assets.xcassets/AppIcon.appiconset/*.png "$APP/" 2>/dev/null || true
 cp "StockDeck/Resources/AppIcon.png" "$APP/" 2>/dev/null || true
 cp "StockDeck/Resources/AppLogo.png" "$APP/" 2>/dev/null || true
 
-# Write iOS Info.plist
+# Write Info.plist
 cat > "$APP/Info.plist" << 'PLISTEOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -122,35 +123,54 @@ PLISTEOF
 
 echo "APPL????" > "$APP/PkgInfo"
 
-# Code sign for simulator (ad-hoc)
-codesign --force --sign - --timestamp=none "$APP" 2>/dev/null || true
+# Find and embed Provisioning Profile
+PROV_PROFILE="$(find ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/ ~/Library/MobileDevice/Provisioning\ Profiles/ -name "*.mobileprovision" 2>/dev/null | head -1 || true)"
+ENTITLEMENTS_PLIST="/tmp/stockdeck_entitlements.plist"
 
-echo "Checking iOS Simulator..."
-# Find booted device or pick default iPhone
-BOOTED_DEVICE="$(xcrun simctl list devices | grep "(Booted)" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
-
-if [[ -z "$BOOTED_DEVICE" ]]; then
-    DEVICE_ID="$(xcrun simctl list devices available | grep -E "iPhone 17 Pro \(" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
-    if [[ -z "$DEVICE_ID" ]]; then
-        DEVICE_ID="$(xcrun simctl list devices available | grep -E "iPhone" | head -1 | grep -oE '\([A-F0-9-]+\)' | tr -d '()' || true)"
-    fi
-    echo "Booting simulator ($DEVICE_ID)..."
-    xcrun simctl boot "$DEVICE_ID" || true
-    TARGET_DEVICE="$DEVICE_ID"
-else
-    echo "Using already booted simulator ($BOOTED_DEVICE)..."
-    TARGET_DEVICE="$BOOTED_DEVICE"
+if [[ -n "$PROV_PROFILE" && -f "$PROV_PROFILE" ]]; then
+    echo "==> 4. Embedding provisioning profile from $PROV_PROFILE..."
+    cp "$PROV_PROFILE" "$APP/embedded.mobileprovision"
+    
+    # Extract Entitlements
+    security cms -D -i "$PROV_PROFILE" > /tmp/profile.plist
+    /usr/libexec/PlistBuddy -x -c "Print :Entitlements" /tmp/profile.plist > "$ENTITLEMENTS_PLIST" 2>/dev/null || true
+    rm -f /tmp/profile.plist
 fi
 
-open -a Simulator || true
+echo "==> 5. Code signing with $SIGN_ID..."
+if [[ -f "$ENTITLEMENTS_PLIST" ]]; then
+    codesign --force --sign "$SIGN_ID" --entitlements "$ENTITLEMENTS_PLIST" --timestamp=none "$APP"
+else
+    codesign --force --sign "$SIGN_ID" --timestamp=none "$APP"
+fi
 
-echo "Terminating previous instance of $BUNDLE_ID..."
-xcrun simctl terminate "$TARGET_DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+echo "==> 6. Checking for connected physical iOS device..."
+DEVICE_ID=""
+for i in {1..10}; do
+    DEVICE_ID="$(xcrun devicectl list devices 2>/dev/null | grep -v "unavailable" | grep -E "iPhone|iPad" | head -1 | awk '{print $3}' || true)"
+    if [[ -n "$DEVICE_ID" ]]; then
+        break
+    fi
+    echo "[$i/10] Waiting for physical iPhone to be connected/unlocked..."
+    sleep 2
+done
 
-echo "Installing $APP on simulator..."
-xcrun simctl install "$TARGET_DEVICE" "$APP"
-
-echo "Launching $BUNDLE_ID..."
-xcrun simctl launch "$TARGET_DEVICE" "$BUNDLE_ID"
-
-echo "StockDeck iOS launched successfully!"
+if [[ -n "$DEVICE_ID" ]]; then
+    echo "Found connected device: $DEVICE_ID"
+    echo "Installing app onto device..."
+    xcrun devicectl device install app --device "$DEVICE_ID" "$APP"
+    echo "Launching app on device..."
+    xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID" || true
+    echo "StockDeck iOS installed and launched on physical device successfully!"
+else
+    echo "--------------------------------------------------------------------------------"
+    echo " ✅ App bundle built and signed 100% successfully at:"
+    echo " $APP"
+    echo ""
+    echo " ⚠️ Physical device (Terry 14Pro) is currently offline/unavailable."
+    echo " Để cài đặt ngay:"
+    echo " 1. Cắm cáp USB iPhone vào máy Mac (hoặc mở khóa màn hình nếu dùng Wi-Fi)."
+    echo " 2. Nhấn 'Tin cậy máy tính' (Trust this computer) trên màn hình iPhone."
+    echo " 3. Chạy: ./dev-device.sh"
+    echo "--------------------------------------------------------------------------------"
+fi

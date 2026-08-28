@@ -32,7 +32,7 @@ struct iOSMainTabView: View {
 
             NavigationStack {
                 WatchlistView(showSearch: $showSearch)
-                    .navigationTitle("Watchlist")
+                    .navigationTitle("Watchlists")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
@@ -41,13 +41,6 @@ struct iOSMainTabView: View {
                                     showWatchlistCustomizer = true
                                 } label: {
                                     Image(systemName: "slider.horizontal.3")
-                                }
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                        showSearch = true
-                                    }
-                                } label: {
-                                    Image(systemName: "magnifyingglass")
                                 }
                                 refreshButton
                             }
@@ -60,7 +53,7 @@ struct iOSMainTabView: View {
                     }
             }
             .tabItem {
-                Label("Watchlist", systemImage: Tab.watchlist.icon)
+                Label("Watchlists", systemImage: Tab.watchlist.icon)
             }
             .tag(Tab.watchlist)
 
@@ -69,15 +62,15 @@ struct iOSMainTabView: View {
                     .navigationTitle("Portfolios")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button {
-                                showPortfolioColumnCustomizer = true
-                            } label: {
-                                Image(systemName: "slider.horizontal.3")
-                            }
-                        }
                         ToolbarItem(placement: .topBarTrailing) {
-                            refreshButton
+                            HStack(spacing: 12) {
+                                Button {
+                                    showPortfolioColumnCustomizer = true
+                                } label: {
+                                    Image(systemName: "slider.horizontal.3")
+                                }
+                                refreshButton
+                            }
                         }
                     }
                     .sheet(isPresented: Binding(

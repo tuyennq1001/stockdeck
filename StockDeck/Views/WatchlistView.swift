@@ -14,7 +14,7 @@ private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
     case .price: return 82
     case .today: return 68
     case .todayChange: return 78
-    case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears: return 68
+    case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears: return 68
     case .ath, .atl: return 78
     case .fromAth, .fromAtl: return 68
     case .marketCap: return 78
@@ -116,6 +116,12 @@ struct WatchlistView: View {
             }
             .padding(.vertical, 4)
         }
+        .refreshable {
+            if storageService.iCloudSyncEnabled {
+                iCloudSyncService.shared.pullAndMerge(force: false)
+            }
+            await stockService.refreshAll(storageService: storageService)
+        }
     }
 
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
@@ -139,46 +145,54 @@ struct WatchlistView: View {
                 showSymbolDetail.perform(symbol)
             }) {
                 #if os(iOS)
-                let activeCols = storageService.resolvedIOSWatchlistMetrics
                 HStack(spacing: 0) {
                     HStack(spacing: 4) {
                         SymbolLogo(symbol: symbol, size: 20)
-                        Text(StockService.beautifiedSymbol(symbol))
-                            .font(.inter(14.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(StockService.beautifiedSymbol(symbol))
+                                .font(.inter(14.5, relativeTo: .body).monospacedDigit())
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                            if storageService.showCompanyName {
+                                Text(" ")
+                                    .font(.inter(11.5, relativeTo: .caption))
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .frame(width: 78, alignment: .leading)
 
-                    ForEach(activeCols, id: \.self) { metric in
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: iosMetricColumnWidth(metric), alignment: .trailing)
-                    }
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 3)
+                .padding(.vertical, 4.5)
                 .contentShape(Rectangle())
                 #else
                 HStack(spacing: 0) {
                     HStack(spacing: 5) {
                         SymbolLogo(symbol: symbol, size: 20)
-                        Text(StockService.beautifiedSymbol(symbol))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                            .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(StockService.beautifiedSymbol(symbol))
+                                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                                .fontWeight(.bold)
+                                .lineLimit(1)
+                            if storageService.showCompanyName {
+                                Text(" ")
+                                    .font(.inter(10, relativeTo: .caption2))
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                     .frame(width: WatchlistCol.symbol, alignment: .leading)
 
-                    Color.clear.frame(width: WatchlistCol.price)
-                    Color.clear.frame(width: WatchlistCol.change)
-                    Color.clear.frame(width: WatchlistCol.oneYear)
                     ProgressView()
                         .scaleEffect(0.6)
-                        .frame(width: WatchlistCol.threeYears, alignment: .trailing)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 3)
+                .padding(.vertical, 4.5)
                 .contentShape(Rectangle())
                 #endif
             }
@@ -218,7 +232,7 @@ struct WatchlistView: View {
         case .today, .todayChange:
             sortHeader("Today %", column: .metric(.today))
                 .frame(width: width, alignment: .trailing)
-        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears:
+        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
             sortHeader(metric.title, column: .metric(metric))
                 .frame(width: width, alignment: .trailing)
         case .ath:
@@ -887,11 +901,12 @@ struct QuoteRow: View {
         case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
         case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
         case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+        case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
         case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
         default: boundary = nil
         }
         guard let boundary else { return nil }
-        let hist = stockService.watchlistHistory[quote.symbol] ?? stockService.priceHistoryMax[quote.symbol] ?? []
+        let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
         return PriceHistory.percentChange(points: hist, currentPrice: quote.price, since: boundary)
     }
 
@@ -967,7 +982,7 @@ struct QuoteRow: View {
             }
             .frame(width: width, alignment: .trailing)
 
-        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears:
+        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
             let pct = periodChange(metric)
             if let pct {
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))

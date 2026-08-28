@@ -4,7 +4,7 @@ import Foundation
 /// this list controls the investment metrics that follow them.
 enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
     case price
-    case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears
+    case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears, tenYears
     case ath, fromAth, atl, fromAtl
     case marketCap
     case chart24h, chart7d, chart30d, chart60d, chart90d, chartYtd, chart1y
@@ -23,6 +23,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         case .twoYears: return "2Y %"
         case .threeYears: return "3Y %"
         case .fiveYears: return "5Y %"
+        case .tenYears: return "10Y %"
         case .ath: return "ATH"
         case .fromAth: return "From ATH"
         case .atl: return "ATL"
@@ -42,7 +43,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         switch self {
         case .price:
             return .core
-        case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
+        case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
             return .change
         case .ath, .fromAth, .atl, .fromAtl, .marketCap:
             return .price

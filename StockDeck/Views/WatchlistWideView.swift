@@ -116,7 +116,7 @@ struct WatchlistWideView: View {
                 return threeMonthChangePercent
             case .ytd:
                 return ytdChangePercent
-            case .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears:
+            case .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
                 let calendar = Calendar.current
                 let now = Date()
                 let boundary: Date?
@@ -126,10 +126,12 @@ struct WatchlistWideView: View {
                 case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
                 case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
                 case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+                case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
                 default: boundary = nil
                 }
                 guard let boundary else { return nil }
-                return PriceHistory.percentChange(points: history, currentPrice: quote?.price ?? 0, since: boundary)
+                let hist = allTimeHistory.isEmpty ? history : allTimeHistory
+                return PriceHistory.percentChange(points: hist, currentPrice: quote?.price ?? 0, since: boundary)
             case .ath:
                 return allTimeHigh
             case .atl:
@@ -1176,11 +1178,13 @@ private struct WatchRowView<Menu: View>: View {
         case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
         case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
         case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
+        case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
         case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
         default: boundary = nil
         }
         guard let boundary else { return nil }
-        return PriceHistory.percentChange(points: row.history, currentPrice: row.quote?.price ?? 0, since: boundary)
+        let hist = row.allTimeHistory.isEmpty ? row.history : row.allTimeHistory
+        return PriceHistory.percentChange(points: hist, currentPrice: row.quote?.price ?? 0, since: boundary)
     }
 
     private func metricCell(_ metric: WatchlistMetric) -> some View {
@@ -1191,10 +1195,11 @@ private struct WatchRowView<Menu: View>: View {
                     priceCell
                 } else {
                     DSSpinner(size: 12)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             case .today, .todayChange:
                 todayPercentCell
-            case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .ytd:
+            case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears, .ytd:
                 periodCell(periodChange(metric))
             case .ath:
                 priceMetric(row.allTimeHigh)
@@ -1309,7 +1314,7 @@ private struct WatchRowView<Menu: View>: View {
                                 .frame(width: 96, alignment: .trailing)
                         } else {
                             DSSpinner(size: 12)
-                                .frame(width: 96, alignment: .trailing)
+                                .frame(width: 96, alignment: .center)
                         }
                     } else {
                         metricCell(.price)

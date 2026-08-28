@@ -2,7 +2,7 @@ import SwiftUI
 
 enum Tab: String, CaseIterable {
     case home = "Home"
-    case watchlist = "Watchlist"
+    case watchlist = "Watchlists"
     case portfolios = "Portfolios"
     case utilities = "Utilities"
     case settings = "Settings"
@@ -31,8 +31,9 @@ extension Tab {
     /// that's now hidden (e.g. "Home" after News was turned off) falls back to the
     /// first visible tab so the user is never stranded on a blank tab.
     static func resolve(stored: String, showNews: Bool) -> Tab {
+        let normalized = stored == "Watchlist" ? "Watchlists" : stored
         let tabs = visible(showNews: showNews)
-        if let t = Tab(rawValue: stored), tabs.contains(t) { return t }
+        if let t = Tab(rawValue: normalized), tabs.contains(t) { return t }
         return tabs.first ?? .watchlist
     }
 }
@@ -273,7 +274,7 @@ struct ContentView: View {
                 if storageService.showNewsTab {
                     tabButton("Home", tab: .home)
                 }
-                tabButton("Watchlist", tab: .watchlist)
+                tabButton("Watchlists", tab: .watchlist)
                 tabButton("Portfolios", tab: .portfolios)
             }
             .padding(3)
