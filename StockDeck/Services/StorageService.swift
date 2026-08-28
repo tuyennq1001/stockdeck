@@ -1160,6 +1160,7 @@ class StorageService: ObservableObject {
         let twoYearStart = calendar.date(byAdding: .year, value: -2, to: now)
         let threeYearStart = calendar.date(byAdding: .year, value: -3, to: now)
         let fiveYearStart = calendar.date(byAdding: .year, value: -5, to: now)
+        let tenYearStart = calendar.date(byAdding: .year, value: -10, to: now)
 
         func value(for symbol: String) -> Double? {
             let q = quotes[symbol]
@@ -1202,7 +1203,9 @@ class StorageService: ObservableObject {
                 case .threeYears:
                     return threeYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
                 case .fiveYears:
-                    return fiveYearStart.flatMap { PriceHistory.percentChange(points: hist, currentPrice: regularPrice, since: $0) }
+                    return fiveYearStart.flatMap { PriceHistory.percentChange(points: histMax.isEmpty ? hist : histMax, currentPrice: regularPrice, since: $0) }
+                case .tenYears:
+                    return tenYearStart.flatMap { PriceHistory.percentChange(points: histMax.isEmpty ? hist : histMax, currentPrice: regularPrice, since: $0) }
                 case .ath:
                     let histHigh = histMax.map(\.effectiveHigh).max()
                     let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)

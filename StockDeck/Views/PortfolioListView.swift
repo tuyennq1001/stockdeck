@@ -215,6 +215,12 @@ struct PortfolioListView: View {
                                 }
                                 .padding(.vertical, 2)
                             }
+                            .refreshable {
+                                if storageService.iCloudSyncEnabled {
+                                    iCloudSyncService.shared.pullAndMerge(force: false)
+                                }
+                                await stockService.refreshAll(storageService: storageService)
+                            }
                         }
                         .frame(minWidth: 386)
                     }
@@ -222,6 +228,12 @@ struct PortfolioListView: View {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {
                         }
+                    }
+                    .refreshable {
+                        if storageService.iCloudSyncEnabled {
+                            iCloudSyncService.shared.pullAndMerge(force: false)
+                        }
+                        await stockService.refreshAll(storageService: storageService)
                     }
                 }
 
@@ -1083,8 +1095,14 @@ struct HoldingRow: View {
                     .frame(width: 125, alignment: .trailing)
                 } else {
                     Spacer()
-                    ProgressView()
-                        .scaleEffect(0.5)
+                    VStack(alignment: .center, spacing: 1) {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                        Text(" ")
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                            .lineLimit(1)
+                    }
+                    .frame(width: 125, alignment: .center)
                 }
             }
             .padding(.vertical, 4)
@@ -1241,7 +1259,13 @@ struct GroupedHoldingRow: View {
                             .frame(width: 120, alignment: .trailing)
                         } else {
                             Spacer()
-                            ProgressView().scaleEffect(0.5)
+                            VStack(alignment: .center, spacing: 1) {
+                                ProgressView().scaleEffect(0.5)
+                                Text(" ")
+                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 120, alignment: .center)
                         }
                     }
                     .padding(.vertical, 4)
@@ -1424,8 +1448,8 @@ struct PortfolioQuoteRow: View {
                             .font(symbolFont)
                             .fontWeight(.bold)
                             .lineLimit(1)
-                        if storageService.showCompanyName, !subTitleText.isEmpty {
-                            Text(subTitleText)
+                        if storageService.showCompanyName {
+                            Text(subTitleText.isEmpty ? " " : subTitleText)
                                 .font(subtitleFont)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
@@ -1517,6 +1541,10 @@ struct PortfolioQuoteRow: View {
                         .minimumScaleFactor(0.85)
                 } else {
                     ProgressView().scaleEffect(0.5)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text(" ")
+                        .font(metricSubFont)
+                        .lineLimit(1)
                 }
             }
             .frame(width: 80, alignment: .trailing)
@@ -1549,6 +1577,10 @@ struct PortfolioQuoteRow: View {
                     }
                 } else {
                     ProgressView().scaleEffect(0.5)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text(" ")
+                        .font(metricCaption2Font)
+                        .lineLimit(1)
                 }
             }
             .frame(width: 68, alignment: .trailing)
