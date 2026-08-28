@@ -318,13 +318,19 @@ struct AIReviewWideView: View {
         }
     }
 
+    private static let messageTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm · dd/MM"
+        return f
+    }()
+
     @ViewBuilder
     private func messageBubble(_ vm: AIReviewViewModel, message: AIChatMessage) -> some View {
         switch message.role {
         case .user:
             HStack {
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
+                VStack(alignment: .trailing, spacing: 3) {
                     if let base64 = message.imageBase64,
                        let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")) {
                         #if os(macOS)
@@ -355,18 +361,35 @@ struct AIReviewWideView: View {
                             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(DS.brand))
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    Text(Self.messageTimeFormatter.string(from: message.createdAt))
+                        .font(.inter(9.5, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .padding(.trailing, 4)
                 }
             }
         case .assistant:
             HStack(alignment: .top, spacing: 8) {
-                MarkdownText(message.content, baseFont: DS.body)
-                    .foregroundStyle(DS.ink)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .contextMenu {
-                        Button { copy(message.content) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                VStack(alignment: .leading, spacing: 4) {
+                    MarkdownText(message.content, baseFont: DS.body)
+                        .foregroundStyle(DS.ink)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contextMenu {
+                            Button { copy(message.content) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                        }
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                            .foregroundStyle(DS.inkTertiary)
+                        Text("Phân tích lúc \(Self.messageTimeFormatter.string(from: message.createdAt))")
+                            .font(.inter(9.5, relativeTo: .caption2))
+                            .foregroundStyle(DS.inkTertiary)
                     }
+                    .padding(.leading, 4)
+                }
+
                 Button {
                     copy(message.content)
                 } label: {
@@ -384,11 +407,18 @@ struct AIReviewWideView: View {
             // No longer produced; render the stored content as a normal message
             // so old conversations still display something meaningful.
             HStack(alignment: .top, spacing: 8) {
-                MarkdownText(message.content, baseFont: DS.body)
-                    .foregroundStyle(DS.ink)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    MarkdownText(message.content, baseFont: DS.body)
+                        .foregroundStyle(DS.ink)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(DS.cardAlt))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(Self.messageTimeFormatter.string(from: message.createdAt))
+                        .font(.inter(9.5, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .padding(.leading, 4)
+                }
                 Spacer()
             }
         }
@@ -408,11 +438,24 @@ struct AIReviewWideView: View {
     private func composer(_ vm: AIReviewViewModel) -> some View {
         VStack(spacing: 8) {
             if let error = vm.errorMessage {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(DS.down)
-                    Text(error).font(DS.micro).foregroundStyle(DS.down)
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DS.down)
+                    Text(error)
+                        .font(DS.micro)
+                        .foregroundStyle(DS.down)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
+                    Button("Đóng") {
+                        vm.errorMessage = nil
+                    }
+                    .buttonStyle(.plain)
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
                 }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(DS.down.opacity(0.1)))
             }
 
             // Image attachment preview

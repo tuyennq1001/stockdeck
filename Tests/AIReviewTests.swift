@@ -211,4 +211,75 @@ final class AIReviewTests: XCTestCase {
 
         XCTAssertTrue(context.contextText.contains("ACTUAL MONEY-WEIGHTED RETURN (XIRR / Real Cash Flow Performance)"))
     }
+
+    // MARK: - Auto-Detection & Dynamic Models
+
+    func testAutoDetectProviderFromAPIKey() {
+        XCTAssertEqual(StorageService.autoDetectProvider(from: "AIzaSyDummyGeminiKey123"), "gemini")
+        XCTAssertEqual(StorageService.autoDetectProvider(from: "gsk_DummyGroqKey456"), "groq")
+        XCTAssertEqual(StorageService.autoDetectProvider(from: "sk-or-DummyOpenRouter789"), "openrouter")
+        XCTAssertNil(StorageService.autoDetectProvider(from: "random-custom-key"))
+    }
+
+    func testAvailableModelsAndPresetFallback() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
+        let geminiModels = storage.availableModels(for: "gemini")
+        XCTAssertTrue(geminiModels.contains("gemini-2.0-flash"))
+        XCTAssertTrue(geminiModels.contains("gemini-1.5-flash"))
+
+        let openaiModels = storage.availableModels(for: "openai")
+        XCTAssertTrue(openaiModels.contains("gpt-4o-mini"))
+        XCTAssertTrue(openaiModels.contains("gpt-4o"))
+    }
+
+    func testSetCachedModelsPersistsPerProvider() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
+        let customServerModels = ["gemini-custom-pro", "gemini-custom-flash"]
+        storage.setCachedModels(customServerModels, for: "gemini")
+
+        let retrieved = storage.availableModels(for: "gemini")
+        XCTAssertTrue(retrieved.contains("gemini-custom-pro"))
+        XCTAssertTrue(retrieved.contains("gemini-custom-flash"))
+
+        let exported = storage.exportAppData()
+        XCTAssertEqual(exported.cachedModelsByProvider?["gemini"], customServerModels)
+
+        storage.cachedModelsByProvider = [:]
+        storage.applyAppData(exported)
+        XCTAssertEqual(storage.cachedModelsByProvider["gemini"], customServerModels)
+    }
+
+    func testApplyAIPresetSwitchesModelAndURL() {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
+        storage.applyAIPreset("gemini")
+        XCTAssertEqual(storage.aiProvider, "gemini")
+        XCTAssertEqual(storage.aiBaseURL, "https://generativelanguage.googleapis.com/v1beta/openai")
+        XCTAssertEqual(storage.aiModel, "gemini-2.0-flash")
+
+        storage.applyAIPreset("groq")
+        XCTAssertEqual(storage.aiProvider, "groq")
+        XCTAssertEqual(storage.aiBaseURL, "https://api.groq.com/openai/v1")
+        XCTAssertEqual(storage.aiModel, "llama-3.3-70b-versatile")
+    }
+
+    func testKeychainServiceSaveAndLoad() {
+        let testKey = "test_keychain_service_ai_key"
+        defer { _ = KeychainService.delete(key: testKey) }
+
+        let testValue = "AIzaSyDummyTestKey123456789"
+        let saved = KeychainService.saveString(testValue, forKey: testKey)
+        XCTAssertTrue(saved, "KeychainService.saveString should return true")
+
+        let loaded = KeychainService.loadString(forKey: testKey)
+        XCTAssertEqual(loaded, testValue, "Loaded key should match saved key")
+    }
 }

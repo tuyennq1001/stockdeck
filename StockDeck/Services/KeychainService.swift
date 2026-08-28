@@ -30,7 +30,7 @@ struct KeychainService {
         ]
         #if os(macOS)
         if let access = makeSelfAccess() {
-            query[kSecAttrAccessControl as String] = access
+            query[kSecAttrAccess as String] = access
         }
         #endif
 
