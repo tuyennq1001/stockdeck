@@ -304,14 +304,30 @@ struct WatchlistView: View {
                 }
             } else {
                 #if os(iOS)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        headerRow
+                ScrollView(.vertical, showsIndicators: true) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            headerRow
 
-                        Divider()
+                            Divider()
 
-                        flatList
+                            LazyVStack(spacing: 0) {
+                                ForEach(displaySymbols, id: \.self) { symbol in
+                                    quoteOrPlaceholderRow(symbol)
+                                    if symbol != displaySymbols.last {
+                                        Divider().padding(.leading, 74)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
+                }
+                .refreshable {
+                    if storageService.iCloudSyncEnabled {
+                        iCloudSyncService.shared.pullAndMerge(force: false)
+                    }
+                    await stockService.refreshAll(storageService: storageService)
                 }
                 #else
                 headerRow

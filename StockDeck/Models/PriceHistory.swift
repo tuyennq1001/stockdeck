@@ -53,10 +53,22 @@ enum PriceHistory {
     /// requested boundary to the current regular-session price. Falling back to
     /// the first close after the boundary handles newly listed instruments.
     static func percentChange(points: [PricePoint], currentPrice: Double, since boundary: Date) -> Double? {
-        guard currentPrice.isFinite, currentPrice > 0 else { return nil }
-        let chronological = points.sorted { $0.date < $1.date }
-        let baseline = chronological.last { $0.date <= boundary }
-            ?? chronological.first { $0.date > boundary }
+        guard currentPrice.isFinite, currentPrice > 0, !points.isEmpty else { return nil }
+        var low = 0
+        var high = points.count - 1
+        var baselineIdx: Int? = nil
+
+        while low <= high {
+            let mid = low + (high - low) / 2
+            if points[mid].date <= boundary {
+                baselineIdx = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+
+        let baseline = baselineIdx.map { points[$0] } ?? points.first
         guard let baseline, baseline.close.isFinite, baseline.close > 0 else { return nil }
         return (currentPrice - baseline.close) / baseline.close * 100
     }

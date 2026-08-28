@@ -177,34 +177,27 @@ struct PortfolioListView: View {
 
                 let globals = globalPositions
                 if !globals.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            #if os(iOS)
-                            let activeCols = storageService.resolvedIOSPortfolioColumns
-                            #else
-                            let activeCols = PortfolioListView.defaultPopoverColumns
-                            #endif
-                            HStack(spacing: 0) {
-                                Text("Symbol")
-                                    .frame(width: 72, alignment: .leading)
-                                ForEach(activeCols, id: \.self) { col in
-                                    columnHeader(col)
+                    #if os(iOS)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                let activeCols = storageService.resolvedIOSPortfolioColumns
+                                HStack(spacing: 0) {
+                                    Text("Symbol")
+                                        .frame(width: 72, alignment: .leading)
+                                    ForEach(activeCols, id: \.self) { col in
+                                        columnHeader(col)
+                                    }
                                 }
-                            }
-                            #if os(iOS)
-                            .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
-                            #else
-                            .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
-                            #endif
-                            .foregroundColor(.secondary)
-                            .tracking(0.8)
-                            .textCase(.uppercase)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
+                                .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
+                                .foregroundColor(.secondary)
+                                .tracking(0.8)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
 
-                            Divider()
+                                Divider()
 
-                            ScrollView(.vertical, showsIndicators: true) {
                                 LazyVStack(spacing: 0) {
                                     ForEach(globals) { p in
                                         PortfolioQuoteRow(stockService: stockService, globalPos: p)
@@ -215,15 +208,47 @@ struct PortfolioListView: View {
                                 }
                                 .padding(.vertical, 2)
                             }
-                            .refreshable {
-                                if storageService.iCloudSyncEnabled {
-                                    iCloudSyncService.shared.pullAndMerge(force: false)
-                                }
-                                await stockService.refreshAll(storageService: storageService)
+                            .frame(minWidth: 386)
+                        }
+                    }
+                    .refreshable {
+                        if storageService.iCloudSyncEnabled {
+                            iCloudSyncService.shared.pullAndMerge(force: false)
+                        }
+                        await stockService.refreshAll(storageService: storageService)
+                    }
+                    #else
+                    VStack(alignment: .leading, spacing: 0) {
+                        let activeCols = PortfolioListView.defaultPopoverColumns
+                        HStack(spacing: 0) {
+                            Text("Symbol")
+                                .frame(width: 72, alignment: .leading)
+                            ForEach(activeCols, id: \.self) { col in
+                                columnHeader(col)
                             }
                         }
-                        .frame(minWidth: 386)
+                        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+                        .foregroundColor(.secondary)
+                        .tracking(0.8)
+                        .textCase(.uppercase)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+
+                        Divider()
+
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(globals) { p in
+                                    PortfolioQuoteRow(stockService: stockService, globalPos: p)
+                                    if p.id != globals.last?.id {
+                                        Divider().padding(.leading, 72)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
+                    #endif
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {

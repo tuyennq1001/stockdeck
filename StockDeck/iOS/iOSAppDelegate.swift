@@ -10,6 +10,8 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     private var webSocketService = WebSocketService.shared
     private var timer: Timer?
     private var binanceTimer: Timer?
+    private var pendingTicks: [Yaticker] = []
+    private var tickBatchTimer: Timer?
     private var symbolsObserver: AnyCancellable?
     private lazy var alertMonitor = AlertMonitor(storage: storageService)
     private lazy var portfolioMonitor = PortfolioMonitor(storage: storageService, stockService: stockService)
@@ -31,13 +33,11 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
                 }
             }
 
-        // On WSS tick -> update quote in StockService & evaluate alerts
-        webSocketService.onTick = { [weak self] tick in
+        // On WSS tick -> buffer tick and flush max once per second to prevent @Published UI thrashing
+        webSocketService.onTick = { [weak self] ticker in
             guard let self else { return }
-            if self.stockService.applyTicks([tick]) {
-                self.alertMonitor.check(quotes: self.stockService.quotes)
-                self.portfolioMonitor.check()
-            }
+            self.pendingTicks.append(ticker)
+            self.scheduleTickFlush()
         }
 
         // REST polling timer every 60s fallback
@@ -74,6 +74,35 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             if case .binance = p.sourceType {
                 try? await storageService.syncBinancePortfolio(id: p.id)
             }
+        }
+    }
+
+    /// Flush buffered ticks max once per second to avoid @Published spam
+    private func scheduleTickFlush() {
+        guard tickBatchTimer == nil else { return }
+        tickBatchTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.tickBatchTimer = nil
+                self.flushTicks()
+            }
+        }
+    }
+
+    private func flushTicks() {
+        guard !pendingTicks.isEmpty else { return }
+        let ticks = pendingTicks
+        pendingTicks.removeAll(keepingCapacity: false)
+
+        // Keep only the latest tick per symbol
+        var latest: [String: Yaticker] = [:]
+        for tick in ticks {
+            latest[tick.id] = tick
+        }
+
+        if stockService.applyTicks(Array(latest.values)) {
+            alertMonitor.check(quotes: stockService.quotes)
+            portfolioMonitor.check()
         }
     }
 }
