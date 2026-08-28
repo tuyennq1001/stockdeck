@@ -7,8 +7,7 @@ import SwiftUI
 struct SymbolNewsCard: View {
     @ObservedObject var stockService: StockService
     let symbol: String
-
-    @State private var activeLink: InAppWebLink?
+    var onSelectArticle: ((NewsArticle) -> Void)? = nil
 
     private var key: String { symbol.uppercased() }
     private var articles: [NewsArticle] { stockService.newsBySymbol[key] ?? [] }
@@ -30,9 +29,6 @@ struct SymbolNewsCard: View {
             }
         }
         .task(id: symbol) { await stockService.refreshNews(for: symbol) }
-        .sheet(item: $activeLink) { link in
-            InAppWebViewPopup(url: link.url)
-        }
     }
 
     private var statusRow: some View {
@@ -53,7 +49,13 @@ struct SymbolNewsCard: View {
 
     private func row(_ article: NewsArticle) -> some View {
         Button {
-            if let url = article.url { activeLink = InAppWebLink(url: url) }
+            if let onSelectArticle {
+                onSelectArticle(article)
+            } else if let url = article.url {
+                #if os(macOS)
+                NSWorkspace.shared.open(url)
+                #endif
+            }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 if let thumb = article.thumbnailURL, let url = URL(string: thumb) {

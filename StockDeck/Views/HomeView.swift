@@ -11,7 +11,7 @@ struct HomeView: View {
     @EnvironmentObject var storageService: StorageService
     @State private var mode: HomeViewMode = .insights
     @State private var query = ""
-    @State private var activeLink: InAppWebLink?
+    @State private var selectedNewsArticle: NewsArticle?
     @State private var isLoadingInsight = false
     @State private var insightError: String? = nil
 
@@ -28,14 +28,22 @@ struct HomeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
-
-            if mode == .insights {
-                insightsView
+        Group {
+            if let article = selectedNewsArticle {
+                NewsDetailView(
+                    article: article,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedNewsArticle = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
             } else {
-                newsView
+                homeContent
             }
         }
         .task {
@@ -45,8 +53,18 @@ struct HomeView: View {
             }
             await stockService.refreshNews(storageService: storageService)
         }
-        .sheet(item: $activeLink) { link in
-            InAppWebViewPopup(url: link.url)
+    }
+
+    private var homeContent: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+
+            if mode == .insights {
+                insightsView
+            } else {
+                newsView
+            }
         }
     }
 
@@ -172,7 +190,12 @@ struct HomeView: View {
                                     }
 
                                     ForEach(items) { item in
-                                        SymbolInsightCard(item: item) { activeLink = InAppWebLink(url: $0) }
+                                        SymbolInsightCard(item: item) { url in
+                                            let article = item.makeNewsArticle(for: url, timestamp: insight.date)
+                                            withAnimation(.easeInOut(duration: 0.18)) {
+                                                selectedNewsArticle = article
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(.top, 4)
@@ -283,7 +306,11 @@ struct HomeView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(news) { article in
-                            NewsRow(article: article) { activeLink = InAppWebLink(url: $0) }
+                            NewsRow(article: article) { selected in
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    selectedNewsArticle = selected
+                                }
+                            }
                             Divider().padding(.leading, 74)
                         }
                     }
@@ -316,7 +343,7 @@ struct HomeView: View {
 /// A single news story row: thumbnail, headline, publisher · relative time, related tickers.
 private struct NewsRow: View {
     let article: NewsArticle
-    let onOpen: (URL) -> Void
+    let onSelect: (NewsArticle) -> Void
     @Environment(\.locale) private var locale
     @State private var hovering = false
 
@@ -343,7 +370,7 @@ private struct NewsRow: View {
 
     var body: some View {
         Button {
-            if let url = article.url { onOpen(url) }
+            onSelect(article)
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 thumbnail

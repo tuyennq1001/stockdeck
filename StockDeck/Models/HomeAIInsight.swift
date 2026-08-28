@@ -124,6 +124,22 @@ struct SymbolInsightItem: Codable, Equatable, Identifiable {
         self.marketCategory = marketCategory
     }
 
+    func makeNewsArticle(for url: URL, timestamp: Date = Date()) -> NewsArticle {
+        let matchedPub = sources.first(where: { $0.url == url.absoluteString })?.publisher
+        let pub = matchedPub?.isEmpty == false ? matchedPub! : name
+        return NewsArticle(
+            id: url.absoluteString,
+            title: "\(symbol): \(coreDriver)",
+            content: coreDriver,
+            publisher: pub,
+            link: url.absoluteString,
+            publishTime: Int(timestamp.timeIntervalSince1970),
+            thumbnailURL: nil,
+            relatedTickers: [symbol],
+            sourceSymbol: symbol
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
         case symbol, name, changePercent, currentPrice, coreDriver, bulletPoints, sentiment, sources, marketCategory
     }

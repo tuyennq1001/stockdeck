@@ -181,7 +181,26 @@ enum GoogleNewsRSSParser {
             case "item":
                 defer { inItem = false }
                 guard !itemTitle.isEmpty, !itemLink.isEmpty else { return }
-                let publisher = itemSource
+                var publisher = itemSource
+                if publisher.isEmpty {
+                    if let u = URL(string: itemLink), let host = u.host {
+                        let cleanHost = host.replacingOccurrences(of: "www.", with: "")
+                        if cleanHost.contains("fool.com") { publisher = "The Motley Fool" }
+                        else if cleanHost.contains("finance.yahoo.com") { publisher = "Yahoo Finance" }
+                        else if cleanHost.contains("thestreet.com") { publisher = "TheStreet" }
+                        else if cleanHost.contains("reuters.com") { publisher = "Reuters" }
+                        else if cleanHost.contains("bloomberg.com") { publisher = "Bloomberg" }
+                        else if cleanHost.contains("marketwatch.com") { publisher = "MarketWatch" }
+                        else if cleanHost.contains("wsj.com") { publisher = "Wall Street Journal" }
+                        else if cleanHost.contains("cnbc.com") { publisher = "CNBC" }
+                        else if cleanHost.contains("benzinga.com") { publisher = "Benzinga" }
+                        else if cleanHost.contains("investors.com") { publisher = "Investor's Business Daily" }
+                        else if cleanHost.contains("barrons.com") { publisher = "Barron's" }
+                        else if cleanHost.contains("stocktwits.com") { publisher = "Stocktwits" }
+                        else if cleanHost.contains("forbes.com") { publisher = "Forbes" }
+                        else { publisher = cleanHost }
+                    }
+                }
                 let (cleanTitle, content) = GoogleNewsRSSParser.splitTitleAndContent(
                     rawTitle: itemTitle,
                     rawDescription: itemDescription,

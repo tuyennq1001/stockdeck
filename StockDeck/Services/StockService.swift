@@ -2768,18 +2768,24 @@ class StockService: ObservableObject {
         defer { isLoadingNews = false }
 
         let symbols = Self.collectSymbols(storageService: storageService).sorted()
-        // Each query is (search term, reference ticker). For tracked symbols the
-        // reference ticker is the symbol itself; the general-market fallback has none.
-        let queries: [(term: String, symbol: String?)] = symbols.isEmpty
-            ? [("stock market", nil)]
-            : symbols.prefix(6).map { ($0, $0) }
-
         var seen = Set<String>()
         var collected: [NewsArticle] = []
         await withTaskGroup(of: [NewsArticle].self) { group in
-            for query in queries {
+            if symbols.isEmpty {
                 group.addTask { [weak self] in
-                    await self?.fetchNewsChunk(query: query.term, sourceSymbol: query.symbol) ?? []
+                    await self?.fetchYahooNews(symbol: "^GSPC") ?? []
+                }
+                group.addTask { [weak self] in
+                    await self?.fetchNewsChunk(query: "stock market", sourceSymbol: nil) ?? []
+                }
+            } else {
+                for symbol in symbols.prefix(6) {
+                    group.addTask { [weak self] in
+                        guard let self else { return [] }
+                        let direct = await self.fetchYahooNews(symbol: symbol)
+                        if !direct.isEmpty { return direct }
+                        return await self.fetchNewsChunk(query: "\(symbol) stock", sourceSymbol: symbol)
+                    }
                 }
             }
             for await chunk in group {
@@ -2871,9 +2877,23 @@ class StockService: ObservableObject {
         }
     }
 
+    private func fetchYahooNews(symbol: String) async -> [NewsArticle] {
+        let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !cleanSymbol.isEmpty, !cleanSymbol.hasSuffix(".VN") else { return [] }
+        guard let url = URL(string: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=\(cleanSymbol)&region=US&lang=en-US") else { return [] }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            let articles = GoogleNewsRSSParser.parse(data, sourceSymbol: cleanSymbol)
+            return articles.filter { !$0.title.isEmpty && !$0.link.isEmpty }
+        } catch {
+            return []
+        }
+    }
+
     /// Refresh news for a single symbol (used by the symbol detail page and AI insights).
-    /// Fetches from Google News RSS using smart localized queries, throttled to at most once
-    /// every 5 minutes per symbol, and stores the result in `newsBySymbol`.
+    /// Fetches from direct Yahoo Finance RSS with Google News RSS fallback using smart localized queries,
+    /// throttled to at most once every 5 minutes per symbol, and stores the result in `newsBySymbol`.
     func refreshNews(
         for symbol: String,
         displayName: String? = nil,
@@ -2889,15 +2909,22 @@ class StockService: ObservableObject {
         isLoadingSymbolNews.insert(key)
         defer { isLoadingSymbolNews.remove(key) }
 
-        let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
-        let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
-        let articles = await fetchNewsChunk(
-            query: params.query,
-            sourceSymbol: key,
-            language: params.language,
-            region: params.region,
-            ceid: params.ceid
-        )
+        // 1. Try direct Yahoo Finance RSS feed first (provides direct article links)
+        var articles = await fetchYahooNews(symbol: key)
+
+        // 2. If empty (e.g. Vietnamese stocks or specialized queries), fallback to localized Google News RSS
+        if articles.isEmpty {
+            let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
+            let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
+            articles = await fetchNewsChunk(
+                query: params.query,
+                sourceSymbol: key,
+                language: params.language,
+                region: params.region,
+                ceid: params.ceid
+            )
+        }
+
         let deduped = articles.filter { !$0.title.isEmpty }
             .sorted { $0.publishTime > $1.publishTime }
         newsBySymbol[key] = Array(deduped.prefix(10))
