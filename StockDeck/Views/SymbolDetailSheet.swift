@@ -10,9 +10,37 @@ struct SymbolDetailView: View {
     var onAddToPortfolio: (UUID) -> Void = { _ in }
     let onDismiss: () -> Void
 
+    @State private var selectedNewsArticle: NewsArticle?
+
     private var quote: StockQuote? { stockService.quotes[symbol] }
 
     var body: some View {
+        Group {
+            if let article = selectedNewsArticle {
+                NewsDetailView(
+                    article: article,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedNewsArticle = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
+            } else {
+                detailContent
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DS.ground)
+        .task(id: symbol) {
+            await stockService.ensurePriceHistory(for: symbol)
+        }
+    }
+
+    private var detailContent: some View {
         VStack(spacing: 0) {
             headerBar
             Divider()
@@ -26,7 +54,15 @@ struct SymbolDetailView: View {
                         }
                         factsCard(quote)
                         SymbolNotesCard(storageService: storageService, symbol: symbol)
-                        SymbolNewsCard(stockService: stockService, symbol: symbol)
+                        SymbolNewsCard(
+                            stockService: stockService,
+                            symbol: symbol,
+                            onSelectArticle: { article in
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    selectedNewsArticle = article
+                                }
+                            }
+                        )
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
@@ -42,11 +78,6 @@ struct SymbolDetailView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DS.ground)
-        .task(id: symbol) {
-            await stockService.ensurePriceHistory(for: symbol)
         }
     }
 

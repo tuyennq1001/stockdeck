@@ -17,6 +17,7 @@ struct HoldingDetailView: View {
 
     @State private var showAlert = false
     @State private var confirmDeleteLot: ValuedHolding? = nil
+    @State private var selectedNewsArticle: NewsArticle? = nil
 
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
@@ -37,12 +38,33 @@ struct HoldingDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        Group {
+            if let article = selectedNewsArticle {
+                NewsDetailView(
+                    article: article,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedNewsArticle = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
+            } else {
+                holdingContent
+            }
+        }
+    }
+
+    private var holdingContent: some View {
         let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol)
         let isDisplayAsset = StockService.isDisplayNameAsset(holding.symbol)
         let mainTitle = (isJpFund || isDisplayAsset) ? quote.displayName : holding.symbol
         let subTitle = isDisplayAsset ? holding.symbol : (isJpFund ? "" : quote.name)
 
-        PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol, onBack: { dismiss() }) {
+        return PageScaffold(mainTitle, caption: subTitle, symbol: holding.symbol, onBack: { dismiss() }) {
             HStack(spacing: 10) {
                 if holding.isShort { Tag(text: "SHORT", color: DS.down) }
                 if holding.effectiveLeverage != 1 {
@@ -73,7 +95,15 @@ struct HoldingDetailView: View {
                     purchaseLotsCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
-                    SymbolNewsCard(stockService: stockService, symbol: holding.symbol)
+                    SymbolNewsCard(
+                        stockService: stockService,
+                        symbol: holding.symbol,
+                        onSelectArticle: { article in
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedNewsArticle = article
+                            }
+                        }
+                    )
                 }
                 .pageColumn()
                 .padding(.top, 4)

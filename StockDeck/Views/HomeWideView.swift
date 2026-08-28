@@ -10,7 +10,7 @@ struct HomeWideView: View {
 
     @State private var mode: HomeViewMode = .insights
     @State private var query = ""
-    @State private var activeLink: InAppWebLink?
+    @State private var selectedNewsArticle: NewsArticle?
     @State private var isLoadingInsight = false
     @State private var insightError: String? = nil
     @FocusState private var searchFocused: Bool
@@ -38,6 +38,35 @@ struct HomeWideView: View {
     }
 
     var body: some View {
+        Group {
+            if let article = selectedNewsArticle {
+                NewsDetailView(
+                    article: article,
+                    onBack: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedNewsArticle = nil
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .trailing).combined(with: .opacity)
+                ))
+            } else {
+                homeContent
+            }
+        }
+        .navigationTitle("Home")
+        .task {
+            _ = storageService.loadDailyAIInsight()
+            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
+                refreshInsights(force: false)
+            }
+            await stockService.refreshNews(storageService: storageService)
+        }
+    }
+
+    private var homeContent: some View {
         PageScaffold("Home", caption: headerCaption) {
             HStack(spacing: 12) {
                 modePicker
@@ -60,17 +89,6 @@ struct HomeWideView: View {
                     newsContent
                 }
             }
-        }
-        .navigationTitle("Home")
-        .task {
-            _ = storageService.loadDailyAIInsight()
-            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
-                refreshInsights(force: false)
-            }
-            await stockService.refreshNews(storageService: storageService)
-        }
-        .sheet(item: $activeLink) { link in
-            InAppWebViewPopup(url: link.url)
         }
     }
 
@@ -172,7 +190,12 @@ struct HomeWideView: View {
 
                                     LazyVGrid(columns: insightColumns, spacing: DS.gap) {
                                         ForEach(items) { item in
-                                            SymbolInsightCard(item: item) { open($0) }
+                                            SymbolInsightCard(item: item) { url in
+                                                let article = item.makeNewsArticle(for: url, timestamp: insight.date)
+                                                withAnimation(.easeInOut(duration: 0.18)) {
+                                                    selectedNewsArticle = article
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -249,11 +272,19 @@ struct HomeWideView: View {
                 ScrollView {
                     VStack(spacing: DS.gap) {
                         if let featured = news.first {
-                            FeaturedNewsCard(article: featured) { open($0) }
+                            FeaturedNewsCard(article: featured) { selected in
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    selectedNewsArticle = selected
+                                }
+                            }
                         }
                         LazyVGrid(columns: columns, spacing: DS.gap) {
                             ForEach(news.dropFirst()) { article in
-                                NewsCard(article: article) { open($0) }
+                                NewsCard(article: article) { selected in
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        selectedNewsArticle = selected
+                                    }
+                                }
                             }
                         }
                     }
@@ -262,10 +293,6 @@ struct HomeWideView: View {
                 }
             }
         }
-    }
-
-    private func open(_ url: URL) {
-        activeLink = InAppWebLink(url: url)
     }
 
     private var searchField: some View {
@@ -338,7 +365,7 @@ struct HomeWideView: View {
 /// soft gradient seam, gold FEATURED label, Craft-style image zoom on hover.
 private struct FeaturedNewsCard: View {
     let article: NewsArticle
-    let onOpen: (URL) -> Void
+    let onSelect: (NewsArticle) -> Void
     @Environment(\.locale) private var locale
     @State private var hovered = false
 
@@ -353,7 +380,7 @@ private struct FeaturedNewsCard: View {
 
     var body: some View {
         Button {
-            onOpen(url: article.url)
+            onSelect(article)
         } label: {
             GeometryReader { geo in
                 HStack(spacing: 0) {
@@ -423,11 +450,6 @@ private struct FeaturedNewsCard: View {
         .help(article.title)
     }
 
-    private func onOpen(url: URL?) {
-        guard let url else { return }
-        onOpen(url)
-    }
-
     @ViewBuilder private var thumbnail: some View {
         if let thumb = article.thumbnailURL, let url = URL(string: thumb) {
             AsyncImage(url: url) { phase in
@@ -450,7 +472,7 @@ private struct FeaturedNewsCard: View {
 
 private struct NewsCard: View {
     let article: NewsArticle
-    let onOpen: (URL) -> Void
+    let onSelect: (NewsArticle) -> Void
     @Environment(\.locale) private var locale
     @State private var hovered = false
 
@@ -466,7 +488,7 @@ private struct NewsCard: View {
 
     var body: some View {
         Button {
-            onOpen(url: article.url)
+            onSelect(article)
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 thumbnail
@@ -513,11 +535,6 @@ private struct NewsCard: View {
             hovered = inside
         }
         .help(article.title)
-    }
-
-    private func onOpen(url: URL?) {
-        guard let url else { return }
-        onOpen(url)
     }
 
     @ViewBuilder private var thumbnail: some View {
