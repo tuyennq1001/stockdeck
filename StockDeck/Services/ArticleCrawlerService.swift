@@ -156,40 +156,43 @@ public actor ArticleCrawlerService {
             ?? extractLinkHref(html: html, rel: "canonical")
             ?? finalURL)
 
-        // 5. Clean HTML for body text extraction: remove scripts, styles, header, nav, footer, aside, forms
-        var cleanedHTML = html
-        let tagsToRemove = ["script", "style", "nav", "header", "footer", "aside", "form", "noscript", "svg", "button", "figure", "iframe"]
-        for tag in tagsToRemove {
-            cleanedHTML = cleanedHTML.replacingOccurrences(
-                of: "<\(tag)[^>]*>[\\s\\S]*?</\(tag)>",
-                with: "",
-                options: .regularExpression
-            )
-        }
-
-        // 6. Extract paragraphs from cleaned HTML
+        // 5. Isolate main article body container & sanitize HTML
         var paragraphs: [String] = []
         var seenParagraphs = Set<String>()
 
         if !isGoogleNewsHost {
-            // Match all <p> tags across the entire page body
+            let isolatedHTML = isolateArticleContainer(html)
+            let sanitizedHTML = sanitizeHTML(isolatedHTML)
+
+            // Match all <p> tags across the sanitized article body
             let pPattern = "<p[^>]*>([\\s\\S]*?)</p>"
-            let rawParagraphs = matchRegex(html: cleanedHTML, pattern: pPattern)
+            let rawParagraphs = matchRegex(html: sanitizedHTML, pattern: pPattern)
 
             for rawP in rawParagraphs {
                 let cleanP = cleanText(rawP)
-                // Filter out boilerplate, short noise, cookie banners, and deduplicate
-                if cleanP.count >= 35 && !isBoilerplate(cleanP) && seenParagraphs.insert(cleanP).inserted {
+                if isValidParagraph(cleanP, articleTitle: resolvedTitle) && seenParagraphs.insert(cleanP).inserted {
                     paragraphs.append(cleanP)
                 }
             }
 
-            // If no <p> tags met the threshold, fallback to meta description
+            // If container isolation yielded too few paragraphs, fallback to scanning sanitized full document
+            if paragraphs.isEmpty && isolatedHTML != html {
+                let fullSanitized = sanitizeHTML(html)
+                let fallbackRaw = matchRegex(html: fullSanitized, pattern: pPattern)
+                for rawP in fallbackRaw {
+                    let cleanP = cleanText(rawP)
+                    if isValidParagraph(cleanP, articleTitle: resolvedTitle) && seenParagraphs.insert(cleanP).inserted {
+                        paragraphs.append(cleanP)
+                    }
+                }
+            }
+
+            // If still no <p> tags met the threshold, fallback to meta description
             if paragraphs.isEmpty {
                 let metaDesc = extractMetaContent(html: html, properties: ["og:description", "description", "twitter:description"])
                 if let desc = metaDesc, !desc.isEmpty {
                     let cleanDesc = cleanText(desc)
-                    if cleanDesc.count >= 20 && !isBoilerplate(cleanDesc) {
+                    if isValidParagraph(cleanDesc, articleTitle: resolvedTitle) {
                         paragraphs.append(cleanDesc)
                     }
                 }
@@ -207,18 +210,91 @@ public actor ArticleCrawlerService {
         )
     }
 
-    // MARK: - HTML Extraction Helpers
+    // MARK: - HTML Extraction & Sanitization Helpers
+
+    /// Isolates primary article container from full HTML page to prevent capturing site headers, menus, sidebars, or footers.
+    private static func isolateArticleContainer(_ html: String) -> String {
+        // Priority 1: Semantic <article>...</article>
+        let articlePattern = "(?i)<article[^>]*>([\\s\\S]*?)</article>"
+        if let match = matchFirstGroup(html: html, pattern: articlePattern), match.count >= 150 {
+            return match
+        }
+
+        // Priority 2: Yahoo Finance caas-body or main content container
+        let caasPattern = "(?i)<div[^>]+class=[\"'][^\"']*\\b(?:caas-body|caas-content|article-body|story-body|article__body|article-content|story-content|entry-content|post-content)\\b[^\"']*[\"'][^>]*>([\\s\\S]*?)(?:<footer|<div[^>]+class=[\"'][^\"']*\\b(?:caas-comments|comments|related|sidebar)\\b|$)"
+        if let match = matchFirstGroup(html: html, pattern: caasPattern), match.count >= 150 {
+            return match
+        }
+
+        // Priority 3: Semantic <main>...</main>
+        let mainPattern = "(?i)<main[^>]*>([\\s\\S]*?)</main>"
+        if let match = matchFirstGroup(html: html, pattern: mainPattern), match.count >= 150 {
+            return match
+        }
+
+        return html
+    }
+
+    /// Strips non-content tags, accessibility skip links, bylines, tickers, and advertising DOM nodes.
+    public static func sanitizeHTML(_ html: String) -> String {
+        var res = html
+
+        // 1. Remove non-content tags
+        let tagsToRemove = [
+            "script", "style", "nav", "header", "footer", "aside", "form",
+            "noscript", "svg", "button", "figure", "figcaption", "iframe",
+            "select", "option", "canvas", "dialog", "audio", "video"
+        ]
+        for tag in tagsToRemove {
+            res = res.replacingOccurrences(
+                of: "(?i)<\(tag)[^>]*>[\\s\\S]*?</\(tag)>",
+                with: "",
+                options: .regularExpression
+            )
+        }
+
+        // 2. Remove role-based navigation / banner / complementary / alert containers
+        let rolePattern = "(?i)<(?:div|section|aside|nav|header|footer|p|span|ul|ol)[^>]+role=[\"'](?:navigation|banner|contentinfo|complementary|dialog|alert|tooltip)[\"'][^>]*>[\\s\\S]*?</(?:div|section|aside|nav|header|footer|p|span|ul|ol)>"
+        res = res.replacingOccurrences(of: rolePattern, with: "", options: .regularExpression)
+
+        // 3. Remove known junk DOM containers by class/id (skip-links, bylines, tickers, social, ads, promos, comments)
+        let junkClassKeywords = [
+            "skip-link", "skip-nav", "a11y", "sr-only", "screen-reader",
+            "caas-attr", "caas-byline", "caas-ticker", "caas-da-wrapper", "caas-share-buttons",
+            "author-bio", "byline", "article-meta", "story-meta", "publish-date", "reading-time",
+            "ticker-container", "market-summary", "quote-lookup", "stock-ticker",
+            "social-share", "share-bar", "sharing-tools", "share-buttons", "social-links",
+            "ad-container", "advertisement", "sponsored", "outbrain", "taboola", "promo-box",
+            "newsletter-signup", "subscription-banner", "paywall-prompt",
+            "related-articles", "read-next", "recommended-stories", "trending-articles",
+            "comments-container", "disqus", "user-comments", "feedback-form"
+        ]
+        let junkClassPattern = "(?i)<(?:div|section|aside|header|footer|p|ul|ol)[^>]+(?:class|id)=[\"'][^\"']*\\b(?:" + junkClassKeywords.joined(separator: "|") + ")\\b[^\"']*[\"'][^>]*>[\\s\\S]*?</(?:div|section|aside|header|footer|p|ul|ol)>"
+        res = res.replacingOccurrences(of: junkClassPattern, with: "", options: .regularExpression)
+
+        return res
+    }
 
     private static func extractMetaContent(html: String, properties: [String]) -> String? {
         for prop in properties {
-            // Match <meta property="prop" content="value"> or <meta name="prop" content="value">
-            let p1 = "<meta[^>]+(?:property|name)=[\"']\(prop)[\"'][^>]+content=[\"']([^\"']+)[\"']"
+            // Match double-quoted: <meta ... property="og:title" ... content="..." ...>
+            let p1 = "(?i)<meta[^>]+(?:property|name)=[\"']\(prop)[\"'][^>]+content=\"([^\"]*)\""
             if let match = matchFirstGroup(html: html, pattern: p1) {
                 return decodeHTMLEntities(match)
             }
-            // Match <meta content="value" property="prop">
-            let p2 = "<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"']\(prop)[\"']"
+            // Match single-quoted: <meta ... property='og:title' ... content='...' ...>
+            let p2 = "(?i)<meta[^>]+(?:property|name)=[\"']\(prop)[\"'][^>]+content='([^']*)'"
             if let match = matchFirstGroup(html: html, pattern: p2) {
+                return decodeHTMLEntities(match)
+            }
+            // Match <meta ... content="..." ... property="og:title" ...>
+            let p3 = "(?i)<meta[^>]+content=\"([^\"]*)\"[^>]+(?:property|name)=[\"']\(prop)[\"']"
+            if let match = matchFirstGroup(html: html, pattern: p3) {
+                return decodeHTMLEntities(match)
+            }
+            // Match <meta ... content='...' ... property='og:title' ...>
+            let p4 = "(?i)<meta[^>]+content='([^']*)'[^>]+(?:property|name)=[\"']\(prop)[\"']"
+            if let match = matchFirstGroup(html: html, pattern: p4) {
                 return decodeHTMLEntities(match)
             }
         }
@@ -226,7 +302,7 @@ public actor ArticleCrawlerService {
     }
 
     private static func extractTagContent(html: String, tagName: String) -> String? {
-        let pattern = "<\(tagName)[^>]*>([\\s\\S]*?)</\(tagName)>"
+        let pattern = "(?i)<\(tagName)[^>]*>([\\s\\S]*?)</\(tagName)>"
         if let match = matchFirstGroup(html: html, pattern: pattern) {
             return decodeHTMLEntities(match)
         }
@@ -234,8 +310,11 @@ public actor ArticleCrawlerService {
     }
 
     private static func extractLinkHref(html: String, rel: String) -> String? {
-        let pattern = "<link[^>]+rel=[\"']\(rel)[\"'][^>]+href=[\"']([^\"']+)[\"']"
-        return matchFirstGroup(html: html, pattern: pattern)
+        let p1 = "(?i)<link[^>]+rel=[\"']\(rel)[\"'][^>]+href=\"([^\"]*)\""
+        if let match = matchFirstGroup(html: html, pattern: p1) { return match }
+        let p2 = "(?i)<link[^>]+rel=[\"']\(rel)[\"'][^>]+href='([^']*)'"
+        if let match = matchFirstGroup(html: html, pattern: p2) { return match }
+        return nil
     }
 
     private static func matchFirstGroup(html: String, pattern: String) -> String? {
@@ -293,7 +372,16 @@ public actor ArticleCrawlerService {
             ("&rsquo;", "'"),
             ("&lsquo;", "'"),
             ("&rdquo;", "\""),
-            ("&ldquo;", "\"")
+            ("&ldquo;", "\""),
+            ("&yen;", "¥"),
+            ("&euro;", "€"),
+            ("&pound;", "£"),
+            ("&copy;", "©"),
+            ("&reg;", "®"),
+            ("&trade;", "™"),
+            ("&plusmn;", "±"),
+            ("&times;", "×"),
+            ("&divide;", "÷")
         ]
         for (ent, rep) in entities {
             text = text.replacingOccurrences(of: ent, with: rep)
@@ -323,13 +411,173 @@ public actor ArticleCrawlerService {
         return text
     }
 
-    private static func isBoilerplate(_ text: String) -> Bool {
-        let lower = text.lowercased()
+    /// Evaluates if a text paragraph is substantive news content rather than boilerplate, ads, skip-links, or metadata.
+    public static func isValidParagraph(_ text: String, articleTitle: String? = nil) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 25 else { return false }
+        return !isBoilerplate(trimmed, articleTitle: articleTitle)
+    }
+
+    /// Detects boilerplate, ads, skip navigation links, author/byline/ticker dumps, and financial promotional widgets.
+    public static func isBoilerplate(_ text: String, articleTitle: String? = nil) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let lower = trimmed.lowercased()
+
+        // 1. Accessibility / Skip navigation
+        if lower.contains("skip to navigation") ||
+           lower.contains("skip to main content") ||
+           lower.contains("skip to right column") ||
+           lower.contains("skip to content") ||
+           lower.contains("skip to primary navigation") ||
+           lower.hasPrefix("skip to ") {
+            return true
+        }
+
+        // 2. Syndication / Attribution headers & footers
+        if lower.contains("this article first appeared on") ||
+           lower.contains("originally published on") ||
+           lower.contains("this story was originally published") ||
+           lower.contains("this post appeared first on") ||
+           lower.contains("reprinted with permission") ||
+           lower.contains("reposted with permission") ||
+           lower.contains("first published on") {
+            return true
+        }
+
+        // 3. Financial promo widgets & warning sign ads
+        // GuruFocus
+        if (lower.contains("warning!") && lower.contains("warning signs")) ||
+           lower.contains("warning signs with") ||
+           (lower.contains("has detected") && lower.contains("warning signs")) ||
+           lower.contains("test your thesis with our free dcf calculator") ||
+           lower.contains("free dcf calculator") ||
+           lower.contains("is fairly valued? test your thesis") ||
+           lower.contains("fairly valued? test your thesis") ||
+           lower.contains("gurufocus has detected") ||
+           lower.contains("view gurufocus portfolio") {
+            return true
+        }
+
+        // Zacks
+        if lower.contains("zacks investment research") ||
+           lower.contains("7 best stocks for the next 30 days") ||
+           lower.contains("zacks rank") ||
+           lower.contains("free report from zacks") {
+            return true
+        }
+
+        // Motley Fool & Disclosures
+        if lower.contains("the motley fool has a disclosure policy") ||
+           lower.contains("the motley fool has positions in") ||
+           lower.contains("recommends the following options") ||
+           lower.contains("holds no position in any of the stocks mentioned") ||
+           lower.contains("the author has no position in") ||
+           lower.contains("the author owns shares in") ||
+           lower.contains("the author holds shares in") ||
+           lower.contains("has a position in any stock mentioned") {
+            return true
+        }
+
+        // 4. Byline / Timestamp / Read duration / Ticker quotes composite line
+        // E.g.: "Apple Makes Costly Move Subscribers Won't Miss Moz Farooque ACCA Sat, August 29, 2026 at 7:24 AM GMT+9 2 min read AAPL +1.63% NVDA -4.57% This article first appeared on GuruFocus ."
+        if lower.contains("min read") && (
+            lower.contains("gmt") || lower.contains("est") || lower.contains("edt") ||
+            lower.contains("pst") || lower.contains("pdt") || lower.contains("utc") ||
+            lower.contains("am ") || lower.contains("pm ") || lower.contains("202")
+        ) {
+            return true
+        }
+
+        // Paragraph matching title + extra metadata
+        if let title = articleTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            let cleanTitleLower = title.lowercased()
+            if lower == cleanTitleLower || (lower.contains(cleanTitleLower) && lower.count < cleanTitleLower.count + 80) {
+                if lower.contains("min read") || lower.contains("by ") || lower.contains("published") || lower.contains("+") || lower.contains("%") {
+                    return true
+                }
+            }
+        }
+
+        // 5. Calls to action (CTAs) & Newsletters
+        if lower.contains("sign up for our newsletter") ||
+           lower.contains("sign up for our free newsletter") ||
+           lower.contains("subscribe to our newsletter") ||
+           lower.contains("subscribe to unlock") ||
+           lower.contains("subscribe to read the full") ||
+           lower.contains("click here to download") ||
+           lower.contains("click here to see") ||
+           lower.contains("click here to read") ||
+           lower.contains("click here to join") ||
+           lower.contains("click here for more") ||
+           lower.contains("download our free report") ||
+           lower.contains("get our top stock picks") ||
+           lower.contains("register for free") ||
+           lower.contains("join premium today") ||
+           lower.contains("try it free for 30 days") {
+            return true
+        }
+
+        // 6. Social sharing & follow prompts
+        if lower.hasPrefix("follow us on ") ||
+           lower.hasPrefix("share this article") ||
+           lower.hasPrefix("share on ") ||
+           lower.contains("follow us on twitter") ||
+           lower.contains("follow us on x") ||
+           lower.contains("follow us on facebook") ||
+           lower.contains("follow us on linkedin") {
+            return true
+        }
+
+        // 7. Navigation / Related articles headings
+        if lower.hasPrefix("read next:") ||
+           lower.hasPrefix("read more:") ||
+           lower.hasPrefix("related stories:") ||
+           lower.hasPrefix("related articles:") ||
+           lower.hasPrefix("see also:") ||
+           lower.hasPrefix("trending:") ||
+           lower.hasPrefix("editor's pick:") ||
+           lower.hasPrefix("don't miss:") ||
+           lower.hasPrefix("top stories:") ||
+           lower.hasPrefix("what to read next:") {
+            return true
+        }
+
+        // 8. Image & Photo Credits
+        if (lower.hasPrefix("photo by ") && lower.contains("on unsplash")) ||
+           lower.hasPrefix("image source:") ||
+           lower.hasPrefix("image credit:") ||
+           lower.hasPrefix("photo credit:") ||
+           lower.hasPrefix("photo:") ||
+           lower.hasPrefix("source: ap") ||
+           lower.hasPrefix("source: reuters") ||
+           lower.hasPrefix("source: bloomberg") ||
+           lower.hasPrefix("source: getty") {
+            return true
+        }
+
+        // 9. Legal & Cookie Boilerplate
         let triggers = [
             "cookie policy", "privacy policy", "terms of use", "terms and conditions",
-            "all rights reserved", "subscribe to unlock", "sign up for our newsletter",
-            "advertisement", "sponsored content", "share this article", "follow us on twitter"
+            "all rights reserved", "advertisement", "sponsored content", "sponsored post",
+            "for educational purposes only", "not financial advice",
+            "past performance is no guarantee of future results",
+            "all contents ©", "copyright ©", "reuters news agency. all rights reserved",
+            "the views and opinions expressed herein are the views and opinions of the author"
         ]
-        return triggers.contains { lower.contains($0) }
+        if triggers.contains(where: { lower.contains($0) }) {
+            return true
+        }
+
+        // 10. Disclaimers
+        if lower.hasPrefix("disclaimer:") ||
+           lower.hasPrefix("disclosures:") ||
+           lower.hasPrefix("editorial disclosure:") ||
+           lower.hasPrefix("advertiser disclosure:") ||
+           lower.hasPrefix("disclosure:") {
+            return true
+        }
+
+        return false
     }
 }

@@ -63,10 +63,31 @@ struct NewsDetailView: View {
 
     private var bodyParagraphs: [String] {
         guard let crawled = crawledArticle else { return [] }
+        let cleanTitle = displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanArticleTitle = article.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanContent = article.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
         return crawled.paragraphs.filter { para in
             let cleanP = para.trimmingCharacters(in: .whitespacesAndNewlines)
-            let cleanContent = article.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            return cleanP != cleanContent
+            guard !cleanP.isEmpty else { return false }
+            let lowerP = cleanP.lowercased()
+
+            // Filter out exact duplicate of headline title
+            if lowerP == cleanTitle || lowerP == cleanArticleTitle {
+                return false
+            }
+
+            // Filter out duplicate or near duplicate of highlights card content
+            if !cleanContent.isEmpty {
+                if cleanP == cleanContent || lowerP == cleanContent.lowercased() {
+                    return false
+                }
+                if cleanContent.count >= 20 && cleanP.hasPrefix(cleanContent) && cleanP.count < cleanContent.count + 25 {
+                    return false
+                }
+            }
+
+            return true
         }
     }
 
