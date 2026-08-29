@@ -46,9 +46,9 @@ struct PortfolioListView: View {
         case .value:
             Text("Value").frame(width: 75, alignment: .trailing)
         case .todayPnl:
-            Text("Today P&L").frame(width: 88, alignment: .trailing)
+            Text("Today PnL").frame(width: 88, alignment: .trailing)
         case .totalPnl:
-            Text("Total P&L").frame(width: 88, alignment: .trailing)
+            Text("Total PnL").frame(width: 88, alignment: .trailing)
         case .shares:
             Text("Shares").frame(width: 62, alignment: .trailing)
         case .lots:
@@ -127,7 +127,7 @@ struct PortfolioListView: View {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text("Today P&L")
+                                Text("Today PnL")
                                     #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
                                     #else
@@ -148,7 +148,7 @@ struct PortfolioListView: View {
                             }
 
                             HStack(spacing: 6) {
-                                Text("Total P&L")
+                                Text("Total PnL")
                                     #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
                                     #else
@@ -809,7 +809,7 @@ struct PortfolioSection: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("Total P&L")
+                    Text("Total PnL")
                         #if os(iOS)
                         .font(.inter(11, relativeTo: .caption))
                         #else
@@ -838,7 +838,7 @@ struct PortfolioSection: View {
                         .frame(width: 120, alignment: .leading)
                     Text("Price")
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                    Text("Value / P&L")
+                    Text("Value / PnL")
                         .frame(width: 120, alignment: .trailing)
                 }
                 #if os(iOS)
@@ -1577,10 +1577,14 @@ struct PortfolioQuoteRow: View {
         case .change:
             VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
+                    let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+                    let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(metricFont)
                         .fontWeight(.medium)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .foregroundColor(pctColor)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
 
@@ -1597,6 +1601,17 @@ struct PortfolioQuoteRow: View {
                                 .fontWeight(.semibold)
                         }
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    } else if !isMarketActive {
+                        HStack(spacing: 1) {
+                            Image(systemName: "moon.fill")
+                                .font(.system(size: 7, weight: .semibold))
+                            Text("Closed")
+                                .font(metricCaption2Font)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     }
@@ -1632,7 +1647,7 @@ struct PortfolioQuoteRow: View {
                 ))
                 .font(metricCaption2Font)
                 .fontWeight(.semibold)
-                .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
+                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
@@ -1648,25 +1663,23 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                        .font(metricSubFont)
+                        .font(metricCaption2Font)
                         .fontWeight(.semibold)
                         .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.7)
                 } else {
                     Text("—")
                         .font(metricFont)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                     Text("—")
-                        .font(metricSubFont)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
+                        .font(metricCaption2Font)
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                 }
             }
-            .frame(width: 88, alignment: .trailing)
+            .frame(width: 72, alignment: .trailing)
 
         case .todayPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1678,15 +1691,17 @@ struct PortfolioQuoteRow: View {
                 ))
                 .font(metricFont)
                 .fontWeight(.medium)
-                .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
+                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
                 if let quote {
+                    let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(metricSubFont)
                         .fontWeight(.semibold)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .foregroundColor(isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }

@@ -34,9 +34,9 @@
 "Menu Bar Display" = "Menu Bar Display";
 "Display" = "Display";
 "Choose what to show in the menu bar" = "Choose what to show in the menu bar";
-"P&L (+321.09€)" = "P&L (+321.09€)";
-"P&L % (+2.3%)" = "P&L % (+2.3%)";
-"P&L + % (+321.09€ +2.3%)" = "P&L + % (+321.09€ +2.3%)";
+"PnL (+321.09€)" = "PnL (+321.09€)";
+"PnL % (+2.3%)" = "PnL % (+2.3%)";
+"PnL + % (+321.09€ +2.3%)" = "PnL + % (+321.09€ +2.3%)";
 "Total Value (14396.67€)" = "Total Value (14396.67€)";
 "Best Stock (▲ AAPL +1.2%)" = "Best Stock (▲ AAPL +1.2%)";
 "Worst Stock (▼ TSLA -0.8%)" = "Worst Stock (▼ TSLA -0.8%)";
@@ -103,7 +103,7 @@
 "Add Symbol" = "Add Symbol";
 "Add symbol" = "Add symbol";
 "Add holding" = "Add holding";
-"Value / P&L" = "Value / P&L";
+"Value / PnL" = "Value / PnL";
 "Avg cost" = "Avg cost";
 "Purchase date" = "Purchase date";
 "Quantity" = "Quantity";
@@ -148,7 +148,7 @@
 "Adds a leverage field and lets you enter a negative quantity for short positions, so a portfolio can be a relative long/short basket." = "Adds a leverage field and lets you enter a negative quantity for short positions, so a portfolio can be a relative long/short basket.";
 "Leverage" = "Leverage";
 "Position" = "Position";
-"Pick Long or Short. Leverage multiplies P&L and exposure (empty = 1×)." = "Pick Long or Short. Leverage multiplies P&L and exposure (empty = 1×).";
+"Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1×)." = "Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1×).";
 
 /* Clear all alerts */
 "Clear all" = "Clear all";
@@ -218,8 +218,8 @@
 "No price history available" = "No price history available";
 "No stocks in your watchlist" = "No stocks in your watchlist";
 "Other" = "Other";
-"P&L" = "P&L";
-"P&L + %" = "P&L + %";
+"PnL" = "PnL";
+"PnL + %" = "PnL + %";
 "Percentages with 2 decimals" = "Percentages with 2 decimals";
 "Portfolio" = "Portfolio";
 "Portfolio name" = "Portfolio name";
@@ -244,9 +244,9 @@
 "Ticker + Portfolio" = "Ticker + Portfolio";
 "Today" = "Today";
 "Today's movers" = "Today's movers";
-"Total P&L" = "Total P&L";
+"Total PnL" = "Total PnL";
 "Total portfolio" = "Total portfolio";
-"Totals and P&L are converted here" = "Totals and P&L are converted here";
+"Totals and PnL are converted here" = "Totals and PnL are converted here";
 "Trading" = "Trading";
 "Trend (1M)" = "Trend (1M)";
 "Unlocks negative quantity and a leverage field" = "Unlocks negative quantity and a leverage field";

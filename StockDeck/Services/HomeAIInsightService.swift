@@ -40,7 +40,7 @@ final class HomeAIInsightService {
     }
 
     /// Determines if a symbol is a crypto pair and returns its base asset (e.g. BTC, ETH, SOL, SUI, DOGE).
-    static func cryptoBaseAsset(for symbol: String) -> String? {
+    nonisolated static func cryptoBaseAsset(for symbol: String) -> String? {
         let upper = symbol.uppercased()
         if upper.hasPrefix("BTC-") || upper == "BTCUSD" || upper == "BTCUSDT" || upper == "BTCETH" || upper == "BTC-USD" {
             return "BTC"
@@ -81,7 +81,7 @@ final class HomeAIInsightService {
     }
 
     /// User-friendly name for crypto base assets.
-    static func cryptoDisplayName(for baseAsset: String, fallback: String) -> String {
+    nonisolated static func cryptoDisplayName(for baseAsset: String, fallback: String) -> String {
         switch baseAsset.uppercased() {
         case "BTC": return "Bitcoin (BTC)"
         case "ETH": return "Ethereum (ETH)"
@@ -96,7 +96,7 @@ final class HomeAIInsightService {
     }
 
     /// Determines the market category (US, JP, VN, CRYPTO) for a symbol.
-    static func detectMarketCategory(symbol: String, isCrypto: Bool) -> MarketCategory {
+    nonisolated static func detectMarketCategory(symbol: String, isCrypto: Bool = false) -> MarketCategory {
         if isCrypto || cryptoBaseAsset(for: symbol) != nil {
             return .crypto
         }

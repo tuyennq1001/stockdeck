@@ -270,7 +270,7 @@ struct SettingsView: View {
                             await stockService.refreshAll(storageService: storageService)
                         }
                     }
-                    caption("Portfolio totals and P&L converted to \(storageService.preferredCurrency)")
+                    caption("Portfolio totals and PnL converted to \(storageService.preferredCurrency)")
                 }
 
                 // MARK: - Positions & Market
@@ -502,9 +502,9 @@ struct SettingsView: View {
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
                     subHeader("Display")
                     Picker("Display", selection: $storageService.menuBarDisplay) {
-                        Text("P&L (+321.09€)").tag("pnl")
-                        Text("P&L % (+2.3%)").tag("pnlPercent")
-                        Text("P&L + % (+321.09€ +2.3%)").tag("pnlFull")
+                        Text("PnL (+321.09€)").tag("pnl")
+                        Text("PnL % (+2.3%)").tag("pnlPercent")
+                        Text("PnL + % (+321.09€ +2.3%)").tag("pnlFull")
                         Text("Today (+321.09€ +1.2%)").tag("todayPnlFull")
                         Text("Total Value (14396.67€)").tag("totalValue")
                         Text("Best Stock (▲ AAPL +1.2%)").tag("bestStock")

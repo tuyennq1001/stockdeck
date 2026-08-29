@@ -514,11 +514,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
                 guard let quote = stockService.quotes[holding.symbol] else { return nil }
+                let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
+                let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
                 return TodayPerformance.Input(
                     holding: holding,
                     regularPrice: quote.price,
                     previousClose: quote.previousClose,
-                    rate: stockService.rate(from: quote.currency)
+                    rate: stockService.rate(from: quote.currency),
+                    isMarketActiveToday: isMarketActive
                 )
             }
             let today = TodayPerformance.totals(todayInputs)
@@ -590,7 +593,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 color = .secondaryLabelColor
             } else {
                 let sign = totalPnlPct >= 0 ? "+" : ""
-                title = " P&L \(sign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%"
+                title = " PnL \(sign)\(String(format: "%.\(storageService.percentDecimals)f", totalPnlPct))%"
                 color = totalPnlPct >= 0 ? upColor : downColor
             }
 
@@ -679,7 +682,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
         default: // "pnl"
-            title = " P&L \(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))"
+            title = " PnL \(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))"
             color = totalPnl >= 0 ? upColor : downColor
         }
 

@@ -253,7 +253,7 @@ struct HoldingDetailView: View {
                     Text("Qty").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 60, alignment: .trailing)
                     Text("Cost / sh").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
-                    Text("P&L").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("PnL").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     if isEditableScope && !isPortfolioReadOnly {
                         Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
                     }
@@ -386,7 +386,7 @@ struct HoldingDetailView: View {
                         : StorageService.formatAmount(aggregatedCost, symbol: priceSymbol, decimals: storageService.amountDecimals),
                      help: "Total cost basis across all purchase lots. Shown as — when a lot has no known cost basis.")
             StatTile(label: "Value", value: StorageService.formatAmount(aggregatedValue, symbol: priceSymbol, decimals: storageService.amountDecimals), help: "Current market value across all purchase lots")
-            StatTile(label: "P&L",
+            StatTile(label: "PnL",
                      value: hasAnyMissingCostBasis
                         ? "—"
                         : StorageService.formatAmount(aggregatedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true),

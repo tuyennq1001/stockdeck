@@ -975,10 +975,14 @@ struct QuoteRow: View {
 
         case .today, .todayChange:
             VStack(alignment: .trailing, spacing: 1) {
+                let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+                let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                     .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .foregroundColor(pctColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
@@ -992,6 +996,17 @@ struct QuoteRow: View {
                             .fontWeight(.semibold)
                     }
                     .foregroundColor(extChange >= 0 ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                } else if !isMarketActive {
+                    HStack(spacing: 2) {
+                        Image(systemName: "moon.fill")
+                            .font(.system(size: 7, weight: .semibold))
+                        Text("Closed")
+                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(DS.inkTertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 }
@@ -1185,10 +1200,14 @@ struct QuoteRow: View {
 
     private var macOSChangeCell: some View {
         VStack(alignment: .trailing, spacing: 1) {
+            let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+            let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+            let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                 .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                .foregroundColor(pctColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
 
@@ -1202,6 +1221,17 @@ struct QuoteRow: View {
                         .fontWeight(.semibold)
                 }
                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            } else if !isMarketActive {
+                HStack(spacing: 1) {
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 7, weight: .semibold))
+                    Text("Closed")
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(DS.inkTertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             }

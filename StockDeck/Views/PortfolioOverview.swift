@@ -124,8 +124,18 @@ enum DailyPnlCache {
 /// Which P&L view the portfolio overview shows: per-day (Daily, default tab) or
 /// per-month (Monthly). Raw values double as the tab labels.
 enum PnlViewMode: String, CaseIterable {
-    case daily = "Daily P&L"
-    case monthly = "Monthly P&L"
+    case daily = "Daily PnL"
+    case monthly = "Monthly PnL"
+
+    init?(savedValue: String) {
+        if savedValue == "Daily P&L" || savedValue == "Daily PnL" {
+            self = .daily
+        } else if savedValue == "Monthly P&L" || savedValue == "Monthly PnL" {
+            self = .monthly
+        } else {
+            self.init(rawValue: savedValue)
+        }
+    }
 }
 
 /// Time window for the daily P&L table: how many trailing calendar days of
@@ -247,7 +257,7 @@ struct PortfolioOverview: View {
             monthlyPnlRange = .threeYears
         }
         if let savedMode = storageService.pnlViewMode(for: key),
-           let mode = PnlViewMode(rawValue: savedMode) {
+           let mode = PnlViewMode(savedValue: savedMode) {
             pnlViewMode = mode
         } else {
             pnlViewMode = .daily
@@ -798,7 +808,7 @@ struct PortfolioOverview: View {
 
     private var statRow: some View {
         HStack(spacing: 12) {
-            StatTile(label: "Total P&L",
+            StatTile(label: "Total PnL",
                      value: StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
                      caption: String(format: "%+.\(decimals)f%% on cost", totalPnlPercent),
                      captionTint: DS.pnlColor(totalPnl), valueTint: DS.pnlColor(totalPnl),
@@ -939,7 +949,7 @@ struct PortfolioOverview: View {
     private var pnlCard: some View {
         Card {
             HStack(spacing: 10) {
-                SectionLabel("P&L")
+                SectionLabel("PnL")
                 Spacer()
                 SegmentedRangePicker(options: PnlViewMode.allCases,
                                      label: { $0.rawValue },
@@ -972,7 +982,7 @@ struct PortfolioOverview: View {
                     BarMark(
                         x: .value("Month", monthAxisLabel(row.monthStart)),
                         yStart: .value("Zero", 0),
-                        yEnd: .value("P&L", row.pnl ?? 0),
+                        yEnd: .value("PnL", row.pnl ?? 0),
                         width: .ratio(isHovered ? 0.82 : 0.6)
                     )
                     .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
@@ -996,7 +1006,7 @@ struct PortfolioOverview: View {
 
             Divider().overlay(DS.hairline.opacity(0.5))
 
-            Text("Real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+            Text("Real cost basis × price history — adding cash or positions doesn't inflate PnL.")
                 .font(DS.micro)
                 .foregroundStyle(DS.inkTertiary)
                 .padding(.top, 6)
@@ -1013,7 +1023,7 @@ struct PortfolioOverview: View {
                     BarMark(
                         x: .value("Day", row.label),
                         yStart: .value("Zero", 0),
-                        yEnd: .value("P&L", row.pnl ?? 0),
+                        yEnd: .value("PnL", row.pnl ?? 0),
                         width: .ratio(isHovered ? 0.82 : 0.55)
                     )
                     .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
@@ -1037,7 +1047,7 @@ struct PortfolioOverview: View {
 
             Divider().overlay(DS.hairline.opacity(0.5))
 
-            Text("Daily P&L from real cost basis × price history — adding cash or positions doesn't inflate P&L.")
+            Text("Daily PnL from real cost basis × price history — adding cash or positions doesn't inflate PnL.")
                 .font(DS.micro)
                 .foregroundStyle(DS.inkTertiary)
                 .padding(.top, 6)
@@ -1465,7 +1475,7 @@ struct PortfolioOverview: View {
             if holdings.isEmpty {
                 VStack(spacing: 10) {
                     Text("No holdings yet").font(DS.bodyStrong).foregroundStyle(DS.ink)
-                    Text("Add your first position to start tracking value and P&L.")
+                    Text("Add your first position to start tracking value and PnL.")
                         .font(DS.caption).foregroundStyle(DS.inkSecondary)
                     addHoldingButton
                 }
@@ -1780,11 +1790,15 @@ private struct PositionSummaryRow: View {
         case .change:
             VStack(alignment: .trailing, spacing: 2) {
                 if let liveQuote {
+                    let isCrypto = storageService.type(for: liveQuote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: liveQuote.symbol) != nil
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: liveQuote.symbol, isCrypto: isCrypto)
+
                     let pct = liveQuote.changePercent
+                    let pctColor = isMarketActive ? DS.pnlColor(pct) : DS.inkTertiary
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
                         .font(DS.figure)
                         .fontWeight(.medium)
-                        .foregroundStyle(DS.pnlColor(pct))
+                        .foregroundStyle(pctColor)
                         .lineLimit(1)
 
                     if showExtendedHours, let extPct = liveQuote.extendedChangePercent, liveQuote.isExtendedHours {
@@ -1797,6 +1811,16 @@ private struct PositionSummaryRow: View {
                                 .fontWeight(.semibold)
                         }
                         .foregroundStyle(DS.pnlColor(extPct))
+                        .lineLimit(1)
+                    } else if !isMarketActive {
+                        HStack(spacing: 2) {
+                            Image(systemName: "moon.fill")
+                                .font(.system(size: 8))
+                            Text("Closed")
+                                .font(DS.micro)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(DS.inkTertiary)
                         .lineLimit(1)
                     }
                 } else {
@@ -1826,8 +1850,9 @@ private struct PositionSummaryRow: View {
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 
         case .todayPnl:
+            let pnlColor = totalNativeTodayPnl > 0 ? DS.up : (totalNativeTodayPnl < 0 ? DS.down : DS.inkTertiary)
             Text(StorageService.formatAmount(totalNativeTodayPnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
-                .font(DS.figure).foregroundStyle(DS.pnlColor(totalNativeTodayPnl))
+                .font(DS.figure).foregroundStyle(pnlColor)
                 .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 

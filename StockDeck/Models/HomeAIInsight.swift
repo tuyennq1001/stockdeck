@@ -87,6 +87,28 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
             ]
         }
     }
+
+    /// Returns true if the market is active on the given calendar date.
+    /// Crypto is 24/7/365. Stock exchanges (US, JP, VN) are closed on weekends (Saturday & Sunday).
+    func isTradingDay(at date: Date = Date(), calendar: Calendar = .current) -> Bool {
+        if self == .crypto { return true }
+        let weekday = calendar.component(.weekday, from: date)
+        // 1 = Sunday, 7 = Saturday
+        return weekday != 1 && weekday != 7
+    }
+
+    /// Determines the market category for a given symbol.
+    static func detect(symbol: String, isCrypto: Bool = false) -> MarketCategory {
+        HomeAIInsightService.detectMarketCategory(symbol: symbol, isCrypto: isCrypto)
+    }
+
+    /// Returns true if the symbol is trading / active on the given calendar date.
+    /// For crypto, always returns true.
+    /// For stocks/funds, returns false on Saturdays and Sundays.
+    static func isTradingDay(symbol: String, isCrypto: Bool = false, at date: Date = Date(), calendar: Calendar = .current) -> Bool {
+        let category = detect(symbol: symbol, isCrypto: isCrypto)
+        return category.isTradingDay(at: date, calendar: calendar)
+    }
 }
 
 /// Explanation for a single symbol's price movement.

@@ -260,10 +260,13 @@ final class PortfolioViewModel {
                 let nativePnl = holding.pnl(currentPrice: price)
 
                 let sym = StockService.canonicalSymbol(for: holding.symbol)
+                let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
+                let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
+
                 if !hasCost {
                     missingCostSymbols.insert(sym)
                 }
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, quote.changePercent, quote.extendedChangePercent, 0, quote)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, isMarketActive ? quote.changePercent : 0, isMarketActive ? quote.extendedChangePercent : nil, 0, quote)
                 existing.value += value
                 existing.cost += cost
                 existing.pnl += (hasCost && price.isFinite) ? (value - cost) : 0
@@ -274,13 +277,13 @@ final class PortfolioViewModel {
                     existing.nativeQty += abs(qty * lev)
                 }
                 existing.totalQty += qty
-                existing.todayPnl += (quote.change / scale) * qty * lev
+                existing.todayPnl += isMarketActive ? ((quote.change / scale) * qty * lev) : 0
                 existing.lotsCount += 1
                 bySymbol[sym] = existing
 
                 valued.append(ValuedHolding(
                     id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
-                    value: value, cost: cost, dayChangePercent: quote.changePercent,
+                    value: value, cost: cost, dayChangePercent: isMarketActive ? quote.changePercent : 0,
                     type: storageService.type(for: holding.symbol)
                 ))
 
@@ -289,7 +292,8 @@ final class PortfolioViewModel {
                         holding: holding,
                         regularPrice: liveQuote.price,
                         previousClose: liveQuote.previousClose,
-                        rate: rate
+                        rate: rate,
+                        isMarketActiveToday: isMarketActive
                     ))
                 }
             }

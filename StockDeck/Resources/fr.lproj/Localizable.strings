@@ -34,9 +34,9 @@
 "Menu Bar Display" = "Affichage de la barre des menus";
 "Display" = "Affichage";
 "Choose what to show in the menu bar" = "Choisissez ce qui s’affiche dans la barre des menus";
-"P&L (+321.09€)" = "P&L (+321.09€)";
-"P&L % (+2.3%)" = "P&L % (+2.3%)";
-"P&L + % (+321.09€ +2.3%)" = "P&L + % (+321.09€ +2.3%)";
+"PnL (+321.09€)" = "PnL (+321.09€)";
+"PnL % (+2.3%)" = "PnL % (+2.3%)";
+"PnL + % (+321.09€ +2.3%)" = "PnL + % (+321.09€ +2.3%)";
 "Total Value (14396.67€)" = "Valeur totale (14396.67€)";
 "Best Stock (▲ AAPL +1.2%)" = "Meilleure action (▲ AAPL +1.2%)";
 "Worst Stock (▼ TSLA -0.8%)" = "Pire action (▼ TSLA -0.8%)";
@@ -103,7 +103,7 @@
 "Add Symbol" = "Ajouter un symbole";
 "Add symbol" = "Ajouter un symbole";
 "Add holding" = "Ajouter une position";
-"Value / P&L" = "Valeur / P&L";
+"Value / PnL" = "Valeur / PnL";
 "Avg cost" = "Prix moyen";
 "Purchase date" = "Date d’achat";
 "Quantity" = "Quantité";
@@ -148,7 +148,7 @@
 "Adds a leverage field and lets you enter a negative quantity for short positions, so a portfolio can be a relative long/short basket." = "Ajoute un champ de levier et permet de saisir une quantité négative pour les positions courtes, afin qu'un portefeuille puisse être un panier relatif long/short.";
 "Leverage" = "Levier";
 "Position" = "Position";
-"Pick Long or Short. Leverage multiplies P&L and exposure (empty = 1×)." = "Choisissez Long ou Short. Le levier multiplie le P&L et l'exposition (vide = 1×).";
+"Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1×)." = "Choisissez Long ou Short. Le levier multiplie le PnL et l'exposition (vide = 1×).";
 
 /* Clear all alerts */
 "Clear all" = "Tout effacer";
@@ -218,8 +218,8 @@
 "No price history available" = "Aucun historique des cours disponible";
 "No stocks in your watchlist" = "Aucune action dans votre liste de suivi";
 "Other" = "Autres";
-"P&L" = "P&L";
-"P&L + %" = "P&L + %";
+"PnL" = "PnL";
+"PnL + %" = "PnL + %";
 "Percentages with 2 decimals" = "Pourcentages à 2 décimales";
 "Portfolio" = "Portefeuille";
 "Portfolio name" = "Nom du portefeuille";
@@ -244,9 +244,9 @@
 "Ticker + Portfolio" = "Ticker + Portefeuille";
 "Today" = "Aujourd'hui";
 "Today's movers" = "Mouvements du jour";
-"Total P&L" = "P&L total";
+"Total PnL" = "PnL total";
 "Total portfolio" = "Portefeuille total";
-"Totals and P&L are converted here" = "Les totaux et le P&L sont convertis ici";
+"Totals and PnL are converted here" = "Les totaux et le PnL sont convertis ici";
 "Trading" = "Trading";
 "Trend (1M)" = "Tendance (1M)";
 "Unlocks negative quantity and a leverage field" = "Débloque la quantité négative et un champ de levier";
