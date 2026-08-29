@@ -183,6 +183,8 @@ struct PortfolioListView: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 let activeCols = storageService.resolvedIOSPortfolioColumns
                                 HStack(spacing: 0) {
+                                    Text("#")
+                                        .frame(width: 26, alignment: .leading)
                                     Text("Symbol")
                                         .frame(width: 96, alignment: .leading)
                                     ForEach(activeCols, id: \.self) { col in
@@ -199,16 +201,16 @@ struct PortfolioListView: View {
                                 Divider()
 
                                 LazyVStack(spacing: 0) {
-                                    ForEach(globals) { p in
-                                        PortfolioQuoteRow(stockService: stockService, globalPos: p)
+                                    ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                                        PortfolioQuoteRow(stockService: stockService, globalPos: p, index: index + 1)
                                         if p.id != globals.last?.id {
-                                            Divider().padding(.leading, 96)
+                                            Divider().padding(.leading, 122)
                                         }
                                     }
                                 }
                                 .padding(.vertical, 2)
                             }
-                            .frame(minWidth: 386)
+                            .frame(minWidth: 412)
                         }
                     }
                     .refreshable {
@@ -834,6 +836,10 @@ struct PortfolioSection: View {
             // Column headers
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
+                    #if os(iOS)
+                    Text("#")
+                        .frame(width: 26, alignment: .leading)
+                    #endif
                     Text("Symbol")
                         .frame(width: 120, alignment: .leading)
                     Text("Price")
@@ -858,12 +864,12 @@ struct PortfolioSection: View {
                 if !res.contains(sym) { res.append(sym) }
             }
 
-            ForEach(sortedSymbols, id: \.self) { sym in
+            ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
                 if let group = groupedHoldings[sym] {
                     if group.count == 1, let singleHolding = group.first {
-                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
+                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
                     } else {
-                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
+                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
                     }
                 }
             }
@@ -1025,6 +1031,7 @@ struct HoldingRow: View {
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
+    var index: Int? = nil
 
     var quote: StockQuote? {
         stockService.quotes[holding.symbol]
@@ -1043,6 +1050,14 @@ struct HoldingRow: View {
             showSymbolDetail.perform(holding.symbol)
         }) {
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Col 1: Ticker + Qty@Avg
                 HStack(spacing: 6) {
                     SymbolLogo(symbol: holding.symbol, size: 22)
@@ -1163,6 +1178,7 @@ struct GroupedHoldingRow: View {
     let holdings: [Holding]
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
+    var index: Int? = nil
 
     @State private var isExpanded: Bool = false
 
@@ -1203,6 +1219,14 @@ struct GroupedHoldingRow: View {
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Chevron Button (Explicit toggle only)
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -1399,6 +1423,7 @@ struct PortfolioQuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.showSymbolDetail) private var showSymbolDetail
     let globalPos: PortfolioListView.GlobalPosition
+    var index: Int? = nil
 
     var quote: StockQuote? { globalPos.quote }
 
@@ -1460,6 +1485,14 @@ struct PortfolioQuoteRow: View {
             showSymbolDetail.perform(globalPos.symbol)
         }) {
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Col 1: Logo + symbol + name
                 let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
                 let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
