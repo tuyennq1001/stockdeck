@@ -38,17 +38,17 @@ struct PortfolioListView: View {
         case .avgPrice:
             Text("Avg Price").frame(width: 68, alignment: .trailing)
         case .cost:
-            Text("Cost").frame(width: 66, alignment: .trailing)
+            Text("Cost").frame(width: 74, alignment: .trailing)
         case .price:
-            Text("Price").frame(width: 80, alignment: .trailing)
+            Text("Price").frame(width: 74, alignment: .trailing)
         case .change:
             Text("Today %").frame(width: 68, alignment: .trailing)
         case .value:
-            Text("Value").frame(width: 75, alignment: .trailing)
+            Text("Value").frame(width: 78, alignment: .trailing)
         case .todayPnl:
-            Text("Today PnL").frame(width: 88, alignment: .trailing)
+            Text("Today PnL").frame(width: 80, alignment: .trailing)
         case .totalPnl:
-            Text("Total PnL").frame(width: 88, alignment: .trailing)
+            Text("Total PnL").frame(width: 80, alignment: .trailing)
         case .shares:
             Text("Shares").frame(width: 62, alignment: .trailing)
         case .lots:
@@ -169,7 +169,7 @@ struct PortfolioListView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 8)
 
                     Divider()
@@ -184,7 +184,7 @@ struct PortfolioListView: View {
                                 let activeCols = storageService.resolvedIOSPortfolioColumns
                                 HStack(spacing: 0) {
                                     Text("Symbol")
-                                        .frame(width: 72, alignment: .leading)
+                                        .frame(width: 96, alignment: .leading)
                                     ForEach(activeCols, id: \.self) { col in
                                         columnHeader(col)
                                     }
@@ -202,7 +202,7 @@ struct PortfolioListView: View {
                                     ForEach(globals) { p in
                                         PortfolioQuoteRow(stockService: stockService, globalPos: p)
                                         if p.id != globals.last?.id {
-                                            Divider().padding(.leading, 72)
+                                            Divider().padding(.leading, 96)
                                         }
                                     }
                                 }
@@ -222,7 +222,7 @@ struct PortfolioListView: View {
                         let activeCols = PortfolioListView.defaultPopoverColumns
                         HStack(spacing: 0) {
                             Text("Symbol")
-                                .frame(width: 72, alignment: .leading)
+                                .frame(width: 96, alignment: .leading)
                             ForEach(activeCols, id: \.self) { col in
                                 columnHeader(col)
                             }
@@ -241,7 +241,7 @@ struct PortfolioListView: View {
                                 ForEach(globals) { p in
                                     PortfolioQuoteRow(stockService: stockService, globalPos: p)
                                     if p.id != globals.last?.id {
-                                        Divider().padding(.leading, 72)
+                                        Divider().padding(.leading, 96)
                                     }
                                 }
                             }
@@ -1481,7 +1481,7 @@ struct PortfolioQuoteRow: View {
                         }
                     }
                 }
-                .frame(width: 72, alignment: .leading)
+                .frame(width: 96, alignment: .leading)
 
                 #if os(iOS)
                 let activeCols = storageService.resolvedIOSPortfolioColumns
@@ -1534,14 +1534,14 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 66, alignment: .trailing)
+                .frame(width: 74, alignment: .trailing)
             } else {
                 Text("—")
                     .font(metricFont)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 66, alignment: .trailing)
+                    .frame(width: 74, alignment: .trailing)
             }
 
         case .price:
@@ -1572,7 +1572,7 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: 74, alignment: .trailing)
 
         case .change:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1651,7 +1651,7 @@ struct PortfolioQuoteRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 75, alignment: .trailing)
+            .frame(width: 78, alignment: .trailing)
 
         case .totalPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1679,7 +1679,7 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
 
         case .todayPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1706,7 +1706,7 @@ struct PortfolioQuoteRow: View {
                         .minimumScaleFactor(0.85)
                 }
             }
-            .frame(width: 88, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
 
         case .shares:
             let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)
