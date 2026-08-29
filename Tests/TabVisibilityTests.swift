@@ -6,30 +6,22 @@ import XCTest
 /// preference the tab bar honors — no dead code paths.
 final class TabVisibilityTests: XCTestCase {
 
-    func testHomeShownWhenNewsEnabled() {
-        let tabs = Tab.visible(showNews: true)
+    func testHomeAlwaysVisible() {
+        let tabs = Tab.visible
         XCTAssertEqual(tabs.first, .home)
         XCTAssertTrue(tabs.contains(.home))
-        // The other tabs are always present.
         XCTAssertTrue(tabs.contains(.watchlist))
         XCTAssertTrue(tabs.contains(.portfolios))
         XCTAssertTrue(tabs.contains(.utilities))
         XCTAssertTrue(tabs.contains(.settings))
+        XCTAssertEqual(tabs, [.home, .watchlist, .portfolios, .utilities, .settings])
     }
 
-    func testHomeHiddenWhenNewsDisabled() {
-        let tabs = Tab.visible(showNews: false)
-        XCTAssertFalse(tabs.contains(.home))
-        // Watchlist becomes the leading tab.
-        XCTAssertEqual(tabs.first, .watchlist)
-        XCTAssertEqual(tabs, [.watchlist, .portfolios, .utilities, .settings])
-    }
-
-    func testResolvingHiddenTabFallsBackToFirstVisible() {
-        // A persisted "Home" selection must not strand the user on a hidden tab.
-        XCTAssertEqual(Tab.resolve(stored: "Home", showNews: false), .watchlist)
-        XCTAssertEqual(Tab.resolve(stored: "Home", showNews: true), .home)
-        XCTAssertEqual(Tab.resolve(stored: "Portfolios", showNews: false), .portfolios)
-        XCTAssertEqual(Tab.resolve(stored: "garbage", showNews: false), .watchlist)
+    func testResolvingStoredTab() {
+        XCTAssertEqual(Tab.resolve(stored: "Home"), .home)
+        XCTAssertEqual(Tab.resolve(stored: "Watchlist"), .watchlist)
+        XCTAssertEqual(Tab.resolve(stored: "Watchlists"), .watchlist)
+        XCTAssertEqual(Tab.resolve(stored: "Portfolios"), .portfolios)
+        XCTAssertEqual(Tab.resolve(stored: "garbage"), .home)
     }
 }

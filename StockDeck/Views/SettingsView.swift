@@ -137,9 +137,6 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     caption("Follow the system, or force Light or Dark.")
-                    Toggle("Show News tab", isOn: $storageService.showNewsTab)
-                        .toggleStyle(.switch)
-                    caption("The Home news feed is off by default when hidden — it only fetches while its tab is open (throttled, no background use).")
 
                     subHeader("Font")
                     Picker("Font family", selection: $storageService.fontFamily) {

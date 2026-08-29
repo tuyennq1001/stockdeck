@@ -13,22 +13,20 @@ struct iOSMainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            if storageService.showNewsTab {
-                NavigationStack {
-                    HomeView()
-                        .navigationTitle("Home / News")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                refreshButton
-                            }
+            NavigationStack {
+                HomeView()
+                    .navigationTitle("Home / News")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            refreshButton
                         }
-                }
-                .tabItem {
-                    Label("Home", systemImage: Tab.home.icon)
-                }
-                .tag(Tab.home)
+                    }
             }
+            .tabItem {
+                Label("Home", systemImage: Tab.home.icon)
+            }
+            .tag(Tab.home)
 
             NavigationStack {
                 WatchlistView(showSearch: $showSearch)
@@ -139,8 +137,7 @@ struct iOSMainTabView: View {
             }
         }
         .onAppear {
-            selectedTab = Tab.resolve(stored: storageService.lastSelectedTab,
-                                      showNews: storageService.showNewsTab)
+            selectedTab = Tab.resolve(stored: storageService.lastSelectedTab)
             if storageService.iCloudSyncEnabled {
                 iCloudSyncService.shared.pullAndMerge(force: false)
             }

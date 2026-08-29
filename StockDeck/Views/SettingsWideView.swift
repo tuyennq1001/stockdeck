@@ -617,10 +617,6 @@ struct SettingsWideView: View {
                          width: 160)
             }
             SettingDivider()
-            SettingRow("Show News tab", caption: "The Home feed only fetches while open — no background use") {
-                DSToggle(isOn: $storageService.showNewsTab)
-            }
-            SettingDivider()
             SettingRow("Font") {
                 DSPicker(options: FontRegistration.availableFonts.map { ($0.family, $0.label) },
                          selection: $storageService.fontFamily, width: 200)

@@ -199,11 +199,6 @@ class StorageService: ObservableObject {
     @Published var appearanceRaw: String = AppearanceMode.default.rawValue {
         didSet { scheduleSave() }
     }
-    /// Show the Home/News tab. Off = the tab is hidden entirely (no fetching, no
-    /// tab), for users who want just their watchlist and portfolio.
-    @Published var showNewsTab: Bool = true {
-        didSet { scheduleSave() }
-    }
 
     // MARK: - Launch at Login (macOS)
     #if os(macOS)
@@ -280,7 +275,9 @@ class StorageService: ObservableObject {
     /// Global keyboard shortcut to toggle/show the menu bar popover.
     @Published var menuBarShortcut: MenuBarShortcut? = nil {
         didSet {
-            scheduleSave()
+            if !isLoading {
+                saveNow()
+            }
             updateHotKeyRegistration()
         }
     }
@@ -304,7 +301,11 @@ class StorageService: ObservableObject {
     }
     #else
     @Published var menuBarShortcut: MenuBarShortcut? = nil {
-        didSet { scheduleSave() }
+        didSet {
+            if !isLoading {
+                saveNow()
+            }
+        }
     }
     #endif
 
@@ -1845,7 +1846,6 @@ class StorageService: ObservableObject {
         fontSizeLevel = 9
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
-        showNewsTab = true
         symbolNotes = [:]
         lastSelectedTab = "Watchlist"
         aiBaseURL = "https://api.openai.com/v1"
@@ -2033,7 +2033,7 @@ class StorageService: ObservableObject {
             advancedPositions: advancedPositions,
             defaultChartStyle: defaultChartStyle,
             appearanceRaw: appearanceRaw,
-            showNewsTab: showNewsTab,
+            showNewsTab: nil,
             aiChatSections: aiChatSections,
             aiBaseURL: aiBaseURL,
             aiModel: aiModel,
@@ -2147,7 +2147,6 @@ class StorageService: ObservableObject {
         fontSizeLevel = decoded.fontSizeLevel ?? 9
         fontFamily = decoded.fontFamily ?? "Inter Variable"
         appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue
-        showNewsTab = decoded.showNewsTab ?? true
         aiChatSections = decoded.aiChatSections ?? []
         aiBaseURL = decoded.aiBaseURL ?? "https://api.openai.com/v1"
         aiModel = decoded.aiModel ?? "gpt-4o-mini"
