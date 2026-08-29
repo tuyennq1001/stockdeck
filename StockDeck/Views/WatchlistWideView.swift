@@ -1088,6 +1088,7 @@ private enum WCol {
 
 /// One custom watchlist row: hover tint, click-to-open, right-click actions.
 private struct WatchRowView<Menu: View>: View {
+    @EnvironmentObject private var storageService: StorageService
     let row: WatchlistWideView.WatchRow
     let position: Int
     let showExtended: Bool
@@ -1129,11 +1130,15 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private var todayPercentCell: some View {
         if row.loaded {
+            let isCrypto = storageService.type(for: row.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: row.symbol) != nil
+            let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, isCrypto: isCrypto)
+
             VStack(alignment: .trailing, spacing: 2) {
+                let pctColor = isMarketActive ? DS.pnlColor(row.changePercent) : DS.inkTertiary
                 Text(String(format: "%+.\(percentDecimals)f%%", row.changePercent))
                     .font(DS.figure.monospacedDigit())
                     .fontWeight(.medium)
-                    .foregroundStyle(DS.pnlColor(row.changePercent))
+                    .foregroundStyle(pctColor)
                     .contentTransition(.numericText())
                     .lineLimit(1)
                 if showExtended, let q = row.quote, q.isExtendedHours, let extPct = q.extendedChangePercent {
@@ -1146,6 +1151,16 @@ private struct WatchRowView<Menu: View>: View {
                             .fontWeight(.semibold)
                     }
                     .foregroundStyle(DS.pnlColor(extPct))
+                    .lineLimit(1)
+                } else if !isMarketActive {
+                    HStack(spacing: 2) {
+                        Image(systemName: "moon.fill")
+                            .font(.system(size: 8))
+                        Text("Closed")
+                            .font(DS.micro)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(DS.inkTertiary)
                     .lineLimit(1)
                 }
             }

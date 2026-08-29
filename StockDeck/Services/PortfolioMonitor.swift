@@ -149,14 +149,18 @@ final class PortfolioMonitor {
             // Today's change uses the regular-session change per share, scaled by
             // signed quantity and leverage so shorts and levered lots contribute
             // correctly.
+            let isCrypto = storage.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
+            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
+            let scale = holding.isJapaneseFund ? 10000.0 : 1.0
             let exposure = holding.quantity * holding.effectiveLeverage
-            let contribution = exposure * quote.change * rate
-            let prevClose = quote.price - quote.change
+            let contribution = isMarketActive ? (exposure * (quote.change / scale) * rate) : 0
+            let prevClose = (quote.previousClose) / scale
             m.totalValue += value
             m.dayChange += contribution
             m.prevValue += exposure * prevClose * rate
-            var entry = acc[quote.symbol] ?? (quote.changePercent, 0, 0)
-            entry.changePercent = quote.changePercent
+            let displayChangePercent = isMarketActive ? quote.changePercent : 0
+            var entry = acc[quote.symbol] ?? (displayChangePercent, 0, 0)
+            entry.changePercent = displayChangePercent
             entry.value += value
             entry.contribution += contribution
             acc[quote.symbol] = entry

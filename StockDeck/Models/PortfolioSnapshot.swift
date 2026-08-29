@@ -152,6 +152,9 @@ enum TodayPerformance {
         var previousClose: Double
         /// Stock currency → preferred currency, at the current rate.
         var rate: Double
+        /// Whether the market has an active trading session today.
+        /// When false (e.g. stock markets on weekends), the price change contributes 0 to gain.
+        var isMarketActiveToday: Bool = true
     }
 
     static func totals(_ inputs: [Input]) -> (gain: Double, percent: Double) {
@@ -160,10 +163,12 @@ enum TodayPerformance {
 
         for input in inputs {
             let scale = input.holding.isJapaneseFund ? 10000.0 : 1.0
-            gain += ((input.regularPrice - input.previousClose) / scale)
-                * input.holding.quantity
-                * input.holding.effectiveLeverage
-                * input.rate
+            if input.isMarketActiveToday {
+                gain += ((input.regularPrice - input.previousClose) / scale)
+                    * input.holding.quantity
+                    * input.holding.effectiveLeverage
+                    * input.rate
+            }
             previousCloseValue += ((input.previousClose) / scale)
                 * input.holding.quantity
                 * input.holding.effectiveLeverage

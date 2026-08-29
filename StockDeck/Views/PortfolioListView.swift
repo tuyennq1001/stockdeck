@@ -38,17 +38,17 @@ struct PortfolioListView: View {
         case .avgPrice:
             Text("Avg Price").frame(width: 68, alignment: .trailing)
         case .cost:
-            Text("Cost").frame(width: 66, alignment: .trailing)
+            Text("Cost").frame(width: 74, alignment: .trailing)
         case .price:
-            Text("Price").frame(width: 80, alignment: .trailing)
+            Text("Price").frame(width: 74, alignment: .trailing)
         case .change:
             Text("Today %").frame(width: 68, alignment: .trailing)
         case .value:
-            Text("Value").frame(width: 75, alignment: .trailing)
+            Text("Value").frame(width: 78, alignment: .trailing)
         case .todayPnl:
-            Text("Today P&L").frame(width: 88, alignment: .trailing)
+            Text("Today PnL").frame(width: 80, alignment: .trailing)
         case .totalPnl:
-            Text("Total P&L").frame(width: 88, alignment: .trailing)
+            Text("Total PnL").frame(width: 80, alignment: .trailing)
         case .shares:
             Text("Shares").frame(width: 62, alignment: .trailing)
         case .lots:
@@ -127,7 +127,7 @@ struct PortfolioListView: View {
                         Spacer()
                         VStack(alignment: .trailing, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text("Today P&L")
+                                Text("Today PnL")
                                     #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
                                     #else
@@ -148,7 +148,7 @@ struct PortfolioListView: View {
                             }
 
                             HStack(spacing: 6) {
-                                Text("Total P&L")
+                                Text("Total PnL")
                                     #if os(iOS)
                                     .font(.inter(11, relativeTo: .caption))
                                     #else
@@ -169,7 +169,7 @@ struct PortfolioListView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
                     .padding(.vertical, 8)
 
                     Divider()
@@ -183,8 +183,10 @@ struct PortfolioListView: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 let activeCols = storageService.resolvedIOSPortfolioColumns
                                 HStack(spacing: 0) {
+                                    Text("#")
+                                        .frame(width: 26, alignment: .leading)
                                     Text("Symbol")
-                                        .frame(width: 72, alignment: .leading)
+                                        .frame(width: 96, alignment: .leading)
                                     ForEach(activeCols, id: \.self) { col in
                                         columnHeader(col)
                                     }
@@ -199,16 +201,16 @@ struct PortfolioListView: View {
                                 Divider()
 
                                 LazyVStack(spacing: 0) {
-                                    ForEach(globals) { p in
-                                        PortfolioQuoteRow(stockService: stockService, globalPos: p)
+                                    ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
+                                        PortfolioQuoteRow(stockService: stockService, globalPos: p, index: index + 1)
                                         if p.id != globals.last?.id {
-                                            Divider().padding(.leading, 72)
+                                            Divider().padding(.leading, 122)
                                         }
                                     }
                                 }
                                 .padding(.vertical, 2)
                             }
-                            .frame(minWidth: 386)
+                            .frame(minWidth: 412)
                         }
                     }
                     .refreshable {
@@ -222,7 +224,7 @@ struct PortfolioListView: View {
                         let activeCols = PortfolioListView.defaultPopoverColumns
                         HStack(spacing: 0) {
                             Text("Symbol")
-                                .frame(width: 72, alignment: .leading)
+                                .frame(width: 96, alignment: .leading)
                             ForEach(activeCols, id: \.self) { col in
                                 columnHeader(col)
                             }
@@ -241,7 +243,7 @@ struct PortfolioListView: View {
                                 ForEach(globals) { p in
                                     PortfolioQuoteRow(stockService: stockService, globalPos: p)
                                     if p.id != globals.last?.id {
-                                        Divider().padding(.leading, 72)
+                                        Divider().padding(.leading, 96)
                                     }
                                 }
                             }
@@ -809,7 +811,7 @@ struct PortfolioSection: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("Total P&L")
+                    Text("Total PnL")
                         #if os(iOS)
                         .font(.inter(11, relativeTo: .caption))
                         #else
@@ -834,11 +836,15 @@ struct PortfolioSection: View {
             // Column headers
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
+                    #if os(iOS)
+                    Text("#")
+                        .frame(width: 26, alignment: .leading)
+                    #endif
                     Text("Symbol")
                         .frame(width: 120, alignment: .leading)
                     Text("Price")
                         .frame(maxWidth: .infinity, alignment: .trailing)
-                    Text("Value / P&L")
+                    Text("Value / PnL")
                         .frame(width: 120, alignment: .trailing)
                 }
                 #if os(iOS)
@@ -858,12 +864,12 @@ struct PortfolioSection: View {
                 if !res.contains(sym) { res.append(sym) }
             }
 
-            ForEach(sortedSymbols, id: \.self) { sym in
+            ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
                 if let group = groupedHoldings[sym] {
                     if group.count == 1, let singleHolding = group.first {
-                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
+                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
                     } else {
-                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
+                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
                     }
                 }
             }
@@ -1025,6 +1031,7 @@ struct HoldingRow: View {
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
+    var index: Int? = nil
 
     var quote: StockQuote? {
         stockService.quotes[holding.symbol]
@@ -1043,6 +1050,14 @@ struct HoldingRow: View {
             showSymbolDetail.perform(holding.symbol)
         }) {
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Col 1: Ticker + Qty@Avg
                 HStack(spacing: 6) {
                     SymbolLogo(symbol: holding.symbol, size: 22)
@@ -1163,6 +1178,7 @@ struct GroupedHoldingRow: View {
     let holdings: [Holding]
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
+    var index: Int? = nil
 
     @State private var isExpanded: Bool = false
 
@@ -1203,6 +1219,14 @@ struct GroupedHoldingRow: View {
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Chevron Button (Explicit toggle only)
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -1399,6 +1423,7 @@ struct PortfolioQuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.showSymbolDetail) private var showSymbolDetail
     let globalPos: PortfolioListView.GlobalPosition
+    var index: Int? = nil
 
     var quote: StockQuote? { globalPos.quote }
 
@@ -1460,6 +1485,14 @@ struct PortfolioQuoteRow: View {
             showSymbolDetail.perform(globalPos.symbol)
         }) {
             HStack(spacing: 0) {
+                #if os(iOS)
+                if let index {
+                    Text("\(index)")
+                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .frame(width: 26, alignment: .leading)
+                }
+                #endif
                 // Col 1: Logo + symbol + name
                 let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
                 let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
@@ -1481,7 +1514,7 @@ struct PortfolioQuoteRow: View {
                         }
                     }
                 }
-                .frame(width: 72, alignment: .leading)
+                .frame(width: 96, alignment: .leading)
 
                 #if os(iOS)
                 let activeCols = storageService.resolvedIOSPortfolioColumns
@@ -1534,14 +1567,14 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 66, alignment: .trailing)
+                .frame(width: 74, alignment: .trailing)
             } else {
                 Text("—")
                     .font(metricFont)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 66, alignment: .trailing)
+                    .frame(width: 74, alignment: .trailing)
             }
 
         case .price:
@@ -1572,15 +1605,19 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: 74, alignment: .trailing)
 
         case .change:
             VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
+                    let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+                    let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(metricFont)
                         .fontWeight(.medium)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .foregroundColor(pctColor)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
 
@@ -1597,6 +1634,17 @@ struct PortfolioQuoteRow: View {
                                 .fontWeight(.semibold)
                         }
                         .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    } else if !isMarketActive {
+                        HStack(spacing: 1) {
+                            Image(systemName: "moon.fill")
+                                .font(.system(size: 7, weight: .semibold))
+                            Text("Closed")
+                                .font(metricCaption2Font)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     }
@@ -1632,11 +1680,11 @@ struct PortfolioQuoteRow: View {
                 ))
                 .font(metricCaption2Font)
                 .fontWeight(.semibold)
-                .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
+                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 75, alignment: .trailing)
+            .frame(width: 78, alignment: .trailing)
 
         case .totalPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1648,25 +1696,23 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
-                        .font(metricSubFont)
+                        .font(metricCaption2Font)
                         .fontWeight(.semibold)
                         .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.7)
                 } else {
                     Text("—")
                         .font(metricFont)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                     Text("—")
-                        .font(metricSubFont)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
+                        .font(metricCaption2Font)
+                        .foregroundColor(DS.inkTertiary)
                         .lineLimit(1)
                 }
             }
-            .frame(width: 88, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
 
         case .todayPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1678,20 +1724,22 @@ struct PortfolioQuoteRow: View {
                 ))
                 .font(metricFont)
                 .fontWeight(.medium)
-                .foregroundColor(globalPos.todayPnl >= 0 ? DS.up : DS.down)
+                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
                 if let quote {
+                    let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(metricSubFont)
                         .fontWeight(.semibold)
-                        .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                        .foregroundColor(isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
             }
-            .frame(width: 88, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
 
         case .shares:
             let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)

@@ -191,4 +191,38 @@ final class iCloudSyncTests: XCTestCase {
         XCTAssertEqual(binanceP?.holdings.first(where: { $0.symbol == "SOLUSDT" })?.quantity, 50.0)
         XCTAssertEqual(binanceP?.lastSyncedAt, t2)
     }
+
+    func testSmartMergeMenuBarShortcut() {
+        let syncService = iCloudSyncService.shared
+
+        let localShortcut = MenuBarShortcut(keyCode: 49, modifiers: 2048) // Option + Space
+        let localData = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [],
+            menuBarShortcut: localShortcut
+        )
+
+        let remoteDataEmpty = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [],
+            menuBarShortcut: nil
+        )
+
+        // Local shortcut is preserved if remote is nil
+        let merged1 = syncService.smartMerge(local: localData, remote: remoteDataEmpty)
+        XCTAssertEqual(merged1.menuBarShortcut, localShortcut)
+
+        // Remote shortcut is taken if remote provides one
+        let remoteShortcut = MenuBarShortcut(keyCode: 1, modifiers: 2048) // Option + S
+        let remoteDataWithShortcut = StorageService.AppData(
+            watchlist: [],
+            watchlists: [],
+            portfolios: [],
+            menuBarShortcut: remoteShortcut
+        )
+        let merged2 = syncService.smartMerge(local: localData, remote: remoteDataWithShortcut)
+        XCTAssertEqual(merged2.menuBarShortcut, remoteShortcut)
+    }
 }

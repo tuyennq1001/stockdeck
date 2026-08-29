@@ -19,22 +19,15 @@ extension Tab {
         }
     }
 
-    /// Issue #11: the tabs that actually render, in order. The Home/News tab is
-    /// opt-out — when hidden, Watchlist leads. Single source of truth so the tab
-    /// bar, the content switch and the restored-selection logic never disagree.
-    static func visible(showNews: Bool) -> [Tab] {
-        let all: [Tab] = [.home, .watchlist, .portfolios, .utilities, .settings]
-        return showNews ? all : all.filter { $0 != .home }
+    static var visible: [Tab] {
+        [.home, .watchlist, .portfolios, .utilities, .settings]
     }
 
-    /// Resolve a persisted tab against the current visibility: a stored selection
-    /// that's now hidden (e.g. "Home" after News was turned off) falls back to the
-    /// first visible tab so the user is never stranded on a blank tab.
-    static func resolve(stored: String, showNews: Bool) -> Tab {
+    /// Resolve a persisted tab selection against valid tabs.
+    static func resolve(stored: String) -> Tab {
         let normalized = stored == "Watchlist" ? "Watchlists" : stored
-        let tabs = visible(showNews: showNews)
-        if let t = Tab(rawValue: normalized), tabs.contains(t) { return t }
-        return tabs.first ?? .watchlist
+        if let t = Tab(rawValue: normalized) { return t }
+        return .home
     }
 }
 
@@ -165,15 +158,10 @@ struct ContentView: View {
         .frame(width: 420, height: 520)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         .onAppear {
-            selectedTab = Tab.resolve(stored: storageService.lastSelectedTab,
-                                      showNews: storageService.showNewsTab)
+            selectedTab = Tab.resolve(stored: storageService.lastSelectedTab)
         }
         .onChange(of: selectedTab) { _, newValue in
             storageService.lastSelectedTab = newValue.rawValue
-        }
-        // If News is turned off while its tab is selected, move off the now-hidden tab.
-        .onChange(of: storageService.showNewsTab) { _, showNews in
-            selectedTab = Tab.resolve(stored: selectedTab.rawValue, showNews: showNews)
         }
     }
 
@@ -271,9 +259,7 @@ struct ContentView: View {
 
             // Tab picker with pointer cursor for tabs
             HStack(spacing: 0) {
-                if storageService.showNewsTab {
-                    tabButton("Home", tab: .home)
-                }
+                tabButton("Home", tab: .home)
                 tabButton("Watchlists", tab: .watchlist)
                 tabButton("Portfolios", tab: .portfolios)
             }

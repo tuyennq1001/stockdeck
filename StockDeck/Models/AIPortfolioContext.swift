@@ -133,11 +133,14 @@ enum AIPortfolioContext {
         // Today change (regular session only, per project rules).
         let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
             guard let liveQuote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] else { return nil }
+            let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
+            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
             return TodayPerformance.Input(
                 holding: holding,
                 regularPrice: liveQuote.price,
                 previousClose: liveQuote.previousClose,
-                rate: stockService.rate(from: stockService.detectedCurrency(for: holding.symbol))
+                rate: stockService.rate(from: stockService.detectedCurrency(for: holding.symbol)),
+                isMarketActiveToday: isMarketActive
             )
         }
         let today = TodayPerformance.totals(todayInputs)
@@ -272,7 +275,7 @@ enum AIPortfolioContext {
             lines.append("Portfolios: \(names)")
             lines.append("Total value: \(sym)\(fmtValue(totals.value))")
             lines.append("Total cost basis: \(sym)\(fmtValue(totals.cost))")
-            lines.append("Total P&L: \(sym)\(fmtValue(totals.pnl)) (\(fmtPct(pnlPct)))")
+            lines.append("Total PnL: \(sym)\(fmtValue(totals.pnl)) (\(fmtPct(pnlPct)))")
             lines.append("Today (regular session): \(sym)\(fmtValue(today.gain)) (\(fmtPct(today.percent)))")
         }
         lines.append("")

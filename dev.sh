@@ -73,9 +73,12 @@ echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
 codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
 
 echo "Killing old StockDeck process instances..."
+pkill -15 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
+pkill -15 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
+sleep 0.3
 pkill -9 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
-sleep 0.5
+sleep 0.2
 
 echo "Launching StockDeck DEV..."
 # Launch via `open` (Finder-style): macOS 26 registers the Menu Bar item

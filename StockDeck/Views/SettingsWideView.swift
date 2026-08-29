@@ -183,7 +183,7 @@ struct SettingsWideView: View {
                     }
             }
             SettingDivider()
-            SettingRow("Portfolio currency", caption: "Totals and P&L are converted here") {
+            SettingRow("Portfolio currency", caption: "Totals and PnL are converted here") {
                 DSPicker(options: StorageService.supportedCurrencies.map { ($0, "\(StorageService.currencySymbol(for: $0)) \($0)") },
                          selection: $storageService.preferredCurrency, width: 200)
                     .onChange(of: storageService.preferredCurrency) {
@@ -470,9 +470,9 @@ struct SettingsWideView: View {
         SettingsCard(title: "Menu bar") {
             SettingRow("Display") {
                 DSPicker(options: [
-                    ("pnl", "P&L (+321.09€)"),
-                    ("pnlPercent", "P&L % (+2.3%)"),
-                    ("pnlFull", "P&L + %"),
+                    ("pnl", "PnL (+321.09€)"),
+                    ("pnlPercent", "PnL % (+2.3%)"),
+                    ("pnlFull", "PnL + %"),
                     ("todayPnlFull", "Today (+321.09€ +1.2%)"),
                     ("totalValue", "Total value"),
                     ("bestStock", "Best stock"),
@@ -615,10 +615,6 @@ struct SettingsWideView: View {
                          selection: Binding(get: { storageService.appearanceMode },
                                             set: { storageService.appearanceMode = $0 }),
                          width: 160)
-            }
-            SettingDivider()
-            SettingRow("Show News tab", caption: "The Home feed only fetches while open — no background use") {
-                DSToggle(isOn: $storageService.showNewsTab)
             }
             SettingDivider()
             SettingRow("Font") {

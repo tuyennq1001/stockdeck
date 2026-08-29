@@ -53,7 +53,7 @@ enum PortfolioNotificationMode: String, Codable, CaseIterable {
         switch self {
         case .dailyPercent: return "Get pinged once when today's gain or loss first reaches ±this percentage — at most once up and once down per day."
         case .dailyAbsolute: return "Get pinged once when today's gain or loss first reaches ±this amount — at most once up and once down per day."
-        case .dailySummary: return "One recap per day after this hour: total value, today's P&L and the biggest mover."
+        case .dailySummary: return "One recap per day after this hour: total value, today's PnL and the biggest mover."
         case .milestone: return "Get pinged when the total value crosses a new multiple of this amount."
         }
     }

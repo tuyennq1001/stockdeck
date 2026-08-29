@@ -184,7 +184,7 @@ struct AddHoldingView: View {
             .padding(.horizontal)
 
             if storageService.advancedPositions {
-                Text("Pick Long or Short. Leverage multiplies P&L and exposure (empty = 1\u{00D7}).")
+                Text("Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1\u{00D7}).")
                     .font(.inter(10, relativeTo: .caption))
                     .foregroundColor(.secondary)
                     .padding(.horizontal)

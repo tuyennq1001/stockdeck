@@ -99,10 +99,6 @@ struct PortfolioWindowView: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(minWidth: 1000, minHeight: 680)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
-        // If News is turned off while its pane is open, fall back to Watchlist.
-        .onChange(of: storageService.showNewsTab) { _, showNews in
-            if !showNews, selection == .home { navigate(to: .watchlist) }
-        }
         // Clicking an alert notification lands the user on the Alerts tab.
         .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
             navigate(to: .alerts)
@@ -237,7 +233,7 @@ struct PortfolioWindowView: View {
     /// ⌘1 Home · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘R Refresh · ⌘N New portfolio.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { if storageService.showNewsTab { navigate(to: .home) } }.keyboardShortcut("1", modifiers: .command)
+            Button("") { navigate(to: .home) }.keyboardShortcut("1", modifiers: .command)
             Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
             Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
             Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
@@ -403,10 +399,8 @@ struct PortfolioWindowView: View {
             }
             Divider().overlay(DS.hairline)
             VStack(alignment: .leading, spacing: 2) {
-                if storageService.showNewsTab {
-                    NavRow(icon: "newspaper", title: "Home", helpText: "Financial news & AI market insights  ⌘1",
-                           selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
-                }
+                NavRow(icon: "newspaper", title: "Home", helpText: "Financial news & AI market insights  ⌘1",
+                       selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
                 NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                        selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
             }

@@ -127,12 +127,12 @@ struct WatchlistView: View {
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
     /// loaded, else a column-aligned placeholder.
     @ViewBuilder
-    private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
+    private func quoteOrPlaceholderRow(_ symbol: String, index: Int? = nil) -> some View {
         if let quote = stockService.quotes[symbol] {
             Button(action: {
                 showSymbolDetail.perform(quote.symbol)
             }) {
-                QuoteRow(quote: quote)
+                QuoteRow(quote: quote, index: index)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -146,6 +146,12 @@ struct WatchlistView: View {
             }) {
                 #if os(iOS)
                 HStack(spacing: 0) {
+                    if let index {
+                        Text("\(index)")
+                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .frame(width: 26, alignment: .leading)
+                    }
                     HStack(spacing: 4) {
                         SymbolLogo(symbol: symbol, size: 20)
                         VStack(alignment: .leading, spacing: 0) {
@@ -208,6 +214,8 @@ struct WatchlistView: View {
     private var headerRow: some View {
         let activeCols = storageService.resolvedIOSWatchlistMetrics
         return HStack(spacing: 0) {
+            Text("#")
+                .frame(width: 26, alignment: .leading)
             sortHeader("Symbol", column: .symbol)
                 .frame(width: 78, alignment: .leading)
             ForEach(activeCols, id: \.self) { metric in
@@ -312,10 +320,10 @@ struct WatchlistView: View {
                             Divider()
 
                             LazyVStack(spacing: 0) {
-                                ForEach(displaySymbols, id: \.self) { symbol in
-                                    quoteOrPlaceholderRow(symbol)
+                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { index, symbol in
+                                    quoteOrPlaceholderRow(symbol, index: index + 1)
                                     if symbol != displaySymbols.last {
-                                        Divider().padding(.leading, 74)
+                                        Divider().padding(.leading, 104)
                                     }
                                 }
                             }
@@ -904,6 +912,7 @@ struct QuoteRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
+    var index: Int? = nil
 
     private func periodChange(_ metric: WatchlistMetric) -> Double? {
         let calendar = Calendar.current
@@ -975,10 +984,14 @@ struct QuoteRow: View {
 
         case .today, .todayChange:
             VStack(alignment: .trailing, spacing: 1) {
+                let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+                let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+                let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
                 Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                     .font(.inter(14, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                    .foregroundColor(pctColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
@@ -992,6 +1005,17 @@ struct QuoteRow: View {
                             .fontWeight(.semibold)
                     }
                     .foregroundColor(extChange >= 0 ? DS.up : DS.down)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                } else if !isMarketActive {
+                    HStack(spacing: 2) {
+                        Image(systemName: "moon.fill")
+                            .font(.system(size: 7, weight: .semibold))
+                        Text("Closed")
+                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(DS.inkTertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 }
@@ -1185,10 +1209,14 @@ struct QuoteRow: View {
 
     private var macOSChangeCell: some View {
         VStack(alignment: .trailing, spacing: 1) {
+            let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
+            let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+
+            let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                 .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                .foregroundColor(pctColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
 
@@ -1202,6 +1230,17 @@ struct QuoteRow: View {
                         .fontWeight(.semibold)
                 }
                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            } else if !isMarketActive {
+                HStack(spacing: 1) {
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 7, weight: .semibold))
+                    Text("Closed")
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(DS.inkTertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             }
@@ -1233,6 +1272,12 @@ struct QuoteRow: View {
         #if os(iOS)
         let activeCols = storageService.resolvedIOSWatchlistMetrics
         HStack(spacing: 0) {
+            if let index {
+                Text("\(index)")
+                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .frame(width: 26, alignment: .leading)
+            }
             iosSymbolCell
 
             ForEach(activeCols, id: \.self) { metric in

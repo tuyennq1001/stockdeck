@@ -61,9 +61,7 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             let wssSymbols = Array(StockService.collectWebSocketSymbols(storageService: storageService))
             webSocketService.ensureConnected(symbols: wssSymbols)
             await stockService.refreshAll(storageService: storageService)
-            if storageService.showNewsTab {
-                await stockService.refreshNews(storageService: storageService)
-            }
+            await stockService.refreshNews(storageService: storageService)
         }
 
         return true

@@ -470,9 +470,6 @@ final class iCloudSyncService: ObservableObject {
         if let sAbs = remote.showAbsoluteChange {
             merged.showAbsoluteChange = sAbs
         }
-        if let sNews = remote.showNewsTab {
-            merged.showNewsTab = sNews
-        }
         if let rRanges = remote.portfolioChartRanges {
             var combined = merged.portfolioChartRanges ?? [:]
             for (k, v) in rRanges { combined[k] = v }
@@ -518,6 +515,9 @@ final class iCloudSyncService: ObservableObject {
         }
         if let prof = remote.investorProfile {
             merged.investorProfile = prof
+        }
+        if let sc = remote.menuBarShortcut {
+            merged.menuBarShortcut = sc
         }
         if let rSections = remote.aiChatSections, !rSections.isEmpty {
             var combinedSections = merged.aiChatSections ?? []
