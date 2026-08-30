@@ -78,39 +78,72 @@ final class TodayPerformanceTests: XCTestCase {
     }
 
     func testMarketCategoryTradingDayDetection() {
-        // Calendar with known Sunday (2026-08-30) and Monday (2026-08-31)
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let isoFormatter = ISO8601DateFormatter()
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        // 1. Monday early morning at 5:37 AM JST (2026-08-31T05:37:56+09:00)
+        // - In NY: Sunday Aug 30, 16:37 EDT -> US is CLOSED (Sunday)
+        // - In Tokyo: Monday Aug 31, 05:37 JST -> JP is CLOSED (before 09:00 open)
+        // - In VN: Monday Aug 31, 03:37 ICT -> VN is CLOSED (before 09:00 open)
+        // - Crypto: ACTIVE (24/7)
+        let mondayEarlyJST = isoFormatter.date(from: "2026-08-31T05:37:56+09:00")!
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.japan.isTradingDay(at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: mondayEarlyJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: mondayEarlyJST))
 
-        let saturday = formatter.date(from: "2026-08-29")!
-        let sunday = formatter.date(from: "2026-08-30")!
-        let monday = formatter.date(from: "2026-08-31")!
+        // Symbol helper check at Monday 5:37 AM JST
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "VOO", at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "7203.T", at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "VNM", at: mondayEarlyJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", at: mondayEarlyJST))
 
-        // Crypto is always trading
-        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: saturday, calendar: cal))
-        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: sunday, calendar: cal))
-        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday, calendar: cal))
+        // 2. Monday 10:00 AM JST (2026-08-31T10:00:00+09:00)
+        // - In Tokyo: Monday 10:00 JST -> JP is ACTIVE (TSE opened at 09:00)
+        // - In NY: Sunday 21:00 EDT -> US is CLOSED (Sunday)
+        // - In VN: Monday 08:00 ICT -> VN is CLOSED (before 09:00 open)
+        let monday10amJST = isoFormatter.date(from: "2026-08-31T10:00:00+09:00")!
+        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday10amJST))
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: monday10amJST))
+        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: monday10amJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday10amJST))
 
-        // Stocks are closed on Saturday & Sunday
-        XCTAssertFalse(MarketCategory.us.isTradingDay(at: saturday, calendar: cal))
-        XCTAssertFalse(MarketCategory.us.isTradingDay(at: sunday, calendar: cal))
-        XCTAssertTrue(MarketCategory.us.isTradingDay(at: monday, calendar: cal))
+        // 3. Monday 11:30 AM JST (2026-08-31T11:30:00+09:00)
+        // - In Tokyo: Monday 11:30 JST -> JP is ACTIVE
+        // - In VN: Monday 09:30 ICT -> VN is ACTIVE (opened at 09:00)
+        // - In NY: Sunday 22:30 EDT -> US is CLOSED (Sunday)
+        let monday1130amJST = isoFormatter.date(from: "2026-08-31T11:30:00+09:00")!
+        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday1130amJST))
+        XCTAssertTrue(MarketCategory.vietnam.isTradingDay(at: monday1130amJST))
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: monday1130amJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday1130amJST))
 
-        XCTAssertFalse(MarketCategory.japan.isTradingDay(at: saturday, calendar: cal))
-        XCTAssertFalse(MarketCategory.japan.isTradingDay(at: sunday, calendar: cal))
-        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday, calendar: cal))
+        // 4. Monday 11:00 PM JST (2026-08-31T23:00:00+09:00)
+        // - In NY: Monday 10:00 AM EDT -> US is ACTIVE
+        // - In Tokyo: Monday 23:00 JST -> JP holds Monday's session until Tuesday 09:00 -> ACTIVE
+        // - In VN: Monday 21:00 ICT -> VN holds Monday's session until Tuesday 09:00 -> ACTIVE
+        let monday11pmJST = isoFormatter.date(from: "2026-08-31T23:00:00+09:00")!
+        XCTAssertTrue(MarketCategory.us.isTradingDay(at: monday11pmJST))
+        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday11pmJST))
+        XCTAssertTrue(MarketCategory.vietnam.isTradingDay(at: monday11pmJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday11pmJST))
 
-        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: saturday, calendar: cal))
-        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: sunday, calendar: cal))
-        XCTAssertTrue(MarketCategory.vietnam.isTradingDay(at: monday, calendar: cal))
+        // 5. Saturday 10:00 AM JST (2026-08-29T10:00:00+09:00)
+        // - In NY: Friday 21:00 EDT -> US holds Friday's session -> ACTIVE
+        // - In Tokyo: Saturday 10:00 JST -> JP is CLOSED (Saturday)
+        // - In VN: Saturday 08:00 ICT -> VN is CLOSED (Saturday)
+        let saturday10amJST = isoFormatter.date(from: "2026-08-29T10:00:00+09:00")!
+        XCTAssertTrue(MarketCategory.us.isTradingDay(at: saturday10amJST))
+        XCTAssertFalse(MarketCategory.japan.isTradingDay(at: saturday10amJST))
+        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: saturday10amJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: saturday10amJST))
 
-        // Helper on symbols
-        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "AAPL", at: saturday, calendar: cal))
-        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", at: saturday, calendar: cal))
-        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "ETHUSDT", at: sunday, calendar: cal))
+        // 6. Sunday 12:00 PM JST (2026-08-30T12:00:00+09:00)
+        // - All stock markets closed, Crypto active
+        let sundayNoonJST = isoFormatter.date(from: "2026-08-30T12:00:00+09:00")!
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: sundayNoonJST))
+        XCTAssertFalse(MarketCategory.japan.isTradingDay(at: sundayNoonJST))
+        XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: sundayNoonJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: sundayNoonJST))
     }
 }
