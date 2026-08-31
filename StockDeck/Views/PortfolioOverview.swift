@@ -1791,7 +1791,7 @@ private struct PositionSummaryRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 if let liveQuote {
                     let isCrypto = storageService.type(for: liveQuote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: liveQuote.symbol) != nil
-                    let isMarketActive = MarketCategory.isTradingDay(symbol: liveQuote.symbol, isCrypto: isCrypto)
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: liveQuote.symbol, quote: liveQuote, isCrypto: isCrypto)
 
                     let pct = liveQuote.changePercent
                     let pctColor = isMarketActive ? DS.pnlColor(pct) : DS.inkTertiary

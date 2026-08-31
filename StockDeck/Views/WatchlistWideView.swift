@@ -1131,7 +1131,7 @@ private struct WatchRowView<Menu: View>: View {
     private var todayPercentCell: some View {
         if row.loaded {
             let isCrypto = storageService.type(for: row.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: row.symbol) != nil
-            let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, isCrypto: isCrypto)
+            let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, quote: row.quote, isCrypto: isCrypto)
 
             VStack(alignment: .trailing, spacing: 2) {
                 let pctColor = isMarketActive ? DS.pnlColor(row.changePercent) : DS.inkTertiary

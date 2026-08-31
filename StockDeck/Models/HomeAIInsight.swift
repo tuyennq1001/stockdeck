@@ -141,17 +141,100 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         return true
     }
 
+    /// Resolved market timezone and Monday open minutes for any given symbol (including global indices & stocks).
+    static func marketSchedule(for symbol: String, isCrypto: Bool = false) -> (timeZone: TimeZone, mondayOpenMinutes: Int) {
+        if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
+            return (TimeZone(identifier: "UTC") ?? .current, 0)
+        }
+        let upper = symbol.uppercased()
+
+        // Vietnam (HOSE/HNX): ICT (UTC+7), opens at 09:00 ICT (540 mins)
+        if StockService.isVietnameseStock(upper) || upper.hasSuffix(".VN") || upper == "^VNINDEX.VN" || upper == "VNINDEX" || upper == "HNX" {
+            return (TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current, 9 * 60)
+        }
+
+        // Japan (TSE): JST (UTC+9), opens at 09:00 JST (540 mins)
+        if StockService.isJapaneseStock(upper) || StockService.isJapaneseMutualFund(upper) || upper.hasSuffix(".T") || upper == "^N225" || upper == "^TPX" {
+            return (TimeZone(identifier: "Asia/Tokyo") ?? .current, 9 * 60)
+        }
+
+        // South Korea (KRX): KST (UTC+9), opens at 09:00 KST (540 mins)
+        if upper == "^KS11" || upper == "^KQ11" || upper.hasSuffix(".KS") || upper.hasSuffix(".KQ") {
+            return (TimeZone(identifier: "Asia/Seoul") ?? .current, 9 * 60)
+        }
+
+        // Hong Kong, Taiwan, China: HKT/CST (UTC+8), opens at 09:00 HKT (540 mins)
+        if upper == "^HSI" || upper == "^HSCE" || upper == "^TWII" || upper.hasSuffix(".HK") || upper.hasSuffix(".TW") || upper.hasSuffix(".SS") || upper.hasSuffix(".SZ") {
+            return (TimeZone(identifier: "Asia/Hong_Kong") ?? .current, 9 * 60)
+        }
+
+        // India (NSE/BSE): IST (UTC+5:30), opens at 09:15 IST (555 mins)
+        if upper == "^NSEI" || upper == "^BSESN" || upper.hasSuffix(".NS") || upper.hasSuffix(".BO") {
+            return (TimeZone(identifier: "Asia/Kolkata") ?? .current, 9 * 60 + 15)
+        }
+
+        // UK & Europe: GMT/BST/CET, opens at 08:00 or 09:00 local
+        if upper == "^FTSE" || upper.hasSuffix(".L") {
+            return (TimeZone(identifier: "Europe/London") ?? .current, 8 * 60)
+        }
+        if upper == "^GDAXI" || upper == "^FCHI" || upper == "^STOXX50E" || upper.hasSuffix(".DE") || upper.hasSuffix(".PA") || upper.hasSuffix(".AS") || upper.hasSuffix(".MI") || upper.hasSuffix(".MC") {
+            return (TimeZone(identifier: "Europe/Berlin") ?? .current, 9 * 60)
+        }
+
+        // US & Default: America/New_York (EDT/EST), pre-market starts at 04:00 EDT (240 mins)
+        return (TimeZone(identifier: "America/New_York") ?? .current, 4 * 60)
+    }
+
     /// Determines the market category for a given symbol.
     static func detect(symbol: String, isCrypto: Bool = false) -> MarketCategory {
         HomeAIInsightService.detectMarketCategory(symbol: symbol, isCrypto: isCrypto)
     }
 
     /// Returns true if the symbol is trading / active on the given calendar date.
-    /// For crypto, always returns true.
-    /// For stocks/funds, checks timezone-aware trading days and pre-open hours.
-    static func isTradingDay(symbol: String, isCrypto: Bool = false, at date: Date = Date(), customTimeZone: TimeZone? = nil) -> Bool {
-        let category = detect(symbol: symbol, isCrypto: isCrypto)
-        return category.isTradingDay(at: date, customTimeZone: customTimeZone)
+    /// 1. If live quote marketState indicates active session (REGULAR, PRE, POST), returns true.
+    /// 2. For crypto, always returns true.
+    /// 3. For stocks/funds/indices, checks timezone-aware trading days and pre-open hours.
+    static func isTradingDay(
+        symbol: String,
+        quote: StockQuote? = nil,
+        isCrypto: Bool = false,
+        at date: Date = Date(),
+        customTimeZone: TimeZone? = nil
+    ) -> Bool {
+        if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
+            return true
+        }
+
+        // Live quote indicates active regular or extended trading session
+        if let state = quote?.marketState, state == "REGULAR" || state == "PRE" || state == "POST" {
+            return true
+        }
+
+        let schedule = marketSchedule(for: symbol, isCrypto: isCrypto)
+        let tz = customTimeZone ?? schedule.timeZone
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = components.weekday, let hour = components.hour, let minute = components.minute else {
+            return false
+        }
+
+        // 1 = Sunday, 7 = Saturday in Gregorian calendar
+        if weekday == 1 || weekday == 7 {
+            return false
+        }
+
+        // On Monday, market remains closed until the opening bell of the first session of the week:
+        if weekday == 2 {
+            let currentMinutes = hour * 60 + minute
+            if currentMinutes < schedule.mondayOpenMinutes {
+                return false
+            }
+        }
+
+        return true
     }
 }
 
