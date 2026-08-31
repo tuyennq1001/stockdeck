@@ -826,10 +826,12 @@ class BinanceAPIService {
             rawSymbol = String(base.dropFirst(3))
         } else if BinanceStablecoin.isUSDPegged(assetName) {
             rawSymbol = "\(assetName)-USD"
+        } else if StorageService.isStandardCryptoSymbol(assetName) {
+            rawSymbol = "\(assetName)-USD"
         } else if assetName.contains("-") {
             rawSymbol = assetName
         } else {
-            rawSymbol = "\(assetName)-USD"
+            rawSymbol = assetName
         }
         let symbol = StockService.canonicalSymbol(for: rawSymbol)
 

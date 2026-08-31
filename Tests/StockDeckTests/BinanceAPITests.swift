@@ -147,6 +147,11 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDETH-USD"), "ETH-USD")
         XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("LDUSDC-USD"), "USDC-USD")
         XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("BTC-USD"), "BTC-USD")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("META"), "META")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("META-USD"), "META")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("EQ_META"), "META")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("EQ_META-USD"), "META")
+        XCTAssertEqual(StorageService.normalizeBinanceHoldingSymbol("AAPL-USD"), "AAPL")
     }
 
     func testCanonicalSymbolForEquitiesAndCrypto() throws {
@@ -159,6 +164,11 @@ final class BinanceAPITests: XCTestCase {
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_GOOGL"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_GOOGL-USD"), "GOOGL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "FB"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "META"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "META-USD"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_META"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_META-USD"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "AAPL-USD"), "AAPL")
         XCTAssertEqual(StockService.canonicalSymbol(for: "BTC-USD"), "BTC-USD")
         XCTAssertEqual(StockService.canonicalSymbol(for: "ETH-USD"), "ETH-USD")
     }

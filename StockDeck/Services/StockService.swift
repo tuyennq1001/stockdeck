@@ -345,7 +345,7 @@ class StockService: ObservableObject {
         let cryptoSymbols = regularSymbols.filter { sym in
             let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
             return !equitySymbols.contains(sym)
-                && (StorageService.isStandardCryptoSymbol(clean) || sym.hasSuffix("-USD") || StorageService.isBinanceNativePair(sym))
+                && (StorageService.isStandardCryptoSymbol(clean) || StorageService.isStandardCryptoSymbol(sym) || StorageService.isBinanceNativePair(sym) || BinanceStablecoin.isUSDPegged(clean))
         }
         let stockSymbols = regularSymbols.filter { !cryptoSymbols.contains($0) && !equitySymbols.contains($0) }
 
@@ -441,6 +441,10 @@ class StockService: ObservableObject {
         }
 
         if hasEQPrefix {
+            return base
+        }
+
+        if hasUSDSuffix && !StorageService.isStandardCryptoSymbol(base) {
             return base
         }
 
@@ -1427,7 +1431,14 @@ class StockService: ObservableObject {
 
     private func yahooSymbol(for symbol: String) -> String {
         let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if upper.hasSuffix("-USD") { return upper }
+        if upper.hasSuffix("-USD") {
+            let base = String(upper.dropLast(4))
+            if StorageService.isStandardCryptoSymbol(base) || BinanceStablecoin.isUSDPegged(base) {
+                return upper
+            } else {
+                return base
+            }
+        }
         if StorageService.isStandardCryptoSymbol(upper) { return "\(upper)-USD" }
         if StorageService.isBinanceNativePair(upper) {
             let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD"]
@@ -1475,7 +1486,8 @@ class StockService: ObservableObject {
             return
         }
 
-        if StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) || symbol.hasSuffix("-USD") {
+        let isCrypto = StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) || (symbol.hasSuffix("-USD") && StorageService.isStandardCryptoSymbol(String(symbol.dropLast(4))))
+        if isCrypto {
             let points = await fetchBinanceKlines(for: symbol)
             if !points.isEmpty {
                 priceHistory[symbol] = points

@@ -105,7 +105,9 @@ enum TradingViewSymbol {
         }
         if upper.hasSuffix("-USD") {
             let base = String(upper.dropLast(4))
-            return "CRYPTO:\(base)USD"
+            if StorageService.isStandardCryptoSymbol(base) || BinanceStablecoin.isUSDPegged(base) {
+                return "CRYPTO:\(base)USD"
+            }
         }
 
         // Hong Kong: "0700.HK" → "HKEX:0700".

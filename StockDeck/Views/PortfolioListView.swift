@@ -217,6 +217,7 @@ struct PortfolioListView: View {
                         if storageService.iCloudSyncEnabled {
                             iCloudSyncService.shared.pullAndMerge(force: false)
                         }
+                        await storageService.syncAllBinancePortfolios()
                         await stockService.refreshAll(storageService: storageService)
                     }
                     #else
@@ -260,6 +261,7 @@ struct PortfolioListView: View {
                         if storageService.iCloudSyncEnabled {
                             iCloudSyncService.shared.pullAndMerge(force: false)
                         }
+                        await storageService.syncAllBinancePortfolios()
                         await stockService.refreshAll(storageService: storageService)
                     }
                 }

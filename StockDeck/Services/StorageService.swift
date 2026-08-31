@@ -1599,12 +1599,17 @@ class StorageService: ObservableObject {
         if base.hasPrefix("LD") && base.count > 2 {
             base = String(base.dropFirst(2))
         }
+        if base.hasPrefix("EQ_") && base.count > 3 {
+            base = String(base.dropFirst(3))
+        }
         if BinanceStablecoin.isUSDPegged(base) {
+            return "\(base)-USD"
+        } else if isStandardCryptoSymbol(base) {
             return "\(base)-USD"
         } else if base.contains("-") {
             return base
         } else {
-            return "\(base)-USD"
+            return base
         }
     }
 
@@ -1710,6 +1715,19 @@ class StorageService: ObservableObject {
         portfolios[index].lastSyncedAt = Date()
         Task { @MainActor in
             await StockService.shared.refreshAll(storageService: self)
+        }
+    }
+
+    /// Syncs all configured Binance read-only portfolios in parallel.
+    func syncAllBinancePortfolios() async {
+        let binancePortfolios = portfolios.filter { $0.isReadOnly }
+        guard !binancePortfolios.isEmpty else { return }
+        for portfolio in binancePortfolios {
+            do {
+                try await syncBinancePortfolio(id: portfolio.id)
+            } catch {
+                print("[StockDeck] Binance sync failed for \(portfolio.name): \(error.localizedDescription)")
+            }
         }
     }
 
