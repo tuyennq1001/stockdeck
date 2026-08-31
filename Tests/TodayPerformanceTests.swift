@@ -169,8 +169,14 @@ final class TodayPerformanceTests: XCTestCase {
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^NSEI", at: monday1pmJST))
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^HSI", at: monday1pmJST))
 
-        // 9. Live Quote marketState overrides calendar if active session
-        let mockActiveQuote = StockQuote(symbol: "CUSTOM_STOCK", name: "Custom Stock", price: 100, marketState: "REGULAR")
-        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "CUSTOM_STOCK", quote: mockActiveQuote, at: sundayNoonJST))
+        // 9. Stale quote with marketState == "REGULAR" cannot override weekend calendar
+        let mockStaleGoogQuote = StockQuote(symbol: "GOOG", name: "Alphabet", price: 175, marketState: "REGULAR")
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: sundayNoonJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday929amJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday11pmJST))
+
+        // Crypto quote is always active
+        let mockCryptoQuote = StockQuote(symbol: "BTC-USD", name: "Bitcoin", price: 60000, marketState: "CLOSED")
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", quote: mockCryptoQuote, at: sundayNoonJST))
     }
 }

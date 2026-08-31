@@ -191,9 +191,11 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
     }
 
     /// Returns true if the symbol is trading / active on the given calendar date.
-    /// 1. If live quote marketState indicates active session (REGULAR, PRE, POST), returns true.
-    /// 2. For crypto, always returns true.
-    /// 3. For stocks/funds/indices, checks timezone-aware trading days and pre-open hours.
+    /// 1. For crypto, always returns true (24/7/365).
+    /// 2. For stocks/funds/indices, checks timezone-aware trading days and pre-open hours:
+    ///    - Saturday & Sunday in the market's timezone are always CLOSED.
+    ///    - Monday before the opening bell of the week is always CLOSED.
+    ///    - On weekdays during/after market hours, returns true (active trading day).
     static func isTradingDay(
         symbol: String,
         quote: StockQuote? = nil,
@@ -202,11 +204,6 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         customTimeZone: TimeZone? = nil
     ) -> Bool {
         if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
-            return true
-        }
-
-        // Live quote indicates active regular or extended trading session
-        if let state = quote?.marketState, state == "REGULAR" || state == "PRE" || state == "POST" {
             return true
         }
 
@@ -221,7 +218,7 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
             return false
         }
 
-        // 1 = Sunday, 7 = Saturday in Gregorian calendar
+        // 1 = Sunday, 7 = Saturday in Gregorian calendar -> 100% closed on weekends
         if weekday == 1 || weekday == 7 {
             return false
         }

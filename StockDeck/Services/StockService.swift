@@ -498,7 +498,7 @@ class StockService: ObservableObject {
                     changePercent: regularQuote?.changePercent ?? 0,
                     regularMarketPreviousClose: regularQuote?.regularMarketPreviousClose,
                     currency: regularQuote?.currency ?? "USD",
-                    marketState: regularQuote?.marketState ?? "REGULAR",
+                    marketState: regularQuote?.marketState ?? "CLOSED",
                     dayHigh: regularQuote?.dayHigh,
                     dayLow: regularQuote?.dayLow,
                     fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,

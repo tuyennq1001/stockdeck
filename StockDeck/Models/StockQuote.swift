@@ -39,7 +39,7 @@ struct StockQuote: Identifiable, Codable {
         changePercent: Double = 0,
         regularMarketPreviousClose: Double? = nil,
         currency: String = "USD",
-        marketState: String = "REGULAR",
+        marketState: String = "CLOSED",
         dayHigh: Double? = nil,
         dayLow: Double? = nil,
         fiftyTwoWeekHigh: Double? = nil,
