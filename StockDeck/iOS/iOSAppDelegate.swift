@@ -52,7 +52,7 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         binanceTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                await self.syncAllBinancePortfolios()
+                await self.storageService.syncAllBinancePortfolios()
             }
         }
 
@@ -60,6 +60,7 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         Task {
             let wssSymbols = Array(StockService.collectWebSocketSymbols(storageService: storageService))
             webSocketService.ensureConnected(symbols: wssSymbols)
+            await storageService.syncAllBinancePortfolios()
             await stockService.refreshAll(storageService: storageService)
             await stockService.refreshNews(storageService: storageService)
         }
@@ -67,11 +68,10 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         return true
     }
 
-    private func syncAllBinancePortfolios() async {
-        for p in storageService.portfolios {
-            if case .binance = p.sourceType {
-                try? await storageService.syncBinancePortfolio(id: p.id)
-            }
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        Task { @MainActor in
+            await storageService.syncAllBinancePortfolios()
+            await stockService.refreshAll(storageService: storageService)
         }
     }
 

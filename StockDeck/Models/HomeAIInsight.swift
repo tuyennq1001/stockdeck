@@ -88,13 +88,57 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Returns true if the market is active on the given calendar date.
-    /// Crypto is 24/7/365. Stock exchanges (US, JP, VN) are closed on weekends (Saturday & Sunday).
-    func isTradingDay(at date: Date = Date(), calendar: Calendar = .current) -> Bool {
+    /// Native time zone for each market category.
+    var timeZone: TimeZone {
+        switch self {
+        case .us: return TimeZone(identifier: "America/New_York") ?? .current
+        case .japan: return TimeZone(identifier: "Asia/Tokyo") ?? .current
+        case .vietnam: return TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        case .crypto: return TimeZone(identifier: "UTC") ?? .current
+        }
+    }
+
+    /// Returns true if the market is active / in its current trading cycle on the given date.
+    /// Crypto is 24/7/365.
+    /// For stock exchanges (US, JP, VN):
+    /// - Saturday & Sunday in the market's native timezone are closed.
+    /// - Monday before the market opens (e.g. before 09:00 JST for JP, 09:00 ICT for VN, 04:00 EDT pre-market for US) is closed (weekend break until opening bell).
+    /// - On weekdays during and after trading hours until next morning's open, the day's session is active.
+    func isTradingDay(at date: Date = Date(), customTimeZone: TimeZone? = nil) -> Bool {
         if self == .crypto { return true }
-        let weekday = calendar.component(.weekday, from: date)
-        // 1 = Sunday, 7 = Saturday
-        return weekday != 1 && weekday != 7
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = customTimeZone ?? self.timeZone
+
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = components.weekday, let hour = components.hour, let minute = components.minute else {
+            return false
+        }
+
+        // 1 = Sunday, 7 = Saturday in Gregorian calendar
+        if weekday == 1 || weekday == 7 {
+            return false
+        }
+
+        // On Monday, market remains closed until the opening bell of the first session of the week:
+        if weekday == 2 {
+            let currentMinutes = hour * 60 + minute
+            switch self {
+            case .japan:
+                // TSE opens at 09:00 JST
+                if currentMinutes < 9 * 60 { return false }
+            case .vietnam:
+                // HOSE/HNX opens at 09:00 ICT
+                if currentMinutes < 9 * 60 { return false }
+            case .us:
+                // US pre-market starts at 04:00 EDT (09:30 EDT for regular session)
+                if currentMinutes < 4 * 60 { return false }
+            case .crypto:
+                return true
+            }
+        }
+
+        return true
     }
 
     /// Determines the market category for a given symbol.
@@ -104,10 +148,10 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
 
     /// Returns true if the symbol is trading / active on the given calendar date.
     /// For crypto, always returns true.
-    /// For stocks/funds, returns false on Saturdays and Sundays.
-    static func isTradingDay(symbol: String, isCrypto: Bool = false, at date: Date = Date(), calendar: Calendar = .current) -> Bool {
+    /// For stocks/funds, checks timezone-aware trading days and pre-open hours.
+    static func isTradingDay(symbol: String, isCrypto: Bool = false, at date: Date = Date(), customTimeZone: TimeZone? = nil) -> Bool {
         let category = detect(symbol: symbol, isCrypto: isCrypto)
-        return category.isTradingDay(at: date, calendar: calendar)
+        return category.isTradingDay(at: date, customTimeZone: customTimeZone)
     }
 }
 

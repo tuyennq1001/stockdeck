@@ -94,8 +94,9 @@ enum AIPortfolioContext {
 
             // Aggregated-value weight (short baskets produce negative values;
             // weight is a share of absolute value).
-            bySymbol[holding.symbol, default: (0, 0)].value += value
-            bySymbol[holding.symbol, default: (0, 0)].cost += cost
+            let sym = StockService.canonicalSymbol(for: holding.symbol)
+            bySymbol[sym, default: (0, 0)].value += value
+            bySymbol[sym, default: (0, 0)].cost += cost
 
             rows.append(PositionRow(
                 symbol: holding.symbol,
