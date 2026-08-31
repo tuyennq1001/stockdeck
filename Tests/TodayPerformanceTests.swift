@@ -169,10 +169,34 @@ final class TodayPerformanceTests: XCTestCase {
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^NSEI", at: monday1pmJST))
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^HSI", at: monday1pmJST))
 
-        // 9. Stale quote with marketState == "REGULAR" cannot override weekend calendar
+        // 9. Monday 5:13 PM JST (2026-08-31T17:13:22+09:00)
+        // - In NY: Monday 04:13 AM EDT (Pre-market) -> US regular session opens at 09:30 EDT -> CLOSED
+        // - In Tokyo: Monday 17:13 JST (Holds Monday regular session) -> ACTIVE
+        // - In VN: Monday 15:13 ICT (Holds Monday regular session) -> ACTIVE
+        // - Crypto: ACTIVE (24/7)
+        let monday513pmJST = isoFormatter.date(from: "2026-08-31T17:13:22+09:00")!
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "SPGI", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "META", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "RACE", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^GSPC", at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.vietnam.isTradingDay(at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday513pmJST))
+
+        // 10. Monday 10:30 PM JST (2026-08-31T22:30:00+09:00)
+        // - In NY: Monday 09:30 AM EDT -> US Regular opening bell -> ACTIVE
+        let monday1030pmJST = isoFormatter.date(from: "2026-08-31T22:30:00+09:00")!
+        XCTAssertTrue(MarketCategory.us.isTradingDay(at: monday1030pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "SPGI", at: monday1030pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "META", at: monday1030pmJST))
+
+        // 11. Stale quote with marketState == "REGULAR" cannot override weekend / pre-market calendar
         let mockStaleGoogQuote = StockQuote(symbol: "GOOG", name: "Alphabet", price: 175, marketState: "REGULAR")
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: sundayNoonJST))
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday513pmJST))
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday11pmJST))
 
         // Crypto quote is always active

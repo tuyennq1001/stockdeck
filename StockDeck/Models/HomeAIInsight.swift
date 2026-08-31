@@ -120,19 +120,19 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
             return false
         }
 
-        // On Monday, market remains closed until the opening bell of the first session of the week:
+        // On Monday, market remains closed until the opening bell of the first regular session of the week:
         if weekday == 2 {
             let currentMinutes = hour * 60 + minute
             switch self {
             case .japan:
-                // TSE opens at 09:00 JST
+                // TSE regular session opens at 09:00 JST (540 mins)
                 if currentMinutes < 9 * 60 { return false }
             case .vietnam:
-                // HOSE/HNX opens at 09:00 ICT
+                // HOSE/HNX regular session opens at 09:00 ICT (540 mins)
                 if currentMinutes < 9 * 60 { return false }
             case .us:
-                // US pre-market starts at 04:00 EDT (09:30 EDT for regular session)
-                if currentMinutes < 4 * 60 { return false }
+                // US regular session opens at 09:30 EDT/EST (570 mins)
+                if currentMinutes < (9 * 60 + 30) { return false }
             case .crypto:
                 return true
             }
@@ -148,41 +148,63 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         }
         let upper = symbol.uppercased()
 
-        // Vietnam (HOSE/HNX): ICT (UTC+7), opens at 09:00 ICT (540 mins)
+        // Vietnam (HOSE/HNX): ICT (UTC+7), regular session opens at 09:00 ICT (540 mins)
         if StockService.isVietnameseStock(upper) || upper.hasSuffix(".VN") || upper == "^VNINDEX.VN" || upper == "VNINDEX" || upper == "HNX" {
             return (TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current, 9 * 60)
         }
 
-        // Japan (TSE): JST (UTC+9), opens at 09:00 JST (540 mins)
+        // Japan (TSE): JST (UTC+9), regular session opens at 09:00 JST (540 mins)
         if StockService.isJapaneseStock(upper) || StockService.isJapaneseMutualFund(upper) || upper.hasSuffix(".T") || upper == "^N225" || upper == "^TPX" {
             return (TimeZone(identifier: "Asia/Tokyo") ?? .current, 9 * 60)
         }
 
-        // South Korea (KRX): KST (UTC+9), opens at 09:00 KST (540 mins)
+        // South Korea (KRX): KST (UTC+9), regular session opens at 09:00 KST (540 mins)
         if upper == "^KS11" || upper == "^KQ11" || upper.hasSuffix(".KS") || upper.hasSuffix(".KQ") {
             return (TimeZone(identifier: "Asia/Seoul") ?? .current, 9 * 60)
         }
 
-        // Hong Kong, Taiwan, China: HKT/CST (UTC+8), opens at 09:00 HKT (540 mins)
-        if upper == "^HSI" || upper == "^HSCE" || upper == "^TWII" || upper.hasSuffix(".HK") || upper.hasSuffix(".TW") || upper.hasSuffix(".SS") || upper.hasSuffix(".SZ") {
-            return (TimeZone(identifier: "Asia/Hong_Kong") ?? .current, 9 * 60)
+        // Hong Kong (HKEX): HKT (UTC+8), regular session opens at 09:30 HKT (570 mins)
+        if upper == "^HSI" || upper == "^HSCE" || upper.hasSuffix(".HK") {
+            return (TimeZone(identifier: "Asia/Hong_Kong") ?? .current, 9 * 60 + 30)
         }
 
-        // India (NSE/BSE): IST (UTC+5:30), opens at 09:15 IST (555 mins)
+        // Taiwan (TWSE): CST (UTC+8), regular session opens at 09:00 CST (540 mins)
+        if upper == "^TWII" || upper.hasSuffix(".TW") {
+            return (TimeZone(identifier: "Asia/Taipei") ?? .current, 9 * 60)
+        }
+
+        // China (SSE/SZSE): CST (UTC+8), regular session opens at 09:30 CST (570 mins)
+        if upper.hasSuffix(".SS") || upper.hasSuffix(".SZ") {
+            return (TimeZone(identifier: "Asia/Shanghai") ?? .current, 9 * 60 + 30)
+        }
+
+        // Australia (ASX): AEST/AEDT (UTC+10/+11), regular session opens at 10:00 AEST (600 mins)
+        if upper == "^AXJO" || upper.hasSuffix(".AX") {
+            return (TimeZone(identifier: "Australia/Sydney") ?? .current, 10 * 60)
+        }
+
+        // India (NSE/BSE): IST (UTC+5:30), regular session opens at 09:15 IST (555 mins)
         if upper == "^NSEI" || upper == "^BSESN" || upper.hasSuffix(".NS") || upper.hasSuffix(".BO") {
             return (TimeZone(identifier: "Asia/Kolkata") ?? .current, 9 * 60 + 15)
         }
 
-        // UK & Europe: GMT/BST/CET, opens at 08:00 or 09:00 local
+        // UK (LSE): GMT/BST, regular session opens at 08:00 local (480 mins)
         if upper == "^FTSE" || upper.hasSuffix(".L") {
             return (TimeZone(identifier: "Europe/London") ?? .current, 8 * 60)
         }
+
+        // Europe (XETRA, Euronext): CET/CEST, regular session opens at 09:00 local (540 mins)
         if upper == "^GDAXI" || upper == "^FCHI" || upper == "^STOXX50E" || upper.hasSuffix(".DE") || upper.hasSuffix(".PA") || upper.hasSuffix(".AS") || upper.hasSuffix(".MI") || upper.hasSuffix(".MC") {
             return (TimeZone(identifier: "Europe/Berlin") ?? .current, 9 * 60)
         }
 
-        // US & Default: America/New_York (EDT/EST), pre-market starts at 04:00 EDT (240 mins)
-        return (TimeZone(identifier: "America/New_York") ?? .current, 4 * 60)
+        // Canada (TSX): EDT/EST, regular session opens at 09:30 local (570 mins)
+        if upper == "^GSPTSE" || upper.hasSuffix(".TO") || upper.hasSuffix(".V") {
+            return (TimeZone(identifier: "America/Toronto") ?? .current, 9 * 60 + 30)
+        }
+
+        // US & Default: America/New_York (EDT/EST), regular session opens at 09:30 EDT/EST (570 mins)
+        return (TimeZone(identifier: "America/New_York") ?? .current, 9 * 60 + 30)
     }
 
     /// Determines the market category for a given symbol.
