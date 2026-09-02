@@ -905,69 +905,277 @@ struct WatchlistSearchSheet: View {
 
 /// DS-styled one-shot price alert creation/editing. Pass `editing` to prefill
 /// an existing alert and save changes instead of creating a new one.
+/// When `symbol` is omitted, allows searching any ticker or picking from watchlist.
 struct PriceAlertSheet: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
-    let symbol: String
+    let symbol: String?
     /// When more than one symbol, the sheet creates the same alert for every
     /// symbol (batch mode). Single-symbol use keeps `symbol` as the target.
     var suggestedSymbols: [String]? = nil
     var editing: PriceAlert? = nil
     let onDismiss: () -> Void
 
+    @State private var selectedSymbol: String? = nil
+    @State private var searchText: String = ""
+    @State private var searchResults: [SearchResult] = []
+    @State private var searchTask: Task<Void, Never>?
+    @FocusState private var searchFocused: Bool
+
     @State private var condition: AlertCondition = .priceAbove
     @State private var thresholdText = ""
 
+    init(symbol: String? = nil, suggestedSymbols: [String]? = nil, editing: PriceAlert? = nil, onDismiss: @escaping () -> Void) {
+        self.symbol = (symbol?.isEmpty == false) ? symbol : nil
+        self.suggestedSymbols = suggestedSymbols
+        self.editing = editing
+        self.onDismiss = onDismiss
+    }
+
+    private var fixedSymbol: String? {
+        if let editing { return editing.symbol }
+        if let symbol, !symbol.isEmpty { return symbol }
+        return nil
+    }
+
+    private var effectiveSymbol: String? {
+        fixedSymbol ?? selectedSymbol
+    }
+
     private var targets: [String] {
         if let suggestedSymbols, suggestedSymbols.count > 1 { return suggestedSymbols }
-        return [symbol]
+        if let sym = effectiveSymbol, !sym.isEmpty { return [sym] }
+        return []
     }
-    private var quote: StockQuote? { stockService.quotes[symbol] }
+
+    private var quote: StockQuote? {
+        guard let sym = effectiveSymbol else { return nil }
+        return stockService.quotes[sym]
+    }
+
     private var currencySymbol: String {
         StorageService.currencySymbol(for: quote?.currency ?? storageService.preferredCurrency)
     }
+
     private var thresholdUnit: String {
         condition.thresholdKind == .price ? currencySymbol : "%"
     }
 
     private var isEditing: Bool { editing != nil }
     private var title: String {
-        if isEditing { return "Edit Alert · \(symbol)" }
+        if isEditing { return "Edit Alert · \(effectiveSymbol ?? "")" }
         if targets.count > 1 { return "Set alert · \(targets.count) symbols" }
-        return "Alert · \(symbol)"
+        if let sym = effectiveSymbol, !sym.isEmpty { return "Alert · \(sym)" }
+        return "Add alert"
+    }
+
+    private var availableWatchlistSymbols: [String] {
+        var seen = Set<String>()
+        var list: [String] = []
+        for wl in storageService.watchlists {
+            for s in wl.symbols {
+                if seen.insert(s).inserted {
+                    list.append(s)
+                }
+            }
+        }
+        for p in storageService.portfolios {
+            for h in p.holdings {
+                if seen.insert(h.symbol).inserted {
+                    list.append(h.symbol)
+                }
+            }
+        }
+        return list
     }
 
     var body: some View {
-        SheetShell(title: title, onCancel: onDismiss, width: 420) {
-            FieldBlock("Condition") {
-                DSPicker(options: AlertCondition.allCases.map { ($0, $0.label) },
-                         selection: $condition, width: 260)
-                    .onChange(of: condition) { prefill() }
+        SheetShell(title: title, onCancel: onDismiss, width: 440) {
+            // Symbol selector if not fixed
+            if let sym = effectiveSymbol {
+                symbolChip(sym, removable: fixedSymbol == nil)
+            } else {
+                searchField
             }
-            if condition.thresholdKind != .ma {
-                FieldBlock(thresholdLabel) {
-                    HStack(spacing: 8) {
-                        DSTextField(placeholder: placeholder, text: $thresholdText, mono: true)
-                        Text(thresholdUnit).font(DS.body).foregroundStyle(DS.inkSecondary)
+
+            if effectiveSymbol != nil {
+                FieldBlock("Condition") {
+                    DSPicker(options: AlertCondition.allCases.map { ($0, $0.label) },
+                             selection: $condition, width: 260)
+                        .onChange(of: condition) { prefill() }
+                }
+                if condition.thresholdKind != .ma {
+                    FieldBlock(thresholdLabel) {
+                        HStack(spacing: 8) {
+                            DSTextField(placeholder: placeholder, text: $thresholdText, mono: true)
+                            Text(thresholdUnit).font(DS.body).foregroundStyle(DS.inkSecondary)
+                        }
+                    }
+                } else {
+                    FieldBlock(thresholdLabel) {
+                        Text("\(condition.label) — fires when the price crosses this rolling average.")
+                            .font(DS.caption).foregroundStyle(DS.inkSecondary)
                     }
                 }
-            } else {
-                FieldBlock(thresholdLabel) {
-                    Text("\(condition.label) — fires when the price crosses this rolling average.")
-                        .font(DS.caption).foregroundStyle(DS.inkSecondary)
+                if let q = quote {
+                    Text("Current price: \(currencySymbol)\(StorageService.formatNumber(q.effectivePrice, decimals: 2))")
+                        .font(DS.caption).foregroundStyle(DS.inkTertiary)
                 }
+                PrimaryButton(title: isEditing ? "Save changes" : "Create alert", enabled: isCreateEnabled, action: create)
             }
-            if let q = quote {
-                Text("Current price: \(currencySymbol)\(StorageService.formatNumber(q.effectivePrice, decimals: 2))")
-                    .font(DS.caption).foregroundStyle(DS.inkTertiary)
-            }
-            PrimaryButton(title: isEditing ? "Save changes" : "Create alert", enabled: isCreateEnabled, action: create)
         }
         .onAppear(perform: prefillFromEditing)
     }
 
+    // MARK: - Symbol Selector UI
+
+    private func symbolChip(_ sym: String, removable: Bool) -> some View {
+        HStack(spacing: 10) {
+            SymbolLogo(symbol: sym, size: 28)
+            Text(StockService.beautifiedSymbol(sym))
+                .font(.inter(14, weight: .semibold, relativeTo: .body).monospacedDigit())
+                .foregroundStyle(DS.ink)
+            if let name = stockService.quotes[sym]?.name, !name.isEmpty {
+                Text(name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
+            }
+            Spacer()
+            if removable {
+                Button {
+                    selectedSymbol = nil
+                    searchText = ""
+                    searchResults = []
+                    searchFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(DS.inkTertiary)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DS.cardAlt))
+    }
+
+    private var searchField: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FieldBlock("Symbol") {
+                DSTextField(placeholder: "Search symbol, name or crypto (e.g. AAPL, BTC-USD)",
+                            text: $searchText,
+                            isFocusedBinding: $searchFocused)
+                    .onChange(of: searchText) { _, new in runSearch(new) }
+            }
+
+            if !searchResults.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(searchResults.prefix(6)) { r in
+                        Button { select(result: r) } label: {
+                            HStack(spacing: 8) {
+                                SymbolLogo(symbol: r.symbol, size: 24)
+                                Text(r.symbol).font(DS.figure).foregroundStyle(DS.ink)
+                                Text(r.name).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                                Spacer()
+                                Text(r.exchange).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                            }
+                            .padding(.vertical, 7).padding(.horizontal, 10)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        if r.id != searchResults.prefix(6).last?.id {
+                            Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                        }
+                    }
+                }
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DS.card))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(DS.hairline))
+            } else if searchText.isEmpty && !availableWatchlistSymbols.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionLabel("From your watchlist")
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(availableWatchlistSymbols, id: \.self) { sym in
+                                Button { select(symbol: sym) } label: {
+                                    HStack(spacing: 8) {
+                                        SymbolLogo(symbol: sym, size: 22)
+                                        Text(StockService.beautifiedSymbol(sym))
+                                            .font(DS.figure)
+                                            .foregroundStyle(DS.ink)
+                                        if let name = stockService.quotes[sym]?.name, !name.isEmpty {
+                                            Text(name)
+                                                .font(DS.caption)
+                                                .foregroundStyle(DS.inkTertiary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer()
+                                        if let q = stockService.quotes[sym] {
+                                            let curr = StorageService.currencySymbol(for: q.currency)
+                                            Text("\(curr)\(StorageService.formatNumber(q.effectivePrice, decimals: 2))")
+                                                .font(DS.caption.monospacedDigit())
+                                                .foregroundStyle(DS.inkSecondary)
+                                        }
+                                    }
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 10)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                if sym != availableWatchlistSymbols.last {
+                                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 180)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(DS.card))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(DS.hairline))
+                }
+            }
+        }
+    }
+
+    private func runSearch(_ q: String) {
+        searchTask?.cancel()
+        let trimmed = q.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 1 else { searchResults = []; return }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            searchResults = await stockService.search(query: trimmed)
+        }
+    }
+
+    private func select(symbol sym: String) {
+        searchTask?.cancel()
+        selectedSymbol = sym
+        searchResults = []
+        searchText = ""
+        if stockService.quotes[sym] == nil {
+            Task {
+                await stockService.fetchQuotes(symbols: [sym])
+                prefill()
+            }
+        } else {
+            prefill()
+        }
+    }
+
+    private func select(result r: SearchResult) {
+        searchTask?.cancel()
+        selectedSymbol = r.symbol
+        searchResults = []
+        searchText = ""
+        Task {
+            await stockService.fetchQuotes(symbols: [r.symbol])
+            prefill()
+        }
+    }
+
+    // MARK: - Logic
+
     private var isCreateEnabled: Bool {
-        condition.thresholdKind == .ma ? true : parsedValue != nil
+        guard let sym = effectiveSymbol, !sym.isEmpty else { return false }
+        return condition.thresholdKind == .ma ? true : parsedValue != nil
     }
 
     private var parsedValue: Double? {
@@ -997,24 +1205,38 @@ struct PriceAlertSheet: View {
                     ? String(format: "%.2f", editing.threshold)
                     : String(format: "%g", editing.threshold)
             }
+        } else if let fixed = fixedSymbol {
+            if stockService.quotes[fixed] == nil {
+                Task {
+                    await stockService.fetchQuotes(symbols: [fixed])
+                    prefill()
+                }
+            } else {
+                prefill()
+            }
         } else {
-            prefill()
+            searchFocused = true
         }
     }
 
     private func prefill() {
         switch condition.thresholdKind {
-        case .price: if let q = quote { thresholdText = String(format: "%.2f", q.effectivePrice) }
+        case .price:
+            if let sym = effectiveSymbol, let q = stockService.quotes[sym] {
+                thresholdText = String(format: "%.2f", q.effectivePrice)
+            }
         case .percent:
             switch condition {
             case .near52WeekHigh, .near52WeekLow: thresholdText = "2"
             default: thresholdText = "5"
             }
-        case .ma: thresholdText = ""
+        case .ma:
+            thresholdText = ""
         }
     }
 
     private func create() {
+        guard !targets.isEmpty else { return }
         let v: Double
         if condition.thresholdKind == .ma {
             v = 0

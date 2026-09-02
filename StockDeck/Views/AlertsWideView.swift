@@ -12,15 +12,32 @@ struct AlertsWideView: View {
     /// The set of rows selected for batch actions.
     @State private var selected = Set<UUID>()
     @State private var editingAlert: PriceAlert? = nil
+    @State private var showAddAlert = false
 
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
 
     var body: some View {
-        PageScaffold("Alerts", caption: "Price alerts you've set on your watchlist symbols.") {
-            EmptyView()
-        } content: {
+        PageScaffold("Alerts", caption: "Price alerts you've set on your watchlist symbols.", trailing: {
+            Button {
+                showAddAlert = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Add alert")
+                        .font(DS.bodyStrong)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(DS.brand))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("Add a price alert")
+        }) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if storageService.alerts.isEmpty {
@@ -34,6 +51,13 @@ struct AlertsWideView: View {
             }
         }
         .navigationTitle("Alerts")
+        .sheet(isPresented: $showAddAlert) {
+            PriceAlertSheet {
+                showAddAlert = false
+            }
+            .environmentObject(StockService.shared)
+            .environmentObject(storageService)
+        }
         .sheet(item: $editingAlert) { alert in
             PriceAlertSheet(symbol: alert.symbol, editing: alert) { editingAlert = nil }
                 .environmentObject(StockService.shared)
@@ -49,14 +73,32 @@ struct AlertsWideView: View {
             Text("No alerts")
                 .font(DS.title)
                 .foregroundStyle(DS.ink)
-            Text("Right-click a stock in any watchlist and choose “Set Price Alert…” to add one.")
+            Text("Right-click a stock in any watchlist or click below to add a price alert.")
                 .font(DS.body)
                 .foregroundStyle(DS.inkSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420)
+
+            Button {
+                showAddAlert = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Add alert")
+                        .font(DS.bodyStrong)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(DS.brand))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 56)
+        .padding(.vertical, 48)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(DS.card))
     }
 
