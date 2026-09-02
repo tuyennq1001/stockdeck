@@ -25,6 +25,11 @@ for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/"
 done
 
+# Copy localization .lproj into the app's top-level Resources (Bundle.main)
+for lproj in StockDeck/Resources/*.lproj; do
+    [[ -d "$lproj" ]] && cp -R "$lproj" "$APP/"
+done
+
 # Compile asset catalog (AppIcon and assets)
 echo "Compiling asset catalog..."
 xcrun --sdk iphonesimulator actool StockDeck/Assets.xcassets \
