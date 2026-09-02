@@ -26,6 +26,11 @@ for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/"
 done
 
+# Copy localization .lproj into the app's top-level Resources (Bundle.main)
+for lproj in StockDeck/Resources/*.lproj; do
+    [[ -d "$lproj" ]] && cp -R "$lproj" "$APP/"
+done
+
 # Compile asset catalog for iphoneos
 echo "==> 3. Compiling asset catalog for device..."
 xcrun --sdk iphoneos actool StockDeck/Assets.xcassets \
@@ -123,8 +128,8 @@ PLISTEOF
 
 echo "APPL????" > "$APP/PkgInfo"
 
-# Find and embed Provisioning Profile
-PROV_PROFILE="$(find ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/ ~/Library/MobileDevice/Provisioning\ Profiles/ -name "*.mobileprovision" 2>/dev/null | head -1 || true)"
+# Find and embed newest Provisioning Profile
+PROV_PROFILE="$(ls -t ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/*.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1 || true)"
 ENTITLEMENTS_PLIST="/tmp/stockdeck_entitlements.plist"
 
 if [[ -n "$PROV_PROFILE" && -f "$PROV_PROFILE" ]]; then
@@ -147,7 +152,7 @@ fi
 echo "==> 6. Checking for connected physical iOS device..."
 DEVICE_ID=""
 for i in {1..10}; do
-    DEVICE_ID="$(xcrun devicectl list devices 2>/dev/null | grep -v "unavailable" | grep -E "iPhone|iPad" | head -1 | awk '{print $3}' || true)"
+    DEVICE_ID="$(xcrun devicectl list devices 2>/dev/null | grep -v "unavailable" | grep -E "iPhone|iPad" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1 || true)"
     if [[ -n "$DEVICE_ID" ]]; then
         break
     fi

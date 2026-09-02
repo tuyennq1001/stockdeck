@@ -347,7 +347,7 @@ final class HomeAIInsightService {
             let combined = Array(Set(symNews + generalNews))
                 .filter { now.timeIntervalSince($0.publishedAt) <= maxAgeSeconds }
                 .sorted { $0.publishTime > $1.publishTime }
-            articlesBySymbol[mover.symbol] = Array(combined.prefix(4))
+            articlesBySymbol[mover.symbol] = Array(combined.prefix(6))
         }
 
         // 6. Build prompt with market benchmarks and movers
@@ -358,7 +358,8 @@ final class HomeAIInsightService {
             storageService: storageService
         )
 
-        // 7. Send to AI
+        // 7. Send to AI (enable real-time search grounding for Gemini)
+        let isGemini = storageService.aiProvider == "gemini" || storageService.aiBaseURL.contains("googleapis.com")
         let request = AIReviewService.Request(
             baseURL: storageService.aiBaseURL,
             apiKey: storageService.aiApiKey,
@@ -366,7 +367,8 @@ final class HomeAIInsightService {
             systemContext: prompt.systemContext,
             messages: [AIChatSection.APIMessage(role: "user", content: prompt.userMessage)],
             thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
-            maxTokens: 4096
+            maxTokens: 4096,
+            enableSearchGrounding: isGemini
         )
 
         let reply = try await aiService.send(request: request)
@@ -390,17 +392,20 @@ final class HomeAIInsightService {
         storageService: StorageService
     ) -> (systemContext: String, userMessage: String) {
         let sys = """
-        Bạn là một chuyên gia phân tích thị trường tài chính cấp cao của StockDeck.
+        Bạn là một chuyên gia phân tích tài chính và chiến lược thị trường cấp cao của StockDeck.
         Nhiệm vụ của bạn:
-        1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (ví dụ: Mỹ dựa trên S&P 500, Nasdaq, Dow Jones; Nhật dựa trên Nikkei 225; Việt Nam dựa trên VN-Index; Crypto dựa trên Bitcoin).
-        2. Sau đó, giải thích nguyên nhân tăng/giảm trực diện cho TỪNG MÃ TÀI SẢN trong danh mục.
+        1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (S&P 500, Nasdaq, Dow Jones, Nikkei 225, VN-Index, Bitcoin).
+        2. Phân tích và giải thích NGUYÊN NHÂN TĂNG/GIẢM CỐT LÕI & SÂU SẮC cho TỪNG MÃ CỔ PHIẾU/TÀI SẢN trong danh mục.
 
-        NGUYÊN TẮC PHÂN TÍCH VÀ BẢO ĐẢM TÍNH TRUNG THỰC (QUAN TRỌNG NHẤT):
-        1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính, nêu rõ mức tăng/giảm cụ thể của các chỉ số đại diện (Ví dụ: "Thị trường Mỹ tăng điểm tích cực khi S&P 500 tăng +0.76%, Nasdaq tăng +1.12% nhờ lực kéo từ nhóm công nghệ..."; "VN-Index tăng +1.67% lên 1,280 điểm nhờ lực cầu lan tỏa nhóm vốn hóa lớn..."; "Thị trường Crypto giữ vững nhịp tăng với Bitcoin tăng +0.32% quanh vùng 79,000 USD...").
-        2. TỪNG MÃ TÀI SẢN ("items"):
-           - Nếu có tin tức báo chí được cung cấp: Trích xuất và giải thích đi thẳng vào sự kiện cốt lõi (KQKD, hợp đồng, kế hoạch mua lại cổ phiếu, tin tức ngành...).
-           - Nếu KHÔNG CÓ tin tức báo chí trong dữ liệu: BẮT BUỘC giải thích dựa trên đà tăng/giảm đồng pha với chỉ số chung của thị trường hoặc nhóm ngành/cung cầu kỹ thuật. TUYỆT ĐỐI KHÔNG tự bịa đặt, suy đoán tin đồn hay bịa ra các sự kiện doanh nghiệp không có trong dữ liệu đầu vào.
-        3. TOÀN BỘ nội dung phản hồi PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp.
+        QUY TẮC PHÂN TÍCH CHUYÊN SÂU & BẢO ĐẢM TÍNH TRUNG THỰC (BẮT BUỘC TUÂN THỦ 100%):
+        1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính, nêu rõ mức tăng/giảm cụ thể của các chỉ số đại diện (Ví dụ: "Thị trường Mỹ tăng điểm tích cực khi S&P 500 tăng +0.76%, Nasdaq tăng +1.12% nhờ lực kéo từ nhóm công nghệ..."; "VN-Index tăng +1.67% lên 1,280 điểm nhờ lực cầu lan tỏa...").
+        2. TỪNG MÃ CỔ PHIẾU/TÀI SẢN ("items"):
+           - ƯU TIÊN HÀNG ĐẦU VÀO CHẤT XÚC TÁC NỘI TẠI (Company Catalysts): Bắt buộc phân tích trực diện vào sự kiện cụ thể của doanh nghiệp (Kết quả kinh doanh quý, Doanh thu ARR/EPS, Tăng trưởng sản phẩm cốt lõi, Nâng/Hạ khuyến nghị của Analyst, Giao dịch ban lãnh đạo, Hợp đồng đối tác, Mua lại cổ phiếu...).
+           - PHÂN BIỆT RÕ RÀNG YẾU TỐ RIÊNG LẺ VS YẾU TỐ NGÀNH:
+             * Nếu có tin tức nội tại: Nêu rõ tên sản phẩm/dịch vụ cốt lõi (ví dụ: Falcon platform đối với CrowdStrike, GPU Hopper/Blackwell với Nvidia, mảng thép HRC với Hòa Phát...).
+             * Nếu cổ phiếu biến động theo đà chung của ngành/thị trường mà không có tin tức nội tại mới: PHẢI nói thẳng rõ ràng (ví dụ: "Cổ phiếu chịu áp lực điều chỉnh chung theo nhóm Cloud SaaS khi lợi suất trái phiếu tăng, chưa ghi nhận tin tức tiêu cực riêng lẻ từ nội bộ công ty.").
+           - TUYỆT ĐỐI KHÔNG dùng những câu văn sáo rỗng chung chung có thể gán cho bất kỳ công ty nào mà không chỉ ra đặc thù của mã đó.
+        3. TOÀN BỘ nội dung PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp.
 
         Cấu trúc JSON phản hồi bắt buộc đúng 100% định dạng sau:
         {
@@ -415,13 +420,13 @@ final class HomeAIInsightService {
             {
               "symbol": "SYMBOL",
               "name": "Tên công ty / Quỹ / Tài sản",
-              "coreDriver": "Một câu tiếng Việt ngắn gọn, đi thẳng vào nguyên nhân chính khiến mã tăng hoặc giảm hôm nay.",
+              "coreDriver": "Một câu tiếng Việt ngắn gọn, sắc bén nêu chính xác nguyên nhân nội tại hoặc yếu tố ngành khiến mã tăng/giảm hôm nay.",
               "bulletPoints": [
-                "Luận điểm số liệu / tin tức cụ thể hỗ trợ bằng tiếng Việt",
-                "Bối cảnh dòng tiền / nhóm ngành / chỉ số chung hỗ trợ bằng tiếng Việt"
+                "Luận điểm số liệu / sự kiện cốt lõi của doanh nghiệp bằng tiếng Việt",
+                "Bối cảnh định giá / dòng tiền / áp lực kỹ thuật hoặc tương quan thị trường bằng tiếng Việt"
               ],
               "sentiment": "positive",
-              "sourcePublisher": "Tên nguồn báo chí (ví dụ: 'Reuters', 'Bloomberg') hoặc 'Xu hướng chỉ số / Dòng tiền thị trường'"
+              "sourcePublisher": "Tên nguồn báo chí (ví dụ: 'CNBC', 'Bloomberg', 'Reuters', 'Morningstar') hoặc 'Dòng tiền & Nhóm ngành'"
             }
           ]
         }
@@ -464,7 +469,7 @@ final class HomeAIInsightService {
                     for (idx, article) in news.enumerated() {
                         user += "  [\(idx + 1)] \"\(article.title)\" (Nguồn: \(article.publisher))"
                         if !article.content.isEmpty {
-                            user += " - \(article.content.prefix(160))"
+                            user += " - \(article.content.prefix(450))"
                         }
                         user += "\n"
                     }

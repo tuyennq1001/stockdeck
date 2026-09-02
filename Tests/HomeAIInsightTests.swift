@@ -234,23 +234,23 @@ final class HomeAIInsightTests: XCTestCase {
         XCTAssertEqual(vn.language, "vi")
         XCTAssertEqual(vn.region, "VN")
         XCTAssertEqual(vn.ceid, "VN:vi")
-        XCTAssertTrue(vn.query.contains("HPG"))
+        XCTAssertTrue(vn.query.contains("HPG") && vn.query.contains("Hòa Phát"))
 
         // Japan Stock
         let jp = StockService.smartNewsParameters(symbol: "7203.T", displayName: "Toyota", marketCategory: .japan)
         XCTAssertEqual(jp.language, "ja")
         XCTAssertEqual(jp.region, "JP")
         XCTAssertEqual(jp.ceid, "JP:ja")
-        XCTAssertTrue(jp.query.contains("株価"))
+        XCTAssertTrue(jp.query.contains("7203") && jp.query.contains("Toyota") && jp.query.contains("株価"))
 
         // Crypto
         let crypto = StockService.smartNewsParameters(symbol: "BTC-USD", displayName: "Bitcoin", marketCategory: .crypto)
         XCTAssertEqual(crypto.language, "en-US")
-        XCTAssertTrue(crypto.query.contains("Bitcoin") && crypto.query.contains("crypto"))
+        XCTAssertTrue(crypto.query.contains("BTC") && crypto.query.contains("Bitcoin") && crypto.query.contains("crypto"))
 
         // US Stock
-        let us = StockService.smartNewsParameters(symbol: "SKHY", displayName: "SK Hynix", marketCategory: .us)
+        let us = StockService.smartNewsParameters(symbol: "CRWD", displayName: "CrowdStrike Holdings, Inc.", marketCategory: .us)
         XCTAssertEqual(us.language, "en-US")
-        XCTAssertEqual(us.query, "SK Hynix stock")
+        XCTAssertTrue(us.query.contains("CRWD") && us.query.contains("CrowdStrike") && us.query.contains("earnings"))
     }
 }

@@ -25,6 +25,10 @@ for bundle in "${PRODUCTS}"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "${APP_DEST}/Contents/Resources/"
 done
 
+for lproj in StockDeck/Resources/*.lproj; do
+    [[ -d "$lproj" ]] && cp -R "$lproj" "${APP_DEST}/Contents/Resources/"
+done
+
 install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_DEST}/Contents/MacOS/StockDeck" 2>/dev/null || true
 cp "${PLIST}" "${APP_DEST}/Contents/Info.plist"
 

@@ -49,8 +49,19 @@ final class AIReviewService {
         /// DeepSeek V4 thinking mode toggle (nil = leave to provider default).
         let thinking: Bool?
         let maxTokens: Int?
+        /// Enable Google Search Grounding for real-time web search (Gemini).
+        let enableSearchGrounding: Bool?
 
-        init(baseURL: String, apiKey: String, model: String, systemContext: String, messages: [AIChatSection.APIMessage], thinking: Bool? = nil, maxTokens: Int? = nil) {
+        init(
+            baseURL: String,
+            apiKey: String,
+            model: String,
+            systemContext: String,
+            messages: [AIChatSection.APIMessage],
+            thinking: Bool? = nil,
+            maxTokens: Int? = nil,
+            enableSearchGrounding: Bool? = nil
+        ) {
             self.baseURL = baseURL
             self.apiKey = apiKey
             self.model = model
@@ -58,6 +69,7 @@ final class AIReviewService {
             self.messages = messages
             self.thinking = thinking
             self.maxTokens = maxTokens
+            self.enableSearchGrounding = enableSearchGrounding
         }
     }
 
@@ -68,6 +80,16 @@ final class AIReviewService {
         guard !cleanApiKey.isEmpty, !cleanBaseURL.isEmpty else {
             throw AIReviewError.noConfiguration
         }
+
+        // Use Gemini native endpoint when Google Search grounding is enabled
+        if cleanBaseURL.contains("googleapis.com") && request.enableSearchGrounding == true {
+            do {
+                return try await sendGeminiNative(request: request, cleanApiKey: cleanApiKey)
+            } catch {
+                NSLog("[AIReview] Gemini native search grounding failed (\(error.localizedDescription)), falling back to standard completions")
+            }
+        }
+
         let baseString = cleanBaseURL.hasSuffix("/") ? cleanBaseURL : cleanBaseURL + "/"
         guard let url = URL(string: baseString)?.appendingPathComponent("chat/completions") else {
             throw AIReviewError.invalidURL
@@ -299,6 +321,120 @@ final class AIReviewService {
             }
         }
         return out
+    }
+
+    // MARK: - Gemini Native API with Google Search Grounding
+
+    private func sendGeminiNative(request: Request, cleanApiKey: String) async throws -> String {
+        let rawModel = request.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = rawModel.isEmpty ? "gemini-2.0-flash" : rawModel
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(cleanApiKey)") else {
+            throw AIReviewError.invalidURL
+        }
+
+        var payload: [String: Any] = [:]
+        if !request.systemContext.isEmpty {
+            payload["systemInstruction"] = [
+                "parts": [["text": request.systemContext]]
+            ]
+        }
+
+        var contents: [[String: Any]] = []
+        for m in request.messages {
+            let role = m.role == "assistant" ? "model" : "user"
+            var parts: [[String: Any]] = []
+            if !m.content.isEmpty {
+                parts.append(["text": m.content])
+            }
+            if let img = m.imageBase64, !img.isEmpty {
+                let cleanBase64 = img.contains(",") ? String(img.components(separatedBy: ",").last ?? img) : img
+                parts.append([
+                    "inlineData": [
+                        "mimeType": "image/jpeg",
+                        "data": cleanBase64
+                    ]
+                ])
+            }
+            if !parts.isEmpty {
+                contents.append([
+                    "role": role,
+                    "parts": parts
+                ])
+            }
+        }
+        if contents.isEmpty {
+            contents.append([
+                "role": "user",
+                "parts": [["text": "Phân tích"]]
+            ])
+        }
+        payload["contents"] = contents
+
+        if request.enableSearchGrounding == true {
+            payload["tools"] = [
+                ["googleSearch": [String: Any]()]
+            ]
+        }
+
+        let genConfig: [String: Any] = [
+            "temperature": 0.3,
+            "maxOutputTokens": request.maxTokens ?? 4096
+        ]
+        payload["generationConfig"] = genConfig
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch {
+            throw AIReviewError.network(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw AIReviewError.network("No HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errObj = json["error"] as? [String: Any],
+               let errMsg = errObj["message"] as? String {
+                throw AIReviewError.badStatus(http.statusCode, errMsg)
+            }
+            throw AIReviewError.badStatus(http.statusCode, body)
+        }
+
+        struct GeminiNativeResponse: Decodable {
+            struct Candidate: Decodable {
+                struct Content: Decodable {
+                    struct Part: Decodable {
+                        let text: String?
+                    }
+                    let parts: [Part]?
+                }
+                let content: Content?
+            }
+            let candidates: [Candidate]?
+        }
+
+        do {
+            let decoded = try JSONDecoder().decode(GeminiNativeResponse.self, from: data)
+            if let parts = decoded.candidates?.first?.content?.parts {
+                let fullText = parts.compactMap(\.text).joined()
+                if !fullText.isEmpty {
+                    return fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            throw AIReviewError.decoding("Empty candidate content from Gemini")
+        } catch let err as AIReviewError {
+            throw err
+        } catch {
+            throw AIReviewError.decoding(error.localizedDescription)
+        }
     }
 
     // MARK: - DTOs
