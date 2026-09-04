@@ -564,7 +564,7 @@ struct SymbolLogo: View {
             if isVietnamese {
                 vnContent
             } else if let logoURL {
-                AsyncImage(url: logoURL, transaction: Transaction(animation: .easeOut(duration: 0.15))) { phase in
+                AsyncImage(url: logoURL, transaction: SwiftUI.Transaction(animation: .easeOut(duration: 0.15))) { phase in
                     switch phase {
                     case .success(let image):
                         image

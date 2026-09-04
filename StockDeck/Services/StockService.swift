@@ -498,7 +498,7 @@ class StockService: ObservableObject {
                     changePercent: regularQuote?.changePercent ?? 0,
                     regularMarketPreviousClose: regularQuote?.regularMarketPreviousClose,
                     currency: regularQuote?.currency ?? "USD",
-                    marketState: regularQuote?.marketState ?? "REGULAR",
+                    marketState: regularQuote?.marketState ?? "CLOSED",
                     dayHigh: regularQuote?.dayHigh,
                     dayLow: regularQuote?.dayLow,
                     fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,
@@ -2853,9 +2853,9 @@ class StockService: ObservableObject {
             let cleanTicker = upper.replacingOccurrences(of: ".VN", with: "").replacingOccurrences(of: "^", with: "")
             let q: String
             if hasName {
-                q = "\(cleanTicker) \(cleanName)"
+                q = "(\"\(cleanTicker)\" OR \"\(cleanName)\") (cổ phiếu OR \"kết quả kinh doanh\" OR \"doanh thu\" OR \"lợi nhuận\" OR \"tài chính\")"
             } else {
-                q = "\(cleanTicker) cổ phiếu"
+                q = "\"\(cleanTicker)\" (cổ phiếu OR \"kết quả kinh doanh\" OR \"doanh thu\" OR \"lợi nhuận\")"
             }
             return (query: q, language: "vi", region: "VN", ceid: "VN:vi")
 
@@ -2863,27 +2863,40 @@ class StockService: ObservableObject {
             let cleanTicker = upper.replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".JP", with: "")
             let q: String
             if hasName {
-                q = "\(cleanName) 株価"
+                q = "(\"\(cleanName)\" OR \"\(cleanTicker)\") (株価 OR 決算 OR 業績 OR 適時開示)"
             } else {
-                q = "\(cleanTicker) 株価"
+                q = "\"\(cleanTicker)\" (株価 OR 決算 OR 業績)"
             }
             return (query: q, language: "ja", region: "JP", ceid: "JP:ja")
 
         case .crypto:
             let base = HomeAIInsightService.cryptoBaseAsset(for: upper) ?? upper
             let name = HomeAIInsightService.cryptoDisplayName(for: base, fallback: cleanName.isEmpty ? base : cleanName)
-            let q = "\(name) crypto"
+            let q = "(\"\(base)\" OR \"\(name)\") (crypto OR price OR rally OR crash OR market OR ETF OR SEC)"
             return (query: q, language: "en-US", region: "US", ceid: "US:en")
 
         case .us:
             let cleanTicker = upper.replacingOccurrences(of: ".US", with: "")
             let q: String
             if hasName {
-                let words = cleanName.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
-                let shortName = words.prefix(4).joined(separator: " ")
-                q = "\(shortName) stock"
+                let simplifiedName = cleanName
+                    .replacingOccurrences(of: " Holdings, Inc.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Holdings Inc.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Holding Inc.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Inc.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Inc", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Corp.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Corp", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Corporation", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Ltd.", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " Co.", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let words = simplifiedName.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                let shortName = words.prefix(3).joined(separator: " ")
+                q = "(\"\(cleanTicker)\" OR \"\(shortName)\") (stock OR earnings OR revenue OR guidance OR shares OR upgrade OR downgrade OR analysis)"
             } else {
-                q = "\(cleanTicker) stock"
+                q = "\"\(cleanTicker)\" (stock OR shares OR earnings OR revenue OR guidance)"
             }
             return (query: q, language: "en-US", region: "US", ceid: "US:en")
         }
@@ -2904,7 +2917,8 @@ class StockService: ObservableObject {
     }
 
     /// Refresh news for a single symbol (used by the symbol detail page and AI insights).
-    /// Fetches from direct Yahoo Finance RSS with Google News RSS fallback using smart localized queries,
+    /// Fetches concurrently from direct Yahoo Finance RSS and targeted Google News RSS,
+    /// scores by relevance to ensure company catalysts take priority over syndicated macro articles,
     /// throttled to at most once every 5 minutes per symbol, and stores the result in `newsBySymbol`.
     func refreshNews(
         for symbol: String,
@@ -2921,24 +2935,75 @@ class StockService: ObservableObject {
         isLoadingSymbolNews.insert(key)
         defer { isLoadingSymbolNews.remove(key) }
 
-        // 1. Try direct Yahoo Finance RSS feed first (provides direct article links)
-        var articles = await fetchYahooNews(symbol: key)
+        let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
+        let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
 
-        // 2. If empty (e.g. Vietnamese stocks or specialized queries), fallback to localized Google News RSS
-        if articles.isEmpty {
-            let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
-            let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
-            articles = await fetchNewsChunk(
-                query: params.query,
-                sourceSymbol: key,
-                language: params.language,
-                region: params.region,
-                ceid: params.ceid
-            )
+        // Run both Yahoo RSS and targeted Google News RSS concurrently
+        async let yahooTask = fetchYahooNews(symbol: key)
+        async let googleTask = fetchNewsChunk(
+            query: params.query,
+            sourceSymbol: key,
+            language: params.language,
+            region: params.region,
+            ceid: params.ceid
+        )
+
+        let yahooArticles = await yahooTask
+        let googleArticles = await googleTask
+        let allArticles = yahooArticles + googleArticles
+
+        // Calculate relevance score:
+        // Priority 1: Title explicitly mentions cleanTicker or cleanName -> Score +100
+        // Priority 2: Snippet explicitly mentions cleanTicker or cleanName -> Score +40
+        // Priority 3: Contains catalyst keywords -> Score +20
+        let cleanTicker = key.replacingOccurrences(of: ".VN", with: "").replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".US", with: "").replacingOccurrences(of: "^", with: "")
+        let cleanNameUpper = (name ?? "").uppercased()
+
+        func score(article: NewsArticle) -> Int {
+            var s = 0
+            let titleUp = article.title.uppercased()
+            let contentUp = article.content.uppercased()
+
+            if titleUp.contains(cleanTicker) { s += 100 }
+            if !cleanNameUpper.isEmpty && cleanNameUpper != cleanTicker && titleUp.contains(cleanNameUpper) { s += 100 }
+            else if !cleanNameUpper.isEmpty {
+                let firstWord = cleanNameUpper.components(separatedBy: .whitespaces).first ?? ""
+                if firstWord.count >= 4 && titleUp.contains(firstWord) { s += 80 }
+            }
+
+            if contentUp.contains(cleanTicker) { s += 40 }
+            if !cleanNameUpper.isEmpty && contentUp.contains(cleanNameUpper) { s += 40 }
+
+            for kw in ["EARNINGS", "REVENUE", "GUIDANCE", "TARGET", "UPGRADE", "DOWNGRADE", "PROFIT", "ARR", "QUARTER", "ACQUISITION", "SURGE", "PLUNGE", "KQKD", "DOANH THU", "LỢI NHUẬN", "QUÝ", "TĂNG TRƯỞNG", "決算", "業績"] {
+                if titleUp.contains(kw) || contentUp.contains(kw) {
+                    s += 20
+                    break
+                }
+            }
+            return s
         }
 
-        let deduped = articles.filter { !$0.title.isEmpty }
-            .sorted { $0.publishTime > $1.publishTime }
+        var scored = allArticles.map { (article: $0, score: score(article: $0)) }
+        // Sort by relevance score descending, then by publishTime descending
+        scored.sort { a, b in
+            if a.score != b.score {
+                return a.score > b.score
+            }
+            return a.article.publishTime > b.article.publishTime
+        }
+
+        var seen = Set<String>()
+        var deduped: [NewsArticle] = []
+        for item in scored {
+            let a = item.article
+            let keyId = a.title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !a.title.isEmpty && !seen.contains(keyId) && !seen.contains(a.id) {
+                seen.insert(keyId)
+                seen.insert(a.id)
+                deduped.append(a)
+            }
+        }
+
         newsBySymbol[key] = Array(deduped.prefix(10))
         lastSymbolNewsFetch[key] = Date()
     }

@@ -379,6 +379,43 @@ final class iCloudSyncService: ObservableObject {
                         }
                     }
                     mergedPortfolios[idx].holdings = combinedHoldings
+
+                    // Merge closedTrades
+                    var combinedClosed = mergedPortfolios[idx].closedTrades
+                    for rc in rp.closedTrades {
+                        let exists = combinedClosed.contains { lc in
+                            if lc.id == rc.id { return true }
+                            guard lc.symbol.caseInsensitiveCompare(rc.symbol) == .orderedSame else { return false }
+                            guard abs(lc.quantity - rc.quantity) < 1e-6 else { return false }
+                            guard abs(lc.buyPrice - rc.buyPrice) < 1e-4 else { return false }
+                            guard abs(lc.sellPrice - rc.sellPrice) < 1e-4 else { return false }
+                            if let ld = lc.sellDate, let rd = rc.sellDate {
+                                guard abs(ld.timeIntervalSince(rd)) < 60 else { return false }
+                            } else if lc.sellDate != rc.sellDate {
+                                return false
+                            }
+                            return true
+                        }
+                        if !exists {
+                            combinedClosed.append(rc)
+                        }
+                    }
+                    mergedPortfolios[idx].closedTrades = combinedClosed
+
+                    // Merge transactions
+                    var combinedTx = mergedPortfolios[idx].transactions
+                    var txSigs = Set(combinedTx.map { $0.signature })
+                    txSigs.formUnion(combinedTx.map { $0.id.uuidString })
+
+                    for rtx in rp.transactions {
+                        if !txSigs.contains(rtx.signature) && !txSigs.contains(rtx.id.uuidString) {
+                            combinedTx.append(rtx)
+                            txSigs.insert(rtx.signature)
+                            txSigs.insert(rtx.id.uuidString)
+                        }
+                    }
+                    combinedTx.sort { $0.date > $1.date }
+                    mergedPortfolios[idx].transactions = combinedTx
                 }
             } else {
                 mergedPortfolios.append(rp)

@@ -13,6 +13,8 @@ struct ImportPreviewSheet: View {
     @EnvironmentObject var storageService: StorageService
 
     let initialItems: [ParsedImportItem]
+    let closedTrades: [ClosedTrade]
+    let transactions: [Transaction]
     let suggestedPortfolioName: String?
     let isFundImport: Bool
     let onDismiss: () -> Void
@@ -23,11 +25,15 @@ struct ImportPreviewSheet: View {
 
     init(
         items: [ParsedImportItem],
+        closedTrades: [ClosedTrade] = [],
+        transactions: [Transaction] = [],
         suggestedPortfolioName: String? = nil,
         isFundImport: Bool = false,
         onDismiss: @escaping () -> Void
     ) {
         self.initialItems = items
+        self.closedTrades = closedTrades
+        self.transactions = transactions
         self.suggestedPortfolioName = suggestedPortfolioName
         self.isFundImport = isFundImport
         self.onDismiss = onDismiss
@@ -146,6 +152,19 @@ struct ImportPreviewSheet: View {
                 }
                 .frame(maxHeight: 220)
 
+                // Closed trades info notice if detected
+                if !closedTrades.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(DS.up)
+                        Text("\(closedTrades.count) Closed Trade\(closedTrades.count > 1 ? "s" : "") detected (\(closedTrades.map(\.symbol).prefix(3).joined(separator: ", ")))")
+                            .font(DS.caption)
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+                    .padding(.horizontal, 10)
+                }
+
                 Divider()
 
                 // Actions Footer
@@ -156,10 +175,10 @@ struct ImportPreviewSheet: View {
                     Spacer()
 
                     PrimaryButton(
-                        title: selectedCount == 0
-                            ? "No Items Selected"
-                            : "Import \(selectedCount) Item\(selectedCount > 1 ? "s" : "")",
-                        enabled: selectedCount > 0 && (selectedPortfolioId != "NEW" || !newPortfolioName.trimmingCharacters(in: .whitespaces).isEmpty),
+                        title: selectedCount > 0
+                            ? "Import \(selectedCount) Item\(selectedCount > 1 ? "s" : "")"
+                            : (!closedTrades.isEmpty ? "Import \(closedTrades.count) Closed Trade\(closedTrades.count > 1 ? "s" : "")" : "No Items Selected"),
+                        enabled: (selectedCount > 0 || !closedTrades.isEmpty) && (selectedPortfolioId != "NEW" || !newPortfolioName.trimmingCharacters(in: .whitespaces).isEmpty),
                         action: executeImport
                     )
                 }
@@ -245,7 +264,7 @@ struct ImportPreviewSheet: View {
 
     private func executeImport() {
         let selectedHoldings = items.filter { $0.isChecked }.map { $0.holding }
-        guard !selectedHoldings.isEmpty else { return }
+        guard !selectedHoldings.isEmpty || !closedTrades.isEmpty || !transactions.isEmpty else { return }
 
         let targetId: UUID
         if selectedPortfolioId == "NEW" {
@@ -258,11 +277,23 @@ struct ImportPreviewSheet: View {
             return
         }
 
-        storageService.addHoldingsBatch(selectedHoldings, to: targetId)
+        if !selectedHoldings.isEmpty {
+            storageService.addHoldingsBatch(selectedHoldings, to: targetId)
+        }
+
+        if !closedTrades.isEmpty {
+            storageService.addClosedTradesBatch(closedTrades, to: targetId)
+        }
+
+        if !transactions.isEmpty {
+            storageService.addTransactionsBatch(transactions, to: targetId)
+        }
 
         let symbols = selectedHoldings.map { $0.symbol }
-        Task {
-            await stockService.fetchQuotes(symbols: symbols)
+        if !symbols.isEmpty {
+            Task {
+                await stockService.fetchQuotes(symbols: symbols)
+            }
         }
 
         onDismiss()

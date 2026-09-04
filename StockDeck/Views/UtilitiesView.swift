@@ -97,6 +97,8 @@ struct UtilitiesView: View {
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
                 items: res.items,
+                closedTrades: res.closedTrades,
+                transactions: res.transactions,
                 suggestedPortfolioName: res.suggestedPortfolioName,
                 isFundImport: res.isFundImport,
                 onDismiss: {
@@ -154,6 +156,7 @@ struct UtilitiesView: View {
             Text("☁️ Import / Export").tag(UtilitySegment.importExport)
         }
         .pickerStyle(.segmented)
+        .labelsHidden()
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
@@ -624,9 +627,12 @@ struct UtilitiesView: View {
         let types: [UTType] = [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
         #if os(iOS)
         presentNativeDocumentPicker(allowedContentTypes: types) { url in
-            if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+            switch PortfolioIO.parseBrokerFilesStatus(urls: [url], storageService: storageService) {
+            case .success(let res):
                 pendingImportResult = res
-            } else {
+            case .allTradesClosed(let count):
+                alertBannerMessage = "All \(count) trades in file are closed/sold off (0 active positions remaining)."
+            case .invalidFile:
                 alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
             }
         }
@@ -635,9 +641,12 @@ struct UtilitiesView: View {
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = true
         if panel.runModal() == .OK, !panel.urls.isEmpty {
-            if let res = PortfolioIO.parseFiles(urls: panel.urls) {
+            switch PortfolioIO.parseBrokerFilesStatus(urls: panel.urls, storageService: storageService) {
+            case .success(let res):
                 pendingImportResult = res
-            } else {
+            case .allTradesClosed(let count):
+                alertBannerMessage = "All \(count) trades in file(s) are closed/sold off (0 active positions remaining)."
+            case .invalidFile:
                 alertBannerMessage = "Could not parse broker trade history file(s)."
             }
         }

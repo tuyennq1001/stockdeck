@@ -145,5 +145,62 @@ final class TodayPerformanceTests: XCTestCase {
         XCTAssertFalse(MarketCategory.japan.isTradingDay(at: sundayNoonJST))
         XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: sundayNoonJST))
         XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: sundayNoonJST))
+
+        // 7. Monday 9:29 AM JST (2026-08-31T09:29:12+09:00)
+        // - KOSPI (^KS11, South Korea) opens at 09:00 KST (same as JST) -> ACTIVE
+        // - Nikkei 225 (^N225, Japan) opens at 09:00 JST -> ACTIVE
+        // - Nifty 50 (^NSEI, India) is 05:59 IST (before 09:15 IST) -> CLOSED
+        // - Hang Seng (^HSI, Hong Kong) is 08:29 HKT (before 09:00 HKT) -> CLOSED
+        // - FTSE (^FTSE, London) is 01:29 BST (before 08:00 BST) -> CLOSED
+        // - S&P 500 (^GSPC, US) is 20:29 EDT Sunday -> CLOSED
+        let monday929amJST = isoFormatter.date(from: "2026-08-31T09:29:12+09:00")!
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^KS11", at: monday929amJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "005930.KS", at: monday929amJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^N225", at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^NSEI", at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^HSI", at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^FTSE", at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^GSPC", at: monday929amJST))
+
+        // 8. Monday 1:00 PM JST (2026-08-31T13:00:00+09:00)
+        // - India is 09:30 IST (after 09:15 IST open) -> ACTIVE
+        // - Hong Kong is 12:00 HKT (after 09:00 HKT open) -> ACTIVE
+        let monday1pmJST = isoFormatter.date(from: "2026-08-31T13:00:00+09:00")!
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^NSEI", at: monday1pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^HSI", at: monday1pmJST))
+
+        // 9. Monday 5:13 PM JST (2026-08-31T17:13:22+09:00)
+        // - In NY: Monday 04:13 AM EDT (Pre-market) -> US regular session opens at 09:30 EDT -> CLOSED
+        // - In Tokyo: Monday 17:13 JST (Holds Monday regular session) -> ACTIVE
+        // - In VN: Monday 15:13 ICT (Holds Monday regular session) -> ACTIVE
+        // - Crypto: ACTIVE (24/7)
+        let monday513pmJST = isoFormatter.date(from: "2026-08-31T17:13:22+09:00")!
+        XCTAssertFalse(MarketCategory.us.isTradingDay(at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "SPGI", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "META", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "RACE", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", at: monday513pmJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^GSPC", at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.vietnam.isTradingDay(at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday513pmJST))
+
+        // 10. Monday 10:30 PM JST (2026-08-31T22:30:00+09:00)
+        // - In NY: Monday 09:30 AM EDT -> US Regular opening bell -> ACTIVE
+        let monday1030pmJST = isoFormatter.date(from: "2026-08-31T22:30:00+09:00")!
+        XCTAssertTrue(MarketCategory.us.isTradingDay(at: monday1030pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "SPGI", at: monday1030pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "META", at: monday1030pmJST))
+
+        // 11. Stale quote with marketState == "REGULAR" cannot override weekend / pre-market calendar
+        let mockStaleGoogQuote = StockQuote(symbol: "GOOG", name: "Alphabet", price: 175, marketState: "REGULAR")
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: sundayNoonJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday929amJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday513pmJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "GOOG", quote: mockStaleGoogQuote, at: monday11pmJST))
+
+        // Crypto quote is always active
+        let mockCryptoQuote = StockQuote(symbol: "BTC-USD", name: "Bitcoin", price: 60000, marketState: "CLOSED")
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", quote: mockCryptoQuote, at: sundayNoonJST))
     }
 }

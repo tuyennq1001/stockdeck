@@ -328,6 +328,8 @@ struct PortfolioListView: View {
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
                 items: res.items,
+                closedTrades: res.closedTrades,
+                transactions: res.transactions,
                 suggestedPortfolioName: res.suggestedPortfolioName,
                 isFundImport: res.isFundImport
             ) {
@@ -361,9 +363,12 @@ struct PortfolioListView: View {
             case .success(let url):
                 let accessed = url.startAccessingSecurityScopedResource()
                 defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                if let res = PortfolioIO.parseJapaneseFundFile(fileURL: url) {
+                switch PortfolioIO.parseBrokerFilesStatus(urls: [url]) {
+                case .success(let res):
                     self.pendingImportResult = res
-                } else {
+                case .allTradesClosed(let count):
+                    self.importAlert = "All \(count) trades in file are closed/sold off (0 active positions remaining)."
+                case .invalidFile:
                     self.importAlert = "Could not parse 投資信託 file or no valid trades found."
                 }
             case .failure(let error):
@@ -1613,7 +1618,7 @@ struct PortfolioQuoteRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 if let quote {
                     let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
-                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
 
                     let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
@@ -1732,7 +1737,7 @@ struct PortfolioQuoteRow: View {
 
                 if let quote {
                     let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
-                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, isCrypto: isCrypto)
+                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
                     Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
                         .font(metricSubFont)
                         .fontWeight(.semibold)

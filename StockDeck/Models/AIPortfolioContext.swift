@@ -135,7 +135,7 @@ enum AIPortfolioContext {
         let todayInputs = storageService.portfolios.flatMap(\.holdings).compactMap { holding -> TodayPerformance.Input? in
             guard let liveQuote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] else { return nil }
             let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
-            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
+            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, quote: liveQuote, isCrypto: isCrypto)
             return TodayPerformance.Input(
                 holding: holding,
                 regularPrice: liveQuote.price,

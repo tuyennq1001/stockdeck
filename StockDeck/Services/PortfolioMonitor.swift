@@ -150,7 +150,7 @@ final class PortfolioMonitor {
             // signed quantity and leverage so shorts and levered lots contribute
             // correctly.
             let isCrypto = storage.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
-            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, isCrypto: isCrypto)
+            let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, quote: quote, isCrypto: isCrypto)
             let scale = holding.isJapaneseFund ? 10000.0 : 1.0
             let exposure = holding.quantity * holding.effectiveLeverage
             let contribution = isMarketActive ? (exposure * (quote.change / scale) * rate) : 0

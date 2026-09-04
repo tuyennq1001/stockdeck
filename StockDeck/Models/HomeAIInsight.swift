@@ -120,19 +120,19 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
             return false
         }
 
-        // On Monday, market remains closed until the opening bell of the first session of the week:
+        // On Monday, market remains closed until the opening bell of the first regular session of the week:
         if weekday == 2 {
             let currentMinutes = hour * 60 + minute
             switch self {
             case .japan:
-                // TSE opens at 09:00 JST
+                // TSE regular session opens at 09:00 JST (540 mins)
                 if currentMinutes < 9 * 60 { return false }
             case .vietnam:
-                // HOSE/HNX opens at 09:00 ICT
+                // HOSE/HNX regular session opens at 09:00 ICT (540 mins)
                 if currentMinutes < 9 * 60 { return false }
             case .us:
-                // US pre-market starts at 04:00 EDT (09:30 EDT for regular session)
-                if currentMinutes < 4 * 60 { return false }
+                // US regular session opens at 09:30 EDT/EST (570 mins)
+                if currentMinutes < (9 * 60 + 30) { return false }
             case .crypto:
                 return true
             }
@@ -141,17 +141,119 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         return true
     }
 
+    /// Resolved market timezone and Monday open minutes for any given symbol (including global indices & stocks).
+    static func marketSchedule(for symbol: String, isCrypto: Bool = false) -> (timeZone: TimeZone, mondayOpenMinutes: Int) {
+        if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
+            return (TimeZone(identifier: "UTC") ?? .current, 0)
+        }
+        let upper = symbol.uppercased()
+
+        // Vietnam (HOSE/HNX): ICT (UTC+7), regular session opens at 09:00 ICT (540 mins)
+        if StockService.isVietnameseStock(upper) || upper.hasSuffix(".VN") || upper == "^VNINDEX.VN" || upper == "VNINDEX" || upper == "HNX" {
+            return (TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current, 9 * 60)
+        }
+
+        // Japan (TSE): JST (UTC+9), regular session opens at 09:00 JST (540 mins)
+        if StockService.isJapaneseStock(upper) || StockService.isJapaneseMutualFund(upper) || upper.hasSuffix(".T") || upper == "^N225" || upper == "^TPX" {
+            return (TimeZone(identifier: "Asia/Tokyo") ?? .current, 9 * 60)
+        }
+
+        // South Korea (KRX): KST (UTC+9), regular session opens at 09:00 KST (540 mins)
+        if upper == "^KS11" || upper == "^KQ11" || upper.hasSuffix(".KS") || upper.hasSuffix(".KQ") {
+            return (TimeZone(identifier: "Asia/Seoul") ?? .current, 9 * 60)
+        }
+
+        // Hong Kong (HKEX): HKT (UTC+8), regular session opens at 09:30 HKT (570 mins)
+        if upper == "^HSI" || upper == "^HSCE" || upper.hasSuffix(".HK") {
+            return (TimeZone(identifier: "Asia/Hong_Kong") ?? .current, 9 * 60 + 30)
+        }
+
+        // Taiwan (TWSE): CST (UTC+8), regular session opens at 09:00 CST (540 mins)
+        if upper == "^TWII" || upper.hasSuffix(".TW") {
+            return (TimeZone(identifier: "Asia/Taipei") ?? .current, 9 * 60)
+        }
+
+        // China (SSE/SZSE): CST (UTC+8), regular session opens at 09:30 CST (570 mins)
+        if upper.hasSuffix(".SS") || upper.hasSuffix(".SZ") {
+            return (TimeZone(identifier: "Asia/Shanghai") ?? .current, 9 * 60 + 30)
+        }
+
+        // Australia (ASX): AEST/AEDT (UTC+10/+11), regular session opens at 10:00 AEST (600 mins)
+        if upper == "^AXJO" || upper.hasSuffix(".AX") {
+            return (TimeZone(identifier: "Australia/Sydney") ?? .current, 10 * 60)
+        }
+
+        // India (NSE/BSE): IST (UTC+5:30), regular session opens at 09:15 IST (555 mins)
+        if upper == "^NSEI" || upper == "^BSESN" || upper.hasSuffix(".NS") || upper.hasSuffix(".BO") {
+            return (TimeZone(identifier: "Asia/Kolkata") ?? .current, 9 * 60 + 15)
+        }
+
+        // UK (LSE): GMT/BST, regular session opens at 08:00 local (480 mins)
+        if upper == "^FTSE" || upper.hasSuffix(".L") {
+            return (TimeZone(identifier: "Europe/London") ?? .current, 8 * 60)
+        }
+
+        // Europe (XETRA, Euronext): CET/CEST, regular session opens at 09:00 local (540 mins)
+        if upper == "^GDAXI" || upper == "^FCHI" || upper == "^STOXX50E" || upper.hasSuffix(".DE") || upper.hasSuffix(".PA") || upper.hasSuffix(".AS") || upper.hasSuffix(".MI") || upper.hasSuffix(".MC") {
+            return (TimeZone(identifier: "Europe/Berlin") ?? .current, 9 * 60)
+        }
+
+        // Canada (TSX): EDT/EST, regular session opens at 09:30 local (570 mins)
+        if upper == "^GSPTSE" || upper.hasSuffix(".TO") || upper.hasSuffix(".V") {
+            return (TimeZone(identifier: "America/Toronto") ?? .current, 9 * 60 + 30)
+        }
+
+        // US & Default: America/New_York (EDT/EST), regular session opens at 09:30 EDT/EST (570 mins)
+        return (TimeZone(identifier: "America/New_York") ?? .current, 9 * 60 + 30)
+    }
+
     /// Determines the market category for a given symbol.
     static func detect(symbol: String, isCrypto: Bool = false) -> MarketCategory {
         HomeAIInsightService.detectMarketCategory(symbol: symbol, isCrypto: isCrypto)
     }
 
     /// Returns true if the symbol is trading / active on the given calendar date.
-    /// For crypto, always returns true.
-    /// For stocks/funds, checks timezone-aware trading days and pre-open hours.
-    static func isTradingDay(symbol: String, isCrypto: Bool = false, at date: Date = Date(), customTimeZone: TimeZone? = nil) -> Bool {
-        let category = detect(symbol: symbol, isCrypto: isCrypto)
-        return category.isTradingDay(at: date, customTimeZone: customTimeZone)
+    /// 1. For crypto, always returns true (24/7/365).
+    /// 2. For stocks/funds/indices, checks timezone-aware trading days and pre-open hours:
+    ///    - Saturday & Sunday in the market's timezone are always CLOSED.
+    ///    - Monday before the opening bell of the week is always CLOSED.
+    ///    - On weekdays during/after market hours, returns true (active trading day).
+    static func isTradingDay(
+        symbol: String,
+        quote: StockQuote? = nil,
+        isCrypto: Bool = false,
+        at date: Date = Date(),
+        customTimeZone: TimeZone? = nil
+    ) -> Bool {
+        if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
+            return true
+        }
+
+        let schedule = marketSchedule(for: symbol, isCrypto: isCrypto)
+        let tz = customTimeZone ?? schedule.timeZone
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = components.weekday, let hour = components.hour, let minute = components.minute else {
+            return false
+        }
+
+        // 1 = Sunday, 7 = Saturday in Gregorian calendar -> 100% closed on weekends
+        if weekday == 1 || weekday == 7 {
+            return false
+        }
+
+        // On Monday, market remains closed until the opening bell of the first session of the week:
+        if weekday == 2 {
+            let currentMinutes = hour * 60 + minute
+            if currentMinutes < schedule.mondayOpenMinutes {
+                return false
+            }
+        }
+
+        return true
     }
 }
 

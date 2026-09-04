@@ -95,8 +95,15 @@ enum GoogleNewsRSSParser {
         }
 
         // If description has substantive text that is different from title and publisher
-        if !cleanDesc.isEmpty && cleanDesc != title && cleanDesc != publisher && !cleanDesc.hasPrefix(title) {
-            return (title, cleanDesc)
+        if !cleanDesc.isEmpty && cleanDesc != title && cleanDesc != publisher {
+            if !cleanDesc.hasPrefix(title) {
+                return (title, cleanDesc)
+            } else if cleanDesc.count > title.count + 5 {
+                let remaining = String(cleanDesc.dropFirst(title.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !remaining.isEmpty {
+                    return (title, remaining)
+                }
+            }
         }
 
         // Sentence punctuation splits: ". ", "? ", "! "
