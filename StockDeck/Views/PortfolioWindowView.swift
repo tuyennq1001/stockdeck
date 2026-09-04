@@ -328,9 +328,10 @@ struct PortfolioWindowView: View {
                     }
 
                     portfoliosHeader
+                    let allStats = portfolioStats(for: storageService.portfolios)
                     NavRow(icon: "square.grid.2x2", title: "All Portfolios",
-                           trailing: trailingPercent(for: storageService.portfolios),
-                           trailingTint: DS.pnlColor(aggregatePnlPercent(for: storageService.portfolios)),
+                           trailing: allStats.text,
+                           trailingTint: DS.pnlColor(allStats.percent),
                            helpText: "Combined view of every portfolio  ⌘3",
                            selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
                     ForEach(displayedPortfolios) { portfolio in
@@ -347,9 +348,10 @@ struct PortfolioWindowView: View {
                             },
                             onCommit: { commitPortfolioPreview() }
                         ) {
+                            let stats = portfolioStats(for: [portfolio])
                             NavRow(icon: "briefcase", title: portfolio.name,
-                                   trailing: trailingPercent(for: [portfolio]),
-                                   trailingTint: DS.pnlColor(aggregatePnlPercent(for: [portfolio])),
+                                   trailing: stats.text,
+                                   trailingTint: DS.pnlColor(stats.percent),
                                    helpText: "Open “\(portfolio.name)” · Drag to reorder · right-click for rename, notifications",
                                    selected: selection == .portfolio(portfolio.id), namespace: navNamespace) {
                                 navigate(to: .portfolio(portfolio.id))
@@ -407,9 +409,10 @@ struct PortfolioWindowView: View {
                        selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
-            TotalFooter(value: aggregateValue(for: storageService.portfolios),
-                        cost: aggregateCost(for: storageService.portfolios),
-                        pnl: totalPnlValue,
+            let totals = sidebarTotals
+            TotalFooter(value: totals.value,
+                        cost: totals.cost,
+                        pnl: totals.pnl,
                         currency: storageService.preferredCurrency,
                         decimals: storageService.amountDecimals)
             quitRow
@@ -750,29 +753,16 @@ struct PortfolioWindowView: View {
         PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
     }
 
-    private var totalPnlValue: Double {
-        PortfolioValuation.totals(valued(storageService.portfolios)).pnl
+    private var sidebarTotals: (value: Double, cost: Double, pnl: Double) {
+        PortfolioValuation.totals(valued(storageService.portfolios))
     }
 
-    private func aggregateValue(for portfolios: [Portfolio]) -> Double {
-        PortfolioValuation.totals(valued(portfolios)).value
-    }
-    private func aggregateCost(for portfolios: [Portfolio]) -> Double {
-        PortfolioValuation.totals(valued(portfolios)).cost
-    }
-    private func aggregatePnlPercent(for portfolios: [Portfolio]) -> Double {
-        // Unify with every other surface: P&L = value − cost, where cost uses the
-        // historical FX rate at purchase (same as the menu bar, popover, and overview).
-        // Holdings without a known cost basis (e.g. Binance balances) contribute 0 P&L.
-        let totals = PortfolioValuation.totals(valued(portfolios))
-        return abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
-    }
-
-    /// Sidebar trailing figure — nil (hidden) until at least one holding is
-    /// priced, so an unpriced portfolio never shows a fake "+0.0%".
-    private func trailingPercent(for portfolios: [Portfolio]) -> String? {
-        guard !valued(portfolios).isEmpty else { return nil }
-        return String(format: "%+.1f%%", aggregatePnlPercent(for: portfolios))
+    private func portfolioStats(for portfolios: [Portfolio]) -> (text: String?, percent: Double) {
+        let inputs = valued(portfolios)
+        guard !inputs.isEmpty else { return (nil, 0) }
+        let totals = PortfolioValuation.totals(inputs)
+        let pct = abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
+        return (String(format: "%+.1f%%", pct), pct)
     }
 }
 

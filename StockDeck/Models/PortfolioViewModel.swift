@@ -82,6 +82,20 @@ final class PortfolioViewModel {
     private(set) var topGainers: [ValuedHolding] = []
     private(set) var topLosers: [ValuedHolding] = []
 
+    public struct RealizedStats: Sendable {
+        public let realizedPnl: Double
+        public let closedCost: Double
+        public let winRate: Double
+        public let totalClosed: Int
+
+        public static let empty = RealizedStats(realizedPnl: 0, closedCost: 0, winRate: 0, totalClosed: 0)
+    }
+
+    private(set) var realizedStats: RealizedStats = .empty
+    private(set) var transactionsCount: Int = 0
+    private(set) var typeBreakdown: [(label: String, fraction: Double)] = []
+    private(set) var activeSymbolsCount: Int = 0
+
     /// Performance & benchmark matrix — session-cached.
     private(set) var cachedPerformance: (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?])? = nil
 
@@ -154,7 +168,7 @@ final class PortfolioViewModel {
     var dayChangeValue: Double { valuationCache.dayChangeValue }
     var dayChangePercent: Double { valuationCache.dayChangePercent }
 
-    var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })) }
+    var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })).sorted() }
 
     var earliestPurchaseDate: Date? {
         let dates = sortedValuedHoldings.compactMap(\.holding.purchaseDate)
@@ -397,6 +411,74 @@ final class PortfolioViewModel {
             }
         }
         topLosers = Array(losers.prefix(5))
+
+        // Realized PnL stats (cached once per valuation)
+        var rawClosed: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)] = []
+        for p in portfolios {
+            for t in p.closedTrades {
+                rawClosed.append((t, p.id, p.name))
+            }
+        }
+        let consolidatedClosed = ConsolidatedClosedTrade.consolidate(tradesWithPortfolio: rawClosed)
+        var totalRealized: Double = 0
+        var totalClosedCost: Double = 0
+        var winCount: Int = 0
+
+        for ct in consolidatedClosed {
+            let curr = stockService.detectedCurrency(for: ct.symbol)
+            let rate = stockService.rate(from: curr)
+            totalRealized += ct.realizedPnl * rate
+            totalClosedCost += ct.costBasis * rate
+            if ct.realizedPnl > 0 {
+                winCount += 1
+            }
+        }
+        let totalClosed = consolidatedClosed.count
+        let winRate = totalClosed > 0 ? (Double(winCount) / Double(totalClosed)) * 100.0 : 0.0
+        realizedStats = RealizedStats(
+            realizedPnl: totalRealized,
+            closedCost: totalClosedCost,
+            winRate: winRate,
+            totalClosed: totalClosed
+        )
+
+        // Transactions count (cached once per valuation)
+        var rawTx: [(tx: Transaction, portfolioId: UUID, portfolioName: String)] = []
+        for p in portfolios {
+            for tx in p.transactions {
+                rawTx.append((tx, p.id, p.name))
+            }
+        }
+        transactionsCount = ConsolidatedTransaction.consolidate(transactionsWithPortfolio: rawTx).count
+
+        // Active symbols count (unique canonical symbols in active holdings)
+        activeSymbolsCount = symAggs.count
+
+        // Type diversification breakdown (cached once per valuation)
+        let totalValForTypes = valued.reduce(0) { $0 + abs($1.value) }
+        if totalValForTypes >= 0.01 {
+            var byType: [String: Double] = [:]
+            for h in valued {
+                byType[Self.typeLabel(h.type), default: 0] += abs(h.value)
+            }
+            typeBreakdown = byType.map { ($0.key, $0.value / totalValForTypes) }.sorted { $0.1 > $1.1 }
+        } else {
+            typeBreakdown = []
+        }
+    }
+
+    public static func typeLabel(_ type: String) -> String {
+        switch type.uppercased() {
+        case "EQUITY": return "Stocks"
+        case "ETF": return "ETFs"
+        case "CRYPTOCURRENCY": return "Crypto"
+        case "INDEX": return "Indices"
+        case "FUTURE": return "Futures"
+        case "MUTUALFUND": return "Funds"
+        case "CURRENCY": return "Currency"
+        case "": return "Other"
+        default: return type.capitalized
+        }
     }
 
     func sortedSymbols(column: PortfolioOverview.PositionSortColumn, ascending: Bool, manualOrder: [String]) -> [String] {
