@@ -266,6 +266,8 @@ struct Portfolio: Identifiable, Codable {
     var id: UUID
     var name: String
     var holdings: [Holding]
+    var closedTrades: [ClosedTrade]
+    var transactions: [Transaction]
     var sourceType: PortfolioSourceType
     var lastSyncedAt: Date?
 
@@ -278,16 +280,26 @@ struct Portfolio: Identifiable, Codable {
         }
     }
 
-    init(id: UUID = UUID(), name: String, holdings: [Holding] = [], sourceType: PortfolioSourceType = .manual, lastSyncedAt: Date? = nil) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        holdings: [Holding] = [],
+        closedTrades: [ClosedTrade] = [],
+        transactions: [Transaction] = [],
+        sourceType: PortfolioSourceType = .manual,
+        lastSyncedAt: Date? = nil
+    ) {
         self.id = id
         self.name = name
         self.holdings = holdings
+        self.closedTrades = closedTrades
+        self.transactions = transactions
         self.sourceType = sourceType
         self.lastSyncedAt = lastSyncedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, holdings, sourceType, lastSyncedAt
+        case id, name, holdings, closedTrades, transactions, sourceType, lastSyncedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -295,6 +307,8 @@ struct Portfolio: Identifiable, Codable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         holdings = try container.decode([Holding].self, forKey: .holdings)
+        closedTrades = try container.decodeIfPresent([ClosedTrade].self, forKey: .closedTrades) ?? []
+        transactions = try container.decodeIfPresent([Transaction].self, forKey: .transactions) ?? []
         sourceType = try container.decodeIfPresent(PortfolioSourceType.self, forKey: .sourceType) ?? .manual
         lastSyncedAt = try container.decodeIfPresent(Date.self, forKey: .lastSyncedAt)
     }

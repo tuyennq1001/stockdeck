@@ -77,6 +77,8 @@ enum PortfolioIO {
     struct ImportResult: Identifiable {
         let id = UUID()
         let items: [ParsedImportItem]
+        var closedTrades: [ClosedTrade] = []
+        var transactions: [Transaction] = []
         let suggestedPortfolioName: String?
         let isFundImport: Bool
     }
@@ -119,6 +121,12 @@ enum PortfolioIO {
         }
     }
 
+    enum BrokerFileImportStatus {
+        case success(ImportResult)
+        case allTradesClosed(tradesCount: Int)
+        case invalidFile
+    }
+
     /// Helper to pick one or more Japanese broker / fund files for preview.
     static func pickAndParseJapaneseFunds(
         restoreActivationPolicy: Bool,
@@ -146,9 +154,12 @@ enum PortfolioIO {
             }
             guard response == .OK, !panel.urls.isEmpty else { return }
             Task { @MainActor in
-                if let res = parseFiles(urls: panel.urls) {
+                switch parseBrokerFilesStatus(urls: panel.urls) {
+                case .success(let res):
                     onParsed(res)
-                } else {
+                case .allTradesClosed(let count):
+                    onAlert("All \(count) trades in the file(s) are closed/sold off (0 active positions remaining).")
+                case .invalidFile:
                     onAlert("Could not parse broker file(s) or no valid trades found.")
                 }
             }
@@ -156,27 +167,88 @@ enum PortfolioIO {
     }
     #endif
 
-    /// Parses multiple files (CSV, XLSX, JSON) and aggregates all parsed positions.
-    static func parseFiles(urls: [URL], storageService: StorageService? = nil) -> ImportResult? {
-        var allItems: [ParsedImportItem] = []
+    /// Parses broker trade history files with granular status feedback.
+    static func parseBrokerFilesStatus(urls: [URL], storageService: StorageService? = nil) -> BrokerFileImportStatus {
+        var allBrokerRecords: [SpreadsheetIO.BrokerTradeRecord] = []
         var suggestedNames: [String] = []
 
         for url in urls {
-            // 1. Try Japanese broker / fund format (Rakuten INVST, JP, US, CH etc.)
-            if let imported = SpreadsheetIO.parseJapaneseFundCSV(from: url), !imported.isEmpty {
-                for p in imported {
-                    if !p.name.isEmpty && !suggestedNames.contains(p.name) {
-                        suggestedNames.append(p.name)
-                    }
+            if let records = SpreadsheetIO.extractJapaneseBrokerTradeRecords(from: url), !records.isEmpty {
+                allBrokerRecords.append(contentsOf: records)
+                let name = url.deletingPathExtension().lastPathComponent
+                if !suggestedNames.contains(name) {
+                    suggestedNames.append(name)
+                }
+            }
+        }
+
+        if !allBrokerRecords.isEmpty {
+            let portfolios = SpreadsheetIO.processBrokerTradeRecords(allBrokerRecords)
+            if !portfolios.isEmpty {
+                var allItems: [ParsedImportItem] = []
+                var allClosed: [ClosedTrade] = []
+                for p in portfolios {
                     for h in p.holdings {
                         let isFund = StockService.isJapaneseMutualFund(h.symbol)
                         allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
                     }
+                    allClosed.append(contentsOf: p.closedTrades)
                 }
-                continue
+                let suggestedName = suggestedNames.first
+                let isFundImport = !allItems.isEmpty && allItems.allSatisfy { $0.isFund }
+                return .success(ImportResult(items: allItems, closedTrades: allClosed, suggestedPortfolioName: suggestedName, isFundImport: isFundImport))
+            } else {
+                return .allTradesClosed(tradesCount: allBrokerRecords.count)
             }
+        }
 
-            // 2. Try standard portfolio format (CSV / XLSX)
+        if let result = parseFiles(urls: urls, storageService: storageService) {
+            return .success(result)
+        }
+
+        return .invalidFile
+    }
+
+    /// Parses multiple files (CSV, XLSX, JSON) and aggregates all parsed positions and closed trades.
+    static func parseFiles(urls: [URL], storageService: StorageService? = nil) -> ImportResult? {
+        var allItems: [ParsedImportItem] = []
+        var allClosedTrades: [ClosedTrade] = []
+        var suggestedNames: [String] = []
+
+        // 1. Try Japanese broker / fund format aggregated across all URLs
+        var allBrokerRecords: [SpreadsheetIO.BrokerTradeRecord] = []
+        var brokerHandledURLs: Set<URL> = []
+
+        for url in urls {
+            if let records = SpreadsheetIO.extractJapaneseBrokerTradeRecords(from: url), !records.isEmpty {
+                allBrokerRecords.append(contentsOf: records)
+                brokerHandledURLs.insert(url)
+                let name = url.deletingPathExtension().lastPathComponent
+                if !suggestedNames.contains(name) {
+                    suggestedNames.append(name)
+                }
+            }
+        }
+
+        var allTransactions: [Transaction] = []
+
+        if !allBrokerRecords.isEmpty {
+            let imported = SpreadsheetIO.processBrokerTradeRecords(allBrokerRecords)
+            for p in imported {
+                if !p.name.isEmpty && !suggestedNames.contains(p.name) {
+                    suggestedNames.append(p.name)
+                }
+                for h in p.holdings {
+                    let isFund = StockService.isJapaneseMutualFund(h.symbol)
+                    allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
+                }
+                allClosedTrades.append(contentsOf: p.closedTrades)
+                allTransactions.append(contentsOf: p.transactions)
+            }
+        }
+
+        // 2. Try standard portfolio format (CSV / XLSX) & JSON for remaining URLs
+        for url in urls where !brokerHandledURLs.contains(url) {
             if let imported = SpreadsheetIO.parseStandardPortfolios(from: url), !imported.isEmpty {
                 for p in imported {
                     if !p.name.isEmpty && !suggestedNames.contains(p.name) {
@@ -186,11 +258,12 @@ enum PortfolioIO {
                         let isFund = StockService.isJapaneseMutualFund(h.symbol)
                         allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
                     }
+                    allClosedTrades.append(contentsOf: p.closedTrades)
+                    allTransactions.append(contentsOf: p.transactions)
                 }
                 continue
             }
 
-            // 3. Try JSON backup / storage import
             if let data = try? Data(contentsOf: url),
                let imported = StorageService.importPortfolios(from: data), !imported.isEmpty {
                 for p in imported {
@@ -201,20 +274,28 @@ enum PortfolioIO {
                         let isFund = StockService.isJapaneseMutualFund(h.symbol)
                         allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
                     }
+                    allClosedTrades.append(contentsOf: p.closedTrades)
+                    allTransactions.append(contentsOf: p.transactions)
                 }
                 continue
             }
         }
 
-        guard !allItems.isEmpty else { return nil }
+        guard !allItems.isEmpty || !allClosedTrades.isEmpty || !allTransactions.isEmpty else { return nil }
 
         let suggestedName = suggestedNames.first ?? urls.first?.deletingPathExtension().lastPathComponent
-        let isFundImport = allItems.allSatisfy { $0.isFund }
-        return ImportResult(items: allItems, suggestedPortfolioName: suggestedName, isFundImport: isFundImport)
+        let isFundImport = !allItems.isEmpty && allItems.allSatisfy { $0.isFund }
+        return ImportResult(
+            items: allItems,
+            closedTrades: allClosedTrades,
+            transactions: allTransactions,
+            suggestedPortfolioName: suggestedName,
+            isFundImport: isFundImport
+        )
     }
 
     static func parseStandardFile(fileURL url: URL, storageService: StorageService? = nil) -> ImportResult? {
-        parseFiles(urls: [url])
+        parseFiles(urls: [url], storageService: storageService)
     }
 
     static func parseJapaneseFundFile(fileURL url: URL) -> ImportResult? {

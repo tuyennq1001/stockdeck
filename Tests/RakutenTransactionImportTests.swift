@@ -103,10 +103,18 @@ final class RakutenTransactionImportTests: XCTestCase {
         XCTAssertFalse(symbols.contains("SOXL"))
     }
 
+    private func findTemplateURL(matching: String) -> URL? {
+        let dir = URL(fileURLWithPath: "template/transaction")
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return nil }
+        if let match = files.first(where: { $0.localizedCaseInsensitiveContains(matching) && $0.hasSuffix(".csv") }) {
+            return dir.appendingPathComponent(match)
+        }
+        return nil
+    }
+
     func testTuyenChineseStocksCSVImport() throws {
-        let fileURL = URL(fileURLWithPath: "template/transaction/Tuyen_tradehistory(CH)_20260822.csv")
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            XCTFail("Missing template file: \(fileURL.path)")
+        guard let fileURL = findTemplateURL(matching: "tradehistory(CH)") else {
+            XCTFail("Missing template file matching tradehistory(CH)")
             return
         }
 
@@ -131,9 +139,8 @@ final class RakutenTransactionImportTests: XCTestCase {
     }
 
     func testTuyenMutualFundsCSVImportWithHifumiPlus() throws {
-        let fileURL = URL(fileURLWithPath: "template/transaction/Tuyen_tradehistory(INVST)_20260822.csv")
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            XCTFail("Missing template file: \(fileURL.path)")
+        guard let fileURL = findTemplateURL(matching: "tuyen_tradehistory(INVST)") else {
+            XCTFail("Missing template file matching tuyen_tradehistory(INVST)")
             return
         }
 
@@ -160,9 +167,8 @@ final class RakutenTransactionImportTests: XCTestCase {
     }
 
     func testTuyenUSStocksCSVImportWithTransferOutAndIn() throws {
-        let fileURL = URL(fileURLWithPath: "template/transaction/Tuyen_tradehistory(US)_20260822.csv")
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            XCTFail("Missing template file: \(fileURL.path)")
+        guard let fileURL = findTemplateURL(matching: "tuyen_tradehistory(US)") else {
+            XCTFail("Missing template file matching tuyen_tradehistory(US)")
             return
         }
 
@@ -186,15 +192,20 @@ final class RakutenTransactionImportTests: XCTestCase {
         XCTAssertEqual(spgi.quantity, 16)
         XCTAssertGreaterThan(spgi.avgPrice, 370.0) // 95.6% of original ~$398.17 -> ~$380.65
 
-        let generalMBGL = general?.holdings.filter { $0.symbol == "MBGL" } ?? []
-        XCTAssertEqual(generalMBGL.count, 1)
-        let mbgl = try XCTUnwrap(generalMBGL.first)
-        XCTAssertEqual(mbgl.quantity, 16)
-        XCTAssertGreaterThan(mbgl.avgPrice, 15.0) // 4.4% of original ~$398.17 -> ~$17.52
-
-        // Verify total allocated cost equals original cost: 16 * 380.65 + 16 * 17.52 == 6370.72
-        let totalCost = (spgi.quantity * spgi.avgPrice) + (mbgl.quantity * mbgl.avgPrice)
-        XCTAssertEqual(totalCost, 6370.72, accuracy: 1.0)
+        // If MBGL was subsequently sold in the file (e.g. 2026/09/04), it will be in closedTrades
+        if let mbgl = general?.holdings.first(where: { $0.symbol == "MBGL" }) {
+            XCTAssertEqual(mbgl.quantity, 16)
+            XCTAssertGreaterThan(mbgl.avgPrice, 15.0) // 4.4% of original ~$398.17 -> ~$17.52
+            let totalCost = (spgi.quantity * spgi.avgPrice) + (mbgl.quantity * mbgl.avgPrice)
+            XCTAssertEqual(totalCost, 6370.72, accuracy: 1.0)
+        } else if let mbglClosed = general?.closedTrades.first(where: { $0.symbol == "MBGL" }) {
+            XCTAssertEqual(mbglClosed.quantity, 16)
+            XCTAssertGreaterThan(mbglClosed.buyPrice, 15.0)
+            let totalCost = (spgi.quantity * spgi.avgPrice) + (mbglClosed.quantity * mbglClosed.buyPrice)
+            XCTAssertEqual(totalCost, 6370.72, accuracy: 1.0)
+        } else {
+            XCTFail("MBGL not found in general account holdings or closed trades")
+        }
     }
 
     @MainActor
@@ -231,4 +242,58 @@ final class RakutenTransactionImportTests: XCTestCase {
         let stockItem = items.first { $0.holding.symbol == "VOO" }
         XCTAssertEqual(stockItem?.isFund, false)
     }
+
+    @MainActor
+    func testMBGLSellTradeReportsAllClosedStatus() throws {
+        let userCSV = """
+        約定日,受渡日,ティッカー,銘柄名,口座,取引区分,売買区分,信用区分,弁済期限,決済通貨,数量［株］,単価［USドル］,約定代金［USドル］,為替レート,手数料［USドル］,税金［USドル］,受渡金額［USドル］,受渡金額［円］
+        "2026/9/1","2026/9/3","MBGL","MOBILITY GLOBAL","特定","現物","売付","-","-","米ドル","16","20.3350","325.36","159.520","1.47","0.14","323.75","-"
+        """
+
+        let rows = userCSV.components(separatedBy: .newlines).map { line in
+            SpreadsheetIO.splitCSVLine(line, delimiter: ",")
+        }
+
+        let status = SpreadsheetIO.parseJapaneseBrokerCSVStatus(rows: rows)
+        switch status {
+        case .allTradesClosed(let count):
+            XCTAssertEqual(count, 1)
+        default:
+            XCTFail("Expected allTradesClosed status, got \(status)")
+        }
+
+        let parsedPortfolios = SpreadsheetIO.parseJapaneseBrokerCSV(rows: rows)
+        XCTAssertNil(parsedPortfolios, "Sell-only trade should produce 0 active holdings")
+    }
+
+    @MainActor
+    func testCombinedMultiFileBuyAndSubsequentSell() throws {
+        guard let historyURL = findTemplateURL(matching: "tuyen_tradehistory(US)") else {
+            XCTFail("Missing template file matching tuyen_tradehistory(US)")
+            return
+        }
+
+        // Create temporary CSV file for the 2026/9/1 MBGL sell trade
+        let tempSellURL = FileManager.default.temporaryDirectory.appendingPathComponent("MBGL_sell_\(UUID().uuidString).csv")
+        let sellCSV = """
+        約定日,受渡日,ティッカー,銘柄名,口座,取引区分,売買区分,信用区分,弁済期限,決済通貨,数量［株］,単価［USドル］,約定代金［USドル］,為替レート,手数料［USドル］,税金［USドル］,受渡金額［USドル］,受渡金額［円］
+        "2026/9/1","2026/9/3","MBGL","MOBILITY GLOBAL","一般","現物","売付","-","-","米ドル","16","20.3350","325.36","159.520","1.47","0.14","323.75","-"
+        """
+        try sellCSV.write(to: tempSellURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempSellURL) }
+
+        // Combined multi-file import
+        let result = PortfolioIO.parseFiles(urls: [historyURL, tempSellURL])
+        XCTAssertNotNil(result)
+
+        let items = result?.items ?? []
+        let symbols = Set(items.map(\.holding.symbol))
+
+        // SPGI should still be active in 一般
+        XCTAssertTrue(symbols.contains("SPGI"))
+
+        // MBGL was sold 16 shares on 2026/9/1 -> should NOT be in active holdings!
+        XCTAssertFalse(symbols.contains("MBGL"), "MBGL was sold out and must not appear in active positions")
+    }
 }
+

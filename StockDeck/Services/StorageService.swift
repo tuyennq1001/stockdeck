@@ -1841,6 +1841,127 @@ class StorageService: ObservableObject {
         portfolios[pIndex].holdings[hIndex].leverage = leverage
     }
 
+    func addClosedTradesBatch(_ newTrades: [ClosedTrade], to portfolioId: UUID) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
+
+        var currentClosed = portfolios[pIndex].closedTrades
+        for newT in newTrades {
+            let isDuplicate = currentClosed.contains {
+                $0.id == newT.id || (
+                    $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                    && abs($0.quantity - newT.quantity) < 1e-6
+                    && abs($0.buyPrice - newT.buyPrice) < 1e-4
+                    && abs($0.sellPrice - newT.sellPrice) < 1e-4
+                    && $0.sellDate == newT.sellDate
+                    && $0.buyDate == newT.buyDate
+                )
+            }
+            if !isDuplicate {
+                currentClosed.append(newT)
+            }
+        }
+        portfolios[pIndex].closedTrades = currentClosed
+    }
+
+    func removeClosedTrade(from portfolioId: UUID, tradeId: UUID) {
+        removeClosedTrades(from: portfolioId, tradeIds: [tradeId])
+    }
+
+    func removeClosedTrades(from portfolioId: UUID, tradeIds: Set<UUID>) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
+        portfolios[pIndex].closedTrades.removeAll { tradeIds.contains($0.id) }
+    }
+
+    func addTransactionsBatch(_ newTransactions: [Transaction], to portfolioId: UUID) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
+
+        var currentTransactions = portfolios[pIndex].transactions
+        var existingSignatures = Set(currentTransactions.map { $0.signature })
+        existingSignatures.formUnion(currentTransactions.map { $0.id.uuidString })
+
+        for tx in newTransactions {
+            if !existingSignatures.contains(tx.signature) && !existingSignatures.contains(tx.id.uuidString) {
+                currentTransactions.append(tx)
+                existingSignatures.insert(tx.signature)
+                existingSignatures.insert(tx.id.uuidString)
+            }
+        }
+        // Sort chronologically descending (newest first)
+        currentTransactions.sort { $0.date > $1.date }
+        portfolios[pIndex].transactions = currentTransactions
+    }
+
+    func removeTransaction(from portfolioId: UUID, transactionId: UUID) {
+        removeTransactions(from: portfolioId, transactionIds: [transactionId])
+    }
+
+    func removeTransactions(from portfolioId: UUID, transactionIds: Set<UUID>) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly else { return }
+        portfolios[pIndex].transactions.removeAll { transactionIds.contains($0.id) }
+    }
+
+    func updateTransaction(in portfolioId: UUID, transaction: Transaction) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly,
+              let tIndex = portfolios[pIndex].transactions.firstIndex(where: { $0.id == transaction.id })
+        else { return }
+        portfolios[pIndex].transactions[tIndex] = transaction
+    }
+
+    func recordSellTrade(
+        portfolioId: UUID,
+        holdingId: UUID,
+        sellQuantity: Double,
+        sellPrice: Double,
+        sellDate: Date
+    ) {
+        guard let pIndex = portfolios.firstIndex(where: { $0.id == portfolioId }),
+              !portfolios[pIndex].isReadOnly,
+              let hIndex = portfolios[pIndex].holdings.firstIndex(where: { $0.id == holdingId })
+        else { return }
+
+        let holding = portfolios[pIndex].holdings[hIndex]
+        let qtyToClose = min(abs(holding.quantity), abs(sellQuantity))
+        guard qtyToClose > 0 else { return }
+
+        let closedTrade = ClosedTrade(
+            symbol: holding.symbol,
+            quantity: qtyToClose,
+            buyPrice: holding.avgPrice,
+            sellPrice: sellPrice,
+            buyDate: holding.purchaseDate,
+            sellDate: sellDate,
+            account: holding.account,
+            leverage: holding.leverage
+        )
+
+        portfolios[pIndex].closedTrades.append(closedTrade)
+
+        let tx = Transaction(
+            date: sellDate,
+            symbol: holding.symbol,
+            type: .sell,
+            quantity: qtyToClose,
+            price: sellPrice,
+            amount: qtyToClose * sellPrice,
+            currency: "USD",
+            account: holding.account,
+            notes: "Manual position sell"
+        )
+        portfolios[pIndex].transactions.insert(tx, at: 0)
+
+        let remainingQty = holding.quantity - qtyToClose
+        if abs(remainingQty) < 1e-6 {
+            portfolios[pIndex].holdings.remove(at: hIndex)
+        } else {
+            portfolios[pIndex].holdings[hIndex].quantity = remainingQty
+        }
+    }
+
     func resetToDefaults() {
         preferredCurrency = "EUR"
         stockPriceCurrency = ""

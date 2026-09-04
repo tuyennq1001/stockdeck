@@ -15,9 +15,18 @@ struct HoldingDetailView: View {
     let holding: Holding
     let quote: StockQuote
 
+    struct TargetCloseLot: Identifiable {
+        let id = UUID()
+        let portfolioId: UUID
+        let holding: Holding
+    }
+
     @State private var showAlert = false
     @State private var confirmDeleteLot: ValuedHolding? = nil
+    @State private var targetCloseLot: TargetCloseLot? = nil
     @State private var selectedNewsArticle: NewsArticle? = nil
+    @State private var expandedClosedTradeIds: Set<String> = []
+    @State private var expandedTxIds: Set<String> = []
 
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
@@ -93,6 +102,8 @@ struct HoldingDetailView: View {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                     statStrip
                     purchaseLotsCard
+                    closedTradesForSymbolCard
+                    transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
@@ -110,6 +121,16 @@ struct HoldingDetailView: View {
             }
         }
         .navigationTitle(mainTitle)
+        .sheet(item: $targetCloseLot) { target in
+            CloseHoldingSheet(
+                portfolioId: target.portfolioId,
+                holding: target.holding,
+                quote: quote,
+                onDismiss: { targetCloseLot = nil }
+            )
+            .environmentObject(storageService)
+            .environmentObject(stockService)
+        }
         .sheet(isPresented: $showAlert) {
             PriceAlertSheet(symbol: holding.symbol) { showAlert = false }
                 .environmentObject(stockService).environmentObject(storageService)
@@ -255,7 +276,7 @@ struct HoldingDetailView: View {
                     Text("Value").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     Text("PnL").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
                     if isEditableScope && !isPortfolioReadOnly {
-                        Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 50, alignment: .trailing)
+                        Text("Actions").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 75, alignment: .trailing)
                     }
                 }
                 .padding(.bottom, 8)
@@ -320,6 +341,17 @@ struct HoldingDetailView: View {
                         if isEditableScope && !isPortfolioReadOnly {
                             HStack(spacing: 6) {
                                 Button {
+                                    targetCloseLot = TargetCloseLot(portfolioId: vh.portfolioId, holding: vh.holding)
+                                } label: {
+                                    Image(systemName: "arrow.down.right.circle")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DS.brand)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help("Sell / Close lot")
+
+                                Button {
                                     editHoldingAction.perform(vh.portfolioId, vh.holding)
                                 } label: {
                                     Image(systemName: "pencil")
@@ -341,7 +373,7 @@ struct HoldingDetailView: View {
                                 .pointingHandCursor()
                                 .help("Delete lot")
                             }
-                            .frame(width: 50, alignment: .trailing)
+                            .frame(width: 75, alignment: .trailing)
                         }
                     }
                     .padding(.vertical, 8)
@@ -369,6 +401,342 @@ struct HoldingDetailView: View {
             }
         }
     }
+
+    private var rawSymbolClosedTrades: [ClosedTrade] {
+        scopedPortfolios.flatMap(\.closedTrades).filter {
+            StockService.canonicalSymbol(for: $0.symbol) == StockService.canonicalSymbol(for: holding.symbol)
+        }.sorted { ($0.sellDate ?? .distantPast) > ($1.sellDate ?? .distantPast) }
+    }
+
+    private var symbolClosedTrades: [ConsolidatedClosedTrade] {
+        ConsolidatedClosedTrade.consolidate(trades: rawSymbolClosedTrades)
+            .sorted { ($0.sellDate ?? .distantPast) > ($1.sellDate ?? .distantPast) }
+    }
+
+    private var closedTradesForSymbolCard: some View {
+        Group {
+            if !symbolClosedTrades.isEmpty {
+                Card(title: "Closed Trades History (\(symbolClosedTrades.count))") {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Text("Sell Date").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 105, alignment: .leading)
+                            Text("Account").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 80, alignment: .leading)
+                            Text("Qty").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 55, alignment: .trailing)
+                            Text("Buy Price").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("Invested").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("Sell Price").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("Realized PnL").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .padding(.bottom, 8)
+                        Divider().overlay(DS.hairline)
+
+                        ForEach(symbolClosedTrades) { trade in
+                            let isExpanded = expandedClosedTradeIds.contains(trade.id)
+                            VStack(spacing: 0) {
+                                HStack(spacing: 0) {
+                                    HStack(spacing: 4) {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(trade.sellDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                                                .font(DS.caption)
+                                                .foregroundStyle(DS.ink)
+                                            if let days = trade.holdingPeriodDays {
+                                                Text("\(days)d held")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkTertiary)
+                                            }
+                                        }
+
+                                        if trade.lots.count > 1 {
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.15)) {
+                                                    if isExpanded {
+                                                        expandedClosedTradeIds.remove(trade.id)
+                                                    } else {
+                                                        expandedClosedTradeIds.insert(trade.id)
+                                                    }
+                                                }
+                                            } label: {
+                                                HStack(spacing: 2) {
+                                                    Text("\(trade.lots.count) lots")
+                                                        .font(.system(size: 9, weight: .bold))
+                                                        .foregroundStyle(DS.brand)
+                                                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                                        .font(.system(size: 8, weight: .bold))
+                                                        .foregroundStyle(DS.brand)
+                                                }
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1.5)
+                                                .background(DS.brand.opacity(0.1))
+                                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .pointingHandCursor()
+                                        }
+                                    }
+                                    .frame(width: 105, alignment: .leading)
+
+                                    Text(trade.account ?? "—")
+                                        .font(DS.caption)
+                                        .foregroundStyle(DS.inkSecondary)
+                                        .lineLimit(1)
+                                        .frame(width: 80, alignment: .leading)
+
+                                    Text("\(formatQty(trade.quantity))")
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.ink)
+                                        .frame(width: 55, alignment: .trailing)
+
+                                    Text(trade.buyPrice > 0 ? StorageService.formatAmount(trade.buyPrice, symbol: priceSymbol, decimals: storageService.amountDecimals) : "—")
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.inkSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                    Text(trade.costBasis > 0 ? StorageService.formatAmount(trade.costBasis, symbol: priceSymbol, decimals: storageService.amountDecimals) : "—")
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.inkSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                    Text(StorageService.formatAmount(trade.sellPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.ink)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(StorageService.formatAmount(trade.realizedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
+                                            .font(DS.figure)
+                                            .foregroundStyle(DS.pnlColor(trade.realizedPnl))
+                                        ChangePill(
+                                            value: trade.realizedPnlPercent,
+                                            text: String(format: "%+.\(storageService.percentDecimals)f%%", trade.realizedPnlPercent)
+                                        )
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                                .padding(.vertical, 8)
+
+                                if isExpanded && trade.lots.count > 1 {
+                                    VStack(spacing: 2) {
+                                        ForEach(trade.lots) { lot in
+                                            HStack(spacing: 0) {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "arrow.turn.down.right")
+                                                        .font(.system(size: 9))
+                                                        .foregroundStyle(DS.inkTertiary)
+                                                    Text(lot.buyDate.map { "Bought " + Self.dateFormatter.string(from: $0) } ?? "Lot")
+                                                        .font(DS.micro)
+                                                        .foregroundStyle(DS.inkSecondary)
+                                                        .lineLimit(1)
+                                                }
+                                                .padding(.leading, 12)
+                                                .frame(width: 105, alignment: .leading)
+
+                                                Text(lot.account ?? "—")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .lineLimit(1)
+                                                    .frame(width: 80, alignment: .leading)
+
+                                                Text("\(formatQty(lot.quantity))")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(width: 55, alignment: .trailing)
+
+                                                Text(lot.buyPrice > 0 ? StorageService.formatAmount(lot.buyPrice, symbol: priceSymbol, decimals: storageService.amountDecimals) : "—")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                                Text(lot.costBasis > 0 ? StorageService.formatAmount(lot.costBasis, symbol: priceSymbol, decimals: storageService.amountDecimals) : "—")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                                Text(StorageService.formatAmount(lot.sellPrice, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                                VStack(alignment: .trailing, spacing: 1) {
+                                                    Text(StorageService.formatAmount(lot.realizedPnl, symbol: priceSymbol, decimals: storageService.amountDecimals, signed: true))
+                                                        .font(DS.micro)
+                                                        .foregroundStyle(DS.pnlColor(lot.realizedPnl))
+                                                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", lot.realizedPnlPercent))
+                                                        .font(.system(size: 9, weight: .medium))
+                                                        .foregroundStyle(DS.pnlColor(lot.realizedPnl))
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                            }
+                                            .padding(.vertical, 4)
+                                            .background(DS.cardAlt.opacity(0.45))
+                                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                                        }
+                                    }
+                                    .padding(.vertical, 3)
+                                }
+                            }
+
+                            if trade.id != symbolClosedTrades.last?.id {
+                                Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 4)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var rawSymbolTransactions: [Transaction] {
+        scopedPortfolios.flatMap(\.transactions).filter {
+            StockService.canonicalSymbol(for: $0.symbol) == StockService.canonicalSymbol(for: holding.symbol)
+        }.sorted { $0.date > $1.date }
+    }
+
+    private var symbolTransactions: [ConsolidatedTransaction] {
+        ConsolidatedTransaction.consolidate(transactions: rawSymbolTransactions)
+            .sorted { $0.date > $1.date }
+    }
+
+    private var transactionsForSymbolCard: some View {
+        Group {
+            if !symbolTransactions.isEmpty {
+                Card(title: "Transaction History (\(symbolTransactions.count))") {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Text("Date").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 80, alignment: .leading)
+                            Text("Type").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 90, alignment: .leading)
+                            Text("Account").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 70, alignment: .leading)
+                            Text("Qty").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(width: 60, alignment: .trailing)
+                            Text("Price").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("Amount").font(DS.micro).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .padding(.bottom, 8)
+                        Divider().overlay(DS.hairline)
+
+                        ForEach(symbolTransactions) { tx in
+                            let isExpanded = expandedTxIds.contains(tx.id)
+                            VStack(spacing: 0) {
+                                HStack(spacing: 0) {
+                                    Text(Self.dateFormatter.string(from: tx.date))
+                                        .font(DS.caption)
+                                        .foregroundStyle(DS.ink)
+                                        .frame(width: 80, alignment: .leading)
+
+                                    HStack(spacing: 4) {
+                                        Text(tx.type.displayName)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(tx.type == .buy ? DS.up : (tx.type == .sell ? DS.down : DS.brand))
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1.5)
+                                            .background((tx.type == .buy ? DS.up : (tx.type == .sell ? DS.down : DS.brand)).opacity(0.12))
+                                            .clipShape(RoundedRectangle(cornerRadius: 3))
+
+                                        if tx.transactions.count > 1 {
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.15)) {
+                                                    if isExpanded {
+                                                        expandedTxIds.remove(tx.id)
+                                                    } else {
+                                                        expandedTxIds.insert(tx.id)
+                                                    }
+                                                }
+                                            } label: {
+                                                HStack(spacing: 2) {
+                                                    Text("\(tx.transactions.count) fills")
+                                                        .font(.system(size: 8, weight: .bold))
+                                                        .foregroundStyle(DS.brand)
+                                                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                                        .font(.system(size: 7, weight: .bold))
+                                                        .foregroundStyle(DS.brand)
+                                                }
+                                                .padding(.horizontal, 3)
+                                                .padding(.vertical, 1)
+                                                .background(DS.brand.opacity(0.1))
+                                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .pointingHandCursor()
+                                        }
+                                    }
+                                    .frame(width: 90, alignment: .leading)
+
+                                    Text(tx.account ?? "—")
+                                        .font(DS.caption)
+                                        .foregroundStyle(DS.inkSecondary)
+                                        .frame(width: 70, alignment: .leading)
+
+                                    Text("\(formatQty(tx.quantity))")
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.ink)
+                                        .frame(width: 60, alignment: .trailing)
+
+                                    Text(StorageService.formatAmount(tx.price, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.inkSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                    Text(StorageService.formatAmount(tx.effectiveAmount, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                        .font(DS.figure)
+                                        .foregroundStyle(DS.ink)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                                .padding(.vertical, 7)
+
+                                if isExpanded && tx.transactions.count > 1 {
+                                    VStack(spacing: 2) {
+                                        ForEach(Array(tx.transactions.enumerated()), id: \.element.id) { index, subTx in
+                                            HStack(spacing: 0) {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "arrow.turn.down.right")
+                                                        .font(.system(size: 9))
+                                                        .foregroundStyle(DS.inkTertiary)
+                                                    Text("Fill #\(index + 1)")
+                                                        .font(DS.micro)
+                                                        .foregroundStyle(DS.inkSecondary)
+                                                }
+                                                .padding(.leading, 12)
+                                                .frame(width: 80, alignment: .leading)
+
+                                                Spacer().frame(width: 90)
+
+                                                Text(subTx.account ?? "—")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(width: 70, alignment: .leading)
+
+                                                Text("\(formatQty(subTx.quantity))")
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(width: 60, alignment: .trailing)
+
+                                                Text(StorageService.formatAmount(subTx.price, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                                                Text(StorageService.formatAmount(subTx.effectiveAmount, symbol: priceSymbol, decimals: storageService.amountDecimals))
+                                                    .font(DS.micro)
+                                                    .foregroundStyle(DS.inkSecondary)
+                                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                            }
+                                            .padding(.vertical, 4)
+                                            .background(DS.cardAlt.opacity(0.45))
+                                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                                        }
+                                    }
+                                    .padding(.vertical, 3)
+                                }
+                            }
+
+                            if tx.id != symbolTransactions.last?.id {
+                                Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 4)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 
     // MARK: - Stats
 

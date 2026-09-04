@@ -169,6 +169,8 @@ struct PortfolioWindowView: View {
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
                 items: res.items,
+                closedTrades: res.closedTrades,
+                transactions: res.transactions,
                 suggestedPortfolioName: res.suggestedPortfolioName,
                 isFundImport: res.isFundImport
             ) {

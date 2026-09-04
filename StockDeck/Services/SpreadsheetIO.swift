@@ -456,38 +456,68 @@ enum SpreadsheetIO {
 
     /// Option 2: 投資信託 (Japanese Funds Trade History CSV/XLSX) import.
     static func parseJapaneseFundCSV(from fileURL: URL) -> [Portfolio]? {
-        let ext = fileURL.pathExtension.lowercased()
-        if ext == "xlsx" {
-            if let rows = parseXLSXRows(fileURL: fileURL), !rows.isEmpty {
-                return parseJapaneseBrokerCSV(rows: rows)
-            }
-            return nil
-        }
-        guard let content = readTextFile(url: fileURL) else { return nil }
-        let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        var rows: [[String]] = []
-        for line in lines {
-            let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
-            let cols = splitCSVLine(line, delimiter: delimiter)
-            rows.append(cols)
-        }
-        return parseJapaneseBrokerCSV(rows: rows)
+        guard let records = extractJapaneseBrokerTradeRecords(from: fileURL) else { return nil }
+        let portfolios = processBrokerTradeRecords(records)
+        let totalActiveHoldings = portfolios.reduce(0) { $0 + $1.holdings.count }
+        return totalActiveHoldings > 0 ? portfolios : nil
     }
 
-    /// Helper to read text files with fallback encodings (UTF-8, Shift-JIS, DOS Japanese).
+    /// Status-aware Japanese broker / fund trade history parser.
+    static func parseJapaneseFundCSVStatus(from fileURL: URL) -> BrokerParseStatus {
+        guard let records = extractJapaneseBrokerTradeRecords(from: fileURL) else {
+            return .invalidFormat
+        }
+        let portfolios = processBrokerTradeRecords(records)
+        let totalActiveHoldings = portfolios.reduce(0) { $0 + $1.holdings.count }
+        if totalActiveHoldings > 0 {
+            return .success(portfolios)
+        } else {
+            return .allTradesClosed(tradesCount: records.count)
+        }
+    }
+
+    /// Helper to read text files with fallback encodings (UTF-8, Windows-31J / CP932 / DOS Japanese, Shift-JIS, EUC-JP, ISO-2022-JP).
     static func readTextFile(url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        if let str = String(data: data, encoding: .utf8), !str.contains("") {
+
+        // 1. Check UTF-8 (and strip BOM if present)
+        if let str = String(data: data, encoding: .utf8), !str.contains("\u{FFFD}") {
+            return str.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}"))
+        }
+
+        // 2. Windows-31J / CP932 / DOS Japanese (Standard for Rakuten, SBI, Monex exports)
+        let cfDosJapanese = CFStringEncodings.dosJapanese.rawValue
+        let nsDosEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfDosJapanese))
+        if let str = String(data: data, encoding: String.Encoding(rawValue: nsDosEncoding)), !str.contains("\u{FFFD}") {
             return str
         }
-        if let str = String(data: data, encoding: .shiftJIS), !str.contains("") {
+
+        // 3. Standard Shift-JIS (JIS X 0208)
+        if let str = String(data: data, encoding: .shiftJIS), !str.contains("\u{FFFD}") {
             return str
         }
-        let cfEncoding = CFStringEncodings.dosJapanese.rawValue
-        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding))
-        if let str = String(data: data, encoding: String.Encoding(rawValue: nsEncoding)), !str.contains("") {
+
+        // 4. Shift-JIS X0213
+        let cfShiftJISX0213 = CFStringEncodings.shiftJIS_X0213_00.rawValue
+        let nsX0213Encoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfShiftJISX0213))
+        if let str = String(data: data, encoding: String.Encoding(rawValue: nsX0213Encoding)), !str.contains("\u{FFFD}") {
             return str
         }
+
+        // 5. EUC-JP
+        let cfEUCJP = CFStringEncodings.EUC_JP.rawValue
+        let nsEUCEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEUCJP))
+        if let str = String(data: data, encoding: String.Encoding(rawValue: nsEUCEncoding)), !str.contains("\u{FFFD}") {
+            return str
+        }
+
+        // 6. ISO-2022-JP
+        let cfISO = CFStringEncodings.ISO_2022_JP.rawValue
+        let nsISOEncoding = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfISO))
+        if let str = String(data: data, encoding: String.Encoding(rawValue: nsISOEncoding)), !str.contains("\u{FFFD}") {
+            return str
+        }
+
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .shiftJIS)
     }
 
@@ -783,7 +813,7 @@ enum SpreadsheetIO {
         return convertRowsToPortfolios(rows: rows)
     }
 
-    private static func splitCSVLine(_ line: String, delimiter: Character = ",") -> [String] {
+    static func splitCSVLine(_ line: String, delimiter: Character = ",") -> [String] {
         var result: [String] = []
         var current = ""
         var inQuotes = false
@@ -847,7 +877,26 @@ enum SpreadsheetIO {
         "eMAXIS Slim 国内リートインデックス": "0331119A"
     ]
 
-    static func parseJapaneseBrokerCSV(rows: [[String]]) -> [Portfolio]? {
+    struct BrokerTradeRecord {
+        let account: String
+        let fundName: String
+        let symbol: String
+        let isBuy: Bool
+        let isTransferOut: Bool
+        let isTransferIn: Bool
+        let qty: Double
+        let unitPrice: Double
+        let date: Date?
+    }
+
+    enum BrokerParseStatus {
+        case success([Portfolio])
+        case allTradesClosed(tradesCount: Int)
+        case invalidFormat
+    }
+
+    /// Extracts raw trade records from broker CSV / XLSX rows.
+    static func extractJapaneseBrokerTradeRecords(rows: [[String]]) -> [BrokerTradeRecord]? {
         guard !rows.isEmpty else { return nil }
 
         var headerIdx = -1
@@ -899,19 +948,7 @@ enum SpreadsheetIO {
 
         guard headerIdx != -1 && (fundCol != -1 || codeCol != -1) else { return nil }
 
-        struct TradeRecord {
-            let account: String
-            let fundName: String
-            let symbol: String
-            let isBuy: Bool
-            let isTransferOut: Bool
-            let isTransferIn: Bool
-            let qty: Double
-            let unitPrice: Double
-            let date: Date?
-        }
-
-        var records: [TradeRecord] = []
+        var records: [BrokerTradeRecord] = []
 
         for i in (headerIdx + 1)..<rows.count {
             let r = rows[i]
@@ -977,17 +1014,58 @@ enum SpreadsheetIO {
             }
 
             if qty > 0 {
-                records.append(TradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, isTransferOut: isTransferOut, isTransferIn: isTransferIn, qty: qty, unitPrice: price, date: pDate))
+                records.append(BrokerTradeRecord(account: account, fundName: cleanFundName, symbol: symbol, isBuy: isBuy, isTransferOut: isTransferOut, isTransferIn: isTransferIn, qty: qty, unitPrice: price, date: pDate))
             }
         }
 
-        // Sort records chronologically, placing transfers out before transfers in on the same date
-        records.sort { (a, b) -> Bool in
-            if let da = a.date, let db = b.date {
-                if da != db { return da < db }
-                if a.isTransferOut != b.isTransferOut { return a.isTransferOut }
+        return records.isEmpty ? nil : records
+    }
+
+    /// Extracts broker trade records directly from a file URL.
+    static func extractJapaneseBrokerTradeRecords(from fileURL: URL) -> [BrokerTradeRecord]? {
+        let ext = fileURL.pathExtension.lowercased()
+        if ext == "xlsx" {
+            if let rows = parseXLSXRows(fileURL: fileURL), !rows.isEmpty {
+                return extractJapaneseBrokerTradeRecords(rows: rows)
             }
-            return false
+            return nil
+        }
+        guard let content = readTextFile(url: fileURL) else { return nil }
+        let lines = content.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        var rows: [[String]] = []
+        for line in lines {
+            let delimiter: Character = line.contains(";") ? ";" : (line.contains("\t") ? "\t" : ",")
+            let cols = splitCSVLine(line, delimiter: delimiter)
+            rows.append(cols)
+        }
+        return extractJapaneseBrokerTradeRecords(rows: rows)
+    }
+
+    /// Processes a list of broker trade records with FIFO cost basis deduction, spin-off ratio adjustments, and generates active Portfolios.
+    static func processBrokerTradeRecords(_ rawRecords: [BrokerTradeRecord]) -> [Portfolio] {
+        var records = rawRecords
+
+        // Known spin-off parent-child pairs & distribution weight:
+        // e.g. "SPGI" -> (child: "MBGL", childRatio: 0.044) (market price ratio: MBGL $19.85 / total $451.14 ~ 4.4%)
+        let knownSpinOffs: [String: (child: String, childRatio: Double)] = [
+            "SPGI": ("MBGL", 0.044)
+        ]
+
+        // Sort records chronologically, placing transfers out before transfers in on the same date,
+        // and parent before child in spin-offs
+        records.sort { (a, b) -> Bool in
+            let da = a.date ?? .distantPast
+            let db = b.date ?? .distantPast
+            if da != db { return da < db }
+            if a.isTransferOut != b.isTransferOut { return a.isTransferOut }
+            if a.isBuy != b.isBuy { return a.isBuy }
+            if let config = knownSpinOffs[a.symbol], config.child == b.symbol {
+                return true
+            }
+            if let config = knownSpinOffs[b.symbol], config.child == a.symbol {
+                return false
+            }
+            return a.symbol < b.symbol
         }
 
         struct PositionLot {
@@ -997,17 +1075,24 @@ enum SpreadsheetIO {
             let date: Date?
         }
 
-        // Known spin-off parent-child pairs & distribution weight:
-        // e.g. "SPGI" -> (child: "MBGL", childRatio: 0.044) (market price ratio: MBGL $19.85 / total $451.14 ~ 4.4%)
-        let knownSpinOffs: [String: (child: String, childRatio: Double)] = [
-            "SPGI": ("MBGL", 0.044)
-        ]
-
         var accountLotsMap: [String: [PositionLot]] = [:]
         var transferredOutLots: [PositionLot] = []
+        var closedTradesMap: [String: [ClosedTrade]] = [:]
+        var transactionsMap: [String: [Transaction]] = [:]
 
         for rec in records {
             var lots = accountLotsMap[rec.account] ?? []
+
+            let txType: TransactionType
+            if rec.isTransferOut {
+                txType = .transferOut
+            } else if rec.isTransferIn {
+                txType = .transferIn
+            } else if rec.isBuy {
+                txType = .buy
+            } else {
+                txType = .sell
+            }
 
             if rec.isBuy {
                 var actualUnitPrice = rec.unitPrice
@@ -1019,7 +1104,11 @@ enum SpreadsheetIO {
                     if !matchingLots.isEmpty {
                         let totalQty = matchingLots.reduce(0.0) { $0 + $1.qty }
                         let totalCost = matchingLots.reduce(0.0) { $0 + ($1.qty * $1.unitPrice) }
-                        actualUnitPrice = totalQty > 0 ? (totalCost / totalQty) : 0.0
+                        var unitPrice = totalQty > 0 ? (totalCost / totalQty) : 0.0
+                        if let config = knownSpinOffs[rec.symbol] {
+                            unitPrice *= (1.0 - config.childRatio)
+                        }
+                        actualUnitPrice = unitPrice
                         if actualDate == nil { actualDate = matchingLots.first?.date }
                     } else {
                         // Check if this symbol is a spin-off child from a recently transferred parent
@@ -1062,12 +1151,39 @@ enum SpreadsheetIO {
                 }
 
                 lots.append(PositionLot(symbol: rec.symbol, qty: rec.qty, unitPrice: actualUnitPrice, date: actualDate))
+
+                let tx = Transaction(
+                    date: actualDate ?? rec.date ?? Date(),
+                    symbol: rec.symbol,
+                    type: txType,
+                    quantity: rec.qty,
+                    price: actualUnitPrice > 0 ? actualUnitPrice : rec.unitPrice,
+                    amount: rec.qty * (actualUnitPrice > 0 ? actualUnitPrice : rec.unitPrice),
+                    currency: "USD",
+                    account: rec.account,
+                    notes: rec.isTransferIn ? "Transfer In (入庫)" : nil
+                )
+                transactionsMap[rec.account, default: []].append(tx)
             } else {
                 // FIFO deduct from existing lots for this symbol
                 var remainingToSell = rec.qty
                 var updatedLots: [PositionLot] = []
                 for var lot in lots {
                     if lot.symbol == rec.symbol && remainingToSell > 0 {
+                        let matchedQty = min(lot.qty, remainingToSell)
+                        if !rec.isTransferOut {
+                            let closed = ClosedTrade(
+                                symbol: rec.symbol,
+                                quantity: matchedQty,
+                                buyPrice: lot.unitPrice,
+                                sellPrice: rec.unitPrice,
+                                buyDate: lot.date,
+                                sellDate: rec.date,
+                                account: rec.account
+                            )
+                            closedTradesMap[rec.account, default: []].append(closed)
+                        }
+
                         if lot.qty <= remainingToSell {
                             remainingToSell -= lot.qty
                             if rec.isTransferOut {
@@ -1086,6 +1202,35 @@ enum SpreadsheetIO {
                         updatedLots.append(lot)
                     }
                 }
+
+                // If standalone sell trade without existing buy lot in batch:
+                if remainingToSell > 0 && !rec.isTransferOut {
+                    let closed = ClosedTrade(
+                        symbol: rec.symbol,
+                        quantity: remainingToSell,
+                        buyPrice: 0.0,
+                        sellPrice: rec.unitPrice,
+                        buyDate: nil,
+                        sellDate: rec.date,
+                        account: rec.account
+                    )
+                    closedTradesMap[rec.account, default: []].append(closed)
+                }
+
+                let scale = StockService.isJapaneseMutualFund(rec.symbol) ? 10000.0 : 1.0
+                let tx = Transaction(
+                    date: rec.date ?? Date(),
+                    symbol: rec.symbol,
+                    type: txType,
+                    quantity: rec.qty,
+                    price: rec.unitPrice,
+                    amount: (rec.qty * rec.unitPrice) / scale,
+                    currency: StockService.detectedCurrency(for: rec.symbol),
+                    account: rec.account,
+                    notes: rec.isTransferOut ? "Transfer Out (出庫)" : nil
+                )
+                transactionsMap[rec.account, default: []].append(tx)
+
                 lots = updatedLots.filter { $0.qty > 0 }
             }
 
@@ -1098,12 +1243,39 @@ enum SpreadsheetIO {
             let activeHoldings = lots.filter { $0.qty > 0 }.map { lot in
                 Holding(symbol: lot.symbol, quantity: lot.qty, avgPrice: lot.unitPrice, purchaseDate: lot.date, account: accountName)
             }
-            if !activeHoldings.isEmpty {
-                resultPortfolios.append(Portfolio(id: UUID(), name: accountName, holdings: activeHoldings))
+            let closedTrades = closedTradesMap[accountName] ?? []
+            var txs = transactionsMap[accountName] ?? []
+            txs.sort { $0.date > $1.date }
+            if !activeHoldings.isEmpty || !closedTrades.isEmpty || !txs.isEmpty {
+                resultPortfolios.append(Portfolio(
+                    id: UUID(),
+                    name: accountName,
+                    holdings: activeHoldings,
+                    closedTrades: closedTrades,
+                    transactions: txs
+                ))
             }
         }
 
-        return resultPortfolios.isEmpty ? nil : resultPortfolios
+        return resultPortfolios
+    }
+
+    static func parseJapaneseBrokerCSV(rows: [[String]]) -> [Portfolio]? {
+        guard let records = extractJapaneseBrokerTradeRecords(rows: rows) else { return nil }
+        let portfolios = processBrokerTradeRecords(records)
+        let totalActiveHoldings = portfolios.reduce(0) { $0 + $1.holdings.count }
+        return totalActiveHoldings > 0 ? portfolios : nil
+    }
+
+    static func parseJapaneseBrokerCSVStatus(rows: [[String]]) -> BrokerParseStatus {
+        guard let records = extractJapaneseBrokerTradeRecords(rows: rows) else { return .invalidFormat }
+        let portfolios = processBrokerTradeRecords(records)
+        let totalActiveHoldings = portfolios.reduce(0) { $0 + $1.holdings.count }
+        if totalActiveHoldings > 0 {
+            return .success(portfolios)
+        } else {
+            return .allTradesClosed(tradesCount: records.count)
+        }
     }
 
     /// Converts tabular rows into Portfolio models.
@@ -1166,9 +1338,25 @@ enum SpreadsheetIO {
 
         let formats = [
             "yyyy/MM/dd",
+            "yyyy/M/d",
+            "yyyy/MM/d",
+            "yyyy/M/dd",
             "yyyy-MM-dd",
+            "yyyy-M-d",
+            "yyyy-MM-d",
+            "yyyy-M-dd",
+            "yyyy.MM.dd",
+            "yyyy.M.d",
+            "yyyy.MM.d",
+            "yyyy.M.dd",
             "dd/MM/yyyy",
+            "d/M/yyyy",
+            "dd/M/yyyy",
+            "d/MM/yyyy",
             "MM/dd/yyyy",
+            "M/d/yyyy",
+            "MM/d/yyyy",
+            "M/dd/yyyy",
             "dd-MMM-yyyy",
             "d-MMM-yyyy",
             "dd-MMM",
@@ -1177,6 +1365,7 @@ enum SpreadsheetIO {
 
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
 
         for fmt in formats {
             df.dateFormat = fmt

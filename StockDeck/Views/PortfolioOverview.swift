@@ -201,6 +201,22 @@ struct PortfolioOverview: View {
         case shares
         case weight
     }
+
+    enum PositionViewTab: String, CaseIterable {
+        case active = "Active"
+        case closed = "Closed"
+        case transactions = "Transactions"
+    }
+
+    struct TargetCloseHolding: Identifiable {
+        let id = UUID()
+        let portfolioId: UUID
+        let holding: Holding
+        let quote: StockQuote?
+    }
+
+    @State private var positionViewTab: PositionViewTab = .active
+    @State private var targetCloseHolding: TargetCloseHolding? = nil
     @State private var sortColumn: PositionSortColumn = .weight
     @State private var sortAscending: Bool = false
     @State private var showColumnCustomizer = false
@@ -215,7 +231,29 @@ struct PortfolioOverview: View {
     @State private var positionsCardWidth: CGFloat = 0
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
 
+    private var scopePortfolioId: UUID? {
+        if case .portfolio(let id) = scope { return id }
+        return nil
+    }
 
+    private var closedTradesCount: Int {
+        realizedPnlStats.totalClosed
+    }
+
+    private var transactionsCount: Int {
+        var raw: [(tx: Transaction, portfolioId: UUID, portfolioName: String)] = []
+        for p in portfolios {
+            for tx in p.transactions {
+                raw.append((tx, p.id, p.name))
+            }
+        }
+        return ConsolidatedTransaction.consolidate(transactionsWithPortfolio: raw).count
+    }
+
+
+    private var activeSymbolsCount: Int {
+        sortedSymbols().count
+    }
 
     private var insertionOrderedSymbols: [String] {
         var seen = Set<String>()
@@ -456,7 +494,7 @@ struct PortfolioOverview: View {
     }
 
     var body: some View {
-        PageScaffold(title, caption: "\(holdings.count) positions · \(storageService.preferredCurrency)", trailing: {
+        PageScaffold(title, caption: "\(activeSymbolsCount) positions · \(storageService.preferredCurrency)", trailing: {
             HStack(spacing: 12) {
                 portfolioMenu
                 RefreshButton(isLoading: stockService.isLoading) {
@@ -466,7 +504,7 @@ struct PortfolioOverview: View {
         }) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: DS.gap, pinnedViews: [.sectionHeaders]) {
+                    LazyVStack(alignment: .leading, spacing: DS.gap) {
                         heroCard
                         statRow
                         performanceMatrixCard
@@ -496,6 +534,16 @@ struct PortfolioOverview: View {
             }
         }
         .navigationTitle(title)
+        .sheet(item: $targetCloseHolding) { target in
+            CloseHoldingSheet(
+                portfolioId: target.portfolioId,
+                holding: target.holding,
+                quote: target.quote,
+                onDismiss: { targetCloseHolding = nil }
+            )
+            .environmentObject(storageService)
+            .environmentObject(stockService)
+        }
         .sheet(isPresented: $showColumnCustomizer) {
             PortfolioColumnCustomizer(initialColumns: storageService.resolvedPortfolioColumns) { columns in
                 storageService.setPortfolioColumns(columns)
@@ -806,27 +854,82 @@ struct PortfolioOverview: View {
 
     // MARK: - Stats
 
+    private var realizedPnlStats: (realizedPnl: Double, closedCost: Double, winRate: Double, totalClosed: Int) {
+        var raw: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)] = []
+        for p in portfolios {
+            for t in p.closedTrades {
+                raw.append((t, p.id, p.name))
+            }
+        }
+        let consolidated = ConsolidatedClosedTrade.consolidate(tradesWithPortfolio: raw)
+        var totalRealized: Double = 0
+        var totalClosedCost: Double = 0
+        var winCount: Int = 0
+
+        for ct in consolidated {
+            let curr = stockService.detectedCurrency(for: ct.symbol)
+            let rate = stockService.rate(from: curr)
+            totalRealized += ct.realizedPnl * rate
+            totalClosedCost += ct.costBasis * rate
+            if ct.realizedPnl > 0 {
+                winCount += 1
+            }
+        }
+
+        let totalClosed = consolidated.count
+        let winRate = totalClosed > 0 ? (Double(winCount) / Double(totalClosed)) * 100.0 : 0.0
+        return (totalRealized, totalClosedCost, winRate, totalClosed)
+    }
+
+
+    private var totalProfit: Double {
+        totalPnl + realizedPnlStats.realizedPnl
+    }
+
+    private var totalProfitPercent: Double {
+        let base = totalCost > 0 ? totalCost : realizedPnlStats.closedCost
+        return base > 0 ? (totalProfit / base) * 100.0 : 0.0
+    }
+
     private var statRow: some View {
         HStack(spacing: 12) {
-            StatTile(label: "Total PnL",
-                     value: StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                     caption: String(format: "%+.\(decimals)f%% on cost", totalPnlPercent),
-                     captionTint: DS.pnlColor(totalPnl), valueTint: DS.pnlColor(totalPnl),
-                     help: "Total profit/loss vs your cost basis")
-            StatTile(label: "Today",
-                     value: StorageService.formatAmount(dayChangeValue, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                     caption: String(format: "%+.\(decimals)f%%", dayChangePercent),
-                     captionTint: DS.pnlColor(dayChangeValue), valueTint: DS.pnlColor(dayChangeValue),
-                     help: "Change since the previous close")
-            StatTile(label: "Invested",
-                     value: StorageService.formatAmount(totalCost, symbol: currencySymbol, decimals: storageService.amountDecimals),
-                     caption: "\(holdings.count) holdings",
-                     help: "Total amount invested (cost basis)")
-            StatTile(label: "Concentration",
-                     value: String(format: "%.1f%%", topWeight),
-                     caption: topSymbol.map { topWeight > 40 ? "high · top \($0)" : "top · \($0)" } ?? "—",
-                     captionTint: topWeight > 40 ? DS.gold : DS.inkTertiary,
-                     help: "Weight of your largest position — a diversification risk gauge")
+            StatTile(
+                label: "Total Profit",
+                value: StorageService.formatAmount(totalProfit, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                caption: String(format: "%+.\(decimals)f%% on invested", totalProfitPercent),
+                captionTint: DS.pnlColor(totalProfit),
+                valueTint: DS.pnlColor(totalProfit),
+                help: "Lifetime total profit (Realized P&L + Unrealized P&L) vs invested capital"
+            )
+
+            StatTile(
+                label: "Unrealized P&L",
+                value: StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                caption: String(format: "%+.\(decimals)f%% · %d active", totalPnlPercent, activeSymbolsCount),
+                captionTint: DS.pnlColor(totalPnl),
+                valueTint: DS.pnlColor(totalPnl),
+                help: "Floating profit/loss of currently active positions"
+            )
+
+            StatTile(
+                label: "Realized P&L",
+                value: StorageService.formatAmount(realizedPnlStats.realizedPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                caption: realizedPnlStats.totalClosed > 0
+                    ? String(format: "%d closed · %.1f%% win", realizedPnlStats.totalClosed, realizedPnlStats.winRate)
+                    : "No closed trades",
+                captionTint: realizedPnlStats.winRate >= 50 ? DS.up : DS.inkSecondary,
+                valueTint: DS.pnlColor(realizedPnlStats.realizedPnl),
+                help: "Locked-in profit/loss from sold positions and win rate"
+            )
+
+            StatTile(
+                label: "Today",
+                value: StorageService.formatAmount(dayChangeValue, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                caption: String(format: "%+.\(decimals)f%%", dayChangePercent),
+                captionTint: DS.pnlColor(dayChangeValue),
+                valueTint: DS.pnlColor(dayChangeValue),
+                help: "Change since the previous close"
+            )
         }
     }
 
@@ -1466,13 +1569,30 @@ struct PortfolioOverview: View {
 
     private var positionsCard: some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack {
+            HStack(alignment: .center, spacing: 14) {
                 SectionLabel("Positions")
+
+                Picker("", selection: $positionViewTab) {
+                    Text("Active (\(activeSymbolsCount))").tag(PositionViewTab.active)
+                    Text("Closed (\(closedTradesCount))").tag(PositionViewTab.closed)
+                    Text("Transactions (\(transactionsCount))").tag(PositionViewTab.transactions)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+
                 Spacer()
-                columnCustomizerButton
-                addHoldingButton
+                if positionViewTab == .active {
+                    columnCustomizerButton
+                    addHoldingButton
+                }
             }
-            if holdings.isEmpty {
+
+            if positionViewTab == .transactions {
+                TransactionHistoryView(portfolioId: scopePortfolioId)
+            } else if positionViewTab == .closed {
+                ClosedPositionsView(portfolioId: scopePortfolioId)
+            } else if holdings.isEmpty {
                 VStack(spacing: 10) {
                     Text("No holdings yet").font(DS.bodyStrong).foregroundStyle(DS.ink)
                     Text("Add your first position to start tracking value and PnL.")
@@ -1487,38 +1607,47 @@ struct PortfolioOverview: View {
                 let symbolsList = sortedSymbols()
 
                 ScrollView(.horizontal, showsIndicators: true) {
-                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        Section(header: positionsHeaderView) {
-                            ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
-                                if let group = groupedValued[sym], let first = group.first {
-                                    let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
-                                    let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+                    VStack(spacing: 0) {
+                        positionsHeaderView
 
-                                    NavigationLink(value: first.id) {
-                                        PositionSummaryRow(
-                                            position: index + 1,
-                                            symbol: sym,
-                                            holdings: group,
-                                            currencySymbol: currencySymbol,
-                                            weight: weight,
-                                            topWeight: topWeight,
-                                            decimals: decimals,
-                                            valueDecimals: storageService.valueDecimals,
-                                            showExtendedHours: storageService.showExtendedHours,
-                                            aggregate: viewModel.symbolAggregates[sym],
-                                            columns: selectedColumns
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help("View \(sym) details")
-                                    .contextMenu {
-                                        let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
-                                        if group.count == 1 && !isPortReadOnly {
-                                            Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
-                                            Button(role: .destructive) {
-                                                confirmDeleteHolding = (first.holding, first.portfolioId)
-                                            } label: { Label("Delete", systemImage: "trash") }
+                        ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
+                            if let group = groupedValued[sym], let first = group.first {
+                                let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
+                                let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+
+                                NavigationLink(value: first.id) {
+                                    PositionSummaryRow(
+                                        position: index + 1,
+                                        symbol: sym,
+                                        holdings: group,
+                                        currencySymbol: currencySymbol,
+                                        weight: weight,
+                                        topWeight: topWeight,
+                                        decimals: decimals,
+                                        valueDecimals: storageService.valueDecimals,
+                                        showExtendedHours: storageService.showExtendedHours,
+                                        aggregate: viewModel.symbolAggregates[sym],
+                                        columns: selectedColumns
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .help("View \(sym) details")
+                                .contextMenu {
+                                    let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
+                                    if group.count == 1 && !isPortReadOnly {
+                                        Button {
+                                            targetCloseHolding = TargetCloseHolding(
+                                                portfolioId: first.portfolioId,
+                                                holding: first.holding,
+                                                quote: first.quote
+                                            )
+                                        } label: {
+                                            Label("Sell / Close Position…", systemImage: "arrow.down.right.circle")
                                         }
+                                        Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                        Button(role: .destructive) {
+                                            confirmDeleteHolding = (first.holding, first.portfolioId)
+                                        } label: { Label("Delete", systemImage: "trash") }
                                     }
                                 }
                             }
