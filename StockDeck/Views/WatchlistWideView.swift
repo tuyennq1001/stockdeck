@@ -59,48 +59,22 @@ struct WatchlistWideView: View {
         let changePercent: Double
         let oneMonthChangePercent: Double?
         let threeMonthChangePercent: Double?
+        let sixMonthChangePercent: Double?
         let ytdChangePercent: Double?
+        let oneYearChangePercent: Double?
+        let twoYearChangePercent: Double?
+        let threeYearChangePercent: Double?
+        let fiveYearChangePercent: Double?
+        let tenYearChangePercent: Double?
+        let allTimeHigh: Double?
+        let allTimeLow: Double?
+        let fromAthPercent: Double?
+        let fromAtlPercent: Double?
         let history: [PricePoint]
         let allTimeHistory: [PricePoint]
         let loaded: Bool
         let quote: StockQuote?
         let marketCap: Double?         // market cap in target currency for fair cross-currency sorting
-
-        var allTimeHigh: Double? {
-            let histHigh = allTimeHistory.map(\.effectiveHigh).max()
-            let quoteHigh = max(quote?.fiftyTwoWeekHigh ?? 0, quote?.price ?? 0)
-            if let h = histHigh {
-                return max(h, quoteHigh) * rate
-            } else if quoteHigh > 0 {
-                return quoteHigh * rate
-            }
-            return nil
-        }
-
-        var allTimeLow: Double? {
-            let histLow = allTimeHistory.map(\.effectiveLow).min()
-            let qLow = quote?.fiftyTwoWeekLow != nil ? min(quote!.fiftyTwoWeekLow!, quote?.price ?? Double.greatestFiniteMagnitude) : quote?.price
-            if let l = histLow, let ql = qLow, ql > 0 {
-                return min(l, ql) * rate
-            } else if let l = histLow {
-                return l * rate
-            } else if let ql = qLow, ql > 0 {
-                return ql * rate
-            }
-            return nil
-        }
-
-        var fromAthPercent: Double? {
-            guard let ath = allTimeHigh, ath > 0, price > 0 else { return nil }
-            if price >= ath { return 0.0 }
-            return min(0.0, (price - ath) / ath * 100)
-        }
-
-        var fromAtlPercent: Double? {
-            guard let atl = allTimeLow, atl > 0, price > 0 else { return nil }
-            if price <= atl { return 0.0 }
-            return max(0.0, (price - atl) / atl * 100)
-        }
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
@@ -114,24 +88,20 @@ struct WatchlistWideView: View {
                 return oneMonthChangePercent
             case .threeMonths:
                 return threeMonthChangePercent
+            case .sixMonths:
+                return sixMonthChangePercent
             case .ytd:
                 return ytdChangePercent
-            case .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
-                let calendar = Calendar.current
-                let now = Date()
-                let boundary: Date?
-                switch metric {
-                case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
-                case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
-                case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
-                case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
-                case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
-                case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
-                default: boundary = nil
-                }
-                guard let boundary else { return nil }
-                let hist = allTimeHistory.isEmpty ? history : allTimeHistory
-                return PriceHistory.percentChange(points: hist, currentPrice: quote?.price ?? 0, since: boundary)
+            case .oneYear:
+                return oneYearChangePercent
+            case .twoYears:
+                return twoYearChangePercent
+            case .threeYears:
+                return threeYearChangePercent
+            case .fiveYears:
+                return fiveYearChangePercent
+            case .tenYears:
+                return tenYearChangePercent
             case .ath:
                 return allTimeHigh
             case .atl:
@@ -556,7 +526,9 @@ struct WatchlistWideView: View {
                 }
                 .coordinateSpace(name: "hscroll")
                 .onPreferenceChange(HScrollOffsetKey.self) { offset in
-                    hScrollOffset = offset
+                    if abs(hScrollOffset - offset) > 0.5 {
+                        hScrollOffset = offset
+                    }
                 }
             }
         }
@@ -1182,24 +1154,7 @@ private struct WatchRowView<Menu: View>: View {
     }
 
     private func periodChange(_ metric: WatchlistMetric) -> Double? {
-        let calendar = Calendar.current
-        let now = Date()
-        let boundary: Date?
-        switch metric {
-        case .oneMonth: boundary = calendar.date(byAdding: .month, value: -1, to: now)
-        case .threeMonths: boundary = calendar.date(byAdding: .month, value: -3, to: now)
-        case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
-        case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
-        case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
-        case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
-        case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
-        case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
-        case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
-        default: boundary = nil
-        }
-        guard let boundary else { return nil }
-        let hist = row.allTimeHistory.isEmpty ? row.history : row.allTimeHistory
-        return PriceHistory.percentChange(points: hist, currentPrice: row.quote?.price ?? 0, since: boundary)
+        row.metricValue(for: metric)
     }
 
     private func metricCell(_ metric: WatchlistMetric) -> some View {

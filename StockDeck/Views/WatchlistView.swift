@@ -1079,90 +1079,92 @@ struct QuoteRow: View {
             Sparkline(symbol: quote.symbol, days: 365, width: width, height: 20)
                 .frame(width: width, alignment: .center)
 
-        case .ath:
+        case .ath, .fromAth:
             let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            let histHigh = hist.map(\.effectiveHigh).max()
+            var histHigh: Double? = nil
+            for p in hist {
+                let h = p.effectiveHigh
+                if histHigh == nil || h > histHigh! { histHigh = h }
+            }
             let quoteHigh = max(quote.fiftyTwoWeekHigh ?? 0, quote.price)
             let ath = histHigh != nil ? max(histHigh!, quoteHigh) : quoteHigh
-            if ath > 0 {
-                Text(StorageService.formatCompactNumber(ath, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: ath)))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: width, alignment: .trailing)
+            if metric == .ath {
+                if ath > 0 {
+                    Text(StorageService.formatCompactNumber(ath, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: ath)))
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(width: width, alignment: .trailing)
+                } else {
+                    Text("—")
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .frame(width: width, alignment: .trailing)
+                }
             } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
+                if ath > 0, quote.price > 0 {
+                    let fromAth = quote.price >= ath ? 0.0 : min(0.0, (quote.price - ath) / ath * 100)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAth))
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(fromAth >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(width: width, alignment: .trailing)
+                } else {
+                    Text("—")
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .frame(width: width, alignment: .trailing)
+                }
             }
 
-        case .fromAth:
+        case .atl, .fromAtl:
             let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            let histHigh = hist.map(\.effectiveHigh).max()
-            let quoteHigh = max(quote.fiftyTwoWeekHigh ?? 0, quote.price)
-            let ath = histHigh != nil ? max(histHigh!, quoteHigh) : quoteHigh
-            if ath > 0, quote.price > 0 {
-                let fromAth = quote.price >= ath ? 0.0 : min(0.0, (quote.price - ath) / ath * 100)
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAth))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(fromAth >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: width, alignment: .trailing)
-            } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
+            var histLow: Double? = nil
+            for p in hist {
+                let l = p.effectiveLow
+                if histLow == nil || l < histLow! { histLow = l }
             }
-
-        case .atl:
-            let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            let histLow = hist.map(\.effectiveLow).min()
             let qLow = quote.fiftyTwoWeekLow != nil ? min(quote.fiftyTwoWeekLow!, quote.price) : quote.price
             let atl = (histLow != nil && qLow > 0) ? min(histLow!, qLow) : (histLow ?? qLow)
-            if atl > 0 {
-                Text(StorageService.formatCompactNumber(atl, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: atl)))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: width, alignment: .trailing)
+            if metric == .atl {
+                if atl > 0 {
+                    Text(StorageService.formatCompactNumber(atl, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: atl)))
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(width: width, alignment: .trailing)
+                } else {
+                    Text("—")
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .frame(width: width, alignment: .trailing)
+                }
             } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
-            }
-
-        case .fromAtl:
-            let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            let histLow = hist.map(\.effectiveLow).min()
-            let qLow = quote.fiftyTwoWeekLow != nil ? min(quote.fiftyTwoWeekLow!, quote.price) : quote.price
-            let atl = (histLow != nil && qLow > 0) ? min(histLow!, qLow) : (histLow ?? qLow)
-            if atl > 0, quote.price > 0 {
-                let fromAtl = quote.price <= atl ? 0.0 : max(0.0, (quote.price - atl) / atl * 100)
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAtl))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(fromAtl >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: width, alignment: .trailing)
-            } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
+                if atl > 0, quote.price > 0 {
+                    let fromAtl = quote.price <= atl ? 0.0 : max(0.0, (quote.price - atl) / atl * 100)
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAtl))
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(fromAtl >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(width: width, alignment: .trailing)
+                } else {
+                    Text("—")
+                        .font(.inter(14, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .frame(width: width, alignment: .trailing)
+                }
             }
         }
     }

@@ -105,6 +105,15 @@ final class PortfolioViewModel {
     /// Cached display series per chart range, cleared on valuation update.
     @ObservationIgnored
     private var displaySeriesCache: [ChartRange: [ValuePoint]] = [:]
+    
+    /// Pre-grouped holdings by canonical symbol, cached on valuation update.
+    private(set) var groupedHoldings: [String: [ValuedHolding]] = [:]
+
+    @ObservationIgnored
+    private var dailyPnlCache: [DailyPnlRange: [DailyPnlRow]] = [:]
+    @ObservationIgnored
+    private var monthlyPnlCache: [MonthlyPnlRange: [MonthlyPnlRow]] = [:]
+    
     private var refreshTask: Task<Void, Never>?
 
     /// Subscription bag for Combine observation of quote changes.
@@ -237,6 +246,8 @@ final class PortfolioViewModel {
     private func recomputeValuation() {
         guard let stockService = stockService, let storageService = storageService else { return }
         displaySeriesCache.removeAll(keepingCapacity: true)
+        dailyPnlCache.removeAll(keepingCapacity: true)
+        monthlyPnlCache.removeAll(keepingCapacity: true)
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
@@ -315,6 +326,7 @@ final class PortfolioViewModel {
 
         valued.sort { abs($0.value) > abs($1.value) }
         sortedValuedHoldings = valued
+        groupedHoldings = Dictionary(grouping: valued) { StockService.canonicalSymbol(for: $0.symbol) }
 
         // Cost basis is all-or-nothing per symbol: a symbol with ANY lot missing
         // its cost basis (e.g. a Binance balance where one batch has order history
@@ -679,65 +691,53 @@ final class PortfolioViewModel {
     /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
     /// Uses the unified valueSeries representing the true market value trajectory of the portfolio.
     func dailyPnlRows(for range: DailyPnlRange) -> [DailyPnlRow] {
+        if let cached = dailyPnlCache[range] { return cached }
         guard let stockService = stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
-        let hFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
-        }.joined(separator: ";")
-        let rateFingerprint = hs.map {
-            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
-        }.joined(separator: ";")
-        let key = "\(scopeKey):d:\(range.rawValue):\(hFingerprint):\(rateFingerprint)"
-        return DailyPnlCache.rows(for: key) {
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
-            }
-            var rateBySymbol: [String: Double] = [:]
-            for h in hs {
-                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-            }
-            return DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: range.dayCount)
+        var histBySymbol: [String: [PricePoint]] = [:]
+        for h in hs {
+            histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
         }
+        var rateBySymbol: [String: Double] = [:]
+        for h in hs {
+            rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+        }
+        let rows = DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: range.dayCount)
+        dailyPnlCache[range] = rows
+        return rows
     }
 
     func monthlyPnlRows(for range: MonthlyPnlRange) -> [MonthlyPnlRow] {
+        if let cached = monthlyPnlCache[range] { return cached }
         guard let stockService = stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
-        let hFingerprint = hs.map {
-            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
-        }.joined(separator: ";")
-        let rateFingerprint = hs.map {
-            "\($0.symbol):\(stockService.rate(from: stockService.detectedCurrency(for: $0.symbol)))"
-        }.joined(separator: ";")
-        let key = "\(scopeKey):m:\(range.rawValue):\(hFingerprint):\(rateFingerprint)"
-        return MonthlyPnlCache.rows(for: key) {
-            var histBySymbol: [String: [PricePoint]] = [:]
-            for h in hs {
-                histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
-                    ?? stockService.priceHistory[h.symbol]
-                    ?? []
-            }
-            let monthCount: Int
-            if let fixed = range.fixedMonthCount {
-                monthCount = fixed
-            } else {
-                let today = Date()
-                let calendar = Calendar.current
-                var span = 1
-                if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
-                   let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
-                    span = max(span, months + 1)
-                }
-                let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
-                monthCount = min(max(span, historySpan), 240)
-            }
-            var rateBySymbol: [String: Double] = [:]
-            for h in hs {
-                rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-            }
-            return MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        var histBySymbol: [String: [PricePoint]] = [:]
+        for h in hs {
+            histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
+                ?? stockService.priceHistory[h.symbol]
+                ?? []
         }
+        let monthCount: Int
+        if let fixed = range.fixedMonthCount {
+            monthCount = fixed
+        } else {
+            let today = Date()
+            let calendar = Calendar.current
+            var span = 1
+            if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
+               let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
+                span = max(span, months + 1)
+            }
+            let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
+            monthCount = min(max(span, historySpan), 240)
+        }
+        var rateBySymbol: [String: Double] = [:]
+        for h in hs {
+            rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
+        }
+        let rows = MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        monthlyPnlCache[range] = rows
+        return rows
     }
 
     func displaySeries(for chartRange: ChartRange) -> [ValuePoint] {
