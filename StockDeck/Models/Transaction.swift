@@ -1,5 +1,36 @@
 import Foundation
 
+/// Fast, thread-safe date key formatter to avoid repeated DateFormatter allocations in tight loops.
+public enum TradeDateKey {
+    private static let ymdFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        return df
+    }()
+
+    private static let compactFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "yyyyMMdd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        return df
+    }()
+
+    private static let lock = NSLock()
+
+    public static func ymdString(from date: Date) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return ymdFormatter.string(from: date)
+    }
+
+    public static func compactString(from date: Date) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return compactFormatter.string(from: date)
+    }
+}
+
 /// Defines the kind of transaction recorded in a portfolio's ledger.
 public enum TransactionType: String, Codable, CaseIterable, Sendable {
     case buy = "BUY"
@@ -142,9 +173,7 @@ public struct ConsolidatedTransaction: Identifiable, Sendable {
         self.date = date
         self.transactions = transactions
 
-        let df = DateFormatter()
-        df.dateFormat = "yyyyMMdd"
-        let dateKey = df.string(from: date)
+        let dateKey = TradeDateKey.compactString(from: date)
         self.id = "\(portfolioId.uuidString)_\(symbol)_\(type.rawValue)_\(account ?? "")_\(dateKey)"
     }
 
@@ -176,14 +205,11 @@ public struct ConsolidatedTransaction: Identifiable, Sendable {
     public static func consolidate(
         transactionsWithPortfolio: [(tx: Transaction, portfolioId: UUID, portfolioName: String)]
     ) -> [ConsolidatedTransaction] {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-
         var groups: [String: [(tx: Transaction, portfolioId: UUID, portfolioName: String)]] = [:]
         var orderKeys: [String] = []
 
         for item in transactionsWithPortfolio {
-            let dateKey = df.string(from: item.tx.date)
+            let dateKey = TradeDateKey.ymdString(from: item.tx.date)
             let key = "\(item.portfolioId.uuidString)|\(item.tx.symbol.uppercased())|\(item.tx.type.rawValue)|\(item.tx.account ?? "")|\(dateKey)"
             if groups[key] == nil {
                 orderKeys.append(key)

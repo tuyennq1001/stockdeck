@@ -107,9 +107,7 @@ struct ConsolidatedClosedTrade: Identifiable, Sendable {
         self.sellDate = sellDate
         self.lots = lots
 
-        let df = DateFormatter()
-        df.dateFormat = "yyyyMMdd"
-        let dateKey = sellDate.map { df.string(from: $0) } ?? "nodate"
+        let dateKey = sellDate.map { TradeDateKey.compactString(from: $0) } ?? "nodate"
         self.id = "\(portfolioId.uuidString)_\(symbol)_\(account ?? "")_\(dateKey)"
     }
 
@@ -160,14 +158,11 @@ struct ConsolidatedClosedTrade: Identifiable, Sendable {
     static func consolidate(
         tradesWithPortfolio: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)]
     ) -> [ConsolidatedClosedTrade] {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-
         var groups: [String: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)]] = [:]
         var orderKeys: [String] = []
 
         for item in tradesWithPortfolio {
-            let dateKey = item.trade.sellDate.map { df.string(from: $0) } ?? "nodate"
+            let dateKey = item.trade.sellDate.map { TradeDateKey.ymdString(from: $0) } ?? "nodate"
             let key = "\(item.portfolioId.uuidString)|\(item.trade.symbol.uppercased())|\(item.trade.account ?? "")|\(dateKey)"
             if groups[key] == nil {
                 orderKeys.append(key)

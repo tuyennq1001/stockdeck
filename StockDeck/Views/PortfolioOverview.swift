@@ -221,12 +221,8 @@ struct PortfolioOverview: View {
     @State private var sortAscending: Bool = false
     @State private var showColumnCustomizer = false
     @State private var chartRange: ChartRange = .all
-    @State private var hoveredSlice: String?
-    @State private var hoverPoint: ValuePoint?
-    @State private var hoveredMonth: MonthlyPnlRow?
-    @State private var hoveredDay: DailyPnlRow?
     @State private var pnlViewMode: PnlViewMode = .daily
-    @State private var dailyPnlRange: DailyPnlRange = .oneYear
+    @State private var dailyPnlRange: DailyPnlRange = .threeMonths
     @State private var monthlyPnlRange: MonthlyPnlRange = .threeYears
     @State private var positionsCardWidth: CGFloat = 0
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
@@ -237,22 +233,15 @@ struct PortfolioOverview: View {
     }
 
     private var closedTradesCount: Int {
-        realizedPnlStats.totalClosed
+        viewModel.realizedStats.totalClosed
     }
 
     private var transactionsCount: Int {
-        var raw: [(tx: Transaction, portfolioId: UUID, portfolioName: String)] = []
-        for p in portfolios {
-            for tx in p.transactions {
-                raw.append((tx, p.id, p.name))
-            }
-        }
-        return ConsolidatedTransaction.consolidate(transactionsWithPortfolio: raw).count
+        viewModel.transactionsCount
     }
 
-
     private var activeSymbolsCount: Int {
-        sortedSymbols().count
+        viewModel.activeSymbolsCount
     }
 
     private var insertionOrderedSymbols: [String] {
@@ -286,7 +275,7 @@ struct PortfolioOverview: View {
            let range = DailyPnlRange(rawValue: savedDaily) {
             dailyPnlRange = range
         } else {
-            dailyPnlRange = .oneYear
+            dailyPnlRange = .threeMonths
         }
         if let savedMonthly = storageService.monthlyPnlRange(for: key),
            let range = MonthlyPnlRange(rawValue: savedMonthly) {
@@ -392,14 +381,6 @@ struct PortfolioOverview: View {
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
-        }
-    }
-
-    /// Tooltip date label — time for intraday ranges, date for the rest.
-    private func tooltipDate(_ date: Date) -> String {
-        switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
-        default: return date.formatted(date: .abbreviated, time: .omitted)
         }
     }
 
@@ -575,11 +556,9 @@ struct PortfolioOverview: View {
             storageService.setChartRange(newRange.rawValue, for: scopeKey)
         }
         .onChange(of: dailyPnlRange) { _, newRange in
-            hoveredDay = nil
             storageService.setDailyPnlRange(newRange.rawValue, for: scopeKey)
         }
         .onChange(of: monthlyPnlRange) { _, newRange in
-            hoveredMonth = nil
             storageService.setMonthlyPnlRange(newRange.rawValue, for: scopeKey)
         }
         .onChange(of: pnlViewMode) { _, newMode in
@@ -701,8 +680,13 @@ struct PortfolioOverview: View {
             .padding(.top, 22)
             .padding(.bottom, 14)
 
-            heroChart(ds)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            PortfolioHeroChartView(
+                points: ds,
+                chartRange: chartRange,
+                currencySymbol: currencySymbol,
+                amountDecimals: storageService.amountDecimals
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(height: 300)
         .frame(maxWidth: .infinity)
@@ -737,148 +721,10 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func valueDomain(_ series: [ValuePoint]) -> ClosedRange<Double> {
-        let vals = series.map(\.value).filter(\.isFinite)
-        guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
-        let span = hi - lo
-        return (lo - span * 0.10)...(hi + span * 0.14)
-    }
-
-    private func xAxisLabel(_ date: Date) -> String {
-        switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .threeYears, .fiveYears, .all:
-            return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
-        }
-    }
-
-    @ViewBuilder private func valueCrosshair(_ proxy: ChartProxy, points: [ValuePoint], tint: Color) -> some View {
-        GeometryReader { geo in
-            if let plotAnchor = proxy.plotFrame {
-                let plot = geo[plotAnchor]
-                ZStack(alignment: .topLeading) {
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let loc):
-                                let localX = min(max(loc.x - plot.minX, 0), plot.width)
-                                if let d: Date = proxy.value(atX: localX) {
-                                    hoverPoint = nearestByDate(points, to: d, date: \.date)
-                                }
-                            case .ended:
-                                hoverPoint = nil
-                            }
-                        }
-                    if let h = hoverPoint,
-                       let px = proxy.position(forX: h.date),
-                       let py = proxy.position(forY: h.value) {
-                        let cx = plot.minX + px
-                        Group {
-                            Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
-                                .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                            Circle().fill(tint).frame(width: 9, height: 9)
-                                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
-                                .position(x: cx, y: plot.minY + py)
-                            ChartTooltip(title: tooltipDate(h.date),
-                                         value: StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: storageService.amountDecimals),
-                                         tint: tint)
-                                .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                        }
-                        .allowsHitTesting(false)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private func heroChart(_ points: [ValuePoint]) -> some View {
-        if points.isEmpty {
-            ZStack {
-                DS.cardAlt.opacity(0.6)
-                DecorativeCurve()
-                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .padding(.horizontal, 24)
-                VStack(spacing: 4) {
-                    Text("Value history builds up day by day")
-                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
-                    Text("Your first trend appears tomorrow.")
-                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
-                }
-            }
-        } else {
-            let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
-            let tint = periodUp ? DS.up : DS.down
-            Chart {
-                ForEach(points) { p in
-                    AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
-                                                         startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
-                        .interpolationMethod(.monotone)
-                }
-                if let last = points.last {
-                    PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
-                        .symbolSize(50)
-                        .foregroundStyle(tint)
-                }
-            }
-            .chartYScale(domain: valueDomain(points))
-            .chartYAxis {
-                AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
-                    AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
-                    AxisValueLabel {
-                        if let d = v.as(Double.self) {
-                            Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
-                                .font(DS.micro).foregroundStyle(DS.inkTertiary)
-                        }
-                    }
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                    if let d = value.as(Date.self) {
-                        AxisValueLabel { Text(xAxisLabel(d)).font(DS.micro).foregroundStyle(DS.inkTertiary) }
-                    }
-                }
-            }
-            .chartLegend(.hidden)
-            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
-            .animation(.easeInOut(duration: 0.4), value: points)
-            .id(chartRange)
-            .transition(.opacity.animation(.easeInOut(duration: 0.4)))
-        }
-    }
-
     // MARK: - Stats
 
-    private var realizedPnlStats: (realizedPnl: Double, closedCost: Double, winRate: Double, totalClosed: Int) {
-        var raw: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)] = []
-        for p in portfolios {
-            for t in p.closedTrades {
-                raw.append((t, p.id, p.name))
-            }
-        }
-        let consolidated = ConsolidatedClosedTrade.consolidate(tradesWithPortfolio: raw)
-        var totalRealized: Double = 0
-        var totalClosedCost: Double = 0
-        var winCount: Int = 0
-
-        for ct in consolidated {
-            let curr = stockService.detectedCurrency(for: ct.symbol)
-            let rate = stockService.rate(from: curr)
-            totalRealized += ct.realizedPnl * rate
-            totalClosedCost += ct.costBasis * rate
-            if ct.realizedPnl > 0 {
-                winCount += 1
-            }
-        }
-
-        let totalClosed = consolidated.count
-        let winRate = totalClosed > 0 ? (Double(winCount) / Double(totalClosed)) * 100.0 : 0.0
-        return (totalRealized, totalClosedCost, winRate, totalClosed)
+    private var realizedPnlStats: PortfolioViewModel.RealizedStats {
+        viewModel.realizedStats
     }
 
 
@@ -1069,184 +915,20 @@ struct PortfolioOverview: View {
                 }
             }
             switch pnlViewMode {
-            case .daily: dailyPnlChartBody
-            case .monthly: monthlyPnlChartBody
+            case .daily:
+                PortfolioDailyPnlChartView(
+                    dailyPnlRows: dailyPnlRows,
+                    currencySymbol: currencySymbol,
+                    amountDecimals: storageService.amountDecimals
+                )
+            case .monthly:
+                PortfolioMonthlyPnlChartView(
+                    monthlyPnlRows: monthlyPnlRows,
+                    currencySymbol: currencySymbol,
+                    amountDecimals: storageService.amountDecimals
+                )
             }
         }
-    }
-
-    @ViewBuilder private var monthlyPnlChartBody: some View {
-        if monthlyPnlRows.isEmpty {
-            emptyLine
-        } else {
-            Chart {
-                ForEach(monthlyPnlRows.reversed()) { row in
-                    let isHovered = hoveredMonth?.monthStart == row.monthStart
-                    BarMark(
-                        x: .value("Month", monthAxisLabel(row.monthStart)),
-                        yStart: .value("Zero", 0),
-                        yEnd: .value("PnL", row.pnl ?? 0),
-                        width: .ratio(isHovered ? 0.82 : 0.6)
-                    )
-                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
-                    .opacity(isHovered ? 1.0 : 0.75)
-                    .cornerRadius(3)
-                }
-                RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(DS.hairline.opacity(0.6))
-            }
-            .frame(height: 170)
-            .modifier(PnlYAxis(currencySymbol: currencySymbol))
-            .modifier(PnlXAxis(values: monthAxisValues))
-            .chartLegend(.hidden)
-            .chartOverlay { proxy in
-                GeometryReader { geo in
-                    if let plotAnchor = proxy.plotFrame {
-                        monthOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
-                    }
-                }
-            }
-
-            Divider().overlay(DS.hairline.opacity(0.5))
-
-            Text("Real cost basis × price history — adding cash or positions doesn't inflate PnL.")
-                .font(DS.micro)
-                .foregroundStyle(DS.inkTertiary)
-                .padding(.top, 6)
-        }
-    }
-
-    @ViewBuilder private var dailyPnlChartBody: some View {
-        if dailyPnlRows.isEmpty {
-            emptyLine
-        } else {
-            Chart {
-                ForEach(dailyPnlRows.reversed()) { row in
-                    let isHovered = hoveredDay?.date == row.date
-                    BarMark(
-                        x: .value("Day", row.label),
-                        yStart: .value("Zero", 0),
-                        yEnd: .value("PnL", row.pnl ?? 0),
-                        width: .ratio(isHovered ? 0.82 : 0.55)
-                    )
-                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
-                    .opacity(isHovered ? 1.0 : 0.75)
-                    .cornerRadius(2)
-                }
-                RuleMark(y: .value("Zero", 0))
-                    .foregroundStyle(DS.hairline.opacity(0.6))
-            }
-            .frame(height: 170)
-            .modifier(PnlYAxis(currencySymbol: currencySymbol))
-            .modifier(PnlXAxis(values: dayAxisValues))
-            .chartLegend(.hidden)
-            .chartOverlay { proxy in
-                GeometryReader { geo in
-                    if let plotAnchor = proxy.plotFrame {
-                        dayOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
-                    }
-                }
-            }
-
-            Divider().overlay(DS.hairline.opacity(0.5))
-
-            Text("Daily PnL from real cost basis × price history — adding cash or positions doesn't inflate PnL.")
-                .font(DS.micro)
-                .foregroundStyle(DS.inkTertiary)
-                .padding(.top, 6)
-        }
-    }
-
-    private func monthOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
-        ZStack(alignment: .topLeading) {
-            Rectangle().fill(.clear).contentShape(Rectangle())
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let loc):
-                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
-                        if let label: String = proxy.value(atX: localX) {
-                            hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
-                        }
-                    case .ended:
-                        hoveredMonth = nil
-                    }
-                }
-            if let h = hoveredMonth,
-               let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
-                let cx = plot.minX + px
-                let pnl = h.pnl ?? 0
-                ChartTooltip(title: monthAxisLabel(h.monthStart),
-                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                             tint: DS.pnlColor(pnl))
-                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    private func dayOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
-        ZStack(alignment: .topLeading) {
-            Rectangle().fill(.clear).contentShape(Rectangle())
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active(let loc):
-                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
-                        if let label: String = proxy.value(atX: localX) {
-                            hoveredDay = dailyPnlRows.first { $0.label == label }
-                        }
-                    case .ended:
-                        hoveredDay = nil
-                    }
-                }
-            if let h = hoveredDay,
-               let px = proxy.position(forX: h.label) {
-                let cx = plot.minX + px
-                let pnl = h.pnl ?? 0
-                ChartTooltip(title: h.label,
-                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                             tint: DS.pnlColor(pnl))
-                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    /// X-axis tick labels for the daily chart. Picks evenly spaced days so the
-    /// axis stays readable even at 365 columns (targets ~6 labels).
-    private var dayAxisValues: [String] {
-        let rows = dailyPnlRows
-        guard rows.count > 12 else {
-            return rows.map(\.label)
-        }
-        let target = 6
-        let step = max(1, (rows.count + target - 1) / target)
-        var values: [String] = []
-        for i in stride(from: 0, to: rows.count, by: step) {
-            values.append(rows[i].label)
-        }
-        return values
-    }
-
-    private func monthAxisLabel(_ date: Date) -> String {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.year, .month], from: date)
-        return "\(comps.year ?? 0)/\(comps.month ?? 0)"
-    }
-
-    /// X-axis tick labels for the monthly chart. Picks evenly spaced months so
-    /// the axis stays readable even at 24–36 columns (targets ~6 labels).
-    private var monthAxisValues: [String] {
-        let rows = monthlyPnlRows
-        guard rows.count > 8 else {
-            return rows.map { monthAxisLabel($0.monthStart) }
-        }
-        let target = 6
-        let step = max(1, (rows.count + target - 1) / target)
-        var values: [String] = []
-        for i in stride(from: 0, to: rows.count, by: step) {
-            values.append(monthAxisLabel(rows[i].monthStart))
-        }
-        return values
     }
 
     private var moneyWeightedReturnCard: some View {
@@ -1346,104 +1028,13 @@ struct PortfolioOverview: View {
         viewModel.allocation
     }
 
-    private func allocationRow(_ slice: PortfolioViewModel.AllocationSlice) -> some View {
-        HStack(spacing: 9) {
-            RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
-            SymbolLogo(symbol: slice.symbol, size: 20)
-            let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
-            Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
-            Spacer()
-            Text(String(format: "%.1f%%", slice.fraction * 100))
-                .font(DS.figure).foregroundStyle(DS.inkSecondary)
-        }
-    }
-
     private var allocationCard: some View {
-        Card(title: "Allocation") {
-            if allocation.isEmpty {
-                emptyLine
-            } else {
-                VStack(spacing: 16) {
-                    HStack(spacing: 20) {
-                        ZStack {
-                            Chart(allocation) { slice in
-                                SectorMark(angle: .value("Value", slice.value),
-                                           innerRadius: .ratio(0.64), angularInset: 2)
-                                    .cornerRadius(3)
-                                    .foregroundStyle(color(for: slice.symbol))
-                                    .opacity(hoveredSlice == nil || hoveredSlice == slice.symbol ? 1 : 0.35)
-                            }
-                            .chartLegend(.hidden)
-                            VStack(spacing: 1) {
-                                Text("\(allocation.count)").font(DS.figureLG).foregroundStyle(DS.ink)
-                                SectionLabel("Assets")
-                            }
-                        }
-                        .frame(width: 136, height: 136)
-
-                        ScrollView(.vertical, showsIndicators: true) {
-                            VStack(alignment: .leading, spacing: 9) {
-                                ForEach(allocation) { slice in
-                                    let matchedHolding = holdings.first(where: { StockService.canonicalSymbol(for: $0.symbol) == StockService.canonicalSymbol(for: slice.symbol) })
-                                    Group {
-                                        if let matched = matchedHolding {
-                                            NavigationLink(value: matched.id) {
-                                                allocationRow(slice)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .pointingHandCursor()
-                                            .help("View \(slice.symbol) details")
-                                        } else {
-                                            allocationRow(slice)
-                                        }
-                                    }
-                                    .contentShape(Rectangle())
-                                    .onHover { hoveredSlice = $0 ? slice.symbol : nil }
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 140)
-                        .frame(maxWidth: .infinity)
-                    }
-
-                    if !typeBreakdown.isEmpty {
-                        Divider().overlay(DS.hairline)
-                        typeStrip
-                    }
-                }
-            }
-        }
-    }
-
-    private var typeStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(Array(typeBreakdown.enumerated()), id: \.element.label) { idx, row in
-                        RoundedRectangle(cornerRadius: 2.5)
-                            .fill(DS.palette[idx % DS.palette.count])
-                            .frame(width: max(2, geo.size.width * row.fraction - 2))
-                    }
-                }
-            }
-            .frame(height: 8)
-            HStack(spacing: 14) {
-                ForEach(Array(typeBreakdown.enumerated()), id: \.element.label) { idx, row in
-                    HStack(spacing: 5) {
-                        Circle().fill(DS.palette[idx % DS.palette.count]).frame(width: 6, height: 6)
-                        Text(row.label).font(DS.caption).foregroundStyle(DS.inkSecondary)
-                        Text(String(format: "%.0f%%", row.fraction * 100))
-                            .font(DS.caption.monospacedDigit()).foregroundStyle(DS.inkTertiary)
-                    }
-                }
-                Spacer()
-            }
-        }
-    }
-
-    private func color(for symbol: String) -> Color {
-        let idx = allocation.firstIndex { $0.symbol == symbol } ?? 0
-        return DS.palette[idx % DS.palette.count]
+        PortfolioAllocationCardView(
+            allocation: allocation,
+            holdings: holdings,
+            typeBreakdown: typeBreakdown,
+            stockService: stockService
+        )
     }
 
     // MARK: - Movers (Top & Bottom)
@@ -1521,24 +1112,7 @@ struct PortfolioOverview: View {
     // MARK: - Diversification data
 
     private var typeBreakdown: [(label: String, fraction: Double)] {
-        let total = holdings.reduce(0) { $0 + abs($1.value) }
-        guard total >= 0.01 else { return [] }
-        var byType: [String: Double] = [:]
-        for h in holdings { byType[Self.typeLabel(h.type), default: 0] += abs(h.value) }
-        return byType.map { ($0.key, $0.value / total) }.sorted { $0.1 > $1.1 }
-    }
-    private static func typeLabel(_ type: String) -> String {
-        switch type.uppercased() {
-        case "EQUITY": return "Stocks"
-        case "ETF": return "ETFs"
-        case "CRYPTOCURRENCY": return "Crypto"
-        case "INDEX": return "Indices"
-        case "FUTURE": return "Futures"
-        case "MUTUALFUND": return "Funds"
-        case "CURRENCY": return "Currency"
-        case "": return "Other"
-        default: return type.capitalized
-        }
+        viewModel.typeBreakdown
     }
 
     // MARK: - Positions
@@ -1607,7 +1181,7 @@ struct PortfolioOverview: View {
                 let symbolsList = sortedSymbols()
 
                 ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         positionsHeaderView
 
                         ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
@@ -1769,6 +1343,437 @@ private struct PnlXAxis: ViewModifier {
             AxisMarks(values: values) { value in
                 if let s = value.as(String.self) {
                     AxisValueLabel { Text(s).font(DS.micro).foregroundStyle(DS.inkTertiary) }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Isolated Chart Subviews (Prevents Hover Thrashing & Full-Tree Re-renders)
+
+private struct PortfolioHeroChartView: View {
+    let points: [ValuePoint]
+    let chartRange: ChartRange
+    let currencySymbol: String
+    let amountDecimals: Int
+
+    @State private var hoverPoint: ValuePoint?
+
+    private func tooltipDate(_ date: Date) -> String {
+        switch chartRange {
+        case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
+        default: return date.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
+
+    private func xAxisLabel(_ date: Date) -> String {
+        switch chartRange {
+        case .week: return date.formatted(.dateTime.weekday(.abbreviated))
+        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
+        case .year, .threeYears, .fiveYears, .all:
+            return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        }
+    }
+
+    private func valueDomain(_ series: [ValuePoint]) -> ClosedRange<Double> {
+        let vals = series.map(\.value).filter(\.isFinite)
+        guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
+        let span = hi - lo
+        return (lo - span * 0.10)...(hi + span * 0.14)
+    }
+
+    @ViewBuilder private func valueCrosshair(_ proxy: ChartProxy, points: [ValuePoint], tint: Color) -> some View {
+        GeometryReader { geo in
+            if let plotAnchor = proxy.plotFrame {
+                let plot = geo[plotAnchor]
+                ZStack(alignment: .topLeading) {
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let loc):
+                                let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                                if let d: Date = proxy.value(atX: localX) {
+                                    hoverPoint = nearestByDate(points, to: d, date: \.date)
+                                }
+                            case .ended:
+                                hoverPoint = nil
+                            }
+                        }
+                    if let h = hoverPoint,
+                       let px = proxy.position(forX: h.date),
+                       let py = proxy.position(forY: h.value) {
+                        let cx = plot.minX + px
+                        Group {
+                            Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
+                                .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            Circle().fill(tint).frame(width: 9, height: 9)
+                                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+                                .position(x: cx, y: plot.minY + py)
+                            ChartTooltip(title: tooltipDate(h.date),
+                                         value: StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: amountDecimals),
+                                         tint: tint)
+                                .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        if points.isEmpty {
+            ZStack {
+                DS.cardAlt.opacity(0.6)
+                DecorativeCurve()
+                    .stroke(DS.hairline, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .padding(.horizontal, 24)
+                VStack(spacing: 4) {
+                    Text("Value history builds up day by day")
+                        .font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.inkSecondary)
+                    Text("Your first trend appears tomorrow.")
+                        .font(DS.micro).foregroundStyle(DS.inkTertiary)
+                }
+            }
+        } else {
+            let periodUp = (points.last?.value ?? 0) >= (points.first?.value ?? 0)
+            let tint = periodUp ? DS.up : DS.down
+            Chart {
+                ForEach(points) { p in
+                    AreaMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                        .foregroundStyle(.linearGradient(colors: [tint.opacity(0.22), tint.opacity(0)],
+                                                         startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.monotone)
+                    LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
+                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
+                        .interpolationMethod(.monotone)
+                }
+                if let last = points.last {
+                    PointMark(x: .value("Day", last.date), y: .value("Value", last.value))
+                        .symbolSize(50)
+                        .foregroundStyle(tint)
+                }
+            }
+            .chartYScale(domain: valueDomain(points))
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
+                    AxisGridLine().foregroundStyle(DS.hairline.opacity(0.5))
+                    AxisValueLabel {
+                        if let d = v.as(Double.self) {
+                            Text(StorageService.formatAmount(d, symbol: currencySymbol, decimals: 0))
+                                .font(DS.micro).foregroundStyle(DS.inkTertiary)
+                        }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    if let d = value.as(Date.self) {
+                        AxisValueLabel { Text(xAxisLabel(d)).font(DS.micro).foregroundStyle(DS.inkTertiary) }
+                    }
+                }
+            }
+            .chartLegend(.hidden)
+            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
+            .animation(.easeInOut(duration: 0.4), value: points)
+            .id(chartRange)
+            .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+        }
+    }
+}
+
+private struct PortfolioDailyPnlChartView: View {
+    let dailyPnlRows: [DailyPnlRow]
+    let currencySymbol: String
+    let amountDecimals: Int
+
+    @State private var hoveredDay: DailyPnlRow?
+
+    private var dayAxisValues: [String] {
+        guard dailyPnlRows.count > 12 else {
+            return dailyPnlRows.map(\.label)
+        }
+        let target = 6
+        let step = max(1, (dailyPnlRows.count + target - 1) / target)
+        var values: [String] = []
+        for i in stride(from: 0, to: dailyPnlRows.count, by: step) {
+            values.append(dailyPnlRows[i].label)
+        }
+        return values
+    }
+
+    private func dayOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let loc):
+                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                        if let label: String = proxy.value(atX: localX) {
+                            hoveredDay = dailyPnlRows.first { $0.label == label }
+                        }
+                    case .ended:
+                        hoveredDay = nil
+                    }
+                }
+            if let h = hoveredDay,
+               let px = proxy.position(forX: h.label) {
+                let cx = plot.minX + px
+                let pnl = h.pnl ?? 0
+                ChartTooltip(title: h.label,
+                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: amountDecimals, signed: true),
+                             tint: DS.pnlColor(pnl))
+                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    var body: some View {
+        if dailyPnlRows.isEmpty {
+            Text("No holdings yet").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
+        } else {
+            Chart {
+                ForEach(dailyPnlRows.reversed()) { row in
+                    let isHovered = hoveredDay?.date == row.date
+                    BarMark(
+                        x: .value("Day", row.label),
+                        yStart: .value("Zero", 0),
+                        yEnd: .value("PnL", row.pnl ?? 0),
+                        width: .ratio(isHovered ? 0.82 : 0.55)
+                    )
+                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                    .opacity(isHovered ? 1.0 : 0.75)
+                    .cornerRadius(2)
+                }
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(DS.hairline.opacity(0.6))
+            }
+            .frame(height: 170)
+            .modifier(PnlYAxis(currencySymbol: currencySymbol))
+            .modifier(PnlXAxis(values: dayAxisValues))
+            .chartLegend(.hidden)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    if let plotAnchor = proxy.plotFrame {
+                        dayOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
+                    }
+                }
+            }
+
+            Divider().overlay(DS.hairline.opacity(0.5))
+
+            Text("Daily PnL from real cost basis × price history — adding cash or positions doesn't inflate PnL.")
+                .font(DS.micro)
+                .foregroundStyle(DS.inkTertiary)
+                .padding(.top, 6)
+        }
+    }
+}
+
+private struct PortfolioMonthlyPnlChartView: View {
+    let monthlyPnlRows: [MonthlyPnlRow]
+    let currencySymbol: String
+    let amountDecimals: Int
+
+    @State private var hoveredMonth: MonthlyPnlRow?
+
+    private func monthAxisLabel(_ date: Date) -> String {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: date)
+        return "\(comps.year ?? 0)/\(comps.month ?? 0)"
+    }
+
+    private var monthAxisValues: [String] {
+        guard monthlyPnlRows.count > 8 else {
+            return monthlyPnlRows.map { monthAxisLabel($0.monthStart) }
+        }
+        let target = 6
+        let step = max(1, (monthlyPnlRows.count + target - 1) / target)
+        var values: [String] = []
+        for i in stride(from: 0, to: monthlyPnlRows.count, by: step) {
+            values.append(monthAxisLabel(monthlyPnlRows[i].monthStart))
+        }
+        return values
+    }
+
+    private func monthOverlay(proxy: ChartProxy, geo: GeometryProxy, plot: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle().fill(.clear).contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let loc):
+                        let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                        if let label: String = proxy.value(atX: localX) {
+                            hoveredMonth = monthlyPnlRows.first { monthAxisLabel($0.monthStart) == label }
+                        }
+                    case .ended:
+                        hoveredMonth = nil
+                    }
+                }
+            if let h = hoveredMonth,
+               let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
+                let cx = plot.minX + px
+                let pnl = h.pnl ?? 0
+                ChartTooltip(title: monthAxisLabel(h.monthStart),
+                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: amountDecimals, signed: true),
+                             tint: DS.pnlColor(pnl))
+                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    var body: some View {
+        if monthlyPnlRows.isEmpty {
+            Text("No holdings yet").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
+        } else {
+            Chart {
+                ForEach(monthlyPnlRows.reversed()) { row in
+                    let isHovered = hoveredMonth?.monthStart == row.monthStart
+                    BarMark(
+                        x: .value("Month", monthAxisLabel(row.monthStart)),
+                        yStart: .value("Zero", 0),
+                        yEnd: .value("PnL", row.pnl ?? 0),
+                        width: .ratio(isHovered ? 0.82 : 0.6)
+                    )
+                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                    .opacity(isHovered ? 1.0 : 0.75)
+                    .cornerRadius(3)
+                }
+                RuleMark(y: .value("Zero", 0))
+                    .foregroundStyle(DS.hairline.opacity(0.6))
+            }
+            .frame(height: 170)
+            .modifier(PnlYAxis(currencySymbol: currencySymbol))
+            .modifier(PnlXAxis(values: monthAxisValues))
+            .chartLegend(.hidden)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    if let plotAnchor = proxy.plotFrame {
+                        monthOverlay(proxy: proxy, geo: geo, plot: geo[plotAnchor])
+                    }
+                }
+            }
+
+            Divider().overlay(DS.hairline.opacity(0.5))
+
+            Text("Real cost basis × price history — adding cash or positions doesn't inflate PnL.")
+                .font(DS.micro)
+                .foregroundStyle(DS.inkTertiary)
+                .padding(.top, 6)
+        }
+    }
+}
+
+private struct PortfolioAllocationCardView: View {
+    let allocation: [PortfolioViewModel.AllocationSlice]
+    let holdings: [ValuedHolding]
+    let typeBreakdown: [(label: String, fraction: Double)]
+    let stockService: StockService
+
+    @State private var hoveredSlice: String?
+
+    private func color(for symbol: String) -> Color {
+        let idx = allocation.firstIndex { $0.symbol == symbol } ?? 0
+        return DS.palette[idx % DS.palette.count]
+    }
+
+    private func allocationRow(_ slice: PortfolioViewModel.AllocationSlice) -> some View {
+        HStack(spacing: 9) {
+            RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
+            SymbolLogo(symbol: slice.symbol, size: 20)
+            let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
+            Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
+            Spacer()
+            Text(String(format: "%.1f%%", slice.fraction * 100))
+                .font(DS.figure).foregroundStyle(DS.inkSecondary)
+        }
+    }
+
+    private var typeStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(typeBreakdown.enumerated()), id: \.element.label) { idx, row in
+                        RoundedRectangle(cornerRadius: 2.5)
+                            .fill(DS.palette[idx % DS.palette.count])
+                            .frame(width: max(2, geo.size.width * row.fraction - 2))
+                    }
+                }
+            }
+            .frame(height: 8)
+            HStack(spacing: 14) {
+                ForEach(Array(typeBreakdown.enumerated()), id: \.element.label) { idx, row in
+                    HStack(spacing: 5) {
+                        Circle().fill(DS.palette[idx % DS.palette.count]).frame(width: 6, height: 6)
+                        Text(row.label).font(DS.caption).foregroundStyle(DS.inkSecondary)
+                        Text(String(format: "%.0f%%", row.fraction * 100))
+                            .font(DS.caption.monospacedDigit()).foregroundStyle(DS.inkTertiary)
+                    }
+                }
+                Spacer()
+            }
+        }
+    }
+
+    var body: some View {
+        Card(title: "Allocation") {
+            if allocation.isEmpty {
+                Text("No holdings yet").font(DS.caption).foregroundStyle(DS.inkSecondary)
+                    .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
+            } else {
+                let holdingByCanonical = Dictionary(grouping: holdings, by: { StockService.canonicalSymbol(for: $0.symbol) }).compactMapValues(\.first)
+
+                VStack(spacing: 16) {
+                    HStack(spacing: 20) {
+                        ZStack {
+                            Chart(allocation) { slice in
+                                SectorMark(angle: .value("Value", slice.value),
+                                           innerRadius: .ratio(0.64), angularInset: 2)
+                                    .cornerRadius(3)
+                                    .foregroundStyle(color(for: slice.symbol))
+                                    .opacity(hoveredSlice == nil || hoveredSlice == slice.symbol ? 1 : 0.35)
+                            }
+                            .chartLegend(.hidden)
+                            VStack(spacing: 1) {
+                                Text("\(allocation.count)").font(DS.figureLG).foregroundStyle(DS.ink)
+                                SectionLabel("Assets")
+                            }
+                        }
+                        .frame(width: 136, height: 136)
+
+                        ScrollView(.vertical, showsIndicators: true) {
+                            VStack(alignment: .leading, spacing: 9) {
+                                ForEach(allocation) { slice in
+                                    let matchedHolding = holdingByCanonical[StockService.canonicalSymbol(for: slice.symbol)]
+                                    Group {
+                                        if let matched = matchedHolding {
+                                            NavigationLink(value: matched.id) {
+                                                allocationRow(slice)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .pointingHandCursor()
+                                            .help("View \(slice.symbol) details")
+                                        } else {
+                                            allocationRow(slice)
+                                        }
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onHover { hoveredSlice = $0 ? slice.symbol : nil }
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 140)
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    if !typeBreakdown.isEmpty {
+                        Divider().overlay(DS.hairline)
+                        typeStrip
+                    }
                 }
             }
         }
