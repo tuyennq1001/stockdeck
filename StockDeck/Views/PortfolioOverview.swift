@@ -224,7 +224,6 @@ struct PortfolioOverview: View {
     @State private var pnlViewMode: PnlViewMode = .daily
     @State private var dailyPnlRange: DailyPnlRange = .threeMonths
     @State private var monthlyPnlRange: MonthlyPnlRange = .threeYears
-    @State private var positionsCardWidth: CGFloat = 0
     @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
 
     private var scopePortfolioId: UUID? {
@@ -1176,12 +1175,11 @@ struct PortfolioOverview: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             } else {
                 let minTableWidth: CGFloat = positionsTableNaturalWidth
-                let availableWidth = max(positionsCardWidth - (DS.pad * 2), minTableWidth)
-                let groupedValued = Dictionary(grouping: holdings) { StockService.canonicalSymbol(for: $0.symbol) }
+                let groupedValued = viewModel.groupedHoldings
                 let symbolsList = sortedSymbols()
 
                 ScrollView(.horizontal, showsIndicators: true) {
-                    LazyVStack(spacing: 0) {
+                    VStack(spacing: 0) {
                         positionsHeaderView
 
                         ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
@@ -1227,22 +1225,12 @@ struct PortfolioOverview: View {
                             }
                         }
                     }
-                    .frame(minWidth: max(availableWidth, minTableWidth))
+                    .frame(minWidth: minTableWidth, alignment: .leading)
                 }
             }
         }
         .padding(DS.pad)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: CardWidthPreferenceKey.self, value: geo.size.width)
-            }
-        )
-        .onPreferenceChange(CardWidthPreferenceKey.self) { width in
-            if width > 0 && abs(positionsCardWidth - width) > 1 {
-                positionsCardWidth = width
-            }
-        }
         .premiumCard()
     }
 
@@ -1357,15 +1345,6 @@ private struct PortfolioHeroChartView: View {
     let currencySymbol: String
     let amountDecimals: Int
 
-    @State private var hoverPoint: ValuePoint?
-
-    private func tooltipDate(_ date: Date) -> String {
-        switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
-        default: return date.formatted(date: .abbreviated, time: .omitted)
-        }
-    }
-
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
@@ -1380,45 +1359,6 @@ private struct PortfolioHeroChartView: View {
         guard let lo = vals.min(), let hi = vals.max(), hi > lo else { return 0...1 }
         let span = hi - lo
         return (lo - span * 0.10)...(hi + span * 0.14)
-    }
-
-    @ViewBuilder private func valueCrosshair(_ proxy: ChartProxy, points: [ValuePoint], tint: Color) -> some View {
-        GeometryReader { geo in
-            if let plotAnchor = proxy.plotFrame {
-                let plot = geo[plotAnchor]
-                ZStack(alignment: .topLeading) {
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let loc):
-                                let localX = min(max(loc.x - plot.minX, 0), plot.width)
-                                if let d: Date = proxy.value(atX: localX) {
-                                    hoverPoint = nearestByDate(points, to: d, date: \.date)
-                                }
-                            case .ended:
-                                hoverPoint = nil
-                            }
-                        }
-                    if let h = hoverPoint,
-                       let px = proxy.position(forX: h.date),
-                       let py = proxy.position(forY: h.value) {
-                        let cx = plot.minX + px
-                        Group {
-                            Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
-                                .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                            Circle().fill(tint).frame(width: 9, height: 9)
-                                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
-                                .position(x: cx, y: plot.minY + py)
-                            ChartTooltip(title: tooltipDate(h.date),
-                                         value: StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: amountDecimals),
-                                         tint: tint)
-                                .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                        }
-                        .allowsHitTesting(false)
-                    }
-                }
-            }
-        }
     }
 
     var body: some View {
@@ -1474,10 +1414,76 @@ private struct PortfolioHeroChartView: View {
                 }
             }
             .chartLegend(.hidden)
-            .chartOverlay { proxy in valueCrosshair(proxy, points: points, tint: tint) }
+            .chartOverlay { proxy in
+                PortfolioHeroChartCrosshairOverlay(
+                    proxy: proxy,
+                    points: points,
+                    tint: tint,
+                    currencySymbol: currencySymbol,
+                    amountDecimals: amountDecimals,
+                    chartRange: chartRange
+                )
+            }
             .animation(.easeInOut(duration: 0.4), value: points)
             .id(chartRange)
             .transition(.opacity.animation(.easeInOut(duration: 0.4)))
+        }
+    }
+}
+
+private struct PortfolioHeroChartCrosshairOverlay: View {
+    let proxy: ChartProxy
+    let points: [ValuePoint]
+    let tint: Color
+    let currencySymbol: String
+    let amountDecimals: Int
+    let chartRange: ChartRange
+
+    @State private var hoverPoint: ValuePoint?
+
+    private func tooltipDate(_ date: Date) -> String {
+        switch chartRange {
+        case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
+        default: return date.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            if let plotAnchor = proxy.plotFrame {
+                let plot = geo[plotAnchor]
+                ZStack(alignment: .topLeading) {
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let loc):
+                                let localX = min(max(loc.x - plot.minX, 0), plot.width)
+                                if let d: Date = proxy.value(atX: localX) {
+                                    hoverPoint = nearestByDate(points, to: d, date: \.date)
+                                }
+                            case .ended:
+                                hoverPoint = nil
+                            }
+                        }
+                    if let h = hoverPoint,
+                       let px = proxy.position(forX: h.date),
+                       let py = proxy.position(forY: h.value) {
+                        let cx = plot.minX + px
+                        Group {
+                            Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
+                                .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            Circle().fill(tint).frame(width: 9, height: 9)
+                                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+                                .position(x: cx, y: plot.minY + py)
+                            ChartTooltip(title: tooltipDate(h.date),
+                                         value: StorageService.formatAmount(h.value, symbol: currencySymbol, decimals: amountDecimals),
+                                         tint: tint)
+                                .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
+                        }
+                        .allowsHitTesting(false)
+                    }
+                }
+            }
         }
     }
 }
@@ -1677,6 +1683,7 @@ private struct PortfolioAllocationCardView: View {
     @State private var hoveredSlice: String?
 
     private func color(for symbol: String) -> Color {
+        if symbol.hasPrefix("Other") { return DS.inkTertiary }
         let idx = allocation.firstIndex { $0.symbol == symbol } ?? 0
         return DS.palette[idx % DS.palette.count]
     }
@@ -1684,8 +1691,15 @@ private struct PortfolioAllocationCardView: View {
     private func allocationRow(_ slice: PortfolioViewModel.AllocationSlice) -> some View {
         HStack(spacing: 9) {
             RoundedRectangle(cornerRadius: 2.5).fill(color(for: slice.symbol)).frame(width: 9, height: 9)
-            SymbolLogo(symbol: slice.symbol, size: 20)
-            let displayName = stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol
+            if slice.id == "__other__" {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(width: 20, height: 20)
+            } else {
+                SymbolLogo(symbol: slice.symbol, size: 20)
+            }
+            let displayName = (slice.id == "__other__") ? slice.symbol : (stockService.quotes[slice.symbol]?.displayName ?? StockService.codeToFundNameMap[slice.symbol] ?? slice.symbol)
             Text(displayName).font(DS.figure).foregroundStyle(DS.ink).lineLimit(1)
             Spacer()
             Text(String(format: "%.1f%%", slice.fraction * 100))
@@ -1745,28 +1759,42 @@ private struct PortfolioAllocationCardView: View {
                         }
                         .frame(width: 136, height: 136)
 
-                        ScrollView(.vertical, showsIndicators: true) {
-                            VStack(alignment: .leading, spacing: 9) {
-                                ForEach(allocation) { slice in
-                                    let matchedHolding = holdingByCanonical[StockService.canonicalSymbol(for: slice.symbol)]
-                                    Group {
-                                        if let matched = matchedHolding {
-                                            NavigationLink(value: matched.id) {
-                                                allocationRow(slice)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .pointingHandCursor()
-                                            .help("View \(slice.symbol) details")
-                                        } else {
+                        let displaySlices: [PortfolioViewModel.AllocationSlice] = {
+                            if allocation.count <= 6 {
+                                return allocation
+                            } else {
+                                let top = Array(allocation.prefix(5))
+                                let otherFraction = allocation.dropFirst(5).reduce(0.0) { $0 + $1.fraction }
+                                let otherValue = allocation.dropFirst(5).reduce(0.0) { $0 + $1.value }
+                                let otherSlice = PortfolioViewModel.AllocationSlice(
+                                    id: "__other__",
+                                    symbol: "Other (\(allocation.count - 5))",
+                                    value: otherValue,
+                                    fraction: otherFraction
+                                )
+                                return top + [otherSlice]
+                            }
+                        }()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(displaySlices) { slice in
+                                let matchedHolding = holdingByCanonical[StockService.canonicalSymbol(for: slice.symbol)]
+                                Group {
+                                    if let matched = matchedHolding {
+                                        NavigationLink(value: matched.id) {
                                             allocationRow(slice)
                                         }
+                                        .buttonStyle(.plain)
+                                        .pointingHandCursor()
+                                        .help("View \(slice.symbol) details")
+                                    } else {
+                                        allocationRow(slice)
                                     }
-                                    .contentShape(Rectangle())
-                                    .onHover { hoveredSlice = $0 ? slice.symbol : nil }
                                 }
+                                .contentShape(Rectangle())
+                                .onHover { hoveredSlice = $0 ? slice.symbol : nil }
                             }
                         }
-                        .frame(maxHeight: 140)
                         .frame(maxWidth: .infinity)
                     }
 
@@ -1777,14 +1805,6 @@ private struct PortfolioAllocationCardView: View {
                 }
             }
         }
-    }
-}
-
-private struct CardWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        let next = nextValue()
-        if next > 0 { value = next }
     }
 }
 
@@ -2080,7 +2100,6 @@ private struct PositionSummaryRow: View {
         }
         .padding(.vertical, 11).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
-        .animation(.easeOut(duration: 0.15), value: hovered)
         .contentShape(Rectangle())
         .pointingHandCursor()
         .onHover { inside in

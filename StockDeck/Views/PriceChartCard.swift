@@ -377,14 +377,8 @@ struct PriceChartCard: View {
     }
 }
 
-/// A tiny 30-day price line for table rows — no axes, tinted by direction.
-/// Lazily triggers the (cached) history fetch for its symbol.
-///
-/// Reads the shared service directly (not @EnvironmentObject): `Table` cells on
-/// macOS are hosted outside the SwiftUI environment chain, so an environment
-/// object would crash here.
+/// A tiny price line for table rows — rendered using Canvas for near-zero CPU/GPU footprint.
 struct Sparkline: View {
-    @ObservedObject private var stockService = StockService.shared
     let symbol: String
     var days: Int = 30
     var isYTD: Bool = false
@@ -392,6 +386,7 @@ struct Sparkline: View {
     var height: CGFloat? = 22
 
     private var points: [PricePoint] {
+        let stockService = StockService.shared
         guard let all = stockService.watchlistHistory[symbol] ?? stockService.priceHistoryMax[symbol] else { return [] }
         if isYTD {
             let cal = Calendar.current
@@ -404,31 +399,45 @@ struct Sparkline: View {
     }
 
     var body: some View {
+        let pts = points
         Group {
-            if points.count >= 2 {
-                let up = (points.last?.close ?? 0) >= (points.first?.close ?? 0)
+            if pts.count >= 2 {
+                let up = (pts.last?.close ?? 0) >= (pts.first?.close ?? 0)
                 let tint = up ? DS.up : DS.down
-                Chart(points) { point in
-                    LineMark(x: .value("Day", point.date), y: .value("Close", point.close))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 1.5))
-                        .interpolationMethod(.monotone)
+
+                Canvas { context, size in
+                    guard size.width > 0, size.height > 0 else { return }
+                    var minVal = Double.greatestFiniteMagnitude
+                    var maxVal = -Double.greatestFiniteMagnitude
+                    for pt in pts {
+                        let c = pt.close
+                        if c < minVal { minVal = c }
+                        if c > maxVal { maxVal = c }
+                    }
+                    guard maxVal > minVal else { return }
+
+                    let range = maxVal - minVal
+                    let stepX = size.width / CGFloat(pts.count - 1)
+                    let padY: CGFloat = 1.5
+                    let drawableHeight = max(1.0, size.height - padY * 2)
+
+                    var path = Path()
+                    for (i, pt) in pts.enumerated() {
+                        let x = CGFloat(i) * stepX
+                        let normY = CGFloat((pt.close - minVal) / range)
+                        let y = size.height - padY - (normY * drawableHeight)
+                        if i == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                    context.stroke(path, with: .color(tint), lineWidth: 1.5)
                 }
-                .chartYScale(domain: sparkDomain)
-                .chartXAxis(.hidden)
-                .chartYAxis(.hidden)
-                .chartLegend(.hidden)
             } else {
                 Capsule().fill(DS.cardAlt).frame(height: 2)
             }
         }
         .frame(width: width, height: height)
-        // History is filled by the watchlist's batched spark request, so no
-        // per-row fetch here (that would be one request per symbol).
-    }
-
-    private var sparkDomain: ClosedRange<Double> {
-        let closes = points.map(\.close)
-        guard let min = closes.min(), let max = closes.max(), max > min else { return 0...1 }
-        return min...max
     }
 }

@@ -1208,22 +1208,34 @@ class StorageService: ObservableObject {
                 case .tenYears:
                     return tenYearStart.flatMap { PriceHistory.percentChange(points: histMax.isEmpty ? hist : histMax, currentPrice: regularPrice, since: $0) }
                 case .ath:
-                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    var histHigh: Double? = nil
+                    for p in histMax {
+                        let h = p.effectiveHigh
+                        if histHigh == nil || h > histHigh! { histHigh = h }
+                    }
                     let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
                     if let h = histHigh { return max(h, quoteHigh) * pRate }
                     if quoteHigh > 0 { return quoteHigh * pRate }
                     return nil
                 case .atl:
-                    let histLow = histMax.map(\.effectiveLow).min()
+                    var histLow: Double? = nil
+                    for p in histMax {
+                        let l = p.effectiveLow
+                        if histLow == nil || l < histLow! { histLow = l }
+                    }
                     let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
                     if let l = histLow, let ql = qLow, ql > 0 { return min(l, ql) * pRate }
                     if let l = histLow { return l * pRate }
                     if let ql = qLow, ql > 0 { return ql * pRate }
                     return nil
                 case .fromAth:
-                    let ath: Double?
-                    let histHigh = histMax.map(\.effectiveHigh).max()
+                    var histHigh: Double? = nil
+                    for p in histMax {
+                        let h = p.effectiveHigh
+                        if histHigh == nil || h > histHigh! { histHigh = h }
+                    }
                     let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
+                    let ath: Double?
                     if let h = histHigh { ath = max(h, quoteHigh) * pRate }
                     else if quoteHigh > 0 { ath = quoteHigh * pRate }
                     else { ath = nil }
@@ -1232,9 +1244,13 @@ class StorageService: ObservableObject {
                     if priceConverted >= ath { return 0.0 }
                     return min(0.0, (priceConverted - ath) / ath * 100)
                 case .fromAtl:
-                    let atl: Double?
-                    let histLow = histMax.map(\.effectiveLow).min()
+                    var histLow: Double? = nil
+                    for p in histMax {
+                        let l = p.effectiveLow
+                        if histLow == nil || l < histLow! { histLow = l }
+                    }
                     let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
+                    let atl: Double?
                     if let l = histLow, let ql = qLow, ql > 0 { atl = min(l, ql) * pRate }
                     else if let l = histLow { atl = l * pRate }
                     else if let ql = qLow, ql > 0 { atl = ql * pRate }
@@ -1252,10 +1268,11 @@ class StorageService: ObservableObject {
         }
 
         let symbolOrder = Dictionary(uniqueKeysWithValues: symbols.enumerated().map { ($0.element, $0.offset) })
+        let evaluatedValues = Dictionary(uniqueKeysWithValues: symbols.map { ($0, value(for: $0)) })
 
         return symbols.sorted { lhs, rhs in
-            let lv = value(for: lhs)
-            let rv = value(for: rhs)
+            let lv = evaluatedValues[lhs] ?? nil
+            let rv = evaluatedValues[rhs] ?? nil
             switch (lv, rv) {
             case let (l?, r?) where l != r:
                 return ascending ? l < r : l > r
