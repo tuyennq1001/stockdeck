@@ -741,10 +741,12 @@ struct PortfolioOverview: View {
             StatTile(
                 label: "Total Profit",
                 value: StorageService.formatAmount(totalProfit, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
-                caption: String(format: "%+.\(decimals)f%% on invested", totalProfitPercent),
-                captionTint: DS.pnlColor(totalProfit),
+                caption: realizedPnlStats.totalClosed > 0
+                    ? "Unrealized + Realized"
+                    : String(format: "%+.\(decimals)f%% on cost", totalPnlPercent),
+                captionTint: realizedPnlStats.totalClosed > 0 ? DS.inkSecondary : DS.pnlColor(totalPnl),
                 valueTint: DS.pnlColor(totalProfit),
-                help: "Lifetime total profit (Realized P&L + Unrealized P&L) vs invested capital"
+                help: "Lifetime total profit (Realized P&L + Unrealized P&L)"
             )
 
             StatTile(
@@ -1488,6 +1490,54 @@ private struct PortfolioHeroChartCrosshairOverlay: View {
     }
 }
 
+private struct PnlChartTooltip: View {
+    let title: String
+    let totalPnl: Double
+    let realizedPnl: Double?
+    let unrealizedPnl: Double?
+    let currencySymbol: String
+    let amountDecimals: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(DS.micro).foregroundStyle(DS.inkTertiary)
+            HStack(spacing: 4) {
+                Text("Total:")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkSecondary)
+                Text(StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: amountDecimals, signed: true))
+                    .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
+                    .foregroundStyle(DS.pnlColor(totalPnl))
+            }
+            if let r = realizedPnl, abs(r) > 0.001 {
+                HStack(spacing: 4) {
+                    Text("• Realized:")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                    Text(StorageService.formatAmount(r, symbol: currencySymbol, decimals: amountDecimals, signed: true))
+                        .font(.inter(11, weight: .medium, relativeTo: .body).monospacedDigit())
+                        .foregroundStyle(DS.pnlColor(r))
+                }
+            }
+            if let u = unrealizedPnl, (realizedPnl != nil && abs(realizedPnl!) > 0.001) {
+                HStack(spacing: 4) {
+                    Text("• Paper:")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                    Text(StorageService.formatAmount(u, symbol: currencySymbol, decimals: amountDecimals, signed: true))
+                        .font(.inter(11, weight: .medium, relativeTo: .body).monospacedDigit())
+                        .foregroundStyle(DS.pnlColor(u))
+                }
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.card)
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 2))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline))
+        .fixedSize()
+    }
+}
+
 private struct PortfolioDailyPnlChartView: View {
     let dailyPnlRows: [DailyPnlRow]
     let currencySymbol: String
@@ -1526,11 +1576,16 @@ private struct PortfolioDailyPnlChartView: View {
                let px = proxy.position(forX: h.label) {
                 let cx = plot.minX + px
                 let pnl = h.pnl ?? 0
-                ChartTooltip(title: h.label,
-                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: amountDecimals, signed: true),
-                             tint: DS.pnlColor(pnl))
-                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                    .allowsHitTesting(false)
+                PnlChartTooltip(
+                    title: h.label,
+                    totalPnl: pnl,
+                    realizedPnl: h.realizedPnl,
+                    unrealizedPnl: h.unrealizedPnl,
+                    currencySymbol: currencySymbol,
+                    amountDecimals: amountDecimals
+                )
+                .position(x: min(max(cx, plot.minX + 55), plot.maxX - 55), y: plot.minY + 12)
+                .allowsHitTesting(false)
             }
         }
     }
@@ -1543,15 +1598,26 @@ private struct PortfolioDailyPnlChartView: View {
             Chart {
                 ForEach(dailyPnlRows.reversed()) { row in
                     let isHovered = hoveredDay?.date == row.date
+                    let pnl = row.pnl ?? 0
                     BarMark(
                         x: .value("Day", row.label),
                         yStart: .value("Zero", 0),
-                        yEnd: .value("PnL", row.pnl ?? 0),
+                        yEnd: .value("PnL", pnl),
                         width: .ratio(isHovered ? 0.82 : 0.55)
                     )
-                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
+                    .foregroundStyle(DS.pnlColor(pnl))
                     .opacity(isHovered ? 1.0 : 0.75)
                     .cornerRadius(2)
+
+                    if let r = row.realizedPnl, abs(r) > 0.001 {
+                        PointMark(
+                            x: .value("Day", row.label),
+                            y: .value("PnL", pnl)
+                        )
+                        .symbol(Circle())
+                        .symbolSize(isHovered ? 24 : 14)
+                        .foregroundStyle(DS.gold)
+                    }
                 }
                 RuleMark(y: .value("Zero", 0))
                     .foregroundStyle(DS.hairline.opacity(0.6))
@@ -1570,7 +1636,7 @@ private struct PortfolioDailyPnlChartView: View {
 
             Divider().overlay(DS.hairline.opacity(0.5))
 
-            Text("Daily PnL from real cost basis × price history — adding cash or positions doesn't inflate PnL.")
+            Text("Daily PnL from real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL.")
                 .font(DS.micro)
                 .foregroundStyle(DS.inkTertiary)
                 .padding(.top, 6)
@@ -1622,11 +1688,16 @@ private struct PortfolioMonthlyPnlChartView: View {
                let px = proxy.position(forX: monthAxisLabel(h.monthStart)) {
                 let cx = plot.minX + px
                 let pnl = h.pnl ?? 0
-                ChartTooltip(title: monthAxisLabel(h.monthStart),
-                             value: StorageService.formatAmount(pnl, symbol: currencySymbol, decimals: amountDecimals, signed: true),
-                             tint: DS.pnlColor(pnl))
-                    .position(x: min(max(cx, plot.minX + 46), plot.maxX - 46), y: plot.minY + 8)
-                    .allowsHitTesting(false)
+                PnlChartTooltip(
+                    title: monthAxisLabel(h.monthStart),
+                    totalPnl: pnl,
+                    realizedPnl: h.realizedPnl,
+                    unrealizedPnl: h.unrealizedPnl,
+                    currencySymbol: currencySymbol,
+                    amountDecimals: amountDecimals
+                )
+                .position(x: min(max(cx, plot.minX + 55), plot.maxX - 55), y: plot.minY + 12)
+                .allowsHitTesting(false)
             }
         }
     }
@@ -1639,15 +1710,89 @@ private struct PortfolioMonthlyPnlChartView: View {
             Chart {
                 ForEach(monthlyPnlRows.reversed()) { row in
                     let isHovered = hoveredMonth?.monthStart == row.monthStart
-                    BarMark(
-                        x: .value("Month", monthAxisLabel(row.monthStart)),
-                        yStart: .value("Zero", 0),
-                        yEnd: .value("PnL", row.pnl ?? 0),
-                        width: .ratio(isHovered ? 0.82 : 0.6)
-                    )
-                    .foregroundStyle(DS.pnlColor(row.pnl ?? 0))
-                    .opacity(isHovered ? 1.0 : 0.75)
-                    .cornerRadius(3)
+                    let label = monthAxisLabel(row.monthStart)
+                    let total = row.pnl ?? 0
+                    let realized = row.realizedPnl ?? 0
+                    let unrealized = row.unrealizedPnl ?? 0
+                    let hasRealized = abs(realized) > 0.001
+                    let hasUnrealized = abs(unrealized) > 0.001
+
+                    if !hasRealized {
+                        // Only unrealized / standard bar
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("PnL", total),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(total).opacity(0.65))
+                        .opacity(isHovered ? 1.0 : 0.85)
+                        .cornerRadius(3)
+                    } else if !hasUnrealized {
+                        // Only realized trades in this month
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("PnL", realized),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(realized))
+                        .opacity(isHovered ? 1.0 : 0.95)
+                        .cornerRadius(3)
+                    } else if (realized >= 0 && unrealized >= 0) || (realized <= 0 && unrealized <= 0) {
+                        // Same sign: stacked bar!
+                        // Bottom segment: Realized PnL (solid / saturated)
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("Realized", realized),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(realized))
+                        .opacity(isHovered ? 1.0 : 0.95)
+                        .cornerRadius(2)
+
+                        // Top segment: Paper PnL (softer opacity)
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Realized", realized),
+                            yEnd: .value("Total", total),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(unrealized).opacity(0.55))
+                        .opacity(isHovered ? 0.95 : 0.80)
+                        .cornerRadius(2)
+                    } else {
+                        // Opposite signs: bidirectional bars + Net marker!
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("Realized", realized),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(realized))
+                        .opacity(isHovered ? 1.0 : 0.95)
+                        .cornerRadius(2)
+
+                        BarMark(
+                            x: .value("Month", label),
+                            yStart: .value("Zero", 0),
+                            yEnd: .value("Unrealized", unrealized),
+                            width: .ratio(isHovered ? 0.82 : 0.6)
+                        )
+                        .foregroundStyle(DS.pnlColor(unrealized).opacity(0.55))
+                        .opacity(isHovered ? 0.95 : 0.80)
+                        .cornerRadius(2)
+
+                        // Net Total marker
+                        PointMark(
+                            x: .value("Month", label),
+                            y: .value("Net Total", total)
+                        )
+                        .symbol(Circle())
+                        .symbolSize(isHovered ? 36 : 22)
+                        .foregroundStyle(DS.pnlColor(total))
+                    }
                 }
                 RuleMark(y: .value("Zero", 0))
                     .foregroundStyle(DS.hairline.opacity(0.6))
@@ -1664,9 +1809,40 @@ private struct PortfolioMonthlyPnlChartView: View {
                 }
             }
 
+            HStack(spacing: 16) {
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(DS.up)
+                        .frame(width: 10, height: 10)
+                    Text("Realized")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkSecondary)
+                }
+                HStack(spacing: 5) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(DS.up.opacity(0.55))
+                        .frame(width: 10, height: 10)
+                    Text("Paper")
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkSecondary)
+                }
+                if monthlyPnlRows.contains(where: { ($0.realizedPnl ?? 0) * ($0.unrealizedPnl ?? 0) < -0.001 }) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(DS.ink)
+                            .frame(width: 6, height: 6)
+                        Text("Net")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkSecondary)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.top, 4)
+
             Divider().overlay(DS.hairline.opacity(0.5))
 
-            Text("Real cost basis × price history — adding cash or positions doesn't inflate PnL.")
+            Text("Real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL.")
                 .font(DS.micro)
                 .foregroundStyle(DS.inkTertiary)
                 .padding(.top, 6)
