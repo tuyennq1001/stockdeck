@@ -768,7 +768,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let rect = NSRect(x: 0, y: 0, width: button.bounds.width, height: 0)
             popover.show(relativeTo: rect, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            let hasDesktopWindow = (portfolioWindow?.isVisible ?? false) || NSApp.windows.contains {
+                $0.isVisible && $0.className != "_NSPopoverWindow"
+            }
+            if !hasDesktopWindow {
+                NSApp.activate(ignoringOtherApps: true)
+            }
             if let window = popover.contentViewController?.view.window {
                 window.makeKey()
             }
