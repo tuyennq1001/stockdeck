@@ -694,6 +694,7 @@ final class PortfolioViewModel {
         if let cached = dailyPnlCache[range] { return cached }
         guard let stockService = stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
+        let closed = portfolios.flatMap { $0.closedTrades }
         var histBySymbol: [String: [PricePoint]] = [:]
         for h in hs {
             histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
@@ -702,7 +703,18 @@ final class PortfolioViewModel {
         for h in hs {
             rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
         }
-        let rows = DailyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, dayCount: range.dayCount)
+        for ct in closed {
+            if rateBySymbol[ct.symbol] == nil {
+                rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
+            }
+        }
+        let rows = DailyPnl.rows(
+            holdings: hs,
+            closedTrades: closed,
+            historyBySymbol: histBySymbol,
+            rateBySymbol: rateBySymbol,
+            dayCount: range.dayCount
+        )
         dailyPnlCache[range] = rows
         return rows
     }
@@ -711,6 +723,7 @@ final class PortfolioViewModel {
         if let cached = monthlyPnlCache[range] { return cached }
         guard let stockService = stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
+        let closed = portfolios.flatMap { $0.closedTrades }
         var histBySymbol: [String: [PricePoint]] = [:]
         for h in hs {
             histBySymbol[h.symbol] = stockService.priceHistoryMax[h.symbol]
@@ -724,8 +737,9 @@ final class PortfolioViewModel {
             let today = Date()
             let calendar = Calendar.current
             var span = 1
-            if let earliestPurchase = hs.compactMap(\.purchaseDate).min(),
-               let months = calendar.dateComponents([.month], from: earliestPurchase, to: today).month {
+            let earliestDate = (hs.compactMap(\.purchaseDate) + closed.compactMap(\.buyDate)).min()
+            if let earliest = earliestDate,
+               let months = calendar.dateComponents([.month], from: earliest, to: today).month {
                 span = max(span, months + 1)
             }
             let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
@@ -735,7 +749,18 @@ final class PortfolioViewModel {
         for h in hs {
             rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
         }
-        let rows = MonthlyPnl.rows(holdings: hs, historyBySymbol: histBySymbol, rateBySymbol: rateBySymbol, monthCount: monthCount)
+        for ct in closed {
+            if rateBySymbol[ct.symbol] == nil {
+                rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
+            }
+        }
+        let rows = MonthlyPnl.rows(
+            holdings: hs,
+            closedTrades: closed,
+            historyBySymbol: histBySymbol,
+            rateBySymbol: rateBySymbol,
+            monthCount: monthCount
+        )
         monthlyPnlCache[range] = rows
         return rows
     }

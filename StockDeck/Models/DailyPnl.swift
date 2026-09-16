@@ -7,32 +7,48 @@ import Foundation
 struct DailyPnlRow: Identifiable, Equatable {
     let date: Date
     let label: String
-    let pnl: Double?
+    let pnl: Double?            // Net total PnL = unrealized + realized
+    let unrealizedPnl: Double?  // Open positions mark-to-market delta
+    let realizedPnl: Double?    // Closed trades executed on this day
     let pnlPercent: Double?
 
     var id: Date { date }
+
+    init(date: Date,
+         label: String,
+         pnl: Double?,
+         unrealizedPnl: Double? = nil,
+         realizedPnl: Double? = nil,
+         pnlPercent: Double?) {
+        self.date = date
+        self.label = label
+        self.pnl = pnl
+        self.unrealizedPnl = unrealizedPnl
+        self.realizedPnl = realizedPnl
+        self.pnlPercent = pnlPercent
+    }
 }
 
-/// Builds a per-day P&L table from current holdings × real price history.
+/// Builds a per-day P&L table from current holdings × real price history,
+/// combined with realized P&L from closed trades on their sell dates.
 ///
 /// Exactly like `MonthlyPnl`, but bucketed by calendar day instead of month:
 /// for every day in the window it computes the cumulative P&L of the held
 /// positions (each lot: `(price − avgPrice) / scale × qty × leverage × FX`).
 /// A day's own P&L is the difference between the cumulative P&L at the end of
-/// that day and the day before. Holdings purchased after a day are excluded
-/// from it, and a day without a price for a symbol simply omits that holding
-/// (no fabricated numbers). Days without any tradable data are trimmed so the
-/// chart starts at the first day that actually has prices.
+/// that day and the day before, plus any realized profit/loss from trades
+/// closed on that day.
 enum DailyPnl {
     static let defaultDayCount = 365
 
     static func rows(holdings: [Holding],
+                     closedTrades: [ClosedTrade] = [],
                      historyBySymbol: [String: [PricePoint]],
                      rateBySymbol: [String: Double],
                      today: Date = Date(),
                      calendar: Calendar = .current,
                      dayCount: Int = defaultDayCount) -> [DailyPnlRow] {
-        guard !holdings.isEmpty, dayCount > 0 else { return [] }
+        guard (!holdings.isEmpty || !closedTrades.isEmpty), dayCount > 0 else { return [] }
 
         // Newest-first list of calendar-day starts covering the window.
         let todayStart = calendar.startOfDay(for: today)
@@ -54,11 +70,19 @@ enum DailyPnl {
             return point.close
         }
 
+        // Group closed trades by calendar day start
+        var closedTradesByDay: [Date: [ClosedTrade]] = [:]
+        for trade in closedTrades {
+            guard let sellDate = trade.sellDate else { continue }
+            let dayStart = calendar.startOfDay(for: sellDate)
+            closedTradesByDay[dayStart, default: []].append(trade)
+        }
+
         // Holdings without a known purchase date (e.g. Binance balances synced
         // without cost basis) are anchored to the earliest known purchase date
         // of the portfolio, so their price history doesn't fabricate P&L for
         // days before the owner actually held anything.
-        let earliestKnownPurchase = holdings.compactMap(\.purchaseDate).min()
+        let earliestKnownPurchase = (holdings.compactMap(\.purchaseDate) + closedTrades.compactMap(\.buyDate)).min()
 
         var cumulativePnl: [Date: Double] = [:]
         var cumulativeValue: [Date: Double] = [:]
@@ -68,7 +92,7 @@ enum DailyPnl {
             let end = endOfDay(day)
             var pnl = 0.0
             var value = 0.0
-            var anyData = false
+            var anyData = !(closedTradesByDay[day]?.isEmpty ?? true)
             for h in holdings {
                 let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
                 if let ownedFrom, ownedFrom > end { continue }
@@ -90,7 +114,7 @@ enum DailyPnl {
         }
 
         // Trim the oldest days that carry no data at all, so the chart starts
-        // at the first day that actually has prices for held positions.
+        // at the first day that actually has prices or closed trades for held positions.
         guard let oldestDataIndex = days.lastIndex(where: { hasData[$0] ?? false }) else {
             return []
         }
@@ -163,8 +187,27 @@ enum DailyPnl {
                 }
             }
             
-            let pct: Double? = abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
-            result.append(DailyPnlRow(date: day, label: formatter.string(from: day), pnl: own, pnlPercent: pct))
+            var realizedToday = 0.0
+            var hasRealized = false
+            if let trades = closedTradesByDay[day] {
+                for ct in trades {
+                    let rate = rateBySymbol[ct.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+                    realizedToday += ct.realizedPnl * rate
+                    hasRealized = true
+                    prevTotalValue += ct.costBasis * rate
+                }
+            }
+            
+            let totalPnl = own + realizedToday
+            let pct: Double? = abs(prevTotalValue) >= 0.01 ? totalPnl / abs(prevTotalValue) * 100 : nil
+            result.append(DailyPnlRow(
+                date: day,
+                label: formatter.string(from: day),
+                pnl: totalPnl,
+                unrealizedPnl: own,
+                realizedPnl: hasRealized ? realizedToday : nil,
+                pnlPercent: pct
+            ))
         }
         return result
     }

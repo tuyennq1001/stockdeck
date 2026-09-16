@@ -7,21 +7,37 @@ import Foundation
 struct MonthlyPnlRow: Identifiable, Equatable {
     let monthStart: Date
     let label: String
-    let pnl: Double?
+    let pnl: Double?            // Net total PnL = unrealized + realized
+    let unrealizedPnl: Double?  // Open positions mark-to-market delta
+    let realizedPnl: Double?    // Closed trades executed in this month
     let pnlPercent: Double?
 
     var id: Date { monthStart }
+
+    init(monthStart: Date,
+         label: String,
+         pnl: Double?,
+         unrealizedPnl: Double? = nil,
+         realizedPnl: Double? = nil,
+         pnlPercent: Double?) {
+        self.monthStart = monthStart
+        self.label = label
+        self.pnl = pnl
+        self.unrealizedPnl = unrealizedPnl
+        self.realizedPnl = realizedPnl
+        self.pnlPercent = pnlPercent
+    }
 }
 
-/// Builds a per-month P&L table from current holdings × real price history.
+/// Builds a per-month P&L table from current holdings × real price history,
+/// combined with realized P&L from closed trades on their sell dates.
 ///
 /// For every month in the window it computes the cumulative P&L of the held
 /// positions (each lot: `(price − avgPrice) / scale × qty × leverage × FX`,
 /// exactly like `Holding.pnl`). A month's own P&L is the difference between the
 /// cumulative P&L at the end of that month and the month before — i.e. the
-/// profit realized *during* the month. Holdings whose purchase date is after a
-/// month are excluded from it, and a month without a price for a symbol simply
-/// omits that holding (no fabricated numbers).
+/// profit realized *during* the month, plus realized profit/loss from trades
+/// closed in that month.
 enum MonthlyPnl {
     static let defaultMonthCount = 12
 
@@ -44,12 +60,13 @@ enum MonthlyPnl {
     }
 
     static func rows(holdings: [Holding],
+                     closedTrades: [ClosedTrade] = [],
                      historyBySymbol: [String: [PricePoint]],
                      rateBySymbol: [String: Double],
                      today: Date = Date(),
                      calendar: Calendar = .current,
                      monthCount: Int = defaultMonthCount) -> [MonthlyPnlRow] {
-        guard !holdings.isEmpty else { return [] }
+        guard (!holdings.isEmpty || !closedTrades.isEmpty) else { return [] }
 
         // Newest-first list of month starts covering the window.
         let months: [Date] = {
@@ -75,11 +92,22 @@ enum MonthlyPnl {
             return point.close
         }
 
+        // Group closed trades by month start
+        func monthStart(for date: Date) -> Date {
+            calendar.dateInterval(of: .month, for: date)?.start ?? calendar.startOfDay(for: date)
+        }
+        var closedTradesByMonth: [Date: [ClosedTrade]] = [:]
+        for trade in closedTrades {
+            guard let sellDate = trade.sellDate else { continue }
+            let mStart = monthStart(for: sellDate)
+            closedTradesByMonth[mStart, default: []].append(trade)
+        }
+
         // Holdings without a known purchase date (e.g. Binance balances synced
         // without cost basis) are anchored to the earliest known purchase date
         // of the portfolio, so their price history doesn't fabricate P&L for
         // months before the owner actually held anything.
-        let earliestKnownPurchase = holdings.compactMap(\.purchaseDate).min()
+        let earliestKnownPurchase = (holdings.compactMap(\.purchaseDate) + closedTrades.compactMap(\.buyDate)).min()
 
         var cumulativePnl: [Date: Double] = [:]
         var cumulativeValue: [Date: Double] = [:]
@@ -89,7 +117,7 @@ enum MonthlyPnl {
             let end = endOfMonth(month)
             var pnl = 0.0
             var value = 0.0
-            var anyData = false
+            var anyData = !(closedTradesByMonth[month]?.isEmpty ?? true)
             for h in holdings {
                 let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
                 if let ownedFrom, ownedFrom > end { continue }
@@ -111,7 +139,7 @@ enum MonthlyPnl {
         }
 
         // Trim the oldest months that carry no data at all, so the chart starts
-        // at the first month that actually has prices for held positions.
+        // at the first month that actually has prices or closed trades for held positions.
         guard let oldestDataIndex = months.lastIndex(where: { hasData[$0] ?? false }) else {
             return []
         }
@@ -171,18 +199,34 @@ enum MonthlyPnl {
                 }
             }
             
-            // For the oldest month, `prevTotalValue` includes the `point.close` (value right before the month started).
-            // If there's no `wasOwnedPrev`, `prevTotalValue` includes the `avgPrice`.
-            // So `prevTotalValue` is the correct denominator.
+            var realizedThisMonth = 0.0
+            var hasRealized = false
+            if let trades = closedTradesByMonth[month] {
+                for ct in trades {
+                    let rate = rateBySymbol[ct.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+                    realizedThisMonth += ct.realizedPnl * rate
+                    hasRealized = true
+                    prevTotalValue += ct.costBasis * rate
+                }
+            }
+            
+            let totalMonthPnl = own + realizedThisMonth
             let pct: Double? = {
                 if prevMonth == nil {
                     // Oldest month shows cumulative P&L but suppresses the percentage
                     // because it would represent lifetime return, not a month's return.
                     return nil
                 }
-                return abs(prevTotalValue) >= 0.01 ? own / abs(prevTotalValue) * 100 : nil
+                return abs(prevTotalValue) >= 0.01 ? totalMonthPnl / abs(prevTotalValue) * 100 : nil
             }()
-            result.append(MonthlyPnlRow(monthStart: month, label: formatter.string(from: month), pnl: own, pnlPercent: pct))
+            result.append(MonthlyPnlRow(
+                monthStart: month,
+                label: formatter.string(from: month),
+                pnl: totalMonthPnl,
+                unrealizedPnl: own,
+                realizedPnl: hasRealized ? realizedThisMonth : nil,
+                pnlPercent: pct
+            ))
         }
         return result
     }

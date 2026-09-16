@@ -217,4 +217,100 @@ final class MonthlyPnlTests: XCTestCase {
         let m = MonthlyPnl.monthCount(for: ["X": points], today: month(2026, 8), maxMonths: 36)
         XCTAssertEqual(m, 4)
     }
+
+    // MARK: - Closed Trades / Realized P&L
+
+    func testMonthlyPnlIncludesRealizedPnLOnSellMonth() {
+        // Holding X: bought at 100. Prices: Apr 100, May 110, Jun 115 (today = Jun 2026).
+        // Closed trade Y: bought May 5 at 50, sold Jun 10 at 70 (qty 10, realized +200).
+        let h = [holding(qty: 10, avg: 100, purchased: month(2026, 4))]
+        let hist = history(prices: [(2026, 4, 100), (2026, 5, 110), (2026, 6, 115)])
+        let closedTrade = ClosedTrade(
+            symbol: "Y",
+            quantity: 10,
+            buyPrice: 50,
+            sellPrice: 70,
+            buyDate: Calendar.current.date(from: DateComponents(year: 2026, month: 5, day: 5)),
+            sellDate: Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 10))
+        )
+        let rates = ["X": 1.0, "Y": 1.0]
+        let r = MonthlyPnl.rows(
+            holdings: h,
+            closedTrades: [closedTrade],
+            historyBySymbol: hist,
+            rateBySymbol: rates,
+            today: month(2026, 6),
+            monthCount: 3
+        )
+
+        XCTAssertEqual(r.count, 3)
+        // Jun: paper move is +50 ((115-110)*10), realized is +200 → total = +250
+        XCTAssertEqual(r[0].label, "Jun 2026")
+        XCTAssertEqual(r[0].unrealizedPnl ?? 0, 50, accuracy: 1e-9)
+        XCTAssertEqual(r[0].realizedPnl ?? 0, 200, accuracy: 1e-9)
+        XCTAssertEqual(r[0].pnl ?? 0, 250, accuracy: 1e-9)
+
+        // May: no closed trade sold in May, only holding X (+100)
+        XCTAssertEqual(r[1].label, "May 2026")
+        XCTAssertEqual(r[1].unrealizedPnl ?? 0, 100, accuracy: 1e-9)
+        XCTAssertNil(r[1].realizedPnl)
+        XCTAssertEqual(r[1].pnl ?? 0, 100, accuracy: 1e-9)
+    }
+
+    func testMonthlyPnlWithOnlyClosedTrades() {
+        // User closed all holdings. No active holdings, but 1 closed trade in May.
+        let closedTrade = ClosedTrade(
+            symbol: "Z",
+            quantity: 5,
+            buyPrice: 100,
+            sellPrice: 150,
+            buyDate: Calendar.current.date(from: DateComponents(year: 2026, month: 4, day: 1)),
+            sellDate: Calendar.current.date(from: DateComponents(year: 2026, month: 5, day: 15))
+        )
+        let r = MonthlyPnl.rows(
+            holdings: [],
+            closedTrades: [closedTrade],
+            historyBySymbol: [:],
+            rateBySymbol: ["Z": 1.0],
+            today: month(2026, 6),
+            monthCount: 3
+        )
+
+        // Only months with data or up to today. May has data.
+        XCTAssertFalse(r.isEmpty)
+        let mayRow = r.first { $0.label == "May 2026" }
+        XCTAssertNotNil(mayRow)
+        XCTAssertEqual(mayRow?.realizedPnl ?? 0, 250, accuracy: 1e-9)
+        XCTAssertEqual(mayRow?.pnl ?? 0, 250, accuracy: 1e-9)
+    }
+
+    func testMonthlyPnlOppositeSigns() {
+        // Holding drops in Jun: from 100 to 80 (qty 10 -> paper loss -200).
+        // Closed trade gains in Jun: sold for +500 realized profit.
+        // Net total = -200 + 500 = +300.
+        let h = [holding(qty: 10, avg: 100)]
+        let hist = history(prices: [(2026, 5, 100), (2026, 6, 80)])
+        let closedTrade = ClosedTrade(
+            symbol: "W",
+            quantity: 10,
+            buyPrice: 10,
+            sellPrice: 60,
+            buyDate: Calendar.current.date(from: DateComponents(year: 2026, month: 5, day: 1)),
+            sellDate: Calendar.current.date(from: DateComponents(year: 2026, month: 6, day: 15))
+        )
+        let r = MonthlyPnl.rows(
+            holdings: h,
+            closedTrades: [closedTrade],
+            historyBySymbol: hist,
+            rateBySymbol: ["X": 1.0, "W": 1.0],
+            today: month(2026, 6),
+            monthCount: 2
+        )
+
+        XCTAssertEqual(r.count, 2)
+        let jun = r[0]
+        XCTAssertEqual(jun.unrealizedPnl ?? 0, -200, accuracy: 1e-9)
+        XCTAssertEqual(jun.realizedPnl ?? 0, 500, accuracy: 1e-9)
+        XCTAssertEqual(jun.pnl ?? 0, 300, accuracy: 1e-9)
+    }
 }
