@@ -60,6 +60,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var tickerIndex = 0
     private var eventMonitor: Any?
+    /// The regular application that was frontmost before StockDeck's menu bar item was clicked,
+    /// used to perform a focus bounce so macOS Dock registers StockDeck at index 0 of Cmd+Tab.
+    private var lastActiveApplication: NSRunningApplication?
     /// Guards the `didBecomeActive` fallback so a click that already opened the
     /// Alerts tab doesn't fire twice.
     private var lastAlertActivationAt: Date = .distantPast
@@ -156,6 +159,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // via `.preferredColorScheme` on the SwiftUI root — not pinned here.
         popover = p
         storageService.onHotKeyTriggered = { [weak self] in
+            if let front = NSWorkspace.shared.frontmostApplication,
+               front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+               front.activationPolicy == .regular {
+                self?.lastActiveApplication = front
+            }
             self?.togglePopover()
         }
         storageService.updateHotKeyRegistration()
@@ -745,6 +753,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             closePopover()
         } else {
+            if let front = NSWorkspace.shared.frontmostApplication,
+               front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+               front.activationPolicy == .regular {
+                lastActiveApplication = front
+            }
             if popover.contentViewController == nil {
                 let contentView = ContentView()
                     .environmentObject(stockService)
@@ -812,6 +825,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showPortfolioWindow() {
+        if lastActiveApplication == nil || lastActiveApplication?.isTerminated == true {
+            if let front = NSWorkspace.shared.frontmostApplication,
+               front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+               front.activationPolicy == .regular {
+                lastActiveApplication = front
+            }
+        }
         let reusable = portfolioWindow?.isVisible ?? false
         NSLog("[StockDeck] Open clicked — \(reusable ? "focusing existing window" : "creating new window")")
         isPresentingPortfolioWindow = true
@@ -858,42 +878,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         bringWindowFront(window)
     }
 
-    /// Brings the desktop window reliably in front of every other app.
-    ///
-    /// Promote the menu-bar app only while the desktop window is visible.
+    /// Brings the desktop window reliably in front of every other app and ensures
+    /// it assumes frontmost priority in the Cmd+Tab (App Switcher) MRU order.
     private func bringWindowFront(_ window: NSWindow) {
         portfolioActivationGeneration += 1
         let generation = portfolioActivationGeneration
 
         _ = NSApp.setActivationPolicy(.regular)
-        window.orderFrontRegardless()
-        DispatchQueue.main.async { [weak self, weak window] in
-            guard let self, let window else { return }
-            self.completePortfolioActivation(window, generation: generation)
-        }
-    }
-
-    private func completePortfolioActivation(
-        _ window: NSWindow,
-        generation: Int
-    ) {
-        guard generation == portfolioActivationGeneration,
-              window === portfolioWindow,
-              window.isVisible else { return }
-
-        NSApp.activate(ignoringOtherApps: true)
-        _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
         window.makeKeyAndOrderFront(nil)
 
-        // A second pass covers the short interval in which LaunchServices has
-        // registered the app as regular but AppKit has not yet made it key.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.075) { [weak self, weak window] in
+        // Focus bounce: Yield focus briefly to the previous active regular application (or Finder)
+        // so Dock.app registers StockDeck's promotion to a regular app. When StockDeck re-activates
+        // after a 100ms tick, macOS fires a genuine "Frontmost Application Changed" event,
+        // placing StockDeck at index 0 and the previous app at index 1 of the Cmd+Tab stack.
+        let targetApp = (lastActiveApplication?.isTerminated == false ? lastActiveApplication : nil)
+            ?? NSWorkspace.shared.runningApplications.first(where: {
+                $0.activationPolicy == .regular &&
+                $0.processIdentifier != ProcessInfo.processInfo.processIdentifier &&
+                !$0.isHidden
+            })
+
+        targetApp?.activate(options: [])
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak window] in
             guard let self, let window,
                   generation == self.portfolioActivationGeneration,
                   window === self.portfolioWindow,
                   window.isVisible else { return }
+
             NSApp.activate(ignoringOtherApps: true)
-            _ = NSRunningApplication.current.activate(options: [.activateAllWindows])
+            _ = NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             window.makeKeyAndOrderFront(nil)
             self.isPresentingPortfolioWindow = false
             NSLog("[StockDeck] window shown — active=\(NSApp.isActive) visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(NSStringFromRect(window.frame))")
