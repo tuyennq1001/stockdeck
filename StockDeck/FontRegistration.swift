@@ -1,8 +1,4 @@
-#if os(macOS)
 import AppKit
-#else
-import UIKit
-#endif
 import CoreText
 import SwiftUI
 
@@ -43,7 +39,6 @@ enum FontRegistration {
         familyName = "Helvetica Neue"
     }
 
-    #if os(macOS)
     static func monospacedDigitsFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         let descriptor = NSFontDescriptor(fontAttributes: [
             .family: familyName,
@@ -58,22 +53,6 @@ enum FontRegistration {
         ])
         return NSFont(descriptor: tnum, size: size) ?? base
     }
-    #else
-    static func monospacedDigitsFont(size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
-        let descriptor = UIFontDescriptor(fontAttributes: [
-            .family: familyName,
-            .traits: [UIFontDescriptor.TraitKey.weight: weight.rawValue]
-        ])
-        let base = UIFont(descriptor: descriptor, size: size)
-        let tnum = base.fontDescriptor.addingAttributes([
-            .featureSettings: [[
-                UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
-                UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector
-            ]]
-        ])
-        return UIFont(descriptor: tnum, size: size)
-    }
-    #endif
 }
 
 extension Font {

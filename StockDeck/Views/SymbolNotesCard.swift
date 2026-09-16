@@ -1,10 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-#if os(macOS)
 import AppKit
-#else
-import UIKit
-#endif
 
 // MARK: - Image store
 
@@ -33,7 +29,6 @@ enum NoteImageStore {
 // MARK: - Editor Model
 
 final class EditorModel: ObservableObject {
-    #if os(macOS)
     weak var textView: NSTextView?
 
     func insertFormatting(prefix: String, suffix: String) {
@@ -67,26 +62,6 @@ final class EditorModel: ObservableObject {
             tv.didChangeText()
         }
     }
-    #else
-    weak var textView: UITextView?
-
-    func insertFormatting(prefix: String, suffix: String) {
-        guard let tv = textView, let range = tv.selectedTextRange else { return }
-        let selected = tv.text(in: range) ?? ""
-        let replacement = selected.isEmpty ? "\(prefix)text\(suffix)" : "\(prefix)\(selected)\(suffix)"
-        tv.replace(range, withText: replacement)
-    }
-
-    func insertImageMarkdown(filename: String) {
-        guard let tv = textView else { return }
-        let md = "\n![image](note-image://\(filename))\n"
-        if let range = tv.selectedTextRange {
-            tv.replace(range, withText: md)
-        } else {
-            tv.text = (tv.text ?? "") + md
-        }
-    }
-    #endif
 
     func handleImageDrop(_ data: Data) {
         let filename = NoteImageStore.saveImage(data, ext: "png")
@@ -96,7 +71,6 @@ final class EditorModel: ObservableObject {
     }
 
     func focus() {
-        #if os(macOS)
         DispatchQueue.main.async { [weak self] in
             guard let tv = self?.textView else { return }
             if let window = tv.window {
@@ -109,22 +83,11 @@ final class EditorModel: ObservableObject {
             let len = (tv.string as NSString).length
             tv.setSelectedRange(NSRange(location: len, length: 0))
         }
-        #else
-        DispatchQueue.main.async { [weak self] in
-            guard let tv = self?.textView else { return }
-            tv.becomeFirstResponder()
-            let len = tv.text?.count ?? 0
-            if let pos = tv.position(from: tv.beginningOfDocument, offset: len) {
-                tv.selectedTextRange = tv.textRange(from: pos, to: pos)
-            }
-        }
-        #endif
     }
 }
 
 // MARK: - WYSIWYG Markdown Editor
 
-#if os(macOS)
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     var model: EditorModel
@@ -177,56 +140,6 @@ struct MarkdownEditor: NSViewRepresentable {
         }
     }
 }
-#else
-struct MarkdownEditor: UIViewRepresentable {
-    @Binding var text: String
-    var model: EditorModel
-    var autoFocus: Bool = false
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, model: model)
-    }
-
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
-        textView.delegate = context.coordinator
-        textView.font = .systemFont(ofSize: 13)
-        textView.textColor = .label
-        textView.backgroundColor = .clear
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        context.coordinator.textView = textView
-        model.textView = textView
-        textView.text = text
-        if autoFocus {
-            model.focus()
-        }
-        return textView
-    }
-
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text && !context.coordinator.isInternalChange {
-            uiView.text = text
-        }
-    }
-
-    class Coordinator: NSObject, UITextViewDelegate {
-        @Binding var text: String
-        var model: EditorModel
-        weak var textView: UITextView?
-        var isInternalChange = false
-
-        init(text: Binding<String>, model: EditorModel) {
-            _text = text; self.model = model
-        }
-
-        func textViewDidChange(_ textView: UITextView) {
-            isInternalChange = true
-            text = textView.text
-            isInternalChange = false
-        }
-    }
-}
-#endif
 
 // MARK: - Markdown Toolbar
 
@@ -381,21 +294,10 @@ struct MarkdownNoteView: View {
                 switch block {
                 case .text(let md): MarkdownRenderer(text: expanded ? md : truncated(md)).frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let f, let alt):
-                    #if os(macOS)
-                    let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f))
-                    #else
-                    let img = UIImage(contentsOfFile: NoteImageStore.imageURL(for: f).path)
-                    #endif
-                    if let img {
-                        #if os(macOS)
+                    if let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f)) {
                         Image(nsImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
-                        #else
-                        Image(uiImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
-                        #endif
                         if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
                     }
                 }

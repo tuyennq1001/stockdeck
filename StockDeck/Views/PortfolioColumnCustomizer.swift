@@ -201,11 +201,7 @@ struct PortfolioColumnCustomizer: View {
             .padding(.horizontal, 28)
             .padding(.vertical, 16)
         }
-        #if os(macOS)
         .frame(width: 720, height: 600)
-        #else
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #endif
         .background(DS.ground)
     }
 
@@ -263,7 +259,6 @@ struct PortfolioColumnCustomizer: View {
 
     @ViewBuilder
     private func categorySection(category: PortfolioColumnCategory) -> some View {
-        #if os(macOS)
         HStack(alignment: .top, spacing: 24) {
             Text(category.rawValue)
                 .font(.system(size: 13, weight: .bold))
@@ -273,16 +268,6 @@ struct PortfolioColumnCustomizer: View {
 
             categoryPills(category: category)
         }
-        #else
-        VStack(alignment: .leading, spacing: 8) {
-            Text(category.rawValue)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(DS.inkSecondary)
-                .padding(.top, 4)
-
-            categoryPills(category: category)
-        }
-        #endif
     }
 
     @ViewBuilder

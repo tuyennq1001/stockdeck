@@ -128,4 +128,4 @@ Khi giải quyết bất kỳ lỗi hoặc phát triển tính năng nào, bắt
 
 ## 7. Quy tắc Build & Nền tảng StockDeck (Build Rules)
 - **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build macOS.
-- **Mặc định KHÔNG build iOS**: Mỗi khi chỉnh sửa code hoặc hoàn thành tính năng, **bắt buộc phải build macOS (`./dev.sh`)** để kiểm tra. **Mặc định KHÔNG build iOS (`./dev-ios.sh`)** để tiết kiệm token và thời gian build, trừ khi người dùng chỉ định rõ ràng yêu cầu build iOS.
+- **Nền tảng thuần macOS**: Dự án là ứng dụng thuần macOS (Menu Bar & Desktop App). Mỗi khi chỉnh sửa code hoặc hoàn thành tính năng, **bắt buộc phải build macOS (`./dev.sh`)** và chạy test tự động (`swift test`) để kiểm tra.

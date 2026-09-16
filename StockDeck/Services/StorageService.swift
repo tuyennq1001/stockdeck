@@ -1,8 +1,6 @@
 import Foundation
-#if os(macOS)
 import AppKit
 import ServiceManagement
-#endif
 
 struct Watchlist: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
@@ -132,34 +130,6 @@ class StorageService: ObservableObject {
         portfolioColumns = columns
     }
 
-    // MARK: - iOS Specific Column Customizations
-
-    @Published var iosWatchlistMetrics: [WatchlistMetric]? = nil {
-        didSet { scheduleSave() }
-    }
-
-    var resolvedIOSWatchlistMetrics: [WatchlistMetric] {
-        iosWatchlistMetrics ?? [.price, .todayChange, .oneYear, .threeYears]
-    }
-
-    func setIOSWatchlistMetrics(_ metrics: [WatchlistMetric]) {
-        objectWillChange.send()
-        iosWatchlistMetrics = metrics
-    }
-
-    @Published var iosPortfolioColumns: [PortfolioColumnMetric]? = nil {
-        didSet { scheduleSave() }
-    }
-
-    var resolvedIOSPortfolioColumns: [PortfolioColumnMetric] {
-        iosPortfolioColumns ?? [.price, .change, .value, .totalPnl]
-    }
-
-    func setIOSPortfolioColumns(_ columns: [PortfolioColumnMetric]) {
-        objectWillChange.send()
-        iosPortfolioColumns = columns
-    }
-
     @Published var portfolios: [Portfolio] = [] {
         didSet { scheduleSave() }
     }
@@ -201,7 +171,6 @@ class StorageService: ObservableObject {
     }
 
     // MARK: - Launch at Login (macOS)
-    #if os(macOS)
     /// Whether the app is configured to automatically launch at system login.
     @Published var launchAtLogin: Bool = false {
         didSet {
@@ -239,7 +208,6 @@ class StorageService: ObservableObject {
             }
         }
     }
-    #endif
 
     private var isSharedInstance: Bool {
         !isCustomStorage
@@ -268,7 +236,6 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
-    #if os(macOS)
     /// Direct callback for when hotkey triggers.
     var onHotKeyTriggered: (() -> Void)?
 
@@ -299,15 +266,6 @@ class StorageService: ObservableObject {
             GlobalHotKeyManager.shared.unregister()
         }
     }
-    #else
-    @Published var menuBarShortcut: MenuBarShortcut? = nil {
-        didSet {
-            if !isLoading {
-                saveNow()
-            }
-        }
-    }
-    #endif
 
     // MARK: - Menu bar colors (issue #7.1)
     /// Hex color for gains/up moves. Empty = use the system green (dynamic).
@@ -1389,13 +1347,9 @@ class StorageService: ObservableObject {
             watchlists = [def]
             selectedWatchlistId = def.id
         }
-        #if os(macOS)
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
-        #endif
         isLoading = false
-        #if os(macOS)
         updateHotKeyRegistration()
-        #endif
     }
 
     func addToWatchlist(_ symbol: String, targetWatchlistId: UUID? = nil) {
@@ -2011,11 +1965,9 @@ class StorageService: ObservableObject {
         aiWorkspacePath = ""
         aiDeepseekThinking = false
         menuBarShortcut = nil
-        #if os(macOS)
         if launchAtLogin {
             launchAtLogin = false
         }
-        #endif
     }
 
     /// Completely wipes all portfolios, watchlists, alerts, and settings back to a clean slate.
@@ -2089,8 +2041,6 @@ class StorageService: ObservableObject {
         var watchlists: [Watchlist]?
         var selectedWatchlistId: UUID?
         var portfolioColumns: [String]?
-        var iosWatchlistMetrics: [String]?
-        var iosPortfolioColumns: [String]?
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
@@ -2150,8 +2100,6 @@ class StorageService: ObservableObject {
             watchlists: watchlists,
             selectedWatchlistId: selectedWatchlistId,
             portfolioColumns: portfolioColumns?.map(\.rawValue),
-            iosWatchlistMetrics: iosWatchlistMetrics?.map(\.rawValue),
-            iosPortfolioColumns: iosPortfolioColumns?.map(\.rawValue),
             portfolios: portfolios,
             preferredCurrency: preferredCurrency,
             stockPriceCurrency: stockPriceCurrency,
@@ -2316,10 +2264,6 @@ class StorageService: ObservableObject {
         menuBarShortcut = decoded.menuBarShortcut
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
-        let decodedIOSWlMetrics = decoded.iosWatchlistMetrics?.compactMap(WatchlistMetric.init(rawValue:))
-        iosWatchlistMetrics = (decodedIOSWlMetrics?.isEmpty == false) ? decodedIOSWlMetrics : nil
-        let decodedIOSPortCols = decoded.iosPortfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
-        iosPortfolioColumns = (decodedIOSPortCols?.isEmpty == false) ? decodedIOSPortCols : nil
         if let syncEnabled = decoded.iCloudSyncEnabled {
             iCloudSyncEnabled = syncEnabled
         }

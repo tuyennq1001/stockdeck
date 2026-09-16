@@ -1,8 +1,4 @@
-#if os(macOS)
 import AppKit
-#else
-import UIKit
-#endif
 import SwiftUI
 
 /// Embedded AI Review & Advisor card placed at the bottom of PortfolioOverview.
@@ -432,7 +428,6 @@ struct PortfolioAIReviewCard: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     if let base64 = message.imageBase64,
                        let data = Data(base64Encoded: base64.replacingOccurrences(of: "data:image/jpeg;base64,", with: "")) {
-                        #if os(macOS)
                         if let nsImg = NSImage(data: data) {
                             Image(nsImage: nsImg)
                                 .resizable()
@@ -441,16 +436,6 @@ struct PortfolioAIReviewCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
                         }
-                        #else
-                        if let uiImg = UIImage(data: data) {
-                            Image(uiImage: uiImg)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: 240, maxHeight: 180)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.hairline, lineWidth: 1))
-                        }
-                        #endif
                     }
                     if !message.content.isEmpty {
                         Text(message.content)
@@ -511,28 +496,15 @@ struct PortfolioAIReviewCard: View {
     private var composerBar: some View {
         VStack(spacing: 8) {
             // Attached Image Thumbnail Preview
-            #if os(macOS)
             let thumbnailImg: NSImage? = attachedImageData.flatMap { NSImage(data: $0) }
-            #else
-            let thumbnailImg: UIImage? = attachedImageData.flatMap { UIImage(data: $0) }
-            #endif
             if let thumbnailImg {
                 HStack(spacing: 10) {
-                    #if os(macOS)
                     Image(nsImage: thumbnailImg)
                         .resizable()
                         .scaledToFill()
                         .frame(width: 48, height: 48)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DS.hairline, lineWidth: 1))
-                    #else
-                    Image(uiImage: thumbnailImg)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DS.hairline, lineWidth: 1))
-                    #endif
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Đã đính kèm ảnh")
@@ -646,7 +618,6 @@ struct PortfolioAIReviewCard: View {
 
     @discardableResult
     private func pasteImageFromClipboard() -> Bool {
-        #if os(macOS)
         let pb = NSPasteboard.general
         if let image = NSImage(pasteboard: pb) {
             if let tiff = image.tiffRepresentation,
@@ -657,21 +628,12 @@ struct PortfolioAIReviewCard: View {
             }
         }
         return false
-        #else
-        if let image = UIPasteboard.general.image,
-           let jpeg = image.jpegData(compressionQuality: 0.8) {
-            self.attachedImageData = jpeg
-            return true
-        }
-        return false
-        #endif
     }
 
     private func chooseOrPasteImage() {
         if pasteImageFromClipboard() {
             return
         }
-        #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -688,20 +650,6 @@ struct PortfolioAIReviewCard: View {
                 self.attachedImageData = data
             }
         }
-        #else
-        presentNativeDocumentPicker(allowedContentTypes: [.image, .png, .jpeg]) { url in
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            if let data = try? Data(contentsOf: url) {
-                if let img = UIImage(data: data),
-                   let jpeg = img.jpegData(compressionQuality: 0.8) {
-                    self.attachedImageData = jpeg
-                } else {
-                    self.attachedImageData = data
-                }
-            }
-        }
-        #endif
     }
 
     private func sendUserMessage(text: String, imageData: Data? = nil) {
@@ -793,12 +741,8 @@ struct PortfolioAIReviewCard: View {
     }
 
     private func copyToClipboard(_ text: String) {
-        #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        #else
-        UIPasteboard.general.string = text
-        #endif
     }
 }
 

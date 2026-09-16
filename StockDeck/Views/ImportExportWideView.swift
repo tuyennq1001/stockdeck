@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 struct ImportExportWideView: View {
@@ -379,4 +378,3 @@ private struct HubTableRow: View {
         .padding(.vertical, 12)
     }
 }
-#endif

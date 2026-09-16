@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 
 @main
@@ -11,4 +10,3 @@ struct StockDeckApp: App {
         }
     }
 }
-#endif

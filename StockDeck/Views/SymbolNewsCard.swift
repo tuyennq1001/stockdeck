@@ -52,9 +52,7 @@ struct SymbolNewsCard: View {
             if let onSelectArticle {
                 onSelectArticle(article)
             } else if let url = article.url {
-                #if os(macOS)
                 NSWorkspace.shared.open(url)
-                #endif
             }
         } label: {
             HStack(alignment: .top, spacing: 10) {

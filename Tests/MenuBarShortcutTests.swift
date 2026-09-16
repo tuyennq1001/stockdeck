@@ -4,7 +4,6 @@ import XCTest
 final class MenuBarShortcutTests: XCTestCase {
 
     func testShortcutDisplayString() {
-        #if os(macOS)
         let optionSpace = MenuBarShortcut.presetOptionSpace
         XCTAssertEqual(optionSpace.displayString, "⌥ Space")
 
@@ -22,7 +21,6 @@ final class MenuBarShortcutTests: XCTestCase {
 
         let arrowUp = MenuBarShortcut(keyCode: 126, modifiers: 2048) // Option + Up
         XCTAssertEqual(arrowUp.displayString, "⌥ ↑")
-        #endif
     }
 
     func testShortcutCodableRoundtrip() throws {

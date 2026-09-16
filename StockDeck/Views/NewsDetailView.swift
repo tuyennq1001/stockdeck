@@ -1,7 +1,5 @@
 import SwiftUI
-#if os(macOS)
 import AppKit
-#endif
 
 /// In-app native Reader Mode detail view for news articles.
 /// Renders clean typography, lead image, summary highlights, and extracted article body
@@ -338,11 +336,7 @@ struct NewsDetailView: View {
     }
 
     private func openInBrowser(_ url: URL) {
-        #if os(macOS)
         NSWorkspace.shared.open(url)
-        #else
-        openURL(url)
-        #endif
     }
 
     private func loadCrawledContent() async {
