@@ -113,6 +113,8 @@ final class PortfolioViewModel {
     private var dailyPnlCache: [DailyPnlRange: [DailyPnlRow]] = [:]
     @ObservationIgnored
     private var monthlyPnlCache: [MonthlyPnlRange: [MonthlyPnlRow]] = [:]
+    @ObservationIgnored
+    private var sortedSymbolsCache: (key: String, result: [String])? = nil
     
     private var refreshTask: Task<Void, Never>?
 
@@ -228,6 +230,7 @@ final class PortfolioViewModel {
         let nativeCurrencySymbol: String
         let lotsCount: Int
         let hasCostBasis: Bool
+        let isMarketActive: Bool
         let quote: StockQuote?
     }
 
@@ -248,10 +251,11 @@ final class PortfolioViewModel {
         displaySeriesCache.removeAll(keepingCapacity: true)
         dailyPnlCache.removeAll(keepingCapacity: true)
         monthlyPnlCache.removeAll(keepingCapacity: true)
+        sortedSymbolsCache = nil
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?, lotsCount: Int, quote: StockQuote?)] = [:]
+        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?, lotsCount: Int, isMarketActive: Bool, quote: StockQuote?)] = [:]
         var missingCostSymbols: Set<String> = []
 
         for portfolio in portfolios {
@@ -291,7 +295,7 @@ final class PortfolioViewModel {
                 if !hasCost {
                     missingCostSymbols.insert(sym)
                 }
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, isMarketActive ? quote.changePercent : 0, isMarketActive ? quote.extendedChangePercent : nil, 0, quote)
+                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, isMarketActive ? quote.changePercent : 0, isMarketActive ? quote.extendedChangePercent : nil, 0, isMarketActive, quote)
                 existing.value += value
                 existing.cost += cost
                 existing.pnl += (hasCost && price.isFinite) ? (value - cost) : 0
@@ -386,6 +390,7 @@ final class PortfolioViewModel {
                 nativeCurrencySymbol: StorageService.currencySymbol(for: curr),
                 lotsCount: data.lotsCount,
                 hasCostBasis: !missingCostSymbols.contains(sym),
+                isMarketActive: data.isMarketActive,
                 quote: data.quote
             )
         }
@@ -494,10 +499,16 @@ final class PortfolioViewModel {
     }
 
     func sortedSymbols(column: PortfolioOverview.PositionSortColumn, ascending: Bool, manualOrder: [String]) -> [String] {
-        if column == .manual {
-            return manualOrder.filter { symbolAggregates[$0] != nil }
+        let cacheKey = "\(column.rawValue):\(ascending):\(manualOrder.hashValue):\(symbolAggregates.count):\(totalValue)"
+        if let cached = sortedSymbolsCache, cached.key == cacheKey {
+            return cached.result
         }
-        return symbolAggregates.keys.sorted { sym1, sym2 in
+        if column == .manual {
+            let result = manualOrder.filter { symbolAggregates[$0] != nil }
+            sortedSymbolsCache = (cacheKey, result)
+            return result
+        }
+        let result = symbolAggregates.keys.sorted { sym1, sym2 in
             let isAsc = ascending
             switch column {
             case .manual:
@@ -547,6 +558,8 @@ final class PortfolioViewModel {
                 return isAsc ? w1 < w2 : w1 > w2
             }
         }
+        sortedSymbolsCache = (cacheKey, result)
+        return result
     }
 
     // MARK: - Performance & Benchmark
