@@ -259,22 +259,14 @@ struct SymbolInsightCard: View {
         DS.pnlColor(item.changePercent)
     }
 
-    private var sentimentColor: Color {
-        switch item.sentiment {
-        case .positive: return DS.up
-        case .negative: return DS.down
-        case .neutral: return DS.inkSecondary
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header: Symbol, Name, Change Badge, Sentiment Chip
+            // Header: Symbol, Name, Price, Change % Pill
             HStack(alignment: .center, spacing: 10) {
                 Button(action: {
                     showSymbolDetail.perform(item.symbol)
                 }) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         SymbolLogo(symbol: item.symbol, size: 28)
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -282,6 +274,8 @@ struct SymbolInsightCard: View {
                                 Text(item.symbol)
                                     .font(.inter(14, weight: .bold, relativeTo: .body))
                                     .foregroundStyle(DS.ink)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
                                 Text(item.name)
                                     .font(DS.caption)
                                     .foregroundStyle(DS.inkSecondary)
@@ -296,16 +290,12 @@ struct SymbolInsightCard: View {
 
                 Spacer()
 
-                // Sentiment Badge
-                Text(item.sentiment.displayLabel)
-                    .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
-                    .foregroundStyle(sentimentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2.5)
-                    .background(
-                        Capsule()
-                            .fill(sentimentColor.opacity(0.12))
-                    )
+                // Price (Closing price for stocks / Current price for crypto)
+                if let priceStr = item.formattedPrice {
+                    Text(priceStr)
+                        .font(.inter(12.5, weight: .bold, relativeTo: .subheadline).monospacedDigit())
+                        .foregroundStyle(DS.ink)
+                }
 
                 // Change % Pill
                 HStack(spacing: 2) {
