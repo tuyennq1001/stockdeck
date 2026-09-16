@@ -257,6 +257,31 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum InsightRiskLevel: String, Codable, CaseIterable {
+    case low = "low"
+    case moderate = "moderate"
+    case high = "high"
+    case extreme = "extreme"
+
+    var displayLabel: String {
+        switch self {
+        case .low: return "Rủi ro thấp"
+        case .moderate: return "Rủi ro TB"
+        case .high: return "Rủi ro cao"
+        case .extreme: return "Rủi ro cực cao"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .low: return "🟢"
+        case .moderate: return "🟡"
+        case .high: return "🟠"
+        case .extreme: return "🔴"
+        }
+    }
+}
+
 /// Explanation for a single symbol's price movement.
 struct SymbolInsightItem: Codable, Equatable, Identifiable {
     var id: String { symbol }
@@ -269,27 +294,59 @@ struct SymbolInsightItem: Codable, Equatable, Identifiable {
     let sentiment: SymbolInsightSentiment
     let sources: [InsightSourceRef]
     let marketCategory: MarketCategory
+    let riskLevel: InsightRiskLevel?
+    let actionableNote: String?
+    let currency: String?
 
     init(
         symbol: String,
         name: String,
         changePercent: Double,
         currentPrice: Double? = nil,
+        currency: String? = nil,
         coreDriver: String,
         bulletPoints: [String],
         sentiment: SymbolInsightSentiment,
         sources: [InsightSourceRef] = [],
-        marketCategory: MarketCategory = .us
+        marketCategory: MarketCategory = .us,
+        riskLevel: InsightRiskLevel? = nil,
+        actionableNote: String? = nil
     ) {
         self.symbol = symbol
         self.name = name
         self.changePercent = changePercent
         self.currentPrice = currentPrice
+        self.currency = currency
         self.coreDriver = coreDriver
         self.bulletPoints = bulletPoints
         self.sentiment = sentiment
         self.sources = sources
         self.marketCategory = marketCategory
+        self.riskLevel = riskLevel
+        self.actionableNote = actionableNote
+    }
+
+    /// Formats the price with native currency symbol and market-appropriate decimals.
+    var formattedPrice: String? {
+        guard let p = currentPrice, p.isFinite else { return nil }
+        let curr = currency ?? (marketCategory == .vietnam ? "VND" : (marketCategory == .japan ? "JPY" : "USD"))
+        let sym = StorageService.currencySymbol(for: curr)
+        let dec: Int
+        if curr == "VND" || curr == "JPY" {
+            dec = 0
+        } else if p >= 1000 {
+            dec = 2
+        } else if p < 1 {
+            dec = 4
+        } else {
+            dec = 2
+        }
+        let formatted = StorageService.formatNumber(p, decimals: dec)
+        if curr == "VND" {
+            return "\(formatted) \(sym)"
+        } else {
+            return "\(sym)\(formatted)"
+        }
     }
 
     func makeNewsArticle(for url: URL, timestamp: Date = Date()) -> NewsArticle {
@@ -309,7 +366,7 @@ struct SymbolInsightItem: Codable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case symbol, name, changePercent, currentPrice, coreDriver, bulletPoints, sentiment, sources, marketCategory
+        case symbol, name, changePercent, currentPrice, currency, coreDriver, bulletPoints, sentiment, sources, marketCategory, riskLevel, actionableNote
     }
 
     init(from decoder: Decoder) throws {
@@ -318,11 +375,14 @@ struct SymbolInsightItem: Codable, Equatable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         changePercent = try container.decode(Double.self, forKey: .changePercent)
         currentPrice = try container.decodeIfPresent(Double.self, forKey: .currentPrice)
+        currency = try container.decodeIfPresent(String.self, forKey: .currency)
         coreDriver = try container.decode(String.self, forKey: .coreDriver)
         bulletPoints = try container.decodeIfPresent([String].self, forKey: .bulletPoints) ?? []
         sentiment = try container.decodeIfPresent(SymbolInsightSentiment.self, forKey: .sentiment) ?? .neutral
         sources = try container.decodeIfPresent([InsightSourceRef].self, forKey: .sources) ?? []
         marketCategory = try container.decodeIfPresent(MarketCategory.self, forKey: .marketCategory) ?? .us
+        riskLevel = try container.decodeIfPresent(InsightRiskLevel.self, forKey: .riskLevel)
+        actionableNote = try container.decodeIfPresent(String.self, forKey: .actionableNote)
     }
 }
 

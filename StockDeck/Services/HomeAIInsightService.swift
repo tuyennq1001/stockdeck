@@ -110,6 +110,55 @@ final class HomeAIInsightService {
         return .us
     }
 
+    /// Determines if a US stock is a Bitcoin/crypto proxy asset (e.g. MSTR, BMNR, COIN, MARA, RIOT).
+    nonisolated static func isCryptoProxy(symbol: String) -> Bool {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = upper.replacingOccurrences(of: ".US", with: "")
+        let proxies: Set<String> = [
+            "MSTR", "BMNR", "MARA", "RIOT", "CLSK", "COIN", "CIFR", "HUT",
+            "CORZ", "WULF", "IREN", "BTDR", "BITF", "HIVE", "CAN", "ARBK",
+            "GLXY", "MSTU", "MSTX", "CONL"
+        ]
+        return proxies.contains(clean)
+    }
+
+    struct MultiDayTrend {
+        let yesterdayChange: Double?
+        let threeDayChange: Double?
+        let sevenDayChange: Double?
+    }
+
+    /// Computes historical price trends (yesterday, 3-day, 7-day) from cached price history.
+    static func computeMultiDayTrend(
+        for symbol: String,
+        currentPrice: Double,
+        priceHistory: [String: [PricePoint]]
+    ) -> MultiDayTrend {
+        let clean = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let points = priceHistory[clean] ?? priceHistory[symbol] ?? []
+        guard points.count >= 2 else {
+            return MultiDayTrend(yesterdayChange: nil, threeDayChange: nil, sevenDayChange: nil)
+        }
+
+        let n = points.count
+        let lastClosed = points[n - 1].close
+        let prevClosed = points[n - 2].close
+
+        let yesterdayChange: Double? = prevClosed > 0 ? ((lastClosed - prevClosed) / prevClosed * 100) : nil
+
+        var threeDay: Double? = nil
+        if n >= 4, points[n - 3].close > 0 {
+            threeDay = (currentPrice - points[n - 3].close) / points[n - 3].close * 100
+        }
+
+        var sevenDay: Double? = nil
+        if n >= 8, points[n - 7].close > 0 {
+            sevenDay = (currentPrice - points[n - 7].close) / points[n - 7].close * 100
+        }
+
+        return MultiDayTrend(yesterdayChange: yesterdayChange, threeDayChange: threeDay, sevenDayChange: sevenDay)
+    }
+
     /// Generates daily AI insights for the user's top mover symbols in portfolio/watchlist.
     /// Returns the insight on success and automatically caches it in `StorageService`.
     func generateDailyInsight(
@@ -313,7 +362,7 @@ final class HomeAIInsightService {
             }
         }
 
-        // 4. Fetch symbol-specific news with smart localized parameters
+        // 4. Fetch symbol-specific news and ensure price history for multi-day context
         await withTaskGroup(of: Void.self) { group in
             for mover in selectedMovers {
                 let symKey = mover.originalSymbol.uppercased()
@@ -325,6 +374,9 @@ final class HomeAIInsightService {
                             marketCategory: mover.marketCategory
                         )
                     }
+                }
+                group.addTask {
+                    await stockService.ensurePriceHistory(for: mover.originalSymbol)
                 }
             }
         }
@@ -350,9 +402,37 @@ final class HomeAIInsightService {
             articlesBySymbol[mover.symbol] = Array(combined.prefix(6))
         }
 
-        // 6. Build prompt with market benchmarks and movers
+        // 5b. Fetch macro news (Clarity Act, regulatory policy, Fed, inflation)
+        var macroNews: [MarketCategory: [NewsArticle]] = [:]
+        let hasCrypto = selectedMovers.contains { $0.marketCategory == .crypto || Self.isCryptoProxy(symbol: $0.symbol) || Self.isCryptoProxy(symbol: $0.originalSymbol) }
+        if hasCrypto {
+            let cryptoArticles = await stockService.fetchNewsChunk(
+                query: "crypto (\"Clarity Act\" OR regulation OR bill OR Senate OR SEC OR \"Bitcoin crash\" OR \"Bitcoin rally\")",
+                sourceSymbol: "CRYPTO_MACRO"
+            )
+            if !cryptoArticles.isEmpty {
+                macroNews[.crypto] = Array(cryptoArticles.prefix(4))
+            }
+        }
+        let hasUS = selectedMovers.contains { $0.marketCategory == .us }
+        if hasUS {
+            let usArticles = await stockService.fetchNewsChunk(
+                query: "stock market news (Wall Street OR S&P 500 OR Nasdaq OR Fed OR CPI OR inflation)",
+                sourceSymbol: "US_MACRO"
+            )
+            if !usArticles.isEmpty {
+                macroNews[.us] = Array(usArticles.prefix(3))
+            }
+        }
+
+        // 6. Build prompt with market benchmarks, movers, multi-day trend, and macro news
         let prompt = buildPrompt(
             movers: selectedMovers,
+            quotes: stockService.quotes,
+            priceHistory: stockService.priceHistory,
+            macroNews: macroNews,
+            stockFearGreed: stockService.stockFearGreed,
+            cryptoFearGreed: stockService.cryptoFearGreed,
             marketBenchmarks: marketBenchmarks,
             articlesBySymbol: articlesBySymbol,
             storageService: storageService
@@ -385,8 +465,37 @@ final class HomeAIInsightService {
         return insight
     }
 
+    private func formatMarketCap(_ value: Double, currency: String) -> String {
+        let isVND = currency.uppercased() == "VND"
+        let prefix = isVND ? "₫" : "$"
+        
+        if isVND {
+            let inBillions = value / 1_000_000_000
+            if inBillions >= 1000 {
+                return String(format: "%@%.0fT tỷ", prefix, inBillions / 1000)
+            } else {
+                return String(format: "%@%.0f tỷ", prefix, inBillions)
+            }
+        } else {
+            if value >= 1_000_000_000_000 {
+                return String(format: "%@%.1fT", prefix, value / 1_000_000_000_000)
+            } else if value >= 1_000_000_000 {
+                return String(format: "%@%.0fB", prefix, value / 1_000_000_000)
+            } else if value >= 1_000_000 {
+                return String(format: "%@%.0fM", prefix, value / 1_000_000)
+            } else {
+                return String(format: "%@%.0f", prefix, value)
+            }
+        }
+    }
+
     func buildPrompt(
         movers: [SymbolCandidate],
+        quotes: [String: StockQuote] = [:],
+        priceHistory: [String: [PricePoint]] = [:],
+        macroNews: [MarketCategory: [NewsArticle]] = [:],
+        stockFearGreed: FearGreedData? = nil,
+        cryptoFearGreed: FearGreedData? = nil,
         marketBenchmarks: [MarketCategory: [(name: String, symbol: String, price: Double, changePercent: Double)]] = [:],
         articlesBySymbol: [String: [NewsArticle]],
         storageService: StorageService
@@ -394,13 +503,21 @@ final class HomeAIInsightService {
         let sys = """
         Bạn là một chuyên gia phân tích tài chính và chiến lược thị trường cấp cao của StockDeck.
         Nhiệm vụ của bạn:
-        1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (S&P 500, Nasdaq, Dow Jones, Nikkei 225, VN-Index, Bitcoin).
+        1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (S&P 500, Nasdaq, Dow Jones, Nikkei 225, VN-Index, Bitcoin) và tin tức vĩ mô mới nhất.
         2. Phân tích và giải thích NGUYÊN NHÂN TĂNG/GIẢM CỐT LÕI & SÂU SẮC cho TỪNG MÃ CỔ PHIẾU/TÀI SẢN trong danh mục.
 
         QUY TẮC PHÂN TÍCH CHUYÊN SÂU & BẢO ĐẢM TÍNH TRUNG THỰC (BẮT BUỘC TUÂN THỦ 100%):
         1. BỐI CẢNH THỊ TRƯỜNG ("marketOverviews"): Viết 1-2 câu nhận định sắc bén về chuyển động của các chỉ số chính, nêu rõ mức tăng/giảm cụ thể của các chỉ số đại diện (Ví dụ: "Thị trường Mỹ tăng điểm tích cực khi S&P 500 tăng +0.76%, Nasdaq tăng +1.12% nhờ lực kéo từ nhóm công nghệ..."; "VN-Index tăng +1.67% lên 1,280 điểm nhờ lực cầu lan tỏa...").
         2. TỪNG MÃ CỔ PHIẾU/TÀI SẢN ("items"):
-           - ƯU TIÊN HÀNG ĐẦU VÀO CHẤT XÚC TÁC NỘI TẠI (Company Catalysts): Bắt buộc phân tích trực diện vào sự kiện cụ thể của doanh nghiệp (Kết quả kinh doanh quý, Doanh thu ARR/EPS, Tăng trưởng sản phẩm cốt lõi, Nâng/Hạ khuyến nghị của Analyst, Giao dịch ban lãnh đạo, Hợp đồng đối tác, Mua lại cổ phiếu...).
+           - NGUYÊN NHÂN CỐT LÕI (coreDriver) PHẢI LÀ CHẤT XÚC TÁC / SỰ KIỆN THỰC TẾ:
+             * Bắt buộc giải thích BẰNG SỰ KIỆN: Kết quả kinh doanh, Doanh thu ARR/EPS, Hợp đồng đối tác, Mua lại cổ phiếu, Nâng/Hạ xếp hạng, hoặc Sự kiện vĩ mô / Chính sách pháp lý (ví dụ: dự luật Clarity Act, phán quyết SEC, thuế quan, lãi suất Fed...), hoặc tương quan tài sản neo (ví dụ: Bitcoin điều chỉnh giảm kéo theo các mã ủy thác).
+             * TUYỆT ĐỐI CẤM dùng "52-week range" làm lý do cốt lõi trong coreDriver (CẤM viết kiểu "Cổ phiếu giảm vì đang ở vùng đỉnh 52 tuần"). Vị thế 52W range chỉ là dữ liệu kỹ thuật tham khảo phụ, chỉ được đưa vào bulletPoints hoặc actionableNote nếu cần.
+           - CỔ PHIẾU PROXY & TƯƠNG QUAN BITCOIN:
+             * Đối với các cổ phiếu nắm giữ crypto hoặc hoạt động trong ngành khai thác / sàn giao dịch (như MSTR, BMNR, COIN, MARA, RIOT, CLSK, CIFR, HUT, CORZ...): biến động giá CHỦ YẾU PHỤ THUỘC VÀO GIÁ BITCOIN (với hệ số beta đòn bẩy). Khi Bitcoin giảm (ví dụ: tin tức vĩ mô Clarity Act tạch), các mã này sẽ giảm theo ngay cả khi nội bộ công ty không có tin riêng. BẮT BUỘC phải chỉ ra tương quan trực tiếp với biến động của Bitcoin, KHÔNG ĐƯỢC giải thích như một doanh nghiệp độc lập!
+           - BỐI CẢNH ĐA PHIÊN & TRÁNH ĐÁNH GIÁ THIỂN CẬN:
+             * Khi đánh giá biến động, PHẢI đối chiếu cả phiên hôm nay với phiên trước và xu hướng 3 ngày / 7 ngày được cung cấp trong dữ liệu. Nếu một mã hôm nay chỉ tăng nhẹ (+0.2% đến +0.5%) sau khi vừa sụt giảm mạnh (-3% đến -5%) ở phiên trước, PHẢI giải thích rõ đây là "nhịp hồi phục kỹ thuật nhẹ / tích lũy sau phiên bán tháo mạnh hôm trước", TUYỆT ĐỐI KHÔNG đánh giá thiển cận là "hôm nay tăng trưởng tích cực".
+           - TÍCH HỢP TIN TỨC VĨ MÔ & PHÁP LÝ:
+             * Phải đọc kỹ phần Tin tức vĩ mô được cung cấp (như diễn biến dự luật Clarity Act, quyết định của SEC, động thái Fed...) để phản ánh chính xác nguyên nhân của Bitcoin và các cổ phiếu liên quan.
            - PHÂN BIỆT RÕ RÀNG YẾU TỐ RIÊNG LẺ VS YẾU TỐ NGÀNH:
              * Nếu có tin tức nội tại: Nêu rõ tên sản phẩm/dịch vụ cốt lõi (ví dụ: Falcon platform đối với CrowdStrike, GPU Hopper/Blackwell với Nvidia, mảng thép HRC với Hòa Phát...).
              * Nếu cổ phiếu biến động theo đà chung của ngành/thị trường mà không có tin tức nội tại mới: PHẢI nói thẳng rõ ràng (ví dụ: "Cổ phiếu chịu áp lực điều chỉnh chung theo nhóm Cloud SaaS khi lợi suất trái phiếu tăng, chưa ghi nhận tin tức tiêu cực riêng lẻ từ nội bộ công ty.").
@@ -414,7 +531,7 @@ final class HomeAIInsightService {
             "US": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của S&P 500, Nasdaq, Dow Jones.",
             "JP": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Nikkei 225.",
             "VN": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của VN-Index.",
-            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Bitcoin & Ethereum."
+            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Bitcoin & Ethereum cùng các sự kiện chính sách mới nhất."
           },
           "items": [
             {
@@ -433,7 +550,7 @@ final class HomeAIInsightService {
         Chỉ trả về duy nhất chuỗi JSON hợp lệ. Không thêm bất kỳ lời dẫn hay văn bản thừa bên ngoài.
         """
 
-        var user = "Dưới đây là dữ liệu biến động các chỉ số thị trường và tin tức gần nhất:\n\n"
+        var user = "Dưới đây là dữ liệu biến động các chỉ số thị trường, xu hướng đa phiên và tin tức vĩ mô/doanh nghiệp gần nhất:\n\n"
 
         // Add Market Benchmarks
         if !marketBenchmarks.isEmpty {
@@ -450,6 +567,42 @@ final class HomeAIInsightService {
             user += "\n"
         }
 
+        // Add Macro News (e.g. Clarity Act, SEC, Fed)
+        if let cryptoMacro = macroNews[.crypto], !cryptoMacro.isEmpty {
+            user += "=== TIN TỨC VĨ MÔ & PHÁP LÝ THỊ TRƯỜNG CRYPTO (24H - 72H) ===\n"
+            for (idx, article) in cryptoMacro.enumerated() {
+                user += "  [\(idx + 1)] \"\(article.title)\" (Nguồn: \(article.publisher))"
+                if !article.content.isEmpty {
+                    user += " - \(article.content.prefix(350))"
+                }
+                user += "\n"
+            }
+            user += "\n"
+        }
+
+        if let usMacro = macroNews[.us], !usMacro.isEmpty {
+            user += "=== TIN TỨC VĨ MÔ THỊ TRƯỜNG CHỨNG KHOÁN MỸ (24H - 72H) ===\n"
+            for (idx, article) in usMacro.enumerated() {
+                user += "  [\(idx + 1)] \"\(article.title)\" (Nguồn: \(article.publisher))"
+                if !article.content.isEmpty {
+                    user += " - \(article.content.prefix(350))"
+                }
+                user += "\n"
+            }
+            user += "\n"
+        }
+
+        if stockFearGreed != nil || cryptoFearGreed != nil {
+            user += "=== TÂM LÝ THỊ TRƯỜNG (FEAR & GREED INDEX) ===\n"
+            if let fg = stockFearGreed {
+                user += "• Chứng khoán Mỹ (CNN): \(fg.score)/100 — \(fg.label) (tuần trước: \(fg.weekAgo ?? 0), tháng trước: \(fg.monthAgo ?? 0))\n"
+            }
+            if let fg = cryptoFearGreed {
+                user += "• Crypto (Alternative.me): \(fg.score)/100 — \(fg.label) (hôm qua: \(fg.previousClose ?? 0))\n"
+            }
+            user += "→ Hãy đánh giá mức rủi ro (riskLevel) và đưa khuyến nghị hành động mạnh dạn (actionableNote) dựa trên tâm lý thị trường + vị thế giá.\n\n"
+        }
+
         // Add Symbols grouped by market
         user += "=== DANH SÁCH MÃ BIẾN ĐỘNG THEO TỪNG THỊ TRƯỜNG ===\n\n"
         let grouped = Dictionary(grouping: movers, by: \.marketCategory)
@@ -460,7 +613,39 @@ final class HomeAIInsightService {
                 let sign = mover.changePercent >= 0 ? "+" : ""
                 let pctStr = String(format: "%@%.2f%%", sign, mover.changePercent)
                 user += "Mã: \(mover.symbol) | Tên: \(mover.name)\n"
-                user += "Giá: \(mover.price) \(mover.currency), Biến động hôm nay: \(pctStr)\n"
+
+                // Proxy indicator
+                if Self.isCryptoProxy(symbol: mover.symbol) || Self.isCryptoProxy(symbol: mover.originalSymbol) {
+                    user += "[LƯU Ý: CỔ PHIẾU ỦY THÁC BITCOIN (BITCOIN PROXY) — Biến động tương quan trực tiếp với giá Bitcoin (BTC)]\n"
+                }
+
+                // Multi-day price trend
+                let trend = Self.computeMultiDayTrend(for: mover.originalSymbol, currentPrice: mover.price, priceHistory: priceHistory)
+                var priceLine = "Giá: \(mover.price) \(mover.currency) | Biến động hôm nay: \(pctStr)"
+                if let yChg = trend.yesterdayChange {
+                    let ySign = yChg >= 0 ? "+" : ""
+                    priceLine += String(format: " | Phiên trước: %@%.2f%%", ySign, yChg)
+                }
+                if let d3 = trend.threeDayChange {
+                    let s3 = d3 >= 0 ? "+" : ""
+                    priceLine += String(format: " | 3 ngày: %@%.2f%%", s3, d3)
+                }
+                if let d7 = trend.sevenDayChange {
+                    let s7 = d7 >= 0 ? "+" : ""
+                    priceLine += String(format: " | 7 ngày: %@%.2f%%", s7, d7)
+                }
+                user += priceLine + "\n"
+
+                if let quote = quotes[mover.symbol] ?? quotes[mover.originalSymbol] ?? quotes[mover.symbol.uppercased()] ?? quotes[mover.originalSymbol.uppercased()] {
+                    if let mc = quote.marketCap, mc > 0 {
+                        user += "Market Cap: \(formatMarketCap(mc, currency: quote.currency))\n"
+                    }
+                    if let h = quote.fiftyTwoWeekHigh, let l = quote.fiftyTwoWeekLow, h > l {
+                        let pos = (quote.price - l) / (h - l) * 100
+                        user += "52W Range (tham khảo kỹ thuật): \(l) - \(h) (vị trí: \(String(format: "%.0f%%", pos)))\n"
+                    }
+                }
+
                 let news = articlesBySymbol[mover.symbol] ?? articlesBySymbol[mover.originalSymbol] ?? []
                 if news.isEmpty {
                     user += "Tin tức: Chưa có tin tức báo chí trực tiếp riêng lẻ.\n\n"
@@ -508,6 +693,8 @@ final class HomeAIInsightService {
                 let bulletPoints: [String]?
                 let sentiment: String?
                 let sourcePublisher: String?
+                let riskLevel: String?
+                let actionableNote: String?
             }
             let portfolioSummary: String
             let marketOverviews: [String: String]?
@@ -542,6 +729,15 @@ final class HomeAIInsightService {
             default: sentiment = change > 0 ? .positive : (change < 0 ? .negative : .neutral)
             }
 
+            let risk: InsightRiskLevel?
+            switch (item.riskLevel ?? "").lowercased() {
+            case "low": risk = .low
+            case "moderate": risk = .moderate
+            case "high": risk = .high
+            case "extreme": risk = .extreme
+            default: risk = nil
+            }
+
             // Find matching sources
             let origKey = mover?.originalSymbol ?? item.symbol
             let news = articlesBySymbol[symbolKey] ?? articlesBySymbol[origKey] ?? []
@@ -559,11 +755,14 @@ final class HomeAIInsightService {
                 name: name,
                 changePercent: change,
                 currentPrice: price,
+                currency: mover?.currency,
                 coreDriver: item.coreDriver,
                 bulletPoints: item.bulletPoints ?? [],
                 sentiment: sentiment,
                 sources: sources,
-                marketCategory: market
+                marketCategory: market,
+                riskLevel: risk,
+                actionableNote: item.actionableNote
             ))
         }
 

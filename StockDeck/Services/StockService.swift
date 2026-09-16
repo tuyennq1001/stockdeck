@@ -40,6 +40,11 @@ class StockService: ObservableObject {
     /// sparklines and the 1M / 3M / YTD performance columns.
     @Published var watchlistHistory: [String: [PricePoint]] = [:]
 
+    // MARK: - Fear & Greed Index
+    @Published var stockFearGreed: FearGreedData?
+    @Published var cryptoFearGreed: FearGreedData?
+    private var fearGreedFetchedAt: Date?
+
     private let session: URLSession
     private var crumb: String?
     private var lastNewsFetch: Date?
@@ -2811,7 +2816,7 @@ class StockService: ObservableObject {
         lastNewsFetch = Date()
     }
 
-    private func fetchNewsChunk(
+    func fetchNewsChunk(
         query: String,
         sourceSymbol: String?,
         language: String = "en-US",
@@ -2871,12 +2876,37 @@ class StockService: ObservableObject {
 
         case .crypto:
             let base = HomeAIInsightService.cryptoBaseAsset(for: upper) ?? upper
-            let name = HomeAIInsightService.cryptoDisplayName(for: base, fallback: cleanName.isEmpty ? base : cleanName)
-            let q = "(\"\(base)\" OR \"\(name)\") (crypto OR price OR rally OR crash OR market OR ETF OR SEC)"
+            let cleanBaseName: String = {
+                switch base.uppercased() {
+                case "BTC": return "Bitcoin"
+                case "ETH": return "Ethereum"
+                case "SOL": return "Solana"
+                case "SUI": return "Sui"
+                case "DOGE": return "Dogecoin"
+                case "BNB": return "BNB"
+                case "XRP": return "Ripple"
+                case "ADA": return "Cardano"
+                default:
+                    let raw = cleanName.isEmpty ? base : cleanName
+                    if let firstParen = raw.firstIndex(of: "(") {
+                        return String(raw[..<firstParen]).trimmingCharacters(in: .whitespaces)
+                    }
+                    return raw
+                }
+            }()
+            let q = "(\"\(base)\" OR \"\(cleanBaseName)\") (crypto OR Bitcoin OR rally OR crash OR dump OR \"Clarity Act\" OR regulation OR bill OR ETF OR SEC OR Fed)"
             return (query: q, language: "en-US", region: "US", ceid: "US:en")
 
         case .us:
             let cleanTicker = upper.replacingOccurrences(of: ".US", with: "")
+
+            // Crypto Proxy Stocks (MSTR, BMNR, COIN, MARA, RIOT, etc.)
+            if HomeAIInsightService.isCryptoProxy(symbol: cleanTicker) {
+                let namePrefix = cleanName.components(separatedBy: " ").prefix(2).joined(separator: " ")
+                let q = "(\"\(cleanTicker)\" OR \"\(namePrefix.isEmpty ? cleanTicker : namePrefix)\") (Bitcoin OR BTC OR crypto OR stock OR shares OR earnings)"
+                return (query: q, language: "en-US", region: "US", ceid: "US:en")
+            }
+
             let q: String
             if hasName {
                 let simplifiedName = cleanName
@@ -3006,6 +3036,82 @@ class StockService: ObservableObject {
 
         newsBySymbol[key] = Array(deduped.prefix(10))
         lastSymbolNewsFetch[key] = Date()
+    }
+
+    // MARK: - Fear & Greed Index
+
+    /// Fetch Fear & Greed data for both Stock (CNN) and Crypto (Alternative.me).
+    /// Cached for 1 calendar day — will not re-fetch within the same day unless `force` is true.
+    func fetchFearGreedIndex(force: Bool = false) async {
+        if !force, let fetched = fearGreedFetchedAt, Calendar.current.isDateInToday(fetched) {
+            return
+        }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.fetchCNNFearGreed() }
+            group.addTask { await self.fetchCryptoFearGreed() }
+        }
+        fearGreedFetchedAt = Date()
+    }
+
+    /// CNN Fear & Greed Index for US stocks.
+    private func fetchCNNFearGreed() async {
+        guard let url = URL(string: "https://production.dataviz.cnn.io/index/fearandgreed/graphdata") else { return }
+        do {
+            var request = URLRequest(url: url)
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+            let (data, _) = try await session.data(for: request)
+            // CNN response shape: { "fear_and_greed": { "score": 72.5, "rating": "greed", "previous_close": 68.2, ... },
+            //                        "fear_and_greed_historical": { ... } }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let fg = json["fear_and_greed"] as? [String: Any],
+                  let score = fg["score"] as? Double else { return }
+
+            let previousClose = fg["previous_close"] as? Double
+            let weekAgo = (fg["previous_1_week"] as? Double)
+            let monthAgo = (fg["previous_1_month"] as? Double)
+            let rating = fg["rating"] as? String ?? FearGreedData.label(for: Int(score))
+
+            stockFearGreed = FearGreedData(
+                score: Int(score.rounded()),
+                label: rating.capitalized,
+                previousClose: previousClose.map { Int($0.rounded()) },
+                weekAgo: weekAgo.map { Int($0.rounded()) },
+                monthAgo: monthAgo.map { Int($0.rounded()) },
+                fetchedAt: Date()
+            )
+        } catch {
+            print("[FearGreed] CNN fetch error: \(error.localizedDescription)")
+        }
+    }
+
+    /// Alternative.me Fear & Greed Index for Crypto.
+    private func fetchCryptoFearGreed() async {
+        guard let url = URL(string: "https://api.alternative.me/fng/?limit=31&format=json&date_format=world") else { return }
+        do {
+            let (data, _) = try await session.data(for: URLRequest(url: url))
+            // Response: { "data": [ { "value": "65", "value_classification": "Greed", "timestamp": "..." }, ... ] }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let entries = json["data"] as? [[String: Any]],
+                  let first = entries.first,
+                  let valueStr = first["value"] as? String,
+                  let score = Int(valueStr) else { return }
+
+            let label = first["value_classification"] as? String ?? FearGreedData.label(for: score)
+            let previousClose = entries.count > 1 ? Int(entries[1]["value"] as? String ?? "") : nil
+            let weekAgo = entries.count >= 7 ? Int(entries[6]["value"] as? String ?? "") : nil
+            let monthAgo = entries.count >= 30 ? Int(entries[29]["value"] as? String ?? "") : nil
+
+            cryptoFearGreed = FearGreedData(
+                score: score,
+                label: label,
+                previousClose: previousClose,
+                weekAgo: weekAgo,
+                monthAgo: monthAgo,
+                fetchedAt: Date()
+            )
+        } catch {
+            print("[FearGreed] Crypto fetch error: \(error.localizedDescription)")
+        }
     }
 }
 

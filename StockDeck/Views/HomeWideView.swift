@@ -59,6 +59,7 @@ struct HomeWideView: View {
         .navigationTitle("Home")
         .task {
             _ = storageService.loadDailyAIInsight()
+            await stockService.fetchFearGreedIndex()
             if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
                 refreshInsights(force: false)
             }
@@ -76,6 +77,7 @@ struct HomeWideView: View {
                 RefreshButton(isLoading: mode == .insights ? isLoadingInsight : stockService.isLoadingNews) {
                     if mode == .insights {
                         refreshInsights(force: true)
+                        Task { await stockService.fetchFearGreedIndex(force: true) }
                     } else {
                         Task { await stockService.refreshNews(storageService: storageService, force: true) }
                     }
@@ -152,6 +154,10 @@ struct HomeWideView: View {
         if !storageService.hasAIConfiguration {
             ScrollView {
                 VStack(spacing: DS.gap) {
+                    FearGreedGaugeCard(
+                        stockData: stockService.stockFearGreed,
+                        cryptoData: stockService.cryptoFearGreed
+                    )
                     AIInsightMissingConfigCard(onOpenSettings: onOpenSettings)
                     if !stockService.news.isEmpty {
                         newsContent
@@ -175,6 +181,11 @@ struct HomeWideView: View {
                         insight: insight,
                         isLoading: isLoadingInsight,
                         onRefresh: { refreshInsights(force: true) }
+                    )
+
+                    FearGreedGaugeCard(
+                        stockData: stockService.stockFearGreed,
+                        cryptoData: stockService.cryptoFearGreed
                     )
 
                     if !insight.items.isEmpty {
