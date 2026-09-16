@@ -15,7 +15,7 @@ struct PortfolioAIReviewCard: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
-    @State private var isExpanded: Bool = true
+    @AppStorage("portfolio_ai_review_expanded") private var isExpanded: Bool = false
     @State private var draft: String = ""
     @State private var isSending: Bool = false
     @State private var attachedImageData: Data? = nil
@@ -145,6 +145,19 @@ struct PortfolioAIReviewCard: View {
                 }
             }
 
+            if !isExpanded, let current = currentSection, !current.messages.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 9))
+                    Text("\(current.messages.count) tin nhắn")
+                        .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                }
+                .foregroundStyle(DS.brand)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(DS.brand.opacity(0.12)))
+            }
+
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     isExpanded.toggle()
@@ -259,6 +272,7 @@ struct PortfolioAIReviewCard: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                     .frame(maxHeight: 340)
                     .onAppear {
                         if let last = current.messages.last {
@@ -375,6 +389,7 @@ struct PortfolioAIReviewCard: View {
             }
             .padding(.vertical, 2)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 
     private func quickPromptChip(icon: String, title: String, prompt: String) -> some View {
@@ -1211,8 +1226,43 @@ struct AIMarkdownRenderer: View {
         case divider
     }
 
+    @MainActor private static var blocksCache: [Int: [MarkdownBlock]] = [:]
+    @MainActor private static var attrCache: [String: AttributedString] = [:]
+
+    @MainActor
+    private static func cachedBlocks(for raw: String) -> [MarkdownBlock] {
+        let key = raw.hashValue
+        if let cached = blocksCache[key] {
+            return cached
+        }
+        let parsed = parseBlocks(raw)
+        if blocksCache.count > 100 {
+            blocksCache.removeAll(keepingCapacity: true)
+        }
+        blocksCache[key] = parsed
+        return parsed
+    }
+
+    @MainActor
+    private static func cachedAttr(_ text: String) -> AttributedString {
+        if let cached = attrCache[text] {
+            return cached
+        }
+        let attr: AttributedString
+        if let parsed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            attr = parsed
+        } else {
+            attr = AttributedString(text)
+        }
+        if attrCache.count > 1000 {
+            attrCache.removeAll(keepingCapacity: true)
+        }
+        attrCache[text] = attr
+        return attr
+    }
+
     var body: some View {
-        let blocks = parseBlocks(content)
+        let blocks = Self.cachedBlocks(for: content)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(blocks.indices, id: \.self) { idx in
                 renderBlock(blocks[idx])
@@ -1225,13 +1275,13 @@ struct AIMarkdownRenderer: View {
     private func renderBlock(_ block: MarkdownBlock) -> some View {
         switch block {
         case .header(let level, let text):
-            Text(inlineAttr(text))
+            Text(Self.cachedAttr(text))
                 .font(.inter(level == 1 ? 14 : (level == 2 ? 13 : 12), weight: .semibold, relativeTo: .body))
                 .foregroundStyle(DS.ink)
                 .padding(.top, level <= 2 ? 4 : 2)
 
         case .paragraph(let text):
-            Text(inlineAttr(text))
+            Text(Self.cachedAttr(text))
                 .font(DS.body)
                 .foregroundStyle(DS.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1242,7 +1292,7 @@ struct AIMarkdownRenderer: View {
                     .font(.inter(12, weight: .bold, relativeTo: .body))
                     .foregroundStyle(DS.brand)
                     .frame(width: 12, alignment: .center)
-                Text(inlineAttr(text))
+                Text(Self.cachedAttr(text))
                     .font(DS.body)
                     .foregroundStyle(DS.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1254,7 +1304,7 @@ struct AIMarkdownRenderer: View {
                     .font(.inter(11.5, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(DS.inkSecondary)
                     .frame(minWidth: 16, alignment: .trailing)
-                Text(inlineAttr(text))
+                Text(Self.cachedAttr(text))
                     .font(DS.body)
                     .foregroundStyle(DS.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1277,7 +1327,7 @@ struct AIMarkdownRenderer: View {
                 if !headers.isEmpty {
                     GridRow {
                         ForEach(0..<headers.count, id: \.self) { c in
-                            Text(inlineAttr(headers[c]))
+                            Text(Self.cachedAttr(headers[c]))
                                 .font(.inter(11, weight: .semibold, relativeTo: .caption))
                                 .foregroundStyle(DS.ink)
                         }
@@ -1291,7 +1341,7 @@ struct AIMarkdownRenderer: View {
                     GridRow {
                         ForEach(0..<headers.count, id: \.self) { c in
                             let cellText = c < row.count ? row[c] : ""
-                            Text(inlineAttr(cellText))
+                            Text(Self.cachedAttr(cellText))
                                 .font(.inter(11, weight: .regular, relativeTo: .caption))
                                 .foregroundStyle(DS.inkSecondary)
                         }
@@ -1313,17 +1363,11 @@ struct AIMarkdownRenderer: View {
                     .strokeBorder(DS.hairline, lineWidth: 1)
             )
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .padding(.vertical, 2)
     }
 
-    private func inlineAttr(_ text: String) -> AttributedString {
-        if let attr = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            return attr
-        }
-        return AttributedString(text)
-    }
-
-    private func parseBlocks(_ raw: String) -> [MarkdownBlock] {
+    private static func parseBlocks(_ raw: String) -> [MarkdownBlock] {
         let lines = raw.components(separatedBy: "\n")
         var blocks: [MarkdownBlock] = []
         var i = 0

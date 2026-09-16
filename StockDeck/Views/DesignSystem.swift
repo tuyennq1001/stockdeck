@@ -163,9 +163,9 @@ extension View {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(DS.card)
-                    .shadow(color: .black.opacity(elevated ? 0.08 : 0.05),
-                            radius: elevated ? 24 : 18, x: 0, y: elevated ? 10 : 8)
-                    .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(elevated ? 0.07 : 0.035),
+                            radius: elevated ? 12 : 8, x: 0, y: elevated ? 6 : 3)
+                    .shadow(color: .black.opacity(0.02), radius: 1, x: 0, y: 1)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -552,8 +552,27 @@ struct SymbolLogo: View {
 
     private var logoURL: URL? {
         guard !isVietnamese else { return nil }
-        let encoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
-        return URL(string: "https://financialmodelingprep.com/image-stock/\(encoded).png")
+        guard !StockService.isJapaneseMutualFund(symbol) && !symbol.hasPrefix("^") && !symbol.contains("=") else { return nil }
+        let clean = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strictly clean US stock tickers (e.g. AAPL, MSFT, GOOG, VOO, META, RACE, SPGI)
+        // Exclude crypto (-USD, USDT, BUSD, BTC, ETH...), Tokyo stocks (.T), Vietnamese (.VN), indices (^)
+        guard clean.allSatisfy({ $0.isLetter }), clean.count >= 1, clean.count <= 5 else { return nil }
+        guard !StorageService.isStandardCryptoSymbol(clean) else { return nil }
+        return URL(string: "https://financialmodelingprep.com/image-stock/\(clean).png")
+    }
+
+    private var monogramText: String {
+        let clean = symbol.uppercased()
+            .replacingOccurrences(of: "-USD", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+            .replacingOccurrences(of: ".T", with: "")
+            .replacingOccurrences(of: ".JP", with: "")
+            .replacingOccurrences(of: "^", with: "")
+        if clean.count <= 3 {
+            return clean
+        } else {
+            return String(clean.prefix(2))
+        }
     }
 
     var body: some View {
@@ -564,7 +583,7 @@ struct SymbolLogo: View {
             if isVietnamese {
                 vnContent
             } else if let logoURL {
-                AsyncImage(url: logoURL, transaction: SwiftUI.Transaction(animation: .easeOut(duration: 0.15))) { phase in
+                AsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .success(let image):
                         image
@@ -572,7 +591,7 @@ struct SymbolLogo: View {
                             .scaledToFit()
                             .padding(size * 0.12)
                     case .empty:
-                        ProgressView().controlSize(.mini)
+                        fallback
                     case .failure:
                         fallback
                     @unknown default:
@@ -603,9 +622,7 @@ struct SymbolLogo: View {
                 .scaledToFit()
                 .padding(size * 0.12)
         } else {
-            Text(String(symbol.prefix(1)).uppercased())
-                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
-                .foregroundStyle(DS.brand)
+            fallback
         }
         #else
         if let vnCacheURL, let data = try? Data(contentsOf: vnCacheURL), let image = UIImage(data: data) {
@@ -614,9 +631,7 @@ struct SymbolLogo: View {
                 .scaledToFit()
                 .padding(size * 0.12)
         } else {
-            Text(String(symbol.prefix(1)).uppercased())
-                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
-                .foregroundStyle(DS.brand)
+            fallback
         }
         #endif
     }
@@ -638,9 +653,13 @@ struct SymbolLogo: View {
     }
 
     private var fallback: some View {
-        Image(systemName: "chart.line.uptrend.xyaxis")
-            .font(.system(size: size * 0.38, weight: .medium))
-            .foregroundStyle(DS.inkTertiary)
+        let text = monogramText
+        let fontSize = text.count > 2 ? size * 0.32 : (text.count == 2 ? size * 0.38 : size * 0.44)
+        return Text(text)
+            .font(.system(size: fontSize, weight: .bold, design: .rounded))
+            .foregroundStyle(DS.brand)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 }
 

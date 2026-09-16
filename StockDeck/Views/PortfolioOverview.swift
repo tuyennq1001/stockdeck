@@ -216,6 +216,8 @@ struct PortfolioOverview: View {
     }
 
     @State private var positionViewTab: PositionViewTab = .active
+    @State private var activeCurrentPage: Int = 1
+    @State private var activePageSize: Int = 10
     @State private var targetCloseHolding: TargetCloseHolding? = nil
     @State private var sortColumn: PositionSortColumn = .weight
     @State private var sortAscending: Bool = false
@@ -293,6 +295,7 @@ struct PortfolioOverview: View {
     private func setPositionSort(_ column: PositionSortColumn, ascending: Bool) {
         sortColumn = column
         sortAscending = ascending
+        activeCurrentPage = 1
         storageService.setPositionSort(column: column.rawValue, ascending: ascending, for: scopeKey)
     }
 
@@ -482,26 +485,24 @@ struct PortfolioOverview: View {
                 }
             }
         }) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: DS.gap) {
-                        heroCard
-                        statRow
-                        performanceMatrixCard
-                        pnlCard
-                        moneyWeightedReturnCard
-                        allocationCard
-                        HStack(alignment: .top, spacing: DS.gap) {
-                            topGainersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
-                            topLosersCard(proxy: proxy).frame(minWidth: 250, maxWidth: .infinity)
-                        }
-                        positionsCard.id("positions")
-                        PortfolioAIReviewCard(scope: scope, viewModel: viewModel)
-                            .id("aiReview")
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.gap) {
+                    heroCard
+                    statRow
+                    performanceMatrixCard
+                    pnlCard
+                    moneyWeightedReturnCard
+                    allocationCard
+                    HStack(alignment: .top, spacing: DS.gap) {
+                        topGainersCard.frame(minWidth: 250, maxWidth: .infinity)
+                        topLosersCard.frame(minWidth: 250, maxWidth: .infinity)
                     }
-                    .pageColumn()
-                    .padding(.top, 4)
+                    positionsCard.id("positions")
+                    PortfolioAIReviewCard(scope: scope, viewModel: viewModel)
+                        .id("aiReview")
                 }
+                .pageColumn()
+                .padding(.top, 4)
             }
         }
         .navigationDestination(for: UUID.self) { id in
@@ -1040,7 +1041,7 @@ struct PortfolioOverview: View {
 
     // MARK: - Movers (Top & Bottom)
 
-    private func topGainersCard(proxy: ScrollViewProxy) -> some View {
+    private var topGainersCard: some View {
         Card(title: "Top Gainers") {
             let gainers = viewModel.topGainers
             let maxAbs = gainers.map { abs($0.dayChangePercent) }.max() ?? 1
@@ -1056,7 +1057,7 @@ struct PortfolioOverview: View {
         }
     }
 
-    private func topLosersCard(proxy: ScrollViewProxy) -> some View {
+    private var topLosersCard: some View {
         Card(title: "Top Losers") {
             let losers = viewModel.topLosers
             let maxAbs = losers.map { abs($0.dayChangePercent) }.max() ?? 1
@@ -1179,55 +1180,81 @@ struct PortfolioOverview: View {
                 let minTableWidth: CGFloat = positionsTableNaturalWidth
                 let groupedValued = viewModel.groupedHoldings
                 let symbolsList = sortedSymbols()
+                let pagedSymbols: [(index: Int, sym: String)] = {
+                    let start = (activeCurrentPage - 1) * activePageSize
+                    guard start < symbolsList.count else { return [] }
+                    let end = min(start + activePageSize, symbolsList.count)
+                    return Array(symbolsList.enumerated())[start..<end].map { ($0.offset, $0.element) }
+                }()
 
-                ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(spacing: 0) {
-                        positionsHeaderView
+                VStack(spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        VStack(spacing: 0) {
+                            positionsHeaderView
 
-                        ForEach(Array(symbolsList.enumerated()), id: \.element) { index, sym in
-                            if let group = groupedValued[sym], let first = group.first {
-                                let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
-                                let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+                            ForEach(pagedSymbols, id: \.sym) { index, sym in
+                                if let group = groupedValued[sym], let first = group.first {
+                                    let groupVal = viewModel.symbolAggregates[sym]?.value ?? group.reduce(0) { $0 + $1.value }
+                                    let weight = abs(totalValue) >= 0.01 ? abs(groupVal) / abs(totalValue) * 100 : 0
+                                    let isCrypto = storageService.type(for: first.quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: first.quote.symbol) != nil
 
-                                NavigationLink(value: first.id) {
-                                    PositionSummaryRow(
-                                        position: index + 1,
-                                        symbol: sym,
-                                        holdings: group,
-                                        currencySymbol: currencySymbol,
-                                        weight: weight,
-                                        topWeight: topWeight,
-                                        decimals: decimals,
-                                        valueDecimals: storageService.valueDecimals,
-                                        showExtendedHours: storageService.showExtendedHours,
-                                        aggregate: viewModel.symbolAggregates[sym],
-                                        columns: selectedColumns
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .help("View \(sym) details")
-                                .contextMenu {
                                     let isPortReadOnly = storageService.portfolios.first(where: { $0.id == first.portfolioId })?.isReadOnly ?? false
-                                    if group.count == 1 && !isPortReadOnly {
-                                        Button {
-                                            targetCloseHolding = TargetCloseHolding(
-                                                portfolioId: first.portfolioId,
-                                                holding: first.holding,
-                                                quote: first.quote
-                                            )
-                                        } label: {
-                                            Label("Sell / Close Position…", systemImage: "arrow.down.right.circle")
+                                    let canModify = group.count == 1 && !isPortReadOnly
+                                    let rowView = NavigationLink(value: first.id) {
+                                        PositionSummaryRow(
+                                            position: index + 1,
+                                            symbol: sym,
+                                            holdings: group,
+                                            currencySymbol: currencySymbol,
+                                            weight: weight,
+                                            topWeight: topWeight,
+                                            decimals: decimals,
+                                            valueDecimals: storageService.valueDecimals,
+                                            percentDecimals: storageService.percentDecimals,
+                                            showExtendedHours: storageService.showExtendedHours,
+                                            isCrypto: isCrypto,
+                                            aggregate: viewModel.symbolAggregates[sym],
+                                            columns: selectedColumns
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("View \(sym) details")
+
+                                    if canModify {
+                                        rowView.contextMenu {
+                                            Button {
+                                                targetCloseHolding = TargetCloseHolding(
+                                                    portfolioId: first.portfolioId,
+                                                    holding: first.holding,
+                                                    quote: first.quote
+                                                )
+                                            } label: {
+                                                Label("Sell / Close Position…", systemImage: "arrow.down.right.circle")
+                                            }
+                                            Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
+                                            Button(role: .destructive) {
+                                                confirmDeleteHolding = (first.holding, first.portfolioId)
+                                            } label: { Label("Delete", systemImage: "trash") }
                                         }
-                                        Button { editHoldingAction.perform(first.portfolioId, first.holding) } label: { Label("Edit", systemImage: "pencil") }
-                                        Button(role: .destructive) {
-                                            confirmDeleteHolding = (first.holding, first.portfolioId)
-                                        } label: { Label("Delete", systemImage: "trash") }
+                                    } else {
+                                        rowView
                                     }
                                 }
                             }
                         }
+                        .frame(minWidth: minTableWidth, alignment: .leading)
                     }
-                    .frame(minWidth: minTableWidth, alignment: .leading)
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+
+                    if symbolsList.count > 10 {
+                        TablePaginationBar(
+                            currentPage: $activeCurrentPage,
+                            pageSize: $activePageSize,
+                            totalItems: symbolsList.count,
+                            pageSizeOptions: [10, 20, 50]
+                        )
+                        .padding(.top, 4)
+                    }
                 }
             }
         }
@@ -1387,7 +1414,7 @@ private struct PortfolioHeroChartView: View {
                                                          startPoint: .top, endPoint: .bottom))
                         .interpolationMethod(.monotone)
                     LineMark(x: .value("Day", p.date), y: .value("Value", p.value))
-                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2, dash: [4, 3]))
+                        .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
                         .interpolationMethod(.monotone)
                 }
                 if let last = points.last {
@@ -1858,9 +1885,38 @@ private struct PortfolioAllocationCardView: View {
 
     @State private var hoveredSlice: String?
 
+    private var displaySlices: [PortfolioViewModel.AllocationSlice] {
+        if allocation.count <= 6 {
+            return allocation
+        } else {
+            let top = Array(allocation.prefix(5))
+            let otherFraction = allocation.dropFirst(5).reduce(0.0) { $0 + $1.fraction }
+            let otherValue = allocation.dropFirst(5).reduce(0.0) { $0 + $1.value }
+            let otherSlice = PortfolioViewModel.AllocationSlice(
+                id: "__other__",
+                symbol: "Other (\(allocation.count - 5))",
+                value: otherValue,
+                fraction: otherFraction
+            )
+            return top + [otherSlice]
+        }
+    }
+
+    private var holdingByCanonical: [String: ValuedHolding] {
+        var map: [String: ValuedHolding] = [:]
+        for h in holdings {
+            let sym = StockService.canonicalSymbol(for: h.symbol)
+            if map[sym] == nil {
+                map[sym] = h
+            }
+        }
+        return map
+    }
+
     private func color(for symbol: String) -> Color {
         if symbol.hasPrefix("Other") { return DS.inkTertiary }
-        let idx = allocation.firstIndex { $0.symbol == symbol } ?? 0
+        let slices = displaySlices
+        let idx = slices.firstIndex { $0.symbol == symbol } ?? (allocation.firstIndex { $0.symbol == symbol } ?? 0)
         return DS.palette[idx % DS.palette.count]
     }
 
@@ -1915,12 +1971,13 @@ private struct PortfolioAllocationCardView: View {
                 Text("No holdings yet").font(DS.caption).foregroundStyle(DS.inkSecondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
             } else {
-                let holdingByCanonical = Dictionary(grouping: holdings, by: { StockService.canonicalSymbol(for: $0.symbol) }).compactMapValues(\.first)
+                let slices = displaySlices
+                let lookup = holdingByCanonical
 
                 VStack(spacing: 16) {
                     HStack(spacing: 20) {
                         ZStack {
-                            Chart(allocation) { slice in
+                            Chart(slices) { slice in
                                 SectorMark(angle: .value("Value", slice.value),
                                            innerRadius: .ratio(0.64), angularInset: 2)
                                     .cornerRadius(3)
@@ -1935,26 +1992,9 @@ private struct PortfolioAllocationCardView: View {
                         }
                         .frame(width: 136, height: 136)
 
-                        let displaySlices: [PortfolioViewModel.AllocationSlice] = {
-                            if allocation.count <= 6 {
-                                return allocation
-                            } else {
-                                let top = Array(allocation.prefix(5))
-                                let otherFraction = allocation.dropFirst(5).reduce(0.0) { $0 + $1.fraction }
-                                let otherValue = allocation.dropFirst(5).reduce(0.0) { $0 + $1.value }
-                                let otherSlice = PortfolioViewModel.AllocationSlice(
-                                    id: "__other__",
-                                    symbol: "Other (\(allocation.count - 5))",
-                                    value: otherValue,
-                                    fraction: otherFraction
-                                )
-                                return top + [otherSlice]
-                            }
-                        }()
-
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(displaySlices) { slice in
-                                let matchedHolding = holdingByCanonical[StockService.canonicalSymbol(for: slice.symbol)]
+                            ForEach(slices) { slice in
+                                let matchedHolding = lookup[StockService.canonicalSymbol(for: slice.symbol)]
                                 Group {
                                     if let matched = matchedHolding {
                                         NavigationLink(value: matched.id) {
@@ -1996,7 +2036,6 @@ private enum PositionColumnWidth {
 }
 
 private struct PositionSummaryRow: View {
-    @EnvironmentObject var storageService: StorageService
     let position: Int
     let symbol: String
     let holdings: [ValuedHolding]
@@ -2005,7 +2044,9 @@ private struct PositionSummaryRow: View {
     let topWeight: Double
     let decimals: Int
     let valueDecimals: Int
+    let percentDecimals: Int
     let showExtendedHours: Bool
+    let isCrypto: Bool
     /// Pre-computed per-symbol aggregate from ViewModel (nil fallback for legacy).
     let aggregate: PortfolioViewModel.SymbolAggregate?
     /// Visible custom columns (rank # and Symbol are always present).
@@ -2025,14 +2066,14 @@ private struct PositionSummaryRow: View {
 
     /// Use pre-computed aggregate when available, fall back to per-row computation.
     private var totalNativeCost: Double {
-        if let agg = aggregate, agg.nativeCost != 0 {
+        if let agg = aggregate {
             return agg.nativeCost
         }
         return holdings.reduce(0) { $0 + $1.holding.costBasisLocal }
     }
 
     private var totalNativeValue: Double {
-        if let agg = aggregate, agg.nativeValue != 0 {
+        if let agg = aggregate {
             return agg.nativeValue
         }
         return holdings.reduce(0) { sum, h in
@@ -2066,10 +2107,14 @@ private struct PositionSummaryRow: View {
     }
 
     private var totalNativePnlPercent: Double {
-        if let agg = aggregate, agg.nativeCost != 0 {
+        if let agg = aggregate {
             return agg.nativePnlPercent
         }
         return abs(totalNativeCost) >= 0.01 ? (totalNativePnl / abs(totalNativeCost)) * 100 : 0
+    }
+
+    private var hasKnownCostBasis: Bool {
+        aggregate?.hasCostBasis ?? holdings.allSatisfy { $0.holding.hasKnownCostBasis }
     }
 
     private var amountDec: Int { valueDecimals >= 0 ? valueDecimals : 2 }
@@ -2101,7 +2146,6 @@ private struct PositionSummaryRow: View {
                     Text(StorageService.formatNumber(price, decimals: dec))
                         .font(DS.figure)
                         .foregroundStyle(DS.ink)
-                        .contentTransition(.numericText())
                         .lineLimit(1)
 
                     Text((liveQuote.change >= 0 ? "+" : "") + formattedChange)
@@ -2120,12 +2164,11 @@ private struct PositionSummaryRow: View {
         case .change:
             VStack(alignment: .trailing, spacing: 2) {
                 if let liveQuote {
-                    let isCrypto = storageService.type(for: liveQuote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: liveQuote.symbol) != nil
-                    let isMarketActive = MarketCategory.isTradingDay(symbol: liveQuote.symbol, quote: liveQuote, isCrypto: isCrypto)
+                    let isMarketActive = aggregate?.isMarketActive ?? MarketCategory.isTradingDay(symbol: liveQuote.symbol, quote: liveQuote, isCrypto: isCrypto)
 
                     let pct = liveQuote.changePercent
                     let pctColor = isMarketActive ? DS.pnlColor(pct) : DS.inkTertiary
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
+                    Text(String(format: "%+.\(percentDecimals)f%%", pct))
                         .font(DS.figure)
                         .fontWeight(.medium)
                         .foregroundStyle(pctColor)
@@ -2136,7 +2179,7 @@ private struct PositionSummaryRow: View {
                         HStack(spacing: 2) {
                             Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
                                 .font(.system(size: 9))
-                            Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                            Text(String(format: "%+.\(percentDecimals)f%%", extPct))
                                 .font(DS.micro)
                                 .fontWeight(.semibold)
                         }
@@ -2162,10 +2205,9 @@ private struct PositionSummaryRow: View {
             .frame(minWidth: PositionColumnWidth.priceMin, idealWidth: 110, maxWidth: 140, alignment: .trailing)
 
         case .cost:
-            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+            if hasKnownCostBasis {
                 Text(StorageService.formatAmount(totalNativeCost, symbol: nativeCurrencySymbol, decimals: amountDec))
                     .font(DS.figure).foregroundStyle(DS.ink)
-                    .contentTransition(.numericText())
                     .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
             } else {
                 Text("—")
@@ -2176,23 +2218,20 @@ private struct PositionSummaryRow: View {
         case .value:
             Text(StorageService.formatAmount(totalNativeValue, symbol: nativeCurrencySymbol, decimals: amountDec))
                 .font(DS.figure).foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 
         case .todayPnl:
             let pnlColor = totalNativeTodayPnl > 0 ? DS.up : (totalNativeTodayPnl < 0 ? DS.down : DS.inkTertiary)
             Text(StorageService.formatAmount(totalNativeTodayPnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
                 .font(DS.figure).foregroundStyle(pnlColor)
-                .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.amountMin, idealWidth: 120, maxWidth: 160, alignment: .trailing)
 
         case .totalPnl:
-            if holdings.allSatisfy({ $0.holding.hasKnownCostBasis }) {
+            if hasKnownCostBasis {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(StorageService.formatAmount(totalNativePnl, symbol: nativeCurrencySymbol, decimals: amountDec, signed: true))
                         .font(DS.figure)
                         .foregroundStyle(DS.pnlColor(totalNativePnl))
-                        .contentTransition(.numericText())
                     ChangePill(
                         value: totalNativePnlPercent,
                         text: String(format: "%+.\(decimals)f%%", totalNativePnlPercent)
@@ -2211,20 +2250,17 @@ private struct PositionSummaryRow: View {
             Text(StorageService.formatNumber(totalQty, decimals: qtyDecimals))
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 100, maxWidth: 130, alignment: .trailing)
 
         case .lots:
             Text("\(holdings.count)")
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.sharesMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         case .weight:
             Text(String(format: "%.1f%%", weight))
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
         }
     }
@@ -2277,7 +2313,6 @@ private struct PositionSummaryRow: View {
         .padding(.vertical, 11).padding(.horizontal, 8)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
         .contentShape(Rectangle())
-        .pointingHandCursor()
         .onHover { inside in
             hovered = inside
         }
