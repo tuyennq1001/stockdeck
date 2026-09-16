@@ -1,6 +1,4 @@
-#if os(macOS)
 import AppKit
-#endif
 import SwiftUI
 
 /// Home tab: a compact finance news feed related to the user's tracked symbols

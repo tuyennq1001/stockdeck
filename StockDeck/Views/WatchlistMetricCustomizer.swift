@@ -188,11 +188,7 @@ struct WatchlistMetricCustomizer: View {
             .padding(.horizontal, 28)
             .padding(.vertical, 16)
         }
-        #if os(macOS)
         .frame(width: 720, height: 600)
-        #else
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #endif
         .background(DS.ground)
     }
 
@@ -250,7 +246,6 @@ struct WatchlistMetricCustomizer: View {
 
     @ViewBuilder
     private func categorySection(category: WatchlistMetricCategory) -> some View {
-        #if os(macOS)
         HStack(alignment: .top, spacing: 24) {
             Text(category.rawValue)
                 .font(.system(size: 13, weight: .bold))
@@ -260,16 +255,6 @@ struct WatchlistMetricCustomizer: View {
 
             categoryPills(category: category)
         }
-        #else
-        VStack(alignment: .leading, spacing: 8) {
-            Text(category.rawValue)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(DS.inkSecondary)
-                .padding(.top, 4)
-
-            categoryPills(category: category)
-        }
-        #endif
     }
 
     @ViewBuilder

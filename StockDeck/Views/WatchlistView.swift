@@ -8,20 +8,6 @@ private enum WatchlistCol {
     static let threeYears: CGFloat = 67
 }
 
-#if os(iOS)
-private func iosMetricColumnWidth(_ metric: WatchlistMetric) -> CGFloat {
-    switch metric {
-    case .price: return 82
-    case .today: return 68
-    case .todayChange: return 78
-    case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears: return 68
-    case .ath, .atl: return 78
-    case .fromAth, .fromAtl: return 68
-    case .marketCap: return 78
-    case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y: return 70
-    }
-}
-#endif
 
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
@@ -127,12 +113,12 @@ struct WatchlistView: View {
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
     /// loaded, else a column-aligned placeholder.
     @ViewBuilder
-    private func quoteOrPlaceholderRow(_ symbol: String, index: Int? = nil) -> some View {
+    private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
         if let quote = stockService.quotes[symbol] {
             Button(action: {
                 showSymbolDetail.perform(quote.symbol)
             }) {
-                QuoteRow(quote: quote, index: index)
+                QuoteRow(quote: quote)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -144,38 +130,6 @@ struct WatchlistView: View {
             Button(action: {
                 showSymbolDetail.perform(symbol)
             }) {
-                #if os(iOS)
-                HStack(spacing: 0) {
-                    if let index {
-                        Text("\(index)")
-                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(.secondary)
-                            .frame(width: 26, alignment: .leading)
-                    }
-                    HStack(spacing: 4) {
-                        SymbolLogo(symbol: symbol, size: 20)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(StockService.beautifiedSymbol(symbol))
-                                .font(.inter(14.5, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
-                                .lineLimit(1)
-                            if storageService.showCompanyName {
-                                Text(" ")
-                                    .font(.inter(11.5, relativeTo: .caption))
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                    .frame(width: 78, alignment: .leading)
-
-                    ProgressView()
-                        .scaleEffect(0.65)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4.5)
-                .contentShape(Rectangle())
-                #else
                 HStack(spacing: 0) {
                     HStack(spacing: 5) {
                         SymbolLogo(symbol: symbol, size: 20)
@@ -200,7 +154,6 @@ struct WatchlistView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4.5)
                 .contentShape(Rectangle())
-                #endif
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
@@ -210,60 +163,6 @@ struct WatchlistView: View {
         }
     }
 
-    #if os(iOS)
-    private var headerRow: some View {
-        let activeCols = storageService.resolvedIOSWatchlistMetrics
-        return HStack(spacing: 0) {
-            Text("#")
-                .frame(width: 26, alignment: .leading)
-            sortHeader("Symbol", column: .symbol)
-                .frame(width: 78, alignment: .leading)
-            ForEach(activeCols, id: \.self) { metric in
-                iosMetricHeader(metric)
-            }
-        }
-        .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
-        .foregroundColor(.secondary)
-        .tracking(0.8)
-        .textCase(.uppercase)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private func iosMetricHeader(_ metric: WatchlistMetric) -> some View {
-        let width = iosMetricColumnWidth(metric)
-        switch metric {
-        case .price:
-            sortHeader("Price", column: .price)
-                .frame(width: width, alignment: .trailing)
-        case .today, .todayChange:
-            sortHeader("Today %", column: .metric(.today))
-                .frame(width: width, alignment: .trailing)
-        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
-            sortHeader(metric.title, column: .metric(metric))
-                .frame(width: width, alignment: .trailing)
-        case .ath:
-            sortHeader("ATH", column: .metric(.ath))
-                .frame(width: width, alignment: .trailing)
-        case .fromAth:
-            sortHeader("From ATH", column: .metric(.fromAth))
-                .frame(width: width, alignment: .trailing)
-        case .atl:
-            sortHeader("ATL", column: .metric(.atl))
-                .frame(width: width, alignment: .trailing)
-        case .fromAtl:
-            sortHeader("From ATL", column: .metric(.fromAtl))
-                .frame(width: width, alignment: .trailing)
-        case .marketCap:
-            sortHeader("Mkt Cap", column: .metric(.marketCap))
-                .frame(width: width, alignment: .trailing)
-        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
-            Text(metric.title)
-                .frame(width: width, alignment: .center)
-        }
-    }
-    #else
     private var headerRow: some View {
         HStack(spacing: 0) {
             sortHeader("Symbol", column: .symbol)
@@ -284,7 +183,6 @@ struct WatchlistView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
     }
-    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -311,39 +209,11 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                #if os(iOS)
-                ScrollView(.vertical, showsIndicators: true) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            headerRow
-
-                            Divider()
-
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { index, symbol in
-                                    quoteOrPlaceholderRow(symbol, index: index + 1)
-                                    if symbol != displaySymbols.last {
-                                        Divider().padding(.leading, 104)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-                .refreshable {
-                    if storageService.iCloudSyncEnabled {
-                        iCloudSyncService.shared.pullAndMerge(force: false)
-                    }
-                    await stockService.refreshAll(storageService: storageService)
-                }
-                #else
                 headerRow
 
                 Divider()
 
                 flatList
-                #endif
 
                 Divider()
 
@@ -356,11 +226,7 @@ struct WatchlistView: View {
                             Image(systemName: "plus.circle.fill")
                             Text("Add Watchlist")
                         }
-                        #if os(iOS)
-                        .font(.inter(12, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
@@ -374,11 +240,7 @@ struct WatchlistView: View {
                             Image(systemName: "plus.circle.fill")
                             Text("Add Symbol")
                         }
-                        #if os(iOS)
-                        .font(.inter(12, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
@@ -492,12 +354,7 @@ struct WatchlistView: View {
                             }
 
                         SearchView(mode: .watchlist, isPresented: $showSearch)
-                            #if os(macOS)
                             .frame(width: 370, height: 430)
-                            #else
-                            .frame(maxWidth: 360, maxHeight: 520)
-                            .padding(.horizontal, 16)
-                            #endif
                             .background(DS.ground)
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .overlay(
@@ -549,11 +406,7 @@ struct WatchlistView: View {
                                 }
                             }) {
                                 Text(wl.name)
-                                    #if os(iOS)
-                                    .font(.inter(13, weight: selected ? .bold : .medium, relativeTo: .subheadline))
-                                    #else
                                     .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
-                                    #endif
                                     .foregroundColor(selected ? .white : DS.ink)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)
@@ -912,7 +765,6 @@ struct QuoteRow: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     let quote: StockQuote
-    var index: Int? = nil
 
     private func periodChange(_ metric: WatchlistMetric) -> Double? {
         let calendar = Calendar.current
@@ -935,242 +787,6 @@ struct QuoteRow: View {
         return PriceHistory.percentChange(points: hist, currentPrice: quote.price, since: boundary)
     }
 
-    #if os(iOS)
-    private var iosSymbolCell: some View {
-        let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
-        return HStack(spacing: 4) {
-            SymbolLogo(symbol: quote.symbol, size: 20)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                    .font(.inter(14.5, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                    .lineLimit(1)
-                if storageService.showCompanyName {
-                    Text(isDisplayAsset ? quote.symbol : quote.name)
-                        .font(.inter(11.5, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .frame(width: 78, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func iosMetricCell(for metric: WatchlistMetric) -> some View {
-        let width = iosMetricColumnWidth(metric)
-        switch metric {
-        case .price:
-            let displayPrice = quote.price
-            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)
-            let formattedChange = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactNumber(displayPrice, decimals: dec))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                Text((quote.change >= 0 ? "+" : "") + formattedChange)
-                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                    .fontWeight(.semibold)
-                    .foregroundColor(quote.isPositive ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            }
-            .frame(width: width, alignment: .trailing)
-
-        case .today, .todayChange:
-            VStack(alignment: .trailing, spacing: 1) {
-                let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
-                let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
-
-                let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(pctColor)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-
-                if storageService.showExtendedHours, quote.isExtendedHours, let extChange = quote.extendedChangePercent {
-                    let isPre = quote.marketState.hasPrefix("PRE")
-                    HStack(spacing: 2) {
-                        Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 8, weight: .semibold))
-                        Text(String(format: "%+.\(storageService.percentDecimals)f%%", extChange))
-                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(extChange >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                } else if !isMarketActive {
-                    HStack(spacing: 2) {
-                        Image(systemName: "moon.fill")
-                            .font(.system(size: 7, weight: .semibold))
-                        Text("Closed")
-                            .font(.inter(11, relativeTo: .caption2).monospacedDigit())
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(DS.inkTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                }
-            }
-            .frame(width: width, alignment: .trailing)
-
-        case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
-            let pct = periodChange(metric)
-            if let pct {
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(pct >= 0 ? DS.up : DS.down)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .frame(width: width, alignment: .trailing)
-            } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
-            }
-
-        case .marketCap:
-            if let mc = quote.marketCap, mc > 0 {
-                Text(StorageService.formatMarketCap(mc, currency: quote.currency))
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: width, alignment: .trailing)
-            } else {
-                Text("—")
-                    .font(.inter(14, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                    .frame(width: width, alignment: .trailing)
-            }
-
-        case .chart24h:
-            Sparkline(symbol: quote.symbol, days: 1, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chart7d:
-            Sparkline(symbol: quote.symbol, days: 7, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chart30d:
-            Sparkline(symbol: quote.symbol, days: 30, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chart60d:
-            Sparkline(symbol: quote.symbol, days: 60, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chart90d:
-            Sparkline(symbol: quote.symbol, days: 90, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chartYtd:
-            Sparkline(symbol: quote.symbol, isYTD: true, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-        case .chart1y:
-            Sparkline(symbol: quote.symbol, days: 365, width: width, height: 20)
-                .frame(width: width, alignment: .center)
-
-        case .ath, .fromAth:
-            let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            var histHigh: Double? = nil
-            for p in hist {
-                let h = p.effectiveHigh
-                if histHigh == nil || h > histHigh! { histHigh = h }
-            }
-            let quoteHigh = max(quote.fiftyTwoWeekHigh ?? 0, quote.price)
-            let ath = histHigh != nil ? max(histHigh!, quoteHigh) : quoteHigh
-            if metric == .ath {
-                if ath > 0 {
-                    Text(StorageService.formatCompactNumber(ath, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: ath)))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(width: width, alignment: .trailing)
-                } else {
-                    Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .frame(width: width, alignment: .trailing)
-                }
-            } else {
-                if ath > 0, quote.price > 0 {
-                    let fromAth = quote.price >= ath ? 0.0 : min(0.0, (quote.price - ath) / ath * 100)
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAth))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(fromAth >= 0 ? DS.up : DS.down)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(width: width, alignment: .trailing)
-                } else {
-                    Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .frame(width: width, alignment: .trailing)
-                }
-            }
-
-        case .atl, .fromAtl:
-            let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-            var histLow: Double? = nil
-            for p in hist {
-                let l = p.effectiveLow
-                if histLow == nil || l < histLow! { histLow = l }
-            }
-            let qLow = quote.fiftyTwoWeekLow != nil ? min(quote.fiftyTwoWeekLow!, quote.price) : quote.price
-            let atl = (histLow != nil && qLow > 0) ? min(histLow!, qLow) : (histLow ?? qLow)
-            if metric == .atl {
-                if atl > 0 {
-                    Text(StorageService.formatCompactNumber(atl, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: atl)))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(width: width, alignment: .trailing)
-                } else {
-                    Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .frame(width: width, alignment: .trailing)
-                }
-            } else {
-                if atl > 0, quote.price > 0 {
-                    let fromAtl = quote.price <= atl ? 0.0 : max(0.0, (quote.price - atl) / atl * 100)
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", fromAtl))
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(fromAtl >= 0 ? DS.up : DS.down)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(width: width, alignment: .trailing)
-                } else {
-                    Text("—")
-                        .font(.inter(14, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .frame(width: width, alignment: .trailing)
-                }
-            }
-        }
-    }
-    #endif
-
-    #if !os(iOS)
     private var macOSSymbolCell: some View {
         let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
         return HStack(spacing: 5) {
@@ -1248,6 +864,7 @@ struct QuoteRow: View {
             }
         }
     }
+
     private func macOSPeriodCell(for metric: WatchlistMetric, width: CGFloat) -> some View {
         let pct = periodChange(metric)
         return Group {
@@ -1268,27 +885,8 @@ struct QuoteRow: View {
         }
         .frame(width: width, alignment: .trailing)
     }
-    #endif
 
     var body: some View {
-        #if os(iOS)
-        let activeCols = storageService.resolvedIOSWatchlistMetrics
-        HStack(spacing: 0) {
-            if let index {
-                Text("\(index)")
-                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                    .foregroundColor(.secondary)
-                    .frame(width: 26, alignment: .leading)
-            }
-            iosSymbolCell
-
-            ForEach(activeCols, id: \.self) { metric in
-                iosMetricCell(for: metric)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4.5)
-        #else
         HStack(spacing: 0) {
             macOSSymbolCell
             macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
@@ -1298,6 +896,5 @@ struct QuoteRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4.5)
-        #endif
     }
 }

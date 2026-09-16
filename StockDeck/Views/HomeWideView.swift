@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -612,4 +611,3 @@ private struct TickerChipWide: View {
                 .fill(emphasized ? DS.brand : DS.brand.opacity(0.10)))
     }
 }
-#endif

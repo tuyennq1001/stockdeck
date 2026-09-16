@@ -1,10 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-#if os(iOS)
-import UIKit
-#elseif os(macOS)
 import AppKit
-#endif
 
 enum UtilitySegment: String, CaseIterable, Identifiable {
     case alerts = "Alerts"
@@ -21,45 +17,6 @@ enum UtilitySegment: String, CaseIterable, Identifiable {
         }
     }
 }
-
-#if os(iOS)
-@MainActor
-final class DocumentPickerCoordinator: NSObject, UIDocumentPickerDelegate {
-    let onPick: (URL) -> Void
-
-    init(onPick: @escaping (URL) -> Void) {
-        self.onPick = onPick
-    }
-
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else { return }
-        onPick(url)
-    }
-}
-
-private var activePickerCoordinator: DocumentPickerCoordinator?
-
-@MainActor
-func presentNativeDocumentPicker(allowedContentTypes: [UTType], onPick: @escaping (URL) -> Void) {
-    guard let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-          let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
-          let rootVC = keyWindow.rootViewController else {
-        return
-    }
-
-    var topVC = rootVC
-    while let presented = topVC.presentedViewController {
-        topVC = presented
-    }
-
-    let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedContentTypes, asCopy: true)
-    let coordinator = DocumentPickerCoordinator(onPick: onPick)
-    activePickerCoordinator = coordinator
-    picker.delegate = coordinator
-    picker.allowsMultipleSelection = false
-    topVC.present(picker, animated: true)
-}
-#endif
 
 struct UtilitiesView: View {
     @ObservedObject private var storageService = StorageService.shared
@@ -390,24 +347,6 @@ struct UtilitiesView: View {
                     .disabled(syncService.isSyncing)
                 }
 
-                #if os(iOS)
-                HStack(spacing: 6) {
-                    Image(systemName: syncService.isFileLinked ? "checkmark.circle.fill" : "link.badge.plus")
-                        .foregroundColor(syncService.isFileLinked ? .green : .secondary)
-                        .font(.system(size: 13))
-                    if syncService.isFileLinked {
-                        Text("Auto-sync linked: \(syncService.linkedFileName)")
-                            .font(.inter(11, weight: .medium, relativeTo: .caption))
-                            .foregroundColor(DS.ink)
-                    } else {
-                        Text("Auto-sync: Select 'stockdeck_sync.json' below once to link")
-                            .font(.inter(11, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.vertical, 2)
-                #endif
-
                 HStack(spacing: 10) {
                     Button {
                         syncService.pushLocalData()
@@ -606,37 +545,16 @@ struct UtilitiesView: View {
 
     private func pickAnyFile() {
         let types: [UTType] = [.json, .commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        #if os(iOS)
-        presentNativeDocumentPicker(allowedContentTypes: types) { url in
-            if url.lastPathComponent.hasSuffix(".json") {
-                syncService.saveBookmark(for: url)
-            }
-            handleSelectedFileURL(url)
-        }
-        #elseif os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url {
             handleSelectedFileURL(url)
         }
-        #endif
     }
 
     private func pickFundFile() {
         let types: [UTType] = [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        #if os(iOS)
-        presentNativeDocumentPicker(allowedContentTypes: types) { url in
-            switch PortfolioIO.parseBrokerFilesStatus(urls: [url], storageService: storageService) {
-            case .success(let res):
-                pendingImportResult = res
-            case .allTradesClosed(let count):
-                alertBannerMessage = "All \(count) trades in file are closed/sold off (0 active positions remaining)."
-            case .invalidFile:
-                alertBannerMessage = "Could not parse Japanese mutual fund trade history CSV."
-            }
-        }
-        #elseif os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = true
@@ -650,16 +568,10 @@ struct UtilitiesView: View {
                 alertBannerMessage = "Could not parse broker trade history file(s)."
             }
         }
-        #endif
     }
 
     private func pickWatchlistFile() {
         let types: [UTType] = [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        #if os(iOS)
-        presentNativeDocumentPicker(allowedContentTypes: types) { url in
-            handleWatchlistURL(url)
-        }
-        #elseif os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = true
@@ -668,7 +580,6 @@ struct UtilitiesView: View {
                 handleWatchlistURL(url)
             }
         }
-        #endif
     }
 
     // MARK: - FILE IMPORT / EXPORT HANDLERS
@@ -762,16 +673,7 @@ struct UtilitiesView: View {
     private func exportAppDataBackup() {
         let appData = storageService.exportAppData()
         guard let encoded = try? JSONEncoder().encode(appData) else { return }
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("StockDeck_Backup.json")
-        try? encoded.write(to: tempURL, options: .atomic)
 
-        #if os(iOS)
-        let av = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController ?? windowScene.windows.first?.rootViewController {
-            rootVC.present(av, animated: true, completion: nil)
-        }
-        #elseif os(macOS)
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "StockDeck_Backup.json"
         panel.allowedContentTypes = [.json]
@@ -780,7 +682,6 @@ struct UtilitiesView: View {
                 try? encoded.write(to: url, options: .atomic)
             }
         }
-        #endif
     }
 }
 

@@ -1,7 +1,5 @@
-#if os(macOS)
 import AppKit
 import Sparkle
-#endif
 import SwiftUI
 
 struct SettingsView: View {
@@ -92,7 +90,6 @@ struct SettingsView: View {
     }
 
     private func chooseWorkspaceFolder() {
-        #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -102,7 +99,6 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             storageService.aiWorkspacePath = url.path
         }
-        #endif
     }
 
     var body: some View {
@@ -110,12 +106,10 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // MARK: - General (language, appearance, font, startup)
                 SettingsGroup(title: "General", icon: "gearshape", isExpanded: $groupGeneral) {
-                    #if os(macOS)
                     subHeader("Startup")
                     Toggle("Launch at login", isOn: $storageService.launchAtLogin)
                         .toggleStyle(.switch)
                     caption("Automatically start StockDeck when you log into your Mac.")
-                    #endif
 
                     subHeader("Language")
                     Picker("Language", selection: $storageService.appLanguage) {
@@ -494,7 +488,6 @@ struct SettingsView: View {
                     }
                 }
 
-                #if os(macOS)
                 // MARK: - Menu Bar (display + colors)
                 SettingsGroup(title: "Menu Bar", icon: "menubar.rectangle", isExpanded: $groupMenuBar) {
                     subHeader("Display")
@@ -565,7 +558,6 @@ struct SettingsView: View {
                     caption("Press anywhere on macOS to open or close the menu bar popup.")
 
                     subHeader("Colors")
-                    #if os(macOS)
                     ColorPicker("Gain color", selection: Binding(
                         get: { Color(nsColor: storageService.gainColor) },
                         set: { storageService.gainColorHex = $0.hexString }
@@ -574,16 +566,6 @@ struct SettingsView: View {
                         get: { Color(nsColor: storageService.lossColor) },
                         set: { storageService.lossColorHex = $0.hexString }
                     ))
-                    #else
-                    ColorPicker("Gain color", selection: Binding(
-                        get: { Color(uiColor: storageService.gainColor) },
-                        set: { storageService.gainColorHex = $0.hexString }
-                    ))
-                    ColorPicker("Loss color", selection: Binding(
-                        get: { Color(uiColor: storageService.lossColor) },
-                        set: { storageService.lossColorHex = $0.hexString }
-                    ))
-                    #endif
                     Button("Reset to default green/red") {
                         storageService.gainColorHex = ""
                         storageService.lossColorHex = ""
@@ -592,7 +574,6 @@ struct SettingsView: View {
                     caption("Gain/loss colors apply across the whole app — menu bar, watchlist and portfolios.")
 
                 }
-                #endif
 
                 // MARK: - Notifications
                 SettingsGroup(title: "Notifications", icon: "bell", isExpanded: $groupNotifications) {
@@ -652,7 +633,6 @@ struct SettingsView: View {
 
                 // MARK: - About & Data (updates, sponsor, reset)
                 SettingsGroup(title: "About & Data", icon: "info.circle", isExpanded: $groupAbout) {
-                    #if os(macOS)
                     subHeader("Updates")
                     Button("Check for Updates...") {
                         NSApp.setActivationPolicy(.regular)
@@ -660,18 +640,13 @@ struct SettingsView: View {
                         updaterViewModel.checkForUpdates()
                     }
                     .disabled(!updaterViewModel.canCheckForUpdates)
-                    #endif
 
                     subHeader("Enjoying StockDeck?")
                     caption("StockDeck is free and open source — and always will be. If you'd like to support me, you can become a sponsor, or simply star the repo. Both help, and every feature stays free for everyone.")
                     HStack(spacing: 8) {
                         Button {
                             if let url = URL(string: "https://github.com/sponsors/tuyennq1001") {
-                                #if os(macOS)
                                 NSWorkspace.shared.open(url)
-                                #else
-                                UIApplication.shared.open(url)
-                                #endif
                             }
                         } label: {
                             Label("Become a Sponsor", systemImage: "heart.fill")
@@ -682,11 +657,7 @@ struct SettingsView: View {
 
                         Button {
                             if let url = URL(string: "https://github.com/tuyennq1001/stockdeck") {
-                                #if os(macOS)
                                 NSWorkspace.shared.open(url)
-                                #else
-                                UIApplication.shared.open(url)
-                                #endif
                             }
                         } label: {
                             Label("Star on GitHub", systemImage: "star.fill")
@@ -738,11 +709,9 @@ struct SettingsView: View {
                 }
             )
         }
-        #if os(macOS)
         .onAppear {
             storageService.syncLaunchAtLoginStatus()
         }
-        #endif
     }
 
 }

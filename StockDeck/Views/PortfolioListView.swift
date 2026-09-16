@@ -18,8 +18,6 @@ struct PortfolioListView: View {
     @State private var selectedPortfolioId: UUID? = nil
     @State private var draggingPortfolioId: UUID? = nil
     @State private var previewPortfolioIds: [UUID] = []
-    @State private var showStandardFileImporter = false
-    @State private var showJapaneseFundFileImporter = false
 
     static let defaultPopoverColumns: [PortfolioColumnMetric] = [.price, .change, .value, .totalPnl]
 
@@ -110,60 +108,36 @@ struct PortfolioListView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Total value")
-                                #if os(iOS)
-                                .font(.inter(11, relativeTo: .caption))
-                                #else
                                 .font(.inter(10, relativeTo: .caption))
-                                #endif
                                 .foregroundColor(.secondary)
                             Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
-                                #if os(iOS)
-                                .font(.inter(15, relativeTo: .body).monospacedDigit())
-                                #else
                                 .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                                #endif
                                 .fontWeight(.bold)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 3) {
                             HStack(spacing: 6) {
                                 Text("Today PnL")
-                                    #if os(iOS)
-                                    .font(.inter(11, relativeTo: .caption))
-                                    #else
                                     .font(.inter(10, relativeTo: .caption))
-                                    #endif
                                     .foregroundColor(.secondary)
                                 HStack(spacing: 2) {
                                     Text(StorageService.formatAmount(todayGain, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
                                     Text(String(format: "(%.\(storageService.percentDecimals)f%%)", todayPct))
                                 }
-                                #if os(iOS)
-                                .font(.inter(12, relativeTo: .caption).monospacedDigit())
-                                #else
                                 .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                #endif
                                 .fontWeight(.semibold)
                                 .foregroundColor(todayGain >= 0 ? DS.up : DS.down)
                             }
 
                             HStack(spacing: 6) {
                                 Text("Total PnL")
-                                    #if os(iOS)
-                                    .font(.inter(11, relativeTo: .caption))
-                                    #else
                                     .font(.inter(10, relativeTo: .caption))
-                                    #endif
                                     .foregroundColor(.secondary)
                                 HStack(spacing: 2) {
                                     Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
                                     Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
                                 }
-                                #if os(iOS)
-                                .font(.inter(12, relativeTo: .caption).monospacedDigit())
-                                #else
                                 .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                #endif
                                 .fontWeight(.bold)
                                 .foregroundColor(pnl >= 0 ? DS.up : DS.down)
                             }
@@ -177,50 +151,6 @@ struct PortfolioListView: View {
 
                 let globals = globalPositions
                 if !globals.isEmpty {
-                    #if os(iOS)
-                    ScrollView(.vertical, showsIndicators: true) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                let activeCols = storageService.resolvedIOSPortfolioColumns
-                                HStack(spacing: 0) {
-                                    Text("#")
-                                        .frame(width: 26, alignment: .leading)
-                                    Text("Symbol")
-                                        .frame(width: 96, alignment: .leading)
-                                    ForEach(activeCols, id: \.self) { col in
-                                        columnHeader(col)
-                                    }
-                                }
-                                .font(.inter(12.5, weight: .semibold, relativeTo: .caption))
-                                .foregroundColor(.secondary)
-                                .tracking(0.8)
-                                .textCase(.uppercase)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-
-                                Divider()
-
-                                LazyVStack(spacing: 0) {
-                                    ForEach(Array(globals.enumerated()), id: \.element.id) { index, p in
-                                        PortfolioQuoteRow(stockService: stockService, globalPos: p, index: index + 1)
-                                        if p.id != globals.last?.id {
-                                            Divider().padding(.leading, 122)
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                            }
-                            .frame(minWidth: 412)
-                        }
-                    }
-                    .refreshable {
-                        if storageService.iCloudSyncEnabled {
-                            iCloudSyncService.shared.pullAndMerge(force: false)
-                        }
-                        await storageService.syncAllBinancePortfolios()
-                        await stockService.refreshAll(storageService: storageService)
-                    }
-                    #else
                     VStack(alignment: .leading, spacing: 0) {
                         let activeCols = PortfolioListView.defaultPopoverColumns
                         HStack(spacing: 0) {
@@ -251,18 +181,10 @@ struct PortfolioListView: View {
                             .padding(.vertical, 2)
                         }
                     }
-                    #endif
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {
                         }
-                    }
-                    .refreshable {
-                        if storageService.iCloudSyncEnabled {
-                            iCloudSyncService.shared.pullAndMerge(force: false)
-                        }
-                        await storageService.syncAllBinancePortfolios()
-                        await stockService.refreshAll(storageService: storageService)
                     }
                 }
 
@@ -277,11 +199,7 @@ struct PortfolioListView: View {
                             Image(systemName: "plus.circle.fill")
                             Text("Add Portfolio")
                         }
-                        #if os(iOS)
-                        .font(.inter(12, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
@@ -292,11 +210,7 @@ struct PortfolioListView: View {
                                 .foregroundColor(.yellow)
                             Text("Connect Binance")
                         }
-                        #if os(iOS)
-                        .font(.inter(12, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                     }
                     .buttonStyle(.borderless)
                     .pointingHandCursor()
@@ -337,43 +251,6 @@ struct PortfolioListView: View {
             }
             .environmentObject(stockService)
             .environmentObject(storageService)
-        }
-        .fileImporter(
-            isPresented: $showStandardFileImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, .json, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        ) { result in
-            switch result {
-            case .success(let url):
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                if let res = PortfolioIO.parseStandardFile(fileURL: url, storageService: storageService) {
-                    self.pendingImportResult = res
-                } else {
-                    self.importAlert = "Invalid file format or empty portfolio file."
-                }
-            case .failure(let error):
-                self.importAlert = "Failed to open file: \(error.localizedDescription)"
-            }
-        }
-        .fileImporter(
-            isPresented: $showJapaneseFundFileImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText, UTType(filenameExtension: "xlsx") ?? .data, .data]
-        ) { result in
-            switch result {
-            case .success(let url):
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                switch PortfolioIO.parseBrokerFilesStatus(urls: [url]) {
-                case .success(let res):
-                    self.pendingImportResult = res
-                case .allTradesClosed(let count):
-                    self.importAlert = "All \(count) trades in file are closed/sold off (0 active positions remaining)."
-                case .invalidFile:
-                    self.importAlert = "Could not parse 投資信託 file or no valid trades found."
-                }
-            case .failure(let error):
-                self.importAlert = "Failed to open file: \(error.localizedDescription)"
-            }
         }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
@@ -444,11 +321,7 @@ struct PortfolioListView: View {
                         }
                     }) {
                         Text("All Portfolios")
-                            #if os(iOS)
-                            .font(.inter(13, weight: isAllSelected ? .bold : .medium, relativeTo: .subheadline))
-                            #else
                             .font(.inter(11.5, weight: isAllSelected ? .semibold : .medium, relativeTo: .caption))
-                            #endif
                             .foregroundColor(isAllSelected ? .white : DS.ink)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 5)
@@ -484,11 +357,7 @@ struct PortfolioListView: View {
                                 }
                             }) {
                                 Text(p.name)
-                                    #if os(iOS)
-                                    .font(.inter(13, weight: selected ? .bold : .medium, relativeTo: .subheadline))
-                                    #else
                                     .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
-                                    #endif
                                     .foregroundColor(selected ? .white : DS.ink)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 5)
@@ -691,49 +560,35 @@ struct PortfolioListView: View {
     }
 
     private func exportPortfolios(_ portfolios: [Portfolio]) {
-        #if os(macOS)
         PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: true)
-        #endif
     }
 
     private func importStandard() {
-        #if os(macOS)
         PortfolioIO.pickAndParseStandard(storageService: storageService, restoreActivationPolicy: true, onParsed: { result in
             self.pendingImportResult = result
         }, onAlert: { message in
             self.importAlert = message
         })
-        #else
-        showStandardFileImporter = true
-        #endif
     }
 
     private func importJapaneseFunds() {
-        #if os(macOS)
         PortfolioIO.pickAndParseJapaneseFunds(restoreActivationPolicy: true, onParsed: { result in
             self.pendingImportResult = result
         }, onAlert: { message in
             self.importAlert = message
         })
-        #else
-        showJapaneseFundFileImporter = true
-        #endif
     }
 
     private func downloadSampleFile() {
-        #if os(macOS)
         PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
-        #endif
     }
 
     private func downloadJapaneseFundSampleFile() {
-        #if os(macOS)
         PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true) { message in
             self.importAlert = message
         }
-        #endif
     }
 
     private func createPortfolio() {
@@ -775,9 +630,7 @@ struct PortfolioSection: View {
     }
 
     private func exportSingle() {
-        #if os(macOS)
         PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
-        #endif
     }
 
     private var currSymbol: String {
@@ -802,38 +655,22 @@ struct PortfolioSection: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Total value")
-                        #if os(iOS)
-                        .font(.inter(11, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                         .foregroundColor(.secondary)
                     Text(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))
-                        #if os(iOS)
-                        .font(.inter(15, relativeTo: .body).monospacedDigit())
-                        #else
                         .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                        #endif
                         .fontWeight(.bold)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Total PnL")
-                        #if os(iOS)
-                        .font(.inter(11, relativeTo: .caption))
-                        #else
                         .font(.inter(10, relativeTo: .caption))
-                        #endif
                         .foregroundColor(.secondary)
                     HStack(spacing: 2) {
                         Text(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))
                         Text(String(format: "(%.\(storageService.percentDecimals)f%%)", totalPnlPercent))
                     }
-                    #if os(iOS)
-                    .font(.inter(13, relativeTo: .body).monospacedDigit())
-                    #else
                     .font(.inter(11.5, relativeTo: .body).monospacedDigit())
-                    #endif
                     .fontWeight(.bold)
                     .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
                 }
@@ -843,10 +680,6 @@ struct PortfolioSection: View {
             // Column headers
             if !portfolio.holdings.isEmpty {
                 HStack(spacing: 0) {
-                    #if os(iOS)
-                    Text("#")
-                        .frame(width: 26, alignment: .leading)
-                    #endif
                     Text("Symbol")
                         .frame(width: 120, alignment: .leading)
                     Text("Price")
@@ -854,11 +687,7 @@ struct PortfolioSection: View {
                     Text("Value / PnL")
                         .frame(width: 120, alignment: .trailing)
                 }
-                #if os(iOS)
-                .font(.inter(11, weight: .medium, relativeTo: .caption))
-                #else
                 .font(.inter(10, weight: .medium, relativeTo: .caption2))
-                #endif
                 .foregroundColor(.secondary)
                 .tracking(0.8)
                 .textCase(.uppercase)
@@ -871,12 +700,12 @@ struct PortfolioSection: View {
                 if !res.contains(sym) { res.append(sym) }
             }
 
-            ForEach(Array(sortedSymbols.enumerated()), id: \.element) { index, sym in
+            ForEach(sortedSymbols, id: \.self) { sym in
                 if let group = groupedHoldings[sym] {
                     if group.count == 1, let singleHolding = group.first {
-                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
+                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
                     } else {
-                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding, index: index + 1)
+                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
                     }
                 }
             }
@@ -1038,7 +867,6 @@ struct HoldingRow: View {
     let holding: Holding
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
-    var index: Int? = nil
 
     var quote: StockQuote? {
         stockService.quotes[holding.symbol]
@@ -1057,14 +885,6 @@ struct HoldingRow: View {
             showSymbolDetail.perform(holding.symbol)
         }) {
             HStack(spacing: 0) {
-                #if os(iOS)
-                if let index {
-                    Text("\(index)")
-                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .frame(width: 26, alignment: .leading)
-                }
-                #endif
                 // Col 1: Ticker + Qty@Avg
                 HStack(spacing: 6) {
                     SymbolLogo(symbol: holding.symbol, size: 22)
@@ -1185,7 +1005,6 @@ struct GroupedHoldingRow: View {
     let holdings: [Holding]
     let portfolioId: UUID
     @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
-    var index: Int? = nil
 
     @State private var isExpanded: Bool = false
 
@@ -1226,14 +1045,6 @@ struct GroupedHoldingRow: View {
         VStack(spacing: 0) {
             // Parent Summary Row
             HStack(spacing: 0) {
-                #if os(iOS)
-                if let index {
-                    Text("\(index)")
-                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .frame(width: 26, alignment: .leading)
-                }
-                #endif
                 // Chevron Button (Explicit toggle only)
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -1430,7 +1241,6 @@ struct PortfolioQuoteRow: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.showSymbolDetail) private var showSymbolDetail
     let globalPos: PortfolioListView.GlobalPosition
-    var index: Int? = nil
 
     var quote: StockQuote? { globalPos.quote }
 
@@ -1439,67 +1249,18 @@ struct PortfolioQuoteRow: View {
         return stockService.priceRate(from: q.currency)
     }
 
-    private var symbolFont: Font {
-        #if os(iOS)
-        return .inter(14.5, relativeTo: .body).monospacedDigit()
-        #else
-        return .inter(12.5, relativeTo: .body).monospacedDigit()
-        #endif
-    }
-
-    private var subtitleFont: Font {
-        #if os(iOS)
-        return .inter(11.5, relativeTo: .caption)
-        #else
-        return .inter(10, relativeTo: .caption2)
-        #endif
-    }
-
-    private var metricFont: Font {
-        #if os(iOS)
-        return .inter(14, relativeTo: .body).monospacedDigit()
-        #else
-        return .inter(11.5, relativeTo: .body).monospacedDigit()
-        #endif
-    }
-
-    private var metricSubFont: Font {
-        #if os(iOS)
-        return .inter(11, relativeTo: .caption).monospacedDigit()
-        #else
-        return .inter(10.5, relativeTo: .caption).monospacedDigit()
-        #endif
-    }
-
-    private var metricCaption2Font: Font {
-        #if os(iOS)
-        return .inter(11, relativeTo: .caption2).monospacedDigit()
-        #else
-        return .inter(10, relativeTo: .caption2).monospacedDigit()
-        #endif
-    }
-
-    private var extFont: Font {
-        #if os(iOS)
-        return .inter(13, relativeTo: .body).monospacedDigit()
-        #else
-        return .inter(11.5, relativeTo: .body).monospacedDigit()
-        #endif
-    }
+    private var symbolFont: Font { .inter(12.5, relativeTo: .body).monospacedDigit() }
+    private var subtitleFont: Font { .inter(10, relativeTo: .caption2) }
+    private var metricFont: Font { .inter(11.5, relativeTo: .body).monospacedDigit() }
+    private var metricSubFont: Font { .inter(10.5, relativeTo: .caption).monospacedDigit() }
+    private var metricCaption2Font: Font { .inter(10, relativeTo: .caption2).monospacedDigit() }
+    private var extFont: Font { .inter(11.5, relativeTo: .body).monospacedDigit() }
 
     var body: some View {
         Button(action: {
             showSymbolDetail.perform(globalPos.symbol)
         }) {
             HStack(spacing: 0) {
-                #if os(iOS)
-                if let index {
-                    Text("\(index)")
-                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                        .foregroundColor(.secondary)
-                        .frame(width: 26, alignment: .leading)
-                }
-                #endif
                 // Col 1: Logo + symbol + name
                 let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
                 let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
@@ -1523,11 +1284,7 @@ struct PortfolioQuoteRow: View {
                 }
                 .frame(width: 96, alignment: .leading)
 
-                #if os(iOS)
-                let activeCols = storageService.resolvedIOSPortfolioColumns
-                #else
                 let activeCols = PortfolioListView.defaultPopoverColumns
-                #endif
 
                 ForEach(activeCols, id: \.self) { col in
                     metricCell(for: col)

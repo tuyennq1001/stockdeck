@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full chart view for any symbol inside the menu bar popover and iOS sheet:
+/// Full chart view for any symbol inside the menu bar popover and desktop windows:
 /// compact header (< Back, SymbolLogo, Ticker, Name, Add to Portfolio, Refresh),
 /// native price chart card without style picker, 52-week range, day facts, notes, and news.
 struct SymbolDetailView: View {

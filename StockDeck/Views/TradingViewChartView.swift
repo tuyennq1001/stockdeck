@@ -136,18 +136,7 @@ enum TradingViewSymbol {
     }
 }
 
-#if os(macOS)
-typealias PlatformViewRepresentable = NSViewRepresentable
-#else
-typealias PlatformViewRepresentable = UIViewRepresentable
-#endif
-
-/// A WKWebView hosting TradingView's official Advanced Chart widget page
-/// (`s.tradingview.com/embed-widget/advanced-chart/`), loaded as a normal HTTPS
-/// URL so the widget boots exactly like it does in a browser. Fills the
-/// available space via `autosize`, and reloads only when the resolved symbol or
-/// the app's light/dark theme actually changes.
-struct TradingViewChartView: PlatformViewRepresentable {
+struct TradingViewChartView: NSViewRepresentable {
     let tvSymbol: String
     /// "dark" | "light".
     let theme: String
@@ -162,7 +151,6 @@ struct TradingViewChartView: PlatformViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    #if os(macOS)
     func makeNSView(context: Context) -> WKWebView {
         let webView = makeWebView()
         context.coordinator.symbol = tvSymbol
@@ -182,28 +170,6 @@ struct TradingViewChartView: PlatformViewRepresentable {
             loadChart(into: nsView)
         }
     }
-    #else
-    func makeUIView(context: Context) -> WKWebView {
-        let webView = makeWebView()
-        context.coordinator.symbol = tvSymbol
-        context.coordinator.theme = theme
-        context.coordinator.interval = interval
-        loadChart(into: webView)
-        return webView
-    }
-
-    func updateUIView(_ uiView: WKWebView, context: Context) {
-        uiView.isOpaque = false
-        uiView.backgroundColor = .clear
-        uiView.scrollView.backgroundColor = .clear
-        if context.coordinator.symbol != tvSymbol || context.coordinator.theme != theme || context.coordinator.interval != interval {
-            context.coordinator.symbol = tvSymbol
-            context.coordinator.theme = theme
-            context.coordinator.interval = interval
-            loadChart(into: uiView)
-        }
-    }
-    #endif
 
     private func makeWebView() -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -212,17 +178,9 @@ struct TradingViewChartView: PlatformViewRepresentable {
         config.userContentController.addUserScript(favoriteIntervalsScript)
         config.userContentController.addUserScript(intervalHideScript)
         let webView = WKWebView(frame: .zero, configuration: config)
-        #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
         webView.enclosingScrollView?.hasVerticalScroller = false
         webView.enclosingScrollView?.hasHorizontalScroller = false
-        #else
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
-        webView.scrollView.showsVerticalScrollIndicator = false
-        webView.scrollView.showsHorizontalScrollIndicator = false
-        #endif
         return webView
     }
 

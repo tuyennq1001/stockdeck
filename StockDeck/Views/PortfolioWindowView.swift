@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -842,5 +841,4 @@ private struct TotalFooter: View {
         .padding(.horizontal, 16)
     }
 }
-#endif
 

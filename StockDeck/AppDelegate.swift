@@ -1,4 +1,3 @@
-#if os(macOS)
 import AppKit
 import Combine
 import Sparkle
@@ -966,18 +965,3 @@ extension AppDelegate: NSPopoverDelegate {
         NotificationCenter.default.post(name: .popoverDidClose, object: nil)
     }
 }
-#else
-import Combine
-import SwiftUI
-
-extension Notification.Name {
-    static let popoverDidClose = Notification.Name("popoverDidClose")
-    static let stockDeckAlertTapped = Notification.Name("stockDeckAlertTapped")
-}
-
-final class UpdaterViewModel: ObservableObject {
-    @Published var canCheckForUpdates = false
-    var isAvailable: Bool { false }
-    func checkForUpdates() {}
-}
-#endif

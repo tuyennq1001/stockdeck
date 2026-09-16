@@ -1,5 +1,4 @@
 import Foundation
-#if os(macOS)
 import AppKit
 import Carbon
 
@@ -143,16 +142,3 @@ public struct MenuBarShortcut: Codable, Equatable, Hashable {
     public static let presetCmdShiftS = MenuBarShortcut(keyCode: 1, modifiers: UInt32(cmdKey | shiftKey))
     public static let presetControlOptionS = MenuBarShortcut(keyCode: 1, modifiers: UInt32(controlKey | optionKey))
 }
-#else
-public struct MenuBarShortcut: Codable, Equatable, Hashable {
-    public var keyCode: UInt32
-    public var modifiers: UInt32
-
-    public init(keyCode: UInt32, modifiers: UInt32) {
-        self.keyCode = keyCode
-        self.modifiers = modifiers
-    }
-
-    public var displayString: String { "" }
-}
-#endif

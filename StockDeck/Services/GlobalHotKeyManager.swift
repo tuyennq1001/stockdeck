@@ -1,5 +1,4 @@
 import Foundation
-#if os(macOS)
 import AppKit
 import Carbon
 
@@ -90,4 +89,3 @@ public final class GlobalHotKeyManager {
         }
     }
 }
-#endif

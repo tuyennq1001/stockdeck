@@ -1,5 +1,4 @@
 import SwiftUI
-#if os(macOS)
 import AppKit
 
 struct ShortcutRecorderView: View {
@@ -149,4 +148,3 @@ struct ShortcutRecorderView: View {
         isRecording = false
     }
 }
-#endif
