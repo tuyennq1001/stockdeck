@@ -1,0 +1,410 @@
+/* StockDeck — Vietnamese (Tiếng Việt) */
+
+/* Tabs / navigation */
+"Watchlist" = "Theo dõi";
+"Watchlists" = "Theo dõi";
+"Portfolios" = "Danh mục";
+"Search" = "Tìm kiếm";
+"Utilities" = "Tiện ích";
+"Home" = "Trang chủ";
+"Settings" = "Cài đặt";
+
+/* Language */
+"Language" = "Ngôn ngữ";
+"Choose the app's language. Default is English." = "Chọn ngôn ngữ ứng dụng. Mặc định là Tiếng Anh.";
+
+/* Currencies */
+"Stock Price Currency" = "Tiền tệ giá cổ phiếu";
+"Price currency" = "Tiền tệ giá";
+"Original" = "Nguyên bản";
+"Portfolio Currency" = "Tiền tệ danh mục";
+"Portfolio currency" = "Tiền tệ danh mục";
+"Stock price currency" = "Tiền tệ giá cổ phiếu";
+"Quote currency" = "Tiền tệ báo giá";
+"Totals and PnL are converted here" = "Tổng giá trị và lãi/lỗ được quy đổi theo đơn vị này";
+
+/* Market hours */
+"Market Hours" = "Giờ giao dịch";
+"Show extended hours (Pre/Post)" = "Hiện ngoài giờ (Trước/Sau phiên)";
+"Show pre-market and after-hours prices" = "Hiển thị giá trước giờ mở cửa và sau giờ đóng cửa";
+"Extended hours (Pre/Post)" = "Ngoài giờ (Trước/Sau phiên)";
+
+/* Watchlist display */
+"Watchlist Display" = "Hiển thị danh sách";
+"Company name" = "Tên công ty";
+"Day range (low – high)" = "Biên độ ngày (thấp – cao)";
+"52-week range bar" = "Thanh biên độ 52 tuần";
+"52-week range" = "Biên độ 52 tuần";
+"Absolute change value" = "Giá trị biến động tuyệt đối";
+"Choose which details appear in each watchlist row" = "Chọn chi tiết hiển thị trên từng dòng theo dõi";
+"Watchlist row details" = "Chi tiết dòng theo dõi";
+
+/* Menu bar display */
+"Menu Bar Display" = "Hiển thị thanh menu";
+"Display" = "Hiển thị";
+"Choose what to show in the menu bar" = "Chọn thông tin hiển thị trên thanh menu";
+"PnL (+321.09€)" = "Lãi/lỗ (+321.09€)";
+"PnL % (+2.3%)" = "Lãi/lỗ % (+2.3%)";
+"PnL + % (+321.09€ +2.3%)" = "Lãi/lỗ + % (+321.09€ +2.3%)";
+"Total Value (14396.67€)" = "Tổng giá trị (14396.67€)";
+"Best Stock (▲ AAPL +1.2%)" = "Mã tăng mạnh nhất (▲ AAPL +1.2%)";
+"Worst Stock (▼ TSLA -0.8%)" = "Mã giảm mạnh nhất (▼ TSLA -0.8%)";
+"Best & Worst" = "Tăng & Giảm mạnh nhất";
+"Portfolio (14396.67€ +1.2%)" = "Danh mục (14396.67€ +1.2%)";
+"Ticker (cycle watchlist)" = "Mã (xoay vòng theo dõi)";
+"Ticker + Portfolio (cycle)" = "Mã + Danh mục (xoay vòng)";
+"Icon Only" = "Chỉ biểu tượng";
+"Icon only" = "Chỉ biểu tượng";
+"Show percentages with 2 decimals" = "Hiển thị phần trăm với 2 số thập phân";
+"Percentages with 2 decimals" = "Phần trăm với 2 số thập phân";
+"Applies to the menu bar, watchlist and portfolios (e.g. +2.34% instead of +2.3%)." = "Áp dụng cho thanh menu, danh sách theo dõi và danh mục (vd: +2.34% thay vì +2.3%).";
+
+/* Menu bar colors */
+"Menu Bar Colors" = "Màu sắc thanh menu";
+"Use system text color" = "Dùng màu chữ hệ thống";
+"Always readable on any background. Up/down stays shown by + / − and ▲ ▼." = "Luôn dễ đọc trên mọi hình nền. Chiều tăng/giảm vẫn thể hiện qua + / − và ▲ ▼.";
+"Always readable; direction stays in + / − and ▲ ▼" = "Luôn dễ đọc; chiều tăng/giảm thể hiện qua + / − và ▲ ▼";
+"Gain color" = "Màu tăng";
+"Loss color" = "Màu giảm";
+"Reset to default green/red" = "Đặt lại về xanh/đỏ mặc định";
+
+/* Notifications */
+"Notifications" = "Thông báo";
+"Channels" = "Kênh nhận tin";
+"Mirror notifications to a Discord/Slack webhook" = "Chuyển tiếp thông báo sang webhook Discord/Slack";
+"Mirror to a Discord/Slack webhook" = "Chuyển tiếp sang webhook Discord/Slack";
+"Not a valid Discord or Slack webhook URL (must be https)." = "URL webhook Discord hoặc Slack không hợp lệ (phải bắt đầu bằng https).";
+"Price alerts and portfolio notifications are also sent here." = "Cảnh báo giá và thông báo danh mục cũng sẽ được gửi tới đây.";
+"Price alerts and portfolio notifications are also sent there" = "Cảnh báo giá và thông báo danh mục cũng sẽ được gửi tới đó";
+"Send test" = "Gửi thử nghiệm";
+"Price alerts" = "Cảnh báo giá";
+"No alerts. Right-click a stock in the watchlist to add one." = "Không có cảnh báo. Bấm chuột phải vào mã trong danh sách để thêm.";
+"Portfolio notifications" = "Thông báo danh mục";
+"None. Right-click a portfolio → “Notifications…” to add one." = "Chưa có. Bấm chuột phải vào danh mục → “Thông báo…” để thêm.";
+"Notifications…" = "Thông báo…";
+"triggered" = "đã kích hoạt";
+"Tip: enable the Discord/Slack webhook in Settings to also receive these on your phone." = "Mẹo: bật webhook Discord/Slack trong Cài đặt để nhận thông báo về điện thoại.";
+
+/* Font */
+"Font" = "Phông chữ";
+"Font family" = "Họ phông";
+"Text size" = "Kích cỡ chữ";
+
+/* Appearance */
+"Appearance" = "Giao diện";
+
+/* Updates */
+"Updates" = "Cập nhật";
+"Check for Updates..." = "Kiểm tra bản cập nhật...";
+"Check for Updates…" = "Kiểm tra bản cập nhật…";
+
+/* Reset */
+"Reset" = "Đặt lại";
+"Reset to Default Settings" = "Đặt lại cài đặt mặc định";
+"Reset Settings" = "Đặt lại cài đặt";
+"Reset to Defaults…" = "Đặt lại về mặc định…";
+"This will not erase your portfolios or watchlist" = "Thao tác này không xoá danh mục hoặc danh sách theo dõi";
+"This will reset all settings to their defaults. Your portfolios and watchlist will not be affected." = "Thao tác này sẽ đặt lại tất cả cài đặt về mặc định. Danh mục và danh sách theo dõi của bạn không bị ảnh hưởng.";
+
+/* Watchlist / portfolio views */
+"No stocks in watchlist" = "Chưa có mã nào trong danh sách";
+"No symbols in watchlist" = "Chưa có mã nào trong danh sách theo dõi";
+"No stocks in your watchlist" = "Chưa có mã nào trong danh sách theo dõi của bạn";
+"No results" = "Không có kết quả";
+"No portfolios" = "Chưa có danh mục nào";
+"Total value" = "Tổng giá trị";
+"Create portfolio" = "Tạo danh mục";
+"New portfolio" = "Danh mục mới";
+"New Portfolio" = "Danh mục mới";
+"New Portfolio…" = "Danh mục mới…";
+"New portfolio or holding" = "Danh mục hoặc vị thế mới";
+"Export All" = "Xuất tất cả";
+"Add to Portfolio" = "Thêm vào danh mục";
+"Remove from Watchlist" = "Xoá khỏi danh sách theo dõi";
+"Set Price Alert…" = "Đặt cảnh báo giá…";
+"Add stock" = "Thêm mã";
+"Add Watchlist" = "Thêm danh sách";
+"Add Portfolio" = "Thêm danh mục";
+"Add Symbol" = "Thêm mã";
+"Add symbol" = "Thêm mã";
+"Add holding" = "Thêm vị thế";
+"Add Holding" = "Thêm vị thế";
+"Add Holding…" = "Thêm vị thế…";
+"Value / PnL" = "Giá trị / Lãi lỗ";
+"Avg cost" = "Giá vốn TB";
+"Purchase date" = "Ngày mua";
+"Quantity" = "Số lượng";
+"Symbol" = "Mã";
+"Price" = "Giá";
+"All Portfolios" = "Tất cả";
+"Allocation" = "Phân bổ";
+"Assets" = "Tài sản";
+"Best stock" = "Mã tăng tốt nhất";
+"Worst stock" = "Mã giảm nhiều nhất";
+"By type" = "Theo loại";
+"Change" = "Biến động";
+"Today %" = "Hôm nay %";
+"Concentration" = "Mức độ tập trung";
+"Cost basis" = "Giá vốn";
+"Create" = "Tạo";
+"Crypto" = "Crypto";
+"Currency" = "Tiền tệ";
+"Day range" = "Biên độ ngày";
+"ETFs" = "Quỹ ETF";
+"FEATURED" = "TIÊU ĐIỂM";
+"Filter" = "Lọc";
+"Funds" = "Quỹ";
+"Futures" = "Hợp đồng tương lai";
+"General" = "Chung";
+"High" = "Cao";
+"Low" = "Thấp";
+"holdings" = "vị thế";
+"positions" = "vị thế";
+"Positions" = "Vị thế";
+"Position facts" = "Thông số vị thế";
+"How individual quotes are shown" = "Cách hiển thị từng báo giá";
+"Indices" = "Chỉ số";
+"Invested" = "Đã đầu tư";
+"Last" = "Giá khớp";
+"Last price" = "Giá gần nhất";
+"Loading price history…" = "Đang tải lịch sử giá…";
+"Market stories for your symbols" = "Tin tức thị trường cho các mã theo dõi";
+"Menu bar" = "Thanh menu";
+"Name" = "Tên";
+"News" = "Tin tức";
+"No holdings yet" = "Chưa có vị thế nào";
+"No price history available" = "Không có dữ liệu lịch sử giá";
+"Other" = "Khác";
+"PnL" = "Lãi/lỗ";
+"PnL + %" = "Lãi/lỗ + %";
+"Portfolio" = "Danh mục";
+"Portfolio name" = "Tên danh mục";
+"Portfolio recap" = "Tổng kết danh mục";
+"Preferences are shared with the menu bar." = "Tùy chọn được đồng bộ với thanh menu.";
+"Session" = "Phiên giao dịch";
+"SHORT" = "BÁN KHỐNG";
+"Short positions & leverage" = "Vị thế bán khống & đòn bẩy";
+"Sponsor" = "Tài trợ";
+"Stocks" = "Cổ phiếu";
+"Ticker + Portfolio" = "Mã + Danh mục";
+"Today" = "Hôm nay";
+"Today's movers" = "Biến động hôm nay";
+"Today PnL" = "Lãi/lỗ hôm nay";
+"Total PnL" = "Tổng lãi/lỗ";
+"Total portfolio" = "Tổng danh mục";
+"Trading" = "Giao dịch";
+"Trend (1M)" = "Xu hướng (1T)";
+"Unlocks negative quantity and a leverage field" = "Mở khóa nhập số lượng âm và trường đòn bẩy";
+"Use the + button in the sidebar to add one." = "Dùng nút + trên thanh bên để thêm.";
+"Value" = "Giá trị";
+"Value history builds up day by day" = "Lịch sử giá trị tích lũy từng ngày";
+"View all positions ↓" = "Xem toàn bộ vị thế ↓";
+"View Chart" = "Xem biểu đồ";
+"Weight" = "Tỷ trọng";
+"you bought here" = "bạn đã mua tại đây";
+"Your average cost" = "Giá vốn bình quân";
+"Your first trend appears tomorrow." = "Xu hướng đầu tiên sẽ hiển thị vào ngày mai.";
+
+/* Alerts editor */
+"Set Price Alert" = "Đặt cảnh báo giá";
+"Create Alert" = "Tạo cảnh báo";
+"Condition" = "Điều kiện";
+"Add notification" = "Thêm thông báo";
+"Mode" = "Chế độ";
+
+/* Common actions */
+"Add" = "Thêm";
+"Save" = "Lưu";
+"Cancel" = "Hủy";
+"Delete" = "Xóa";
+"Edit" = "Sửa";
+"Rename" = "Đổi tên";
+"Done" = "Xong";
+"Close" = "Đóng";
+"OK" = "OK";
+"Import" = "Nhập";
+"Export" = "Xuất";
+
+/* Status menu */
+"Quit StockDeck" = "Thoát StockDeck";
+
+/* Ticker options */
+"Show name instead of symbol" = "Hiện tên thay vì mã ký hiệu";
+"Shows the readable name in the ticker (e.g. \"S&P 500\" instead of \"^GSPC\")." = "Hiển thị tên dễ đọc trên bảng mã (vd: \"S&P 500\" thay vì \"^GSPC\").";
+"Ticker order" = "Thứ tự mã";
+"As added" = "Theo thứ tự thêm";
+"By type (stocks, ETFs, indices…)" = "Theo loại (cổ phiếu, ETF, chỉ số…)";
+"Alphabetical" = "Theo bảng chữ cái";
+"Order in which watchlist entries cycle in the menu bar." = "Thứ tự xoay vòng các mã theo dõi trên thanh menu.";
+
+/* Advanced positions */
+"Advanced" = "Nâng cao";
+"Enable short positions & leverage" = "Bật vị thế bán khống & đòn bẩy";
+"Adds a leverage field and lets you enter a negative quantity for short positions, so a portfolio can be a relative long/short basket." = "Thêm trường đòn bẩy và cho phép nhập số lượng âm cho vị thế bán khống, giúp danh mục quản lý được rổ vị thế mua/bán đối ứng.";
+"Leverage" = "Đòn bẩy";
+"Position" = "Vị thế";
+"Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1×)." = "Chọn Mua (Long) hoặc Bán khống (Short). Đòn bẩy nhân tỷ lệ lãi/lỗ và mức độ rủi ro (để trống = 1×).";
+
+/* Clear all alerts */
+"Clear all" = "Xóa tất cả";
+"Clear all alerts" = "Xóa tất cả cảnh báo";
+"This will delete all your price alerts. This cannot be undone." = "Thao tác này sẽ xóa tất cả cảnh báo giá. Không thể hoàn tác.";
+"Clear all portfolio notifications" = "Xóa tất cả thông báo danh mục";
+"This will delete all portfolio notifications across every portfolio. This cannot be undone." = "Thao tác này sẽ xóa toàn bộ thông báo trên tất cả các danh mục. Không thể hoàn tác.";
+
+/* Home / news */
+"Loading news…" = "Đang tải tin tức…";
+"No news available" = "Chưa có tin tức nào";
+"Refresh" = "Làm mới";
+
+/* Sponsor */
+"Enjoying StockDeck?" = "Bạn thấy thích StockDeck?";
+"StockDeck is free and open source — and always will be. If it's useful to you, you can sponsor its development. Every feature stays free for everyone." = "StockDeck là phần mềm miễn phí mã nguồn mở. Nếu thấy hữu ích, bạn có thể tài trợ phát triển. Mọi tính năng luôn miễn phí cho mọi người.";
+"Become a Sponsor" = "Trở thành Nhà tài trợ";
+"If it's useful to you, you can sponsor its development" = "Nếu hữu ích với bạn, bạn có thể tài trợ cho sự phát triển của dự án";
+"StockDeck is free and open source" = "StockDeck miễn phí và mã nguồn mở";
+"About" = "Giới thiệu";
+
+/* Home & Modes */
+"AI Insights" = "Nhận định AI";
+"News Feed" = "Bảng tin";
+"Explanations of portfolio movements via AI & 24h news" = "Giải mã biến động danh mục qua AI & tin tức 24h";
+"Search news or ticker" = "Tìm tin tức hoặc mã cổ phiếu";
+"Filter news by headline, ticker or publisher" = "Lọc tin tức theo tiêu đề, mã hoặc nguồn tin";
+"No stories match “%@”" = "Không có tin tức nào khớp với “%@”";
+"No stories match" = "Không có tin tức phù hợp";
+"Clear search" = "Xóa tìm kiếm";
+"%lld stories for your symbols" = "%lld tin tức cho các mã của bạn";
+"%lld of %lld stories match" = "%lld trên %lld tin tức phù hợp";
+"Key Highlights" = "Điểm tin chính";
+"Loading complete story…" = "Đang tải toàn bộ bài viết…";
+"Back" = "Quay lại";
+"Open" = "Mở";
+"Open original article in default browser" = "Mở bài viết gốc trong trình duyệt mặc định";
+"Read original story on %@" = "Đọc bài gốc trên %@";
+
+/* Market Sentiment / Fear & Greed */
+"MARKET SENTIMENT" = "TÂM LÝ THỊ TRƯỜNG";
+"FEAR & GREED INDEX" = "CHỈ SỐ SỢ HÃI & THAM LAM";
+"Source: CNN Business (Stocks) · Alternative.me (Crypto)" = "Nguồn: CNN Business (Cổ phiếu) · Alternative.me (Crypto)";
+"vs yesterday" = "so với hôm qua";
+"Last week: %lld" = "Tuần trước: %lld";
+"Last month: %lld" = "Tháng trước: %lld";
+"Extreme Fear" = "Sợ hãi tột độ";
+"Fear" = "Sợ hãi";
+"Neutral" = "Trung lập";
+"Greed" = "Tham lam";
+"Extreme Greed" = "Tham lam tột độ";
+
+/* AI Insights Pulse & Cards */
+"DAILY MARKET PULSE" = "NHỊP ĐẬP THỊ TRƯỜNG HÀNG NGÀY";
+"Updated: %@" = "Cập nhật: %@";
+"Re-analyze" = "Phân tích lại";
+"Analyzed at %@ based on 24h news & regular session prices." = "Phân tích lúc %@ dựa trên tin tức 24h và giá phiên chính.";
+"General Market Context" = "Bối cảnh thị trường chung";
+"Core Driver" = "Động lực cốt lõi";
+"Verified Sources:" = "Nguồn kiểm chứng:";
+"Activate AI Insights" = "Kích hoạt Nhận định AI";
+"To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers." = "Để xem phân tích tự động lý do biến động giá theo tin tức 24h, vui lòng nhập API Key trong Cài đặt → Đánh giá AI. Hỗ trợ OpenAI, DeepSeek, Groq, OpenRouter và các nhà cung cấp tương thích.";
+"AI Review Settings" = "Cài đặt Đánh giá AI";
+"AI is synthesizing 24h news & analyzing movement drivers…" = "AI đang tổng hợp tin 24h và phân tích động lực biến động…";
+"AI is analyzing 24h price movement drivers…" = "AI đang phân tích động lực biến động giá 24h…";
+"No detailed drivers available for individual symbols" = "Chưa có phân tích chi tiết cho từng mã riêng lẻ";
+"Re-analyze Tracked Symbols" = "Phân tích lại các mã theo dõi";
+"AI Analysis Error: %@" = "Lỗi phân tích AI: %@";
+"Unable to load AI insights: %@" = "Không thể tải nhận định AI: %@";
+"Try Again" = "Thử lại";
+"No AI insights available for today" = "Chưa có nhận định AI cho hôm nay";
+"Analyze Now" = "Phân tích ngay";
+
+/* Market Categories */
+"US Stocks" = "Cổ phiếu Mỹ";
+"Japan Stocks & Funds" = "Cổ phiếu & Quỹ Nhật Bản";
+"Vietnam Stocks" = "Cổ phiếu Việt Nam";
+
+/* Watchlist actions & items */
+"1Y" = "1N";
+"3Y" = "3N";
+"Closed" = "Đóng cửa";
+"View Details" = "Xem chi tiết";
+"Add to Watchlist" = "Thêm vào theo dõi";
+"Move Up" = "Di chuyển lên";
+"Move Down" = "Di chuyển xuống";
+"Move Left" = "Di chuyển sang trái";
+"Move Right" = "Di chuyển sang phải";
+"Rename…" = "Đổi tên…";
+"New Watchlist" = "Mục theo dõi mới";
+"Rename Watchlist" = "Đổi tên mục theo dõi";
+"Delete Watchlist" = "Xoá mục theo dõi";
+"Watchlist name" = "Tên mục theo dõi";
+"Enter a name for the new watchlist:" = "Nhập tên cho mục theo dõi mới:";
+"Enter a new name for this watchlist:" = "Nhập tên mới cho mục theo dõi này:";
+"Are you sure you want to delete watchlist '%@'?" = "Bạn có chắc muốn xoá mục theo dõi '%@'?";
+"Remove Symbol" = "Xoá mã";
+"Are you sure you want to remove %@ from '%@'?" = "Bạn có chắc muốn xoá %@ khỏi '%@'?";
+"No symbols in %@" = "Chưa có mã nào trong %@";
+"New watchlist" = "Tạo mục theo dõi mới";
+
+/* Performance & Benchmark */
+"Performance & Benchmark" = "Hiệu suất & Điểm chuẩn";
+"Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Mô phỏng rổ tài sản: Đo lường biến động giá trong quá khứ của các mã bạn đang nắm giữ so với S&P 500, không phụ thuộc vào ngày mua thực tế. Để xem lợi nhuận thực tế theo dòng tiền, xem phần Lợi nhuận thực nhận (XIRR) bên dưới.";
+"Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Mô phỏng rổ tài sản — phản ánh biến động giá quá khứ của các tài sản hiện tại so với S&P 500.";
+"Timeline" = "Mốc thời gian";
+
+/* Actual Return (XIRR) */
+"Your Actual Return (XIRR)" = "Lợi nhuận thực nhận (XIRR)";
+"Money-weighted return (XIRR): Annualized actual return based on your cash flows, buy dates, and real cost, compared with investing the same capital at the same time in S&P 500." = "Lợi nhuận thực tế (XIRR): Tỷ suất sinh lời thực nhận theo dòng tiền (Money-weighted return) dựa trên ngày giải ngân và giá vốn thực tế của bạn, so sánh với việc đầu tư cùng số vốn vào cùng thời điểm đó cho S&P 500.";
+"Your Return (Annualized)" = "Lợi nhuận của bạn (Quy năm)";
+"Money-weighted IRR" = "IRR theo dòng tiền";
+"S&P 500 Equivalent" = "S&P 500 tương đương";
+"Same capital & timing" = "Cùng vốn & thời điểm";
+"Matching S&P 500 performance" = "Tương đương hiệu suất S&P 500";
+"Beating S&P 500 by +%@ pp/yr" = "Vượt S&P 500 +%@ điểm %/năm";
+"Trailing S&P 500 by -%@ pp/yr" = "Kém S&P 500 -%@ điểm %/năm";
+"Holdings are less than 30 days old. XIRR requires at least 30 days of history to avoid annualization distortion." = "Vị thế chưa đủ 30 ngày. XIRR cần ít nhất 30 ngày lịch sử để tránh sai lệch quy năm.";
+"Add a purchase date to your positions to see your money-weighted return vs S&P 500." = "Hãy thêm ngày mua vào các vị thế để xem tỷ suất sinh lời theo dòng tiền so với S&P 500.";
+"%lld positions without a purchase date excluded." = "Đã loại trừ %lld vị thế không có ngày mua.";
+"Annualized, money-weighted, based on your actual buy dates and cost — excludes closed/sold positions." = "Quy năm theo dòng tiền, dựa trên ngày mua và giá vốn thực tế — không tính các vị thế đã đóng/bán.";
+
+/* PnL Card */
+"PnL" = "Lãi/lỗ";
+"Daily PnL" = "Lãi/lỗ ngày";
+"Monthly PnL" = "Lãi/lỗ tháng";
+"Realized" = "Đã chốt";
+"Paper" = "Chưa chốt";
+"Net" = "Ròng";
+"Total:" = "Tổng:";
+"• Realized:" = "• Đã chốt:";
+"• Paper:" = "• Chưa chốt:";
+"Daily PnL from real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL." = "Lãi/lỗ ngày từ giá vốn thực tế × giá lịch sử + giao dịch đã chốt — nạp tiền hay thêm vị thế không làm sai lệch lãi/lỗ.";
+"Real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL." = "Giá vốn thực tế × giá lịch sử + giao dịch đã chốt — nạp tiền hay thêm vị thế không làm sai lệch lãi/lỗ.";
+
+/* Positions & Columns */
+"Positions" = "Vị thế";
+"Active (%lld)" = "Đang nắm giữ (%lld)";
+"Closed (%lld)" = "Đã đóng (%lld)";
+"Transactions (%lld)" = "Giao dịch (%lld)";
+"Columns" = "Cột";
+"Add holding" = "Thêm vị thế";
+"No holdings yet" = "Chưa có vị thế nào";
+"Add your first position to start tracking value and PnL." = "Thêm vị thế đầu tiên để bắt đầu theo dõi giá trị và lãi/lỗ.";
+"Symbol" = "Mã";
+"Avg Price" = "Giá TB";
+"Cost" = "Giá vốn";
+"Price" = "Giá hiện tại";
+"Today %" = "Hôm nay %";
+"Value" = "Giá trị";
+"Today PnL" = "Lãi/lỗ ngày";
+"Total PnL" = "Tổng lãi/lỗ";
+"Shares" = "Khối lượng";
+"Lots" = "Lô";
+"Weight" = "Tỷ trọng";
+
+/* Cards */
+"Top Gainers" = "Tăng mạnh nhất";
+"Top Losers" = "Giảm mạnh nhất";
+"Allocation" = "Phân bổ";
+"Assets" = "Tài sản";
+"Total value" = "Tổng giá trị";
+"Total cost" = "Tổng giá vốn";
+"Today" = "Hôm nay";

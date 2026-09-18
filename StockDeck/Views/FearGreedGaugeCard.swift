@@ -16,7 +16,7 @@ struct FearGreedGaugeCard: View {
                     Image(systemName: "gauge.with.needle.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(DS.brand)
-                    Text("TÂM LÝ THỊ TRƯỜNG")
+                    Text("MARKET SENTIMENT")
                         .font(.inter(10, weight: .bold, relativeTo: .caption2))
                         .tracking(1.1)
                         .foregroundStyle(DS.brand)
@@ -54,7 +54,7 @@ struct FearGreedGaugeCard: View {
                 Image(systemName: "info.circle")
                     .font(.system(size: 10))
                     .foregroundStyle(DS.inkTertiary)
-                Text("Nguồn: CNN Business (Chứng khoán) · Alternative.me (Crypto)")
+                Text("Source: CNN Business (Stocks) · Alternative.me (Crypto)")
                     .font(DS.micro)
                     .foregroundStyle(DS.inkTertiary)
                 Spacer()
@@ -100,7 +100,7 @@ private struct SingleGaugeView: View {
                 HStack(spacing: 4) {
                     Text(market == .stock ? "🇺🇸" : "🪙")
                         .font(.system(size: 12))
-                    Text(market.displayName)
+                    Text(LocalizedStringKey(market.displayName))
                         .font(.inter(12, weight: .bold, relativeTo: .caption))
                         .foregroundStyle(DS.ink)
                 }
@@ -148,7 +148,7 @@ private struct SingleGaugeView: View {
                             .font(.inter(24, weight: .bold, relativeTo: .title2).monospacedDigit())
                             .foregroundStyle(DS.ink)
 
-                        Text(FearGreedData.vietnameseLabel(for: data.score))
+                        Text(LocalizedStringKey(FearGreedData.label(for: data.score)))
                             .font(.inter(11, weight: .bold, relativeTo: .caption))
                             .foregroundStyle(scoreColor(for: data.score))
                     }
@@ -159,7 +159,7 @@ private struct SingleGaugeView: View {
                             HStack(spacing: 3) {
                                 Image(systemName: change >= 0 ? "arrow.up.right" : "arrow.down.right")
                                     .font(.system(size: 8, weight: .bold))
-                                Text(String(format: "%@%d so với hôm qua", change >= 0 ? "+" : "", change))
+                                (Text(change >= 0 ? "+\(change) " : "\(change) ") + Text("vs yesterday"))
                                     .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
                             }
                             .foregroundStyle(change >= 0 ? DS.up : DS.down)
@@ -171,10 +171,16 @@ private struct SingleGaugeView: View {
                         }
 
                         if let weekAgo = data.weekAgo {
-                            Text("Tuần trước: \(weekAgo)\(data.monthAgo != nil ? " · Tháng trước: \(data.monthAgo!)" : "")")
-                                .font(DS.micro)
-                                .foregroundStyle(DS.inkTertiary)
-                                .lineLimit(1)
+                            HStack(spacing: 3) {
+                                Text("Last week: \(weekAgo)")
+                                if let monthAgo = data.monthAgo {
+                                    Text("·")
+                                    Text("Last month: \(monthAgo)")
+                                }
+                            }
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                            .lineLimit(1)
                         }
                     }
                     .padding(.top, 2)

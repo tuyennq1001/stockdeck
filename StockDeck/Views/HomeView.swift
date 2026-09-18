@@ -47,10 +47,18 @@ struct HomeView: View {
         .task {
             _ = storageService.loadDailyAIInsight()
             await stockService.fetchFearGreedIndex()
-            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
+            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date) || (storageService.dailyAIInsight?.language != nil && storageService.dailyAIInsight?.language != storageService.appLanguage)) {
                 refreshInsights(force: false)
             }
             await stockService.refreshNews(storageService: storageService)
+        }
+        .onChange(of: storageService.appLanguage) { _, newLang in
+            if storageService.hasAIConfiguration && storageService.dailyAIInsight?.language != newLang {
+                refreshInsights(force: true)
+            }
+            Task {
+                await stockService.refreshNews(storageService: storageService, force: true)
+            }
         }
     }
 
@@ -111,7 +119,7 @@ struct HomeView: View {
                     HStack(spacing: 4) {
                         Image(systemName: icon)
                             .font(.system(size: 10))
-                        Text(m.rawValue)
+                        Text(LocalizedStringKey(m.rawValue))
                             .font(.inter(10, weight: isSelected ? .bold : .medium, relativeTo: .caption2))
                     }
                     .foregroundColor(isSelected ? DS.brand : .secondary)
@@ -169,7 +177,7 @@ struct HomeView: View {
             VStack(spacing: 10) {
                 Spacer()
                 ProgressView().scaleEffect(0.8)
-                Text("AI đang phân tích luận điểm biến động 24h…")
+                Text("AI is analyzing 24h price movement drivers…")
                     .font(.inter(11, relativeTo: .caption))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -217,10 +225,10 @@ struct HomeView: View {
                             Image(systemName: "chart.line.uptrend.xyaxis")
                                 .font(.system(size: 20))
                                 .foregroundColor(.secondary)
-                            Text("Chưa có chi tiết luận điểm cho các mã riêng lẻ")
+                            Text("No detailed drivers available for individual symbols")
                                 .font(.inter(11, relativeTo: .caption))
                                 .foregroundColor(.secondary)
-                            Button("Phân tích lại các mã theo dõi") {
+                            Button("Re-analyze Tracked Symbols") {
                                 refreshInsights(force: true)
                             }
                             .buttonStyle(.bordered)
@@ -237,12 +245,12 @@ struct HomeView: View {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 24))
                     .foregroundColor(DS.down)
-                Text("Lỗi phân tích AI: \(err)")
+                Text("AI Analysis Error: \(err)")
                     .font(.inter(11, relativeTo: .caption))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
-                Button("Thử lại") {
+                Button("Try Again") {
                     refreshInsights(force: true)
                 }
                 .buttonStyle(.bordered)
@@ -256,10 +264,10 @@ struct HomeView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 24))
                     .foregroundColor(.secondary)
-                Text("Chưa có nhận định AI cho hôm nay")
+                Text("No AI insights available for today")
                     .font(.inter(11, relativeTo: .caption))
                     .foregroundColor(.secondary)
-                Button("Phân tích ngay") {
+                Button("Analyze Now") {
                     refreshInsights(force: true)
                 }
                 .buttonStyle(.bordered)

@@ -15,7 +15,7 @@ struct FearGreedData: Codable, Equatable {
 
         var displayName: String {
             switch self {
-            case .stock: return "Chứng khoán"
+            case .stock: return "Stocks"
             case .crypto: return "Crypto"
             }
         }

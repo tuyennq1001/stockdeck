@@ -181,10 +181,17 @@ final class HomeAIInsightService {
         let watchlistSymbols = storageService.watchlists.flatMap(\.symbols)
         let uniqueSymbols = Array(Set(portfolioSymbols + watchlistSymbols)).filter { !$0.isEmpty }
         guard !uniqueSymbols.isEmpty else {
+            let summary: String
+            switch storageService.appLanguage.lowercased() {
+            case "ja": summary = "分析対象の銘柄またはポートフォリオがありません。"
+            case "en": summary = "No tracked symbols or portfolios available for analysis."
+            default: summary = "Chưa có danh mục hoặc mã theo dõi để phân tích."
+            }
             let emptyInsight = HomeAIInsight(
                 date: Date(),
-                portfolioSummary: "Chưa có danh mục hoặc mã theo dõi để phân tích.",
-                items: []
+                portfolioSummary: summary,
+                items: [],
+                language: storageService.appLanguage
             )
             storageService.saveDailyAIInsight(emptyInsight)
             return emptyInsight
@@ -208,10 +215,17 @@ final class HomeAIInsightService {
         }
 
         guard !resolvedQuotes.isEmpty else {
+            let summary: String
+            switch storageService.appLanguage.lowercased() {
+            case "ja": summary = "本日の値動きを分析するための通常セッション価格データがありません。"
+            case "en": summary = "No regular session price data available to analyze today's movements."
+            default: summary = "Không có dữ liệu giá phiên chính để phân tích biến động hôm nay."
+            }
             let emptyInsight = HomeAIInsight(
                 date: Date(),
-                portfolioSummary: "Không có dữ liệu giá phiên chính để phân tích biến động hôm nay.",
-                items: []
+                portfolioSummary: summary,
+                items: [],
+                language: storageService.appLanguage
             )
             storageService.saveDailyAIInsight(emptyInsight)
             return emptyInsight
@@ -457,7 +471,8 @@ final class HomeAIInsightService {
         let insight = try parseAIResponse(
             reply: reply,
             movers: selectedMovers,
-            articlesBySymbol: articlesBySymbol
+            articlesBySymbol: articlesBySymbol,
+            language: storageService.appLanguage
         )
 
         // 9. Cache in storage
@@ -500,6 +515,50 @@ final class HomeAIInsightService {
         articlesBySymbol: [String: [NewsArticle]],
         storageService: StorageService
     ) -> (systemContext: String, userMessage: String) {
+        let lang = storageService.appLanguage.lowercased()
+        let languageInstruction: String
+        let summaryPlaceholder: String
+        let overviewPlaceholderUS: String
+        let overviewPlaceholderJP: String
+        let overviewPlaceholderVN: String
+        let overviewPlaceholderCrypto: String
+        let driverPlaceholder: String
+        let bulletsPlaceholder1: String
+        let bulletsPlaceholder2: String
+
+        switch lang {
+        case "ja":
+            languageInstruction = "TOÀN BỘ nội dung phản hồi PHẢI ĐƯỢC VIẾT BẰNG TIẾNG NHẬT (日本語) tự nhiên, trôi chảy, đúng chuẩn văn phong phân tích tài chính chuyên nghiệp của Nhật Bản."
+            summaryPlaceholder = "本日の市場全体およびポートフォリオの概況をまとめた、鋭く簡潔な日本語の1〜2文。"
+            overviewPlaceholderUS = "S&P 500、Nasdaq、Dow Jonesの動向と背景を分析した簡潔な日本語の1〜2文。"
+            overviewPlaceholderJP = "日経平均株価の動向と背景を分析した簡潔な日本語の1〜2文。"
+            overviewPlaceholderVN = "VN-Indexの動向と背景を分析した簡潔な日本語の1〜2文。"
+            overviewPlaceholderCrypto = "BitcoinやEthereumの動向、最新の政策動向を分析した簡潔な日本語の1〜2文。"
+            driverPlaceholder = "銘柄の本日における値動きの核心要因を明快に説明した簡潔な日本語の1文。"
+            bulletsPlaceholder1 = "企業・資産の財務データや重要イベントに関する箇条書き（日本語）"
+            bulletsPlaceholder2 = "バリュエーション、需給、テクニカルまたは市場相関に関する箇条書き（日本語）"
+        case "en":
+            languageInstruction = "ALL content MUST BE WRITTEN IN NATURAL, PROFESSIONAL FINANCIAL ENGLISH."
+            summaryPlaceholder = "Concise, sharp 1-2 sentence overview in English of today's markets and portfolio performance."
+            overviewPlaceholderUS = "1-2 sentence sharp analysis in English of S&P 500, Nasdaq, and Dow Jones movements."
+            overviewPlaceholderJP = "1-2 sentence sharp analysis in English of Nikkei 225 movements."
+            overviewPlaceholderVN = "1-2 sentence sharp analysis in English of VN-Index movements."
+            overviewPlaceholderCrypto = "1-2 sentence sharp analysis in English of Bitcoin & Ethereum movements and policy developments."
+            driverPlaceholder = "A concise, sharp sentence in English stating the exact catalyst or industry factor driving today's movement."
+            bulletsPlaceholder1 = "Core financial data / key event bullet point in English"
+            bulletsPlaceholder2 = "Valuation / cashflow / technical context or market correlation bullet point in English"
+        default: // "vi" and others
+            languageInstruction = "TOÀN BỘ nội dung PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp."
+            summaryPlaceholder = "Tóm tắt 1-2 câu ngắn gọn, sắc bén bằng tiếng Việt về toàn cảnh các thị trường và danh mục hôm nay."
+            overviewPlaceholderUS = "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của S&P 500, Nasdaq, Dow Jones."
+            overviewPlaceholderJP = "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Nikkei 225."
+            overviewPlaceholderVN = "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của VN-Index."
+            overviewPlaceholderCrypto = "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Bitcoin & Ethereum cùng các sự kiện chính sách mới nhất."
+            driverPlaceholder = "Một câu tiếng Việt ngắn gọn, sắc bén nêu chính xác nguyên nhân nội tại hoặc yếu tố ngành khiến mã tăng/giảm hôm nay."
+            bulletsPlaceholder1 = "Luận điểm số liệu / sự kiện cốt lõi của doanh nghiệp bằng tiếng Việt"
+            bulletsPlaceholder2 = "Bối cảnh định giá / dòng tiền / áp lực kỹ thuật hoặc tương quan thị trường bằng tiếng Việt"
+        }
+
         let sys = """
         Bạn là một chuyên gia phân tích tài chính và chiến lược thị trường cấp cao của StockDeck.
         Nhiệm vụ của bạn:
@@ -522,25 +581,25 @@ final class HomeAIInsightService {
              * Nếu có tin tức nội tại: Nêu rõ tên sản phẩm/dịch vụ cốt lõi (ví dụ: Falcon platform đối với CrowdStrike, GPU Hopper/Blackwell với Nvidia, mảng thép HRC với Hòa Phát...).
              * Nếu cổ phiếu biến động theo đà chung của ngành/thị trường mà không có tin tức nội tại mới: PHẢI nói thẳng rõ ràng (ví dụ: "Cổ phiếu chịu áp lực điều chỉnh chung theo nhóm Cloud SaaS khi lợi suất trái phiếu tăng, chưa ghi nhận tin tức tiêu cực riêng lẻ từ nội bộ công ty.").
            - TUYỆT ĐỐI KHÔNG dùng những câu văn sáo rỗng chung chung có thể gán cho bất kỳ công ty nào mà không chỉ ra đặc thù của mã đó.
-        3. TOÀN BỘ nội dung PHẢI ĐƯỢC VIẾT BẰNG TIẾNG VIỆT tự nhiên, chuẩn mực, văn phong tài chính chuyên nghiệp.
+        3. \(languageInstruction)
 
         Cấu trúc JSON phản hồi bắt buộc đúng 100% định dạng sau:
         {
-          "portfolioSummary": "Tóm tắt 1-2 câu ngắn gọn, sắc bén bằng tiếng Việt về toàn cảnh các thị trường và danh mục hôm nay.",
+          "portfolioSummary": "\(summaryPlaceholder)",
           "marketOverviews": {
-            "US": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của S&P 500, Nasdaq, Dow Jones.",
-            "JP": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Nikkei 225.",
-            "VN": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của VN-Index.",
-            "CRYPTO": "1-2 câu tiếng Việt phân tích bối cảnh và nêu cụ thể mức tăng giảm của Bitcoin & Ethereum cùng các sự kiện chính sách mới nhất."
+            "US": "\(overviewPlaceholderUS)",
+            "JP": "\(overviewPlaceholderJP)",
+            "VN": "\(overviewPlaceholderVN)",
+            "CRYPTO": "\(overviewPlaceholderCrypto)"
           },
           "items": [
             {
               "symbol": "SYMBOL",
               "name": "Tên công ty / Quỹ / Tài sản",
-              "coreDriver": "Một câu tiếng Việt ngắn gọn, sắc bén nêu chính xác nguyên nhân nội tại hoặc yếu tố ngành khiến mã tăng/giảm hôm nay.",
+              "coreDriver": "\(driverPlaceholder)",
               "bulletPoints": [
-                "Luận điểm số liệu / sự kiện cốt lõi của doanh nghiệp bằng tiếng Việt",
-                "Bối cảnh định giá / dòng tiền / áp lực kỹ thuật hoặc tương quan thị trường bằng tiếng Việt"
+                "\(bulletsPlaceholder1)",
+                "\(bulletsPlaceholder2)"
               ],
               "sentiment": "positive",
               "sourcePublisher": "Tên nguồn báo chí (ví dụ: 'CNBC', 'Bloomberg', 'Reuters', 'Morningstar') hoặc 'Dòng tiền & Nhóm ngành'"
@@ -669,7 +728,8 @@ final class HomeAIInsightService {
     func parseAIResponse(
         reply: String,
         movers: [SymbolCandidate],
-        articlesBySymbol: [String: [NewsArticle]]
+        articlesBySymbol: [String: [NewsArticle]],
+        language: String? = nil
     ) throws -> HomeAIInsight {
         // Strip markdown code fences if present: ```json ... ```
         var cleanJSON = reply.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -771,6 +831,7 @@ final class HomeAIInsightService {
             portfolioSummary: decoded.portfolioSummary,
             marketOverviews: decoded.marketOverviews,
             items: finalItems,
+            language: language,
             generatedAt: Date()
         )
     }

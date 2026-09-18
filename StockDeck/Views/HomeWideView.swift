@@ -59,15 +59,23 @@ struct HomeWideView: View {
         .task {
             _ = storageService.loadDailyAIInsight()
             await stockService.fetchFearGreedIndex()
-            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date)) {
+            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date) || (storageService.dailyAIInsight?.language != nil && storageService.dailyAIInsight?.language != storageService.appLanguage)) {
                 refreshInsights(force: false)
             }
             await stockService.refreshNews(storageService: storageService)
         }
+        .onChange(of: storageService.appLanguage) { _, newLang in
+            if storageService.hasAIConfiguration && storageService.dailyAIInsight?.language != newLang {
+                refreshInsights(force: true)
+            }
+            Task {
+                await stockService.refreshNews(storageService: storageService, force: true)
+            }
+        }
     }
 
     private var homeContent: some View {
-        PageScaffold("Home", caption: headerCaption) {
+        PageScaffold("Home", caption: headerCaptionKey) {
             HStack(spacing: 12) {
                 modePicker
                 if mode == .news {
@@ -104,7 +112,7 @@ struct HomeWideView: View {
                     HStack(spacing: 5) {
                         Image(systemName: m == .insights ? "sparkles" : "newspaper")
                             .font(.system(size: 11))
-                        Text(m.rawValue)
+                        Text(LocalizedStringKey(m.rawValue))
                             .font(.inter(11.5, weight: mode == m ? .bold : .medium, relativeTo: .caption))
                     }
                     .foregroundStyle(mode == m ? DS.brand : DS.inkSecondary)
@@ -122,11 +130,11 @@ struct HomeWideView: View {
         .background(Capsule().fill(DS.cardAlt))
     }
 
-    private var headerCaption: String {
+    private var headerCaptionKey: LocalizedStringKey {
         if mode == .insights {
-            return "Luận điểm giải thích biến động danh mục qua AI & tin tức 24h"
+            return "Explanations of portfolio movements via AI & 24h news"
         }
-        return newsCaption
+        return newsCaptionKey
     }
 
     private func refreshInsights(force: Bool = false) {
@@ -216,10 +224,10 @@ struct HomeWideView: View {
                             Image(systemName: "chart.line.uptrend.xyaxis")
                                 .font(.system(size: 24))
                                 .foregroundStyle(DS.inkTertiary)
-                            Text("Chưa có chi tiết luận điểm cho các mã riêng lẻ")
+                            Text("No detailed drivers available for individual symbols")
                                 .font(DS.caption)
                                 .foregroundStyle(DS.inkSecondary)
-                            Button("Phân tích lại các mã theo dõi") {
+                            Button("Re-analyze Tracked Symbols") {
                                 refreshInsights(force: true)
                             }
                             .buttonStyle(.bordered)
@@ -237,12 +245,12 @@ struct HomeWideView: View {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 32))
                     .foregroundStyle(DS.down)
-                Text("Không thể tải nhận định AI: \(err)")
+                Text("Unable to load AI insights: \(err)")
                     .font(DS.bodyStrong)
                     .foregroundStyle(DS.inkSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 400)
-                Button("Thử lại") {
+                Button("Try Again") {
                     refreshInsights(force: true)
                 }
                 .buttonStyle(.bordered)
@@ -256,10 +264,10 @@ struct HomeWideView: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 32))
                     .foregroundStyle(DS.inkTertiary)
-                Text("Chưa có nhận định AI cho hôm nay")
+                Text("No AI insights available for today")
                     .font(DS.bodyStrong)
                     .foregroundStyle(DS.inkSecondary)
-                Button("Phân tích ngay") {
+                Button("Analyze Now") {
                     refreshInsights(force: true)
                 }
                 .buttonStyle(.bordered)
@@ -339,7 +347,7 @@ struct HomeWideView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var newsCaption: String {
+    private var newsCaptionKey: LocalizedStringKey {
         if stockService.news.isEmpty { return "Market stories for your symbols" }
         let n = filteredNews.count
         if query.trimmingCharacters(in: .whitespaces).isEmpty {

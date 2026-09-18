@@ -244,6 +244,7 @@
 "Ticker + Portfolio" = "Ticker + Portfolio";
 "Today" = "Today";
 "Today's movers" = "Today's movers";
+"Today PnL" = "Today PnL";
 "Total PnL" = "Total PnL";
 "Total portfolio" = "Total portfolio";
 "Totals and PnL are converted here" = "Totals and PnL are converted here";
@@ -261,3 +262,128 @@
 "you bought here" = "you bought here";
 "Your average cost" = "Your average cost";
 "Your first trend appears tomorrow." = "Your first trend appears tomorrow.";
+
+/* Navigation Tabs */
+"Watchlists" = "Watchlists";
+"Utilities" = "Utilities";
+
+/* Home & Modes */
+"AI Insights" = "AI Insights";
+"News Feed" = "News Feed";
+"Explanations of portfolio movements via AI & 24h news" = "Explanations of portfolio movements via AI & 24h news";
+"Search news or ticker" = "Search news or ticker";
+"Filter news by headline, ticker or publisher" = "Filter news by headline, ticker or publisher";
+"No stories match “%@”" = "No stories match “%@”";
+"No stories match" = "No stories match";
+"Clear search" = "Clear search";
+"%lld stories for your symbols" = "%lld stories for your symbols";
+"%lld of %lld stories match" = "%lld of %lld stories match";
+"Key Highlights" = "Key Highlights";
+"Loading complete story…" = "Loading complete story…";
+"Back" = "Back";
+"Open" = "Open";
+"Open original article in default browser" = "Open original article in default browser";
+"Read original story on %@" = "Read original story on %@";
+
+/* Market Sentiment / Fear & Greed */
+"MARKET SENTIMENT" = "MARKET SENTIMENT";
+"FEAR & GREED INDEX" = "FEAR & GREED INDEX";
+"Source: CNN Business (Stocks) · Alternative.me (Crypto)" = "Source: CNN Business (Stocks) · Alternative.me (Crypto)";
+"vs yesterday" = "vs yesterday";
+"Last week: %lld" = "Last week: %lld";
+"Last month: %lld" = "Last month: %lld";
+"Extreme Fear" = "Extreme Fear";
+"Fear" = "Fear";
+"Neutral" = "Neutral";
+"Greed" = "Greed";
+"Extreme Greed" = "Extreme Greed";
+
+/* AI Insights Pulse & Cards */
+"DAILY MARKET PULSE" = "DAILY MARKET PULSE";
+"Updated: %@" = "Updated: %@";
+"Re-analyze" = "Re-analyze";
+"Analyzed at %@ based on 24h news & regular session prices." = "Analyzed at %@ based on 24h news & regular session prices.";
+"General Market Context" = "General Market Context";
+"Core Driver" = "Core Driver";
+"Verified Sources:" = "Verified Sources:";
+"Activate AI Insights" = "Activate AI Insights";
+"To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers." = "To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers.";
+"AI Review Settings" = "AI Review Settings";
+"AI is synthesizing 24h news & analyzing movement drivers…" = "AI is synthesizing 24h news & analyzing movement drivers…";
+"AI is analyzing 24h price movement drivers…" = "AI is analyzing 24h price movement drivers…";
+"No detailed drivers available for individual symbols" = "No detailed drivers available for individual symbols";
+"Re-analyze Tracked Symbols" = "Re-analyze Tracked Symbols";
+"AI Analysis Error: %@" = "AI Analysis Error: %@";
+"Unable to load AI insights: %@" = "Unable to load AI insights: %@";
+"Try Again" = "Try Again";
+"No AI insights available for today" = "No AI insights available for today";
+"Analyze Now" = "Analyze Now";
+
+/* Market Categories */
+"US Stocks" = "US Stocks";
+"Japan Stocks & Funds" = "Japan Stocks & Funds";
+"Vietnam Stocks" = "Vietnam Stocks";
+
+/* Performance & Benchmark */
+"Performance & Benchmark" = "Performance & Benchmark";
+"Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below.";
+"Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Asset backtest — simulates past performance of your current asset basket vs S&P 500.";
+"Timeline" = "Timeline";
+
+/* Actual Return (XIRR) */
+"Your Actual Return (XIRR)" = "Your Actual Return (XIRR)";
+"Money-weighted return (XIRR): Annualized actual return based on your cash flows, buy dates, and real cost, compared with investing the same capital at the same time in S&P 500." = "Money-weighted return (XIRR): Annualized actual return based on your cash flows, buy dates, and real cost, compared with investing the same capital at the same time in S&P 500.";
+"Your Return (Annualized)" = "Your Return (Annualized)";
+"Money-weighted IRR" = "Money-weighted IRR";
+"S&P 500 Equivalent" = "S&P 500 Equivalent";
+"Same capital & timing" = "Same capital & timing";
+"Matching S&P 500 performance" = "Matching S&P 500 performance";
+"Beating S&P 500 by +%@ pp/yr" = "Beating S&P 500 by +%@ pp/yr";
+"Trailing S&P 500 by -%@ pp/yr" = "Trailing S&P 500 by -%@ pp/yr";
+"Holdings are less than 30 days old. XIRR requires at least 30 days of history to avoid annualization distortion." = "Holdings are less than 30 days old. XIRR requires at least 30 days of history to avoid annualization distortion.";
+"Add a purchase date to your positions to see your money-weighted return vs S&P 500." = "Add a purchase date to your positions to see your money-weighted return vs S&P 500.";
+"%lld positions without a purchase date excluded." = "%lld positions without a purchase date excluded.";
+"Annualized, money-weighted, based on your actual buy dates and cost — excludes closed/sold positions." = "Annualized, money-weighted, based on your actual buy dates and cost — excludes closed/sold positions.";
+
+/* PnL Card */
+"PnL" = "PnL";
+"Daily PnL" = "Daily PnL";
+"Monthly PnL" = "Monthly PnL";
+"Realized" = "Realized";
+"Paper" = "Paper";
+"Net" = "Net";
+"Total:" = "Total:";
+"• Realized:" = "• Realized:";
+"• Paper:" = "• Paper:";
+"Daily PnL from real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL." = "Daily PnL from real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL.";
+"Real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL." = "Real cost basis × price history + closed trades — adding cash or positions doesn't inflate PnL.";
+
+/* Positions & Columns */
+"Positions" = "Positions";
+"Active (%lld)" = "Active (%lld)";
+"Closed (%lld)" = "Closed (%lld)";
+"Transactions (%lld)" = "Transactions (%lld)";
+"Columns" = "Columns";
+"Add holding" = "Add holding";
+"No holdings yet" = "No holdings yet";
+"Add your first position to start tracking value and PnL." = "Add your first position to start tracking value and PnL.";
+"Symbol" = "Symbol";
+"Avg Price" = "Avg Price";
+"Cost" = "Cost";
+"Price" = "Price";
+"Today %" = "Today %";
+"Value" = "Value";
+"Today PnL" = "Today PnL";
+"Total PnL" = "Total PnL";
+"Shares" = "Shares";
+"Lots" = "Lots";
+"Weight" = "Weight";
+
+/* Cards */
+"Top Gainers" = "Top Gainers";
+"Top Losers" = "Top Losers";
+"Allocation" = "Allocation";
+"Assets" = "Assets";
+"Total value" = "Total value";
+"Total cost" = "Total cost";
+"Today" = "Today";

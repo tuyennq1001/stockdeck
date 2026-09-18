@@ -153,21 +153,119 @@ extension View {
 
 struct Card<Content: View>: View {
     var title: String? = nil
+    var tooltip: LocalizedStringKey? = nil
     @ViewBuilder var content: Content
 
-    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+    init(title: String? = nil, tooltip: LocalizedStringKey? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.tooltip = tooltip
+        self.content = content()
+    }
+
+    init(title: String? = nil, tooltip: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.tooltip = LocalizedStringKey(tooltip)
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: title == nil ? 0 : 14) {
-            if let title { SectionLabel(title) }
+            if let title {
+                HStack(spacing: 5) {
+                    SectionLabel(title)
+                    if let tooltip {
+                        CardInfoButton(tooltip: tooltip)
+                    }
+                }
+            }
             content
         }
         .padding(DS.pad)
         .frame(maxWidth: .infinity, alignment: .leading)
         .premiumCard()
+    }
+}
+
+struct CardInfoButton: View {
+    let tooltip: LocalizedStringKey
+    @Environment(\.locale) private var locale
+    @State private var isButtonHovered = false
+    @State private var isCardHovered = false
+    @State private var isVisible = false
+    @State private var closeTask: Task<Void, Never>? = nil
+    @State private var showPopover = false
+
+    var body: some View {
+        Button {
+            showPopover.toggle()
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(isVisible || showPopover ? DS.ink : DS.inkTertiary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { hovering in
+            updateHover(button: hovering)
+        }
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+            Text(tooltip)
+                .font(DS.body)
+                .foregroundStyle(DS.ink)
+                .lineSpacing(3)
+                .padding(14)
+                .frame(width: 290, alignment: .leading)
+                .environment(\.locale, locale)
+        }
+        .overlay(alignment: .topLeading) {
+            if isVisible && !showPopover {
+                Text(tooltip)
+                    .font(DS.caption)
+                    .foregroundStyle(DS.ink)
+                    .lineSpacing(3)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(DS.card)
+                            .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(DS.hairline, lineWidth: 1)
+                    )
+                    .frame(width: 280, alignment: .leading)
+                    .offset(x: 22, y: -4)
+                    .zIndex(99)
+                    .onHover { hovering in
+                        updateHover(card: hovering)
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+            }
+        }
+    }
+
+    private func updateHover(button: Bool? = nil, card: Bool? = nil) {
+        if let button { isButtonHovered = button }
+        if let card { isCardHovered = card }
+
+        if isButtonHovered || isCardHovered {
+            closeTask?.cancel()
+            closeTask = nil
+            withAnimation(.easeOut(duration: 0.15)) {
+                isVisible = true
+            }
+        } else {
+            closeTask?.cancel()
+            closeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeIn(duration: 0.12)) {
+                    isVisible = false
+                }
+            }
+        }
     }
 }
 
@@ -207,16 +305,25 @@ struct WindowDragArea: NSViewRepresentable {
 
 /// Shared page header: big Inter title + optional caption + trailing actions.
 struct PageHeader<Trailing: View>: View {
-    let title: String
-    var caption: String? = nil
+    let titleKey: LocalizedStringKey
+    var captionKey: LocalizedStringKey? = nil
     var symbol: String? = nil
     var onBack: (() -> Void)? = nil
     @ViewBuilder var trailing: Trailing
 
+    init(_ title: LocalizedStringKey, caption: LocalizedStringKey? = nil, symbol: String? = nil, onBack: (() -> Void)? = nil,
+         @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
+        self.titleKey = title
+        self.captionKey = caption
+        self.symbol = symbol
+        self.onBack = onBack
+        self.trailing = trailing()
+    }
+
     init(_ title: String, caption: String? = nil, symbol: String? = nil, onBack: (() -> Void)? = nil,
          @ViewBuilder trailing: () -> Trailing = { EmptyView() }) {
-        self.title = title
-        self.caption = caption
+        self.titleKey = LocalizedStringKey(title)
+        self.captionKey = caption.map { LocalizedStringKey($0) }
         self.symbol = symbol
         self.onBack = onBack
         self.trailing = trailing()
@@ -240,9 +347,9 @@ struct PageHeader<Trailing: View>: View {
                 SymbolLogo(symbol: symbol, size: 38)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(LocalizedStringKey(title)).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
-                if let caption {
-                    Text(LocalizedStringKey(caption)).font(DS.caption).foregroundStyle(DS.inkTertiary)
+                Text(titleKey).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink)
+                if let captionKey {
+                    Text(captionKey).font(DS.caption).foregroundStyle(DS.inkTertiary)
                 }
             }
             .contentShape(Rectangle())
@@ -273,12 +380,39 @@ struct ScrollEdgeFade: View {
 /// gutters and background are identical across the app: a fixed PageHeader in
 /// the titlebar-clearance zone, then the page content in the shared column.
 struct PageScaffold<Content: View, Trailing: View>: View {
-    let title: String
-    var caption: String? = nil
+    let titleKey: LocalizedStringKey
+    var captionKey: LocalizedStringKey? = nil
     var symbol: String? = nil
     var onBack: (() -> Void)? = nil
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
+
+    init(_ title: LocalizedStringKey,
+         caption: LocalizedStringKey? = nil,
+         symbol: String? = nil,
+         onBack: (() -> Void)? = nil,
+         @ViewBuilder trailing: () -> Trailing,
+         @ViewBuilder content: () -> Content) {
+        self.titleKey = title
+        self.captionKey = caption
+        self.symbol = symbol
+        self.onBack = onBack
+        self.trailing = trailing()
+        self.content = content()
+    }
+
+    init(_ title: LocalizedStringKey,
+         caption: LocalizedStringKey? = nil,
+         symbol: String? = nil,
+         onBack: (() -> Void)? = nil,
+         @ViewBuilder content: () -> Content) where Trailing == EmptyView {
+        self.titleKey = title
+        self.captionKey = caption
+        self.symbol = symbol
+        self.onBack = onBack
+        self.trailing = EmptyView()
+        self.content = content()
+    }
 
     init(_ title: String,
          caption: String? = nil,
@@ -286,8 +420,8 @@ struct PageScaffold<Content: View, Trailing: View>: View {
          onBack: (() -> Void)? = nil,
          @ViewBuilder trailing: () -> Trailing,
          @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.caption = caption
+        self.titleKey = LocalizedStringKey(title)
+        self.captionKey = caption.map { LocalizedStringKey($0) }
         self.symbol = symbol
         self.onBack = onBack
         self.trailing = trailing()
@@ -299,8 +433,8 @@ struct PageScaffold<Content: View, Trailing: View>: View {
          symbol: String? = nil,
          onBack: (() -> Void)? = nil,
          @ViewBuilder content: () -> Content) where Trailing == EmptyView {
-        self.title = title
-        self.caption = caption
+        self.titleKey = LocalizedStringKey(title)
+        self.captionKey = caption.map { LocalizedStringKey($0) }
         self.symbol = symbol
         self.onBack = onBack
         self.trailing = EmptyView()
@@ -309,7 +443,7 @@ struct PageScaffold<Content: View, Trailing: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title, caption: caption, symbol: symbol, onBack: onBack) { trailing }
+            PageHeader(titleKey, caption: captionKey, symbol: symbol, onBack: onBack) { trailing }
                 .padding(.horizontal, DS.gutter)
                 .padding(.top, DS.titlebarClearance - 8)
                 .padding(.bottom, 16)
@@ -354,11 +488,16 @@ struct StatTile: View {
                 .animation(.spring(response: 0.45, dampingFraction: 0.9), value: value)
                 .lineLimit(1).minimumScaleFactor(0.6)
             // Always reserve the caption line so every tile is the same height.
-            Text(caption ?? " ")
-                .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
-                .foregroundStyle(captionTint)
-                .opacity(caption == nil ? 0 : 1)
-                .lineLimit(1).minimumScaleFactor(0.7)
+            if let caption {
+                Text(LocalizedStringKey(caption))
+                    .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                    .foregroundStyle(captionTint)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            } else {
+                Text(" ")
+                    .font(.inter(10.5, relativeTo: .caption2).monospacedDigit())
+                    .opacity(0)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -619,7 +758,7 @@ struct SegmentedRangePicker<T: Hashable>: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) { selection = option }
                 } label: {
-                    Text(label(option))
+                    Text(LocalizedStringKey(label(option)))
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)

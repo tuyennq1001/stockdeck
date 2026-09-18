@@ -1,0 +1,346 @@
+/* StockDeck — Japanese (日本語) */
+
+/* Tabs / navigation */
+"Watchlist" = "ウォッチリスト";
+"Watchlists" = "ウォッチリスト";
+"Portfolios" = "ポートフォリオ";
+"Search" = "検索";
+"Utilities" = "ユーティリティ";
+"Home" = "ホーム";
+"Settings" = "設定";
+
+/* Language */
+"Language" = "言語";
+"Choose the app's language. Default is English." = "アプリの表示言語を選択します。デフォルトは英語です。";
+
+/* Currencies */
+"Stock Price Currency" = "株価通貨";
+"Price currency" = "株価通貨";
+"Original" = "元の通貨";
+"Portfolio Currency" = "ポートフォリオ通貨";
+"Portfolio currency" = "ポートフォリオ通貨";
+"Stock price currency" = "株価通貨";
+"Quote currency" = "表示通貨";
+"Totals and PnL are converted here" = "合計額と損益はこの通貨に換算されます";
+
+/* Market hours */
+"Market Hours" = "取引時間";
+"Show extended hours (Pre/Post)" = "時間外取引を表示（プレ／アフター）";
+"Show pre-market and after-hours prices" = "プレマーケットおよびアフターアワーの株価を表示します";
+"Extended hours (Pre/Post)" = "時間外取引（プレ／アフター）";
+
+/* Watchlist display */
+"Watchlist Display" = "ウォッチリスト表示";
+"Company name" = "企業名";
+"Day range (low – high)" = "当日の値幅（安値 – 高値）";
+"52-week range bar" = "52週レンジバー";
+"52-week range" = "52週レンジ";
+"Absolute change value" = "変動額（絶対値）";
+"Choose which details appear in each watchlist row" = "各銘柄行に表示する詳細項目を選択します";
+"Watchlist row details" = "銘柄行の詳細表示";
+
+/* Menu bar display */
+"Menu Bar Display" = "メニューバー表示";
+"Display" = "表示";
+"Choose what to show in the menu bar" = "メニューバーに表示する項目を選択します";
+"PnL (+321.09€)" = "損益額 (+321.09€)";
+"PnL % (+2.3%)" = "損益率 (+2.3%)";
+"PnL + % (+321.09€ +2.3%)" = "損益額＋損益率 (+321.09€ +2.3%)";
+"Total Value (14396.67€)" = "総資産額 (14396.67€)";
+"Best Stock (▲ AAPL +1.2%)" = "最良銘柄 (▲ AAPL +1.2%)";
+"Worst Stock (▼ TSLA -0.8%)" = "最悪銘柄 (▼ TSLA -0.8%)";
+"Best & Worst" = "最良＆最悪銘柄";
+"Portfolio (14396.67€ +1.2%)" = "ポートフォリオ (14396.67€ +1.2%)";
+"Ticker (cycle watchlist)" = "ティッカー（ウォッチリスト巡回）";
+"Ticker + Portfolio (cycle)" = "ティッカー＋ポートフォリオ（巡回）";
+"Icon Only" = "アイコンのみ";
+"Icon only" = "アイコンのみ";
+"Show percentages with 2 decimals" = "パーセンテージを小数点以下2桁で表示";
+"Percentages with 2 decimals" = "小数点以下2桁のパーセンテージ";
+"Applies to the menu bar, watchlist and portfolios (e.g. +2.34% instead of +2.3%)." = "メニューバー、ウォッチリスト、ポートフォリオに適用されます（例：+2.3%ではなく+2.34%）。";
+
+/* Menu bar colors */
+"Menu Bar Colors" = "メニューバー配色";
+"Use system text color" = "システムテキスト色を使用";
+"Always readable on any background. Up/down stays shown by + / − and ▲ ▼." = "あらゆる背景で見やすく表示されます。上下動は + / − および ▲ ▼ で示されます。";
+"Always readable; direction stays in + / − and ▲ ▼" = "常に見やすく、上下動は + / − および ▲ ▼ で表示";
+"Gain color" = "上昇色";
+"Loss color" = "下落色";
+"Reset to default green/red" = "デフォルトの緑／赤にリセット";
+
+/* Notifications */
+"Notifications" = "通知";
+"Channels" = "配信先";
+"Mirror notifications to a Discord/Slack webhook" = "通知をDiscord/SlackのWebhookに転送";
+"Mirror to a Discord/Slack webhook" = "Discord/SlackのWebhookに転送";
+"Not a valid Discord or Slack webhook URL (must be https)." = "有効なDiscordまたはSlackのWebhook URLではありません（https必須）。";
+"Price alerts and portfolio notifications are also sent here." = "価格アラートとポートフォリオ通知もここに送信されます。";
+"Price alerts and portfolio notifications are also sent there" = "価格アラートとポートフォリオ通知もそちらに送信されます";
+"Send test" = "テスト送信";
+"Price alerts" = "価格アラート";
+"No alerts. Right-click a stock in the watchlist to add one." = "アラートはありません。ウォッチリストの銘柄を右クリックして追加してください。";
+"Portfolio notifications" = "ポートフォリオ通知";
+"None. Right-click a portfolio → “Notifications…” to add one." = "通知はありません。ポートフォリオを右クリック →「通知…」から追加してください。";
+"Notifications…" = "通知…";
+"triggered" = "作動";
+"Tip: enable the Discord/Slack webhook in Settings to also receive these on your phone." = "ヒント: 設定でDiscord/Slack Webhookを有効にすると、スマートフォンでも通知を受け取れます。";
+
+/* Font */
+"Font" = "フォント";
+"Font family" = "フォントファミリー";
+"Text size" = "文字サイズ";
+
+/* Appearance */
+"Appearance" = "外観";
+
+/* Updates */
+"Updates" = "アップデート";
+"Check for Updates..." = "アップデートを確認...";
+"Check for Updates…" = "アップデートを確認…";
+
+/* Reset */
+"Reset" = "リセット";
+"Reset to Default Settings" = "初期設定にリセット";
+"Reset Settings" = "設定をリセット";
+"Reset to Defaults…" = "デフォルトに戻す…";
+"This will not erase your portfolios or watchlist" = "ポートフォリオやウォッチリストは削除されません";
+"This will reset all settings to their defaults. Your portfolios and watchlist will not be affected." = "すべての設定をデフォルトに戻します。ポートフォリオやウォッチリストには影響しません。";
+
+/* Watchlist / portfolio views */
+"No stocks in watchlist" = "ウォッチリストに銘柄がありません";
+"No symbols in watchlist" = "ウォッチリストに銘柄がありません";
+"No stocks in your watchlist" = "ウォッチリストに銘柄が登録されていません";
+"No results" = "結果が見つかりません";
+"No portfolios" = "ポートフォリオがありません";
+"Total value" = "総資産額";
+"Create portfolio" = "ポートフォリオを作成";
+"New portfolio" = "新規ポートフォリオ";
+"New Portfolio" = "新規ポートフォリオ";
+"New Portfolio…" = "新規ポートフォリオ…";
+"New portfolio or holding" = "新規ポートフォリオまたは保有銘柄";
+"Export All" = "すべてエクスポート";
+"Add to Portfolio" = "ポートフォリオに追加";
+"Remove from Watchlist" = "ウォッチリストから削除";
+"Set Price Alert…" = "価格アラートを設定…";
+"Add stock" = "銘柄を追加";
+"Add Watchlist" = "ウォッチリストを追加";
+"Add Portfolio" = "ポートフォリオを追加";
+"Add Symbol" = "銘柄を追加";
+"Add symbol" = "銘柄を追加";
+"Add holding" = "保有銘柄を追加";
+"Add Holding" = "保有銘柄を追加";
+"Add Holding…" = "保有銘柄を追加…";
+"Value / PnL" = "評価額 / 損益";
+"Avg cost" = "取得単価";
+"Purchase date" = "取得日";
+"Quantity" = "数量";
+"Symbol" = "ティッカー";
+"Price" = "現在値";
+"All Portfolios" = "すべてのポートフォリオ";
+"Allocation" = "資産配分";
+"Assets" = "資産";
+"Best stock" = "値上がり上位";
+"Worst stock" = "値下がり上位";
+"By type" = "種類別";
+"Change" = "前日比";
+"Today %" = "本日比 %";
+"Concentration" = "集中度";
+"Cost basis" = "取得価格";
+"Create" = "作成";
+"Crypto" = "暗号資産";
+"Currency" = "通貨";
+"Day range" = "当日の値幅";
+"ETFs" = "ETF";
+"FEATURED" = "注目記事";
+"Filter" = "フィルター";
+"Funds" = "投資信託";
+"Futures" = "先物";
+"General" = "一般";
+"High" = "高値";
+"Low" = "安値";
+"holdings" = "銘柄";
+"positions" = "ポジション";
+"Positions" = "保有銘柄";
+"Position facts" = "ポジション詳細";
+"How individual quotes are shown" = "個別銘柄の表示方法";
+"Indices" = "株価指数";
+"Invested" = "投資元本";
+"Last" = "終値";
+"Last price" = "現在値";
+"Loading price history…" = "価格履歴を読み込み中…";
+"Market stories for your symbols" = "登録銘柄に関連するマーケットニュース";
+"Menu bar" = "メニューバー";
+"Name" = "銘柄名";
+"News" = "ニュース";
+"No holdings yet" = "保有銘柄はまだありません";
+"No price history available" = "価格履歴データがありません";
+"Other" = "その他";
+"PnL" = "評価損益";
+"PnL + %" = "損益額 + %";
+"Portfolio" = "ポートフォリオ";
+"Portfolio name" = "ポートフォリオ名";
+"Portfolio recap" = "ポートフォリオ要約";
+"Preferences are shared with the menu bar." = "設定はメニューバーと共有されます。";
+"Session" = "セッション";
+"SHORT" = "空売り";
+"Short positions & leverage" = "空売りポジションとレバレッジ";
+"Sponsor" = "スポンサー";
+"Stocks" = "株式";
+"Ticker + Portfolio" = "ティッカー＋ポートフォリオ";
+"Today" = "今日";
+"Today's movers" = "本日の急変動銘柄";
+"Today PnL" = "本日損益";
+"Total PnL" = "トータル損益";
+"Total portfolio" = "ポートフォリオ全体";
+"Trading" = "取引";
+"Trend (1M)" = "トレンド (1ヶ月)";
+"Unlocks negative quantity and a leverage field" = "数量のマイナス入力とレバレッジ倍率の指定を有効化";
+"Use the + button in the sidebar to add one." = "サイドバーの + ボタンから追加してください。";
+"Value" = "評価額";
+"Value history builds up day by day" = "資産履歴は日々の推移とともに蓄積されます";
+"View all positions ↓" = "すべての保有銘柄を見る ↓";
+"View Chart" = "チャートを表示";
+"Weight" = "構成比率";
+"you bought here" = "購入ポイント";
+"Your average cost" = "平均取得単価";
+"Your first trend appears tomorrow." = "最初のトレンドは明日表示されます。";
+
+/* Alerts editor */
+"Set Price Alert" = "価格アラートを設定";
+"Create Alert" = "アラートを作成";
+"Condition" = "条件";
+"Add notification" = "通知を追加";
+"Mode" = "モード";
+
+/* Common actions */
+"Add" = "追加";
+"Save" = "保存";
+"Cancel" = "キャンセル";
+"Delete" = "削除";
+"Edit" = "編集";
+"Rename" = "名称変更";
+"Done" = "完了";
+"Close" = "閉じる";
+"OK" = "OK";
+"Import" = "インポート";
+"Export" = "エクスポート";
+
+/* Status menu */
+"Quit StockDeck" = "StockDeckを終了";
+
+/* Ticker options */
+"Show name instead of symbol" = "シンボルの代わりに銘柄名を表示";
+"Shows the readable name in the ticker (e.g. \"S&P 500\" instead of \"^GSPC\")." = "ティッカーに読みやすい銘柄名を表示します（例:「^GSPC」ではなく「S&P 500」）。";
+"Ticker order" = "ティッカー表示順";
+"As added" = "追加順";
+"By type (stocks, ETFs, indices…)" = "種類別（株式、ETF、指数…）";
+"Alphabetical" = "アルファベット順";
+"Order in which watchlist entries cycle in the menu bar." = "メニューバーでウォッチリスト銘柄が切り替わる順序です。";
+
+/* Advanced positions */
+"Advanced" = "高度な設定";
+"Enable short positions & leverage" = "空売りポジションとレバレッジを有効化";
+"Adds a leverage field and lets you enter a negative quantity for short positions, so a portfolio can be a relative long/short basket." = "レバレッジ項目を追加し、空売りのためにマイナス数量を入力できるようにします。これによりロング／ショート戦略の管理が可能です。";
+"Leverage" = "レバレッジ";
+"Position" = "ポジション";
+"Pick Long or Short. Leverage multiplies PnL and exposure (empty = 1×)." = "ロング（買い）またはショート（空売り）を選択。レバレッジは損益とエクスポージャーに乗算されます（空欄 = 1倍）。";
+
+/* Clear all alerts */
+"Clear all" = "すべて消去";
+"Clear all alerts" = "すべてのアラートを消去";
+"This will delete all your price alerts. This cannot be undone." = "価格アラートがすべて削除されます。この操作は取り消せません。";
+"Clear all portfolio notifications" = "すべてのポートフォリオ通知を消去";
+"This will delete all portfolio notifications across every portfolio. This cannot be undone." = "すべてのポートフォリオ通知が削除されます。この操作は取り消せません。";
+
+/* Home / news */
+"Loading news…" = "ニュースを読み込み中…";
+"No news available" = "ニュースがありません";
+"Refresh" = "更新";
+
+/* Sponsor */
+"Enjoying StockDeck?" = "StockDeckを気に入っていただけましたか？";
+"StockDeck is free and open source — and always will be. If it's useful to you, you can sponsor its development. Every feature stays free for everyone." = "StockDeckは完全無料のオープンソースです。お役に立てましたら、開発のスポンサーをご検討ください。すべての機能はいつでも誰でも無料でご利用いただけます。";
+"Become a Sponsor" = "スポンサーになる";
+"If it's useful to you, you can sponsor its development" = "お役に立てましたら開発のスポンサーをご検討ください";
+"StockDeck is free and open source" = "StockDeckは無料のオープンソースソフトウェアです";
+"About" = "StockDeckについて";
+
+/* Home & Modes */
+"AI Insights" = "AIインサイト";
+"News Feed" = "ニュースフィード";
+"Explanations of portfolio movements via AI & 24h news" = "AIと24時間のニュースに基づくポートフォリオ値動きの解説";
+"Search news or ticker" = "ニュースまたは銘柄を検索";
+"Filter news by headline, ticker or publisher" = "見出し、ティッカー、配信元でニュースを絞り込み";
+"No stories match “%@”" = "“%@” に一致する記事はありません";
+"No stories match" = "該当する記事がありません";
+"Clear search" = "検索をクリア";
+"%lld stories for your symbols" = "登録銘柄に関するニュース %lld件";
+"%lld of %lld stories match" = "%2$lld件中 %1$lld件が一致";
+"Key Highlights" = "重要ポイント";
+"Loading complete story…" = "記事の全文を読み込み中…";
+"Back" = "戻る";
+"Open" = "開く";
+"Open original article in default browser" = "標準ブラウザで元の記事を開く";
+"Read original story on %@" = "%@ で元の記事を読む";
+
+/* Market Sentiment / Fear & Greed */
+"MARKET SENTIMENT" = "市場心理";
+"FEAR & GREED INDEX" = "恐怖＆強欲指数（Fear & Greed）";
+"Source: CNN Business (Stocks) · Alternative.me (Crypto)" = "情報提供: CNN Business（株式）· Alternative.me（暗号資産）";
+"vs yesterday" = "前日比";
+"Last week: %lld" = "先週: %lld";
+"Last month: %lld" = "先月: %lld";
+"Extreme Fear" = "極度の恐怖";
+"Fear" = "恐怖";
+"Neutral" = "中立";
+"Greed" = "強欲";
+"Extreme Greed" = "極度の強欲";
+
+/* AI Insights Pulse & Cards */
+"DAILY MARKET PULSE" = "デイリーマーケットパルス";
+"Updated: %@" = "更新: %@";
+"Re-analyze" = "再分析";
+"Analyzed at %@ based on 24h news & regular session prices." = "%@ に過去24時間のニュースと通常取引の株価に基づき分析済み。";
+"General Market Context" = "全体市況の背景";
+"Core Driver" = "主な変動要因";
+"Verified Sources:" = "参照情報源:";
+"Activate AI Insights" = "AIインサイトを有効化";
+"To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers." = "24時間のニュースに基づく保有銘柄の値動き解説を表示するには、「設定 → AIレビュー」でAPIキーを設定してください。OpenAI、DeepSeek、Groq、OpenRouterなどに対応しています。";
+"AI Review Settings" = "AIレビュー設定";
+"AI is synthesizing 24h news & analyzing movement drivers…" = "AIが24時間のニュースを統合し、値動き要因を分析中…";
+"AI is analyzing 24h price movement drivers…" = "AIが直近24時間の株価変動要因を分析しています…";
+"No detailed drivers available for individual symbols" = "個別銘柄の詳細な要因解説はまだありません";
+"Re-analyze Tracked Symbols" = "登録銘柄を再分析";
+"AI Analysis Error: %@" = "AI分析エラー: %@";
+"Unable to load AI insights: %@" = "AIインサイトを読み込めませんでした: %@";
+"Try Again" = "再試行";
+"No AI insights available for today" = "本日のAIインサイトはまだありません";
+"Analyze Now" = "今すぐ分析";
+
+/* Market Categories */
+"US Stocks" = "米国株式";
+"Japan Stocks & Funds" = "日本株・投資信託";
+"Vietnam Stocks" = "ベトナム株式";
+
+/* Watchlist actions & items */
+"Closed" = "取引終了";
+"View Details" = "詳細を見る";
+"Add to Watchlist" = "ウォッチリストに追加";
+"Move Up" = "上に移動";
+"Move Down" = "下に移動";
+"Move Left" = "左に移動";
+"Move Right" = "右に移動";
+"Rename…" = "名前を変更…";
+"New Watchlist" = "新規ウォッチリスト";
+"Rename Watchlist" = "ウォッチリスト名を変更";
+"Delete Watchlist" = "ウォッチリストを削除";
+"Watchlist name" = "ウォッチリスト名";
+"Enter a name for the new watchlist:" = "新規ウォッチリストの名前を入力:";
+"Enter a new name for this watchlist:" = "このウォッチリストの新しい名前を入力:";
+"Remove Symbol" = "銘柄を削除";
+"New watchlist" = "新規ウォッチリスト";
+
+/* Performance & Benchmark */
+"Performance & Benchmark" = "パフォーマンス＆ベンチマーク";
+"Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "資産バックテスト：実際の購入日に関係なく、現在保有している銘柄群の過去の値動きを各期間ごとにS&P 500と比較します。実際の資金加重リターンは、下の「実際の利回り (XIRR)」をご覧ください。";
+"Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "アセットバックテスト — 現在保有している資産群の過去の値動きをS&P 500と比較。";

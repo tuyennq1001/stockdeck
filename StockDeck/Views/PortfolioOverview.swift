@@ -308,7 +308,7 @@ struct PortfolioOverview: View {
             }
         }) {
             HStack(spacing: 3) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                 if sortColumn == column {
                     Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
                         .font(.system(size: 8, weight: .bold))
@@ -813,7 +813,10 @@ struct PortfolioOverview: View {
 
     private var performanceMatrixCard: some View {
         let perf = cachedPerformance
-        return Card(title: "Performance & Benchmark") {
+        return Card(
+            title: "Performance & Benchmark",
+            tooltip: "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below."
+        ) {
             VStack(spacing: 12) {
                 HStack(spacing: 0) {
                     Text("Timeline")
@@ -838,7 +841,7 @@ struct PortfolioOverview: View {
                         Image(systemName: "briefcase.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(DS.brand)
-                        Text(title)
+                        Text(LocalizedStringKey(title))
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
@@ -890,6 +893,12 @@ struct PortfolioOverview: View {
                         }
                     }
                 }
+
+                Divider().overlay(DS.hairline.opacity(0.5))
+
+                Text("Asset backtest — simulates past performance of your current asset basket vs S&P 500.")
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkTertiary)
             }
         }
     }
@@ -941,19 +950,10 @@ struct PortfolioOverview: View {
         let pFormatted = pXIRR.map { String(format: "%+.\(decimals)f%%", $0) } ?? "—"
         let bFormatted = bXIRR.map { String(format: "%+.\(decimals)f%%", $0) } ?? "—"
 
-        let verdict: String? = {
-            guard let p = pXIRR, let b = bXIRR else { return nil }
-            let diff = p - b
-            if abs(diff) < 0.05 {
-                return "Matching S&P 500 performance"
-            } else if diff > 0 {
-                return String(format: "Beating S&P 500 by +%.1f pp/yr", diff)
-            } else {
-                return String(format: "Trailing S&P 500 by -%.1f pp/yr", abs(diff))
-            }
-        }()
-
-        return Card(title: "Your Actual Return (XIRR)") {
+        return Card(
+            title: "Your Actual Return (XIRR)",
+            tooltip: "Money-weighted return (XIRR): Annualized actual return based on your cash flows, buy dates, and real cost, compared with investing the same capital at the same time in S&P 500."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 if res.isYoungerThan30Days {
                     HStack(spacing: 8) {
@@ -994,19 +994,30 @@ struct PortfolioOverview: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if let verdict {
+                    if let p = pXIRR, let b = bXIRR {
+                        let diff = p - b
                         HStack(spacing: 6) {
-                            Image(systemName: (pXIRR ?? 0) >= (bXIRR ?? 0) ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                            Image(systemName: diff >= 0 ? "checkmark.circle.fill" : "arrow.down.circle.fill")
                                 .font(.system(size: 12))
-                                .foregroundStyle(DS.pnlColor((pXIRR ?? 0) - (bXIRR ?? 0)))
-                            Text(verdict)
-                                .font(DS.figure.weight(.semibold))
-                                .foregroundStyle(DS.pnlColor((pXIRR ?? 0) - (bXIRR ?? 0)))
+                                .foregroundStyle(DS.pnlColor(diff))
+                            if abs(diff) < 0.05 {
+                                Text("Matching S&P 500 performance")
+                                    .font(DS.figure.weight(.semibold))
+                                    .foregroundStyle(DS.pnlColor(diff))
+                            } else if diff > 0 {
+                                Text("Beating S&P 500 by +\(String(format: "%.1f", diff)) pp/yr")
+                                    .font(DS.figure.weight(.semibold))
+                                    .foregroundStyle(DS.pnlColor(diff))
+                            } else {
+                                Text("Trailing S&P 500 by -\(String(format: "%.1f", abs(diff))) pp/yr")
+                                    .font(DS.figure.weight(.semibold))
+                                    .foregroundStyle(DS.pnlColor(diff))
+                            }
                         }
                     }
 
                     if res.excludedHoldingsCount > 0 {
-                        Text("\(res.excludedHoldingsCount) position\(res.excludedHoldingsCount == 1 ? "" : "s") without a purchase date excluded.")
+                        Text("\(res.excludedHoldingsCount) positions without a purchase date excluded.")
                             .font(DS.micro)
                             .foregroundStyle(DS.inkTertiary)
                     }

@@ -1,11 +1,11 @@
 import SwiftUI
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 114
-    static let price: CGFloat = 80
-    static let change: CGFloat = 68
-    static let oneYear: CGFloat = 67
-    static let threeYears: CGFloat = 67
+    static let symbol: CGFloat = 126
+    static let price: CGFloat = 88
+    static let change: CGFloat = 76
+    static let oneYear: CGFloat = 74
+    static let threeYears: CGFloat = 74
 }
 
 
@@ -483,7 +483,7 @@ struct WatchlistView: View {
     }
 
     @ViewBuilder
-    private func sortHeader(_ title: String, column: WatchlistSortKey) -> some View {
+    private func sortHeader(_ title: LocalizedStringKey, column: WatchlistSortKey) -> some View {
         Button(action: {
             toggleSort(column)
         }) {

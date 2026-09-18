@@ -472,4 +472,67 @@ final class HomeAIInsightTests: XCTestCase {
         )
         XCTAssertEqual(jp.formattedPrice, "¥3,120")
     }
+
+    func testSupportedLanguagesIncludeVietnameseAndJapanese() {
+        let langs = StorageService.supportedLanguages
+        XCTAssertTrue(langs.contains { $0.code == "vi" && $0.name == "Tiếng Việt" }, "supportedLanguages must contain Vietnamese")
+        XCTAssertTrue(langs.contains { $0.code == "ja" && $0.name == "日本語" }, "supportedLanguages must contain Japanese")
+        XCTAssertTrue(langs.contains { $0.code == "en" && $0.name == "English" }, "supportedLanguages must contain English")
+    }
+
+    func testPromptBuilderLanguageCustomization() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let storage = StorageService(fileURL: tempDir.appendingPathComponent("data.json"))
+
+        let mover = HomeAIInsightService.SymbolCandidate(
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            price: 220.0,
+            changePercent: 1.5,
+            currency: "USD"
+        )
+
+        // 1. Japanese
+        storage.appLanguage = "ja"
+        let jaPrompt = HomeAIInsightService.shared.buildPrompt(
+            movers: [mover],
+            articlesBySymbol: [:],
+            storageService: storage
+        )
+        XCTAssertTrue(jaPrompt.systemContext.contains("日本語"), "Japanese prompt should request response in Japanese")
+
+        // 2. Vietnamese
+        storage.appLanguage = "vi"
+        let viPrompt = HomeAIInsightService.shared.buildPrompt(
+            movers: [mover],
+            articlesBySymbol: [:],
+            storageService: storage
+        )
+        XCTAssertTrue(viPrompt.systemContext.contains("tiếng Việt"), "Vietnamese prompt should request response in Vietnamese")
+
+        // 3. English
+        storage.appLanguage = "en"
+        let enPrompt = HomeAIInsightService.shared.buildPrompt(
+            movers: [mover],
+            articlesBySymbol: [:],
+            storageService: storage
+        )
+        XCTAssertTrue(enPrompt.systemContext.contains("English"), "English prompt should request response in English")
+    }
+
+    func testHomeAIInsightLanguagePersistence() throws {
+        let insight = HomeAIInsight(
+            date: Date(),
+            portfolioSummary: "Thị trường hôm nay biến động nhẹ.",
+            items: [],
+            language: "vi"
+        )
+
+        let data = try JSONEncoder().encode(insight)
+        let decoded = try JSONDecoder().decode(HomeAIInsight.self, from: data)
+
+        XCTAssertEqual(decoded.language, "vi")
+        XCTAssertEqual(decoded.portfolioSummary, insight.portfolioSummary)
+    }
 }
