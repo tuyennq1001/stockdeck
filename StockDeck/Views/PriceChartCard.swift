@@ -385,17 +385,39 @@ struct Sparkline: View {
     var width: CGFloat? = 64
     var height: CGFloat? = 22
 
+    private static var pointsCache: [String: (count: Int, lastClose: Double, points: [PricePoint])] = [:]
+    private static let cacheLock = NSLock()
+
     private var points: [PricePoint] {
         let stockService = StockService.shared
-        guard let all = stockService.watchlistHistory[symbol] ?? stockService.priceHistoryMax[symbol] else { return [] }
+        guard let all = stockService.watchlistHistory[symbol] ?? stockService.priceHistoryMax[symbol], !all.isEmpty else { return [] }
+        let cacheKey = "\(symbol)-\(days)-\(isYTD)"
+        let lastClose = all.last?.close ?? 0
+        let count = all.count
+
+        Self.cacheLock.lock()
+        if let entry = Self.pointsCache[cacheKey], entry.count == count, entry.lastClose == lastClose {
+            Self.cacheLock.unlock()
+            return entry.points
+        }
+        Self.cacheLock.unlock()
+
+        let filtered: [PricePoint]
         if isYTD {
             let cal = Calendar.current
             let now = Date()
             guard let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) else { return [] }
-            return all.filter { $0.date >= jan1 }
+            filtered = all.filter { $0.date >= jan1 }
+        } else {
+            guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return [] }
+            filtered = all.filter { $0.date >= cutoff }
         }
-        guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return [] }
-        return all.filter { $0.date >= cutoff }
+
+        Self.cacheLock.lock()
+        Self.pointsCache[cacheKey] = (count: count, lastClose: lastClose, points: filtered)
+        Self.cacheLock.unlock()
+
+        return filtered
     }
 
     var body: some View {

@@ -123,7 +123,6 @@ struct WatchlistWideView: View {
 
     @State private var selectedSymbols: Set<String> = []
     @State private var activeDetailSymbol: String? = nil
-    @State private var hScrollOffset: CGFloat = 0
 
     private var visibleRows: [WatchRow] {
         if draggingSymbol != nil && !previewOrder.isEmpty {
@@ -511,24 +510,10 @@ struct WatchlistWideView: View {
                 tableContents
             } else {
                 ScrollView(.horizontal, showsIndicators: true) {
-                    ZStack(alignment: .topLeading) {
-                        tableContents
-                            .frame(width: tableWidth, alignment: .leading)
-                        // Track horizontal scroll offset from scroll content frame
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: HScrollOffsetKey.self,
-                                value: -geo.frame(in: .named("hscroll")).minX
-                            )
-                        }
-                    }
+                    tableContents
+                        .frame(minWidth: tableWidth, alignment: .leading)
                 }
-                .coordinateSpace(name: "hscroll")
-                .onPreferenceChange(HScrollOffsetKey.self) { offset in
-                    if abs(hScrollOffset - offset) > 0.5 {
-                        hScrollOffset = offset
-                    }
-                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             }
         }
         .frame(maxHeight: .infinity)
@@ -664,24 +649,23 @@ struct WatchlistWideView: View {
                         dropIndicator: $dropIndicator
                     ) {
                         if draggingSymbols.contains(row.symbol) {
-WatchRowView(row: row,
-                                 position: idx + 1,
-                                 showExtended: storageService.showExtendedHours,
-                                 extendedSession: extendedSession,
-                                 percentDecimals: storageService.percentDecimals,
-                                 valueDecimals: storageService.valueDecimals,
-                                 metrics: selectedMetrics,
-                                 isSelected: selectedSymbols.contains(row.symbol),
-                                 compact: isCompact,
-                                 hScrollOffset: hScrollOffset,
-                                 onOpen: {
-                                     handleRowClick(row.symbol)
-                                 },
-                                 onToggleSelect: {
-                                     toggleSelection(of: row.symbol)
-                                 },
-                                 menu: { rowMenu(row) })
-                            .opacity(0)
+                            WatchRowView(row: row,
+                                         position: idx + 1,
+                                         showExtended: storageService.showExtendedHours,
+                                         extendedSession: extendedSession,
+                                         percentDecimals: storageService.percentDecimals,
+                                         valueDecimals: storageService.valueDecimals,
+                                         metrics: selectedMetrics,
+                                         isSelected: selectedSymbols.contains(row.symbol),
+                                         compact: isCompact,
+                                         onOpen: {
+                                             handleRowClick(row.symbol)
+                                         },
+                                         onToggleSelect: {
+                                             toggleSelection(of: row.symbol)
+                                         },
+                                         menu: { rowMenu(row) })
+                                .opacity(0)
                         } else {
                             WatchRowView(row: row,
                                          position: idx + 1,
@@ -692,7 +676,6 @@ WatchRowView(row: row,
                                          metrics: selectedMetrics,
                                          isSelected: selectedSymbols.contains(row.symbol),
                                          compact: isCompact,
-                                         hScrollOffset: hScrollOffset,
                                          onOpen: {
                                              handleRowClick(row.symbol)
                                          },
@@ -776,9 +759,6 @@ WatchRowView(row: row,
             .frame(maxWidth: isCompact ? .infinity : nil, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(DS.card)
-            .offset(x: isCompact ? 0 : hScrollOffset)
-            .zIndex(1)
 
             if !isCompact {
                 ForEach(selectedMetrics.filter { $0 != .price }) { metric in
@@ -1069,7 +1049,6 @@ private struct WatchRowView<Menu: View>: View {
     let metrics: [WatchlistMetric]
     let isSelected: Bool
     var compact: Bool = false
-    var hScrollOffset: CGFloat = 0
     let onOpen: () -> Void
     var onToggleSelect: () -> Void = {}
     @ViewBuilder let menu: () -> Menu
@@ -1088,7 +1067,6 @@ private struct WatchRowView<Menu: View>: View {
             Text("\(StorageService.formatNumber(row.price, decimals: dec))")
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
                 .lineLimit(1)
             Text((row.change >= 0 ? "+" : "") + formattedChange)
                 .font(DS.micro)
@@ -1110,7 +1088,6 @@ private struct WatchRowView<Menu: View>: View {
                     .font(DS.figure.monospacedDigit())
                     .fontWeight(.medium)
                     .foregroundStyle(pctColor)
-                    .contentTransition(.numericText())
                     .lineLimit(1)
                 if showExtended, let q = row.quote, q.isExtendedHours, let extPct = q.extendedChangePercent {
                     let isPre = q.marketState.hasPrefix("PRE")
@@ -1146,7 +1123,6 @@ private struct WatchRowView<Menu: View>: View {
             Text(String(format: "%+.\(percentDecimals)f%%", percent))
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.pnlColor(percent))
-                .contentTransition(.numericText())
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
         }
@@ -1205,7 +1181,6 @@ private struct WatchRowView<Menu: View>: View {
             Text(StorageService.formatMarketCap(mc, currency: row.currency))
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.ink)
-                .contentTransition(.numericText())
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
         }
@@ -1221,7 +1196,6 @@ private struct WatchRowView<Menu: View>: View {
             Text("\(row.change >= 0 ? "+" : "")\(formatted)")
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.pnlColor(row.change))
-                .contentTransition(.numericText())
         } else {
             Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
         }
@@ -1292,14 +1266,6 @@ private struct WatchRowView<Menu: View>: View {
                 .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
                 .padding(.horizontal, 14).padding(.vertical, 9)
                 .frame(minHeight: 44)
-                .background(
-                    Group {
-                        if hover { DS.cardAlt.opacity(0.6) }
-                        else { DS.card }
-                    }
-                )
-                .offset(x: compact ? 0 : hScrollOffset)
-                .zIndex(1)
 
                 if !compact {
                     ForEach(metrics.filter { $0 != .price }) { metric in
@@ -1309,6 +1275,7 @@ private struct WatchRowView<Menu: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 9)
+            .background(hover ? DS.cardAlt.opacity(0.6) : Color.clear)
             .contentShape(Rectangle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1317,12 +1284,6 @@ private struct WatchRowView<Menu: View>: View {
         .onHover { hover = $0 }
         .contextMenu { menu() }
     }
-}
-
-/// Tracks horizontal scroll offset from the "hscroll" coordinate space.
-private struct HScrollOffsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 /// Top-level fallback so a drop anywhere in the watchlist page (between rows,
