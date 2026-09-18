@@ -165,6 +165,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self?.togglePopover()
         }
+        storageService.onDesktopHotKeyTriggered = { [weak self] in
+            self?.toggleDesktopApp()
+        }
         storageService.updateHotKeyRegistration()
 
         let start = Date()
@@ -825,6 +828,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.openWindowToAlerts()
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [pending.request.identifier])
             }
+        }
+    }
+
+    @objc func toggleDesktopApp() {
+        if let window = portfolioWindow, window.isVisible, NSApp.isActive && window.isKeyWindow {
+            window.performClose(nil)
+        } else {
+            showPortfolioWindow()
         }
     }
 

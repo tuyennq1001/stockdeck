@@ -514,8 +514,20 @@ struct SettingsWideView: View {
                 }
             }
             SettingDivider()
-            SettingRow("Global shortcut", caption: "Press anywhere on macOS to open or close the menu bar popup") {
+            SettingRow("Menu bar shortcut", caption: "Press anywhere on macOS to open or close the menu bar popup") {
                 ShortcutRecorderView(shortcut: $storageService.menuBarShortcut)
+            }
+            SettingDivider()
+            SettingRow("Desktop app shortcut", caption: "Press anywhere on macOS to open or close the desktop app window") {
+                ShortcutRecorderView(
+                    shortcut: $storageService.desktopAppShortcut,
+                    presets: [
+                        ("⌥ D (Option + D)", .presetOptionD),
+                        ("⌘ ⇧ D (Command + Shift + D)", .presetCmdShiftD),
+                        ("⌃ ⌥ D (Control + Option + D)", .presetControlOptionD),
+                        ("⌥ Space (Option + Space)", .presetOptionSpace)
+                    ]
+                )
             }
             SettingDivider()
             SettingRow("Gain color", caption: "Applies across the whole app — menu bar, watchlist and portfolios") {
