@@ -236,8 +236,10 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
-    /// Direct callback for when hotkey triggers.
+    /// Direct callback for when menu bar hotkey triggers.
     var onHotKeyTriggered: (() -> Void)?
+    /// Direct callback for when desktop app hotkey triggers.
+    var onDesktopHotKeyTriggered: (() -> Void)?
 
     /// Global keyboard shortcut to toggle/show the menu bar popover.
     @Published var menuBarShortcut: MenuBarShortcut? = nil {
@@ -249,11 +251,21 @@ class StorageService: ObservableObject {
         }
     }
 
-    /// Updates the global Carbon hotkey registration with the current setting.
+    /// Global keyboard shortcut to toggle/show the full desktop app window.
+    @Published var desktopAppShortcut: MenuBarShortcut? = nil {
+        didSet {
+            if !isLoading {
+                saveNow()
+            }
+            updateHotKeyRegistration()
+        }
+    }
+
+    /// Updates the global Carbon hotkey registration with the current settings.
     func updateHotKeyRegistration() {
         guard !isLoading else { return }
         if let shortcut = menuBarShortcut {
-            GlobalHotKeyManager.shared.register(shortcut: shortcut) { [weak self] in
+            GlobalHotKeyManager.shared.register(id: 1, shortcut: shortcut) { [weak self] in
                 Task { @MainActor in
                     if let callback = self?.onHotKeyTriggered {
                         callback()
@@ -263,7 +275,21 @@ class StorageService: ObservableObject {
                 }
             }
         } else {
-            GlobalHotKeyManager.shared.unregister()
+            GlobalHotKeyManager.shared.unregister(id: 1)
+        }
+
+        if let shortcut = desktopAppShortcut {
+            GlobalHotKeyManager.shared.register(id: 2, shortcut: shortcut) { [weak self] in
+                Task { @MainActor in
+                    if let callback = self?.onDesktopHotKeyTriggered {
+                        callback()
+                    } else if let appDelegate = NSApp.delegate as? AppDelegate {
+                        appDelegate.toggleDesktopApp()
+                    }
+                }
+            }
+        } else {
+            GlobalHotKeyManager.shared.unregister(id: 2)
         }
     }
 
@@ -1967,6 +1993,7 @@ class StorageService: ObservableObject {
         aiWorkspacePath = ""
         aiDeepseekThinking = false
         menuBarShortcut = nil
+        desktopAppShortcut = nil
         if launchAtLogin {
             launchAtLogin = false
         }
@@ -2092,6 +2119,7 @@ class StorageService: ObservableObject {
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
         var menuBarShortcut: MenuBarShortcut?
+        var desktopAppShortcut: MenuBarShortcut?
         var iCloudSyncEnabled: Bool?
         var lastiCloudSyncDate: Date?
     }
@@ -2151,6 +2179,7 @@ class StorageService: ObservableObject {
             lastStockChartRange: lastStockChartRange,
             portfolioPositionSorts: portfolioPositionSorts,
             menuBarShortcut: menuBarShortcut,
+            desktopAppShortcut: desktopAppShortcut,
             iCloudSyncEnabled: iCloudSyncEnabled,
             lastiCloudSyncDate: lastiCloudSyncDate
         )
@@ -2264,6 +2293,7 @@ class StorageService: ObservableObject {
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
         menuBarShortcut = decoded.menuBarShortcut
+        desktopAppShortcut = decoded.desktopAppShortcut
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
         if let syncEnabled = decoded.iCloudSyncEnabled {

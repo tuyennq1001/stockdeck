@@ -549,13 +549,28 @@ struct SettingsView: View {
                         caption("Order in which watchlist entries cycle in the menu bar.")
                     }
 
-                    subHeader("Global shortcut")
+                    subHeader("Global shortcuts")
                     HStack {
                         Text("Toggle menu bar")
                         Spacer()
                         ShortcutRecorderView(shortcut: $storageService.menuBarShortcut)
                     }
                     caption("Press anywhere on macOS to open or close the menu bar popup.")
+
+                    HStack {
+                        Text("Toggle desktop app")
+                        Spacer()
+                        ShortcutRecorderView(
+                            shortcut: $storageService.desktopAppShortcut,
+                            presets: [
+                                ("⌥ D (Option + D)", .presetOptionD),
+                                ("⌘ ⇧ D (Command + Shift + D)", .presetCmdShiftD),
+                                ("⌃ ⌥ D (Control + Option + D)", .presetControlOptionD),
+                                ("⌥ Space (Option + Space)", .presetOptionSpace)
+                            ]
+                        )
+                    }
+                    caption("Press anywhere on macOS to open or close the desktop app window.")
 
                     subHeader("Colors")
                     ColorPicker("Gain color", selection: Binding(

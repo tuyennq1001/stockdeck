@@ -141,4 +141,8 @@ public struct MenuBarShortcut: Codable, Equatable, Hashable {
     public static let presetOptionS = MenuBarShortcut(keyCode: 1, modifiers: UInt32(optionKey))
     public static let presetCmdShiftS = MenuBarShortcut(keyCode: 1, modifiers: UInt32(cmdKey | shiftKey))
     public static let presetControlOptionS = MenuBarShortcut(keyCode: 1, modifiers: UInt32(controlKey | optionKey))
+
+    public static let presetOptionD = MenuBarShortcut(keyCode: 2, modifiers: UInt32(optionKey))
+    public static let presetCmdShiftD = MenuBarShortcut(keyCode: 2, modifiers: UInt32(cmdKey | shiftKey))
+    public static let presetControlOptionD = MenuBarShortcut(keyCode: 2, modifiers: UInt32(controlKey | optionKey))
 }

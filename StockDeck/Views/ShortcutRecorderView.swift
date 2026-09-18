@@ -3,6 +3,7 @@ import AppKit
 
 struct ShortcutRecorderView: View {
     @Binding var shortcut: MenuBarShortcut?
+    var presets: [(String, MenuBarShortcut)]? = nil
     @State private var isRecording = false
     @State private var eventMonitor: Any?
 
@@ -68,17 +69,25 @@ struct ShortcutRecorderView: View {
 
             if !isRecording {
                 Menu {
-                    Button("⌥ Space (Option + Space)") {
-                        shortcut = .presetOptionSpace
-                    }
-                    Button("⌥ S (Option + S)") {
-                        shortcut = .presetOptionS
-                    }
-                    Button("⌘ ⇧ S (Command + Shift + S)") {
-                        shortcut = .presetCmdShiftS
-                    }
-                    Button("⌃ ⌥ S (Control + Option + S)") {
-                        shortcut = .presetControlOptionS
+                    if let customPresets = presets {
+                        ForEach(customPresets, id: \.0) { title, item in
+                            Button(title) {
+                                shortcut = item
+                            }
+                        }
+                    } else {
+                        Button("⌥ Space (Option + Space)") {
+                            shortcut = .presetOptionSpace
+                        }
+                        Button("⌥ S (Option + S)") {
+                            shortcut = .presetOptionS
+                        }
+                        Button("⌘ ⇧ S (Command + Shift + S)") {
+                            shortcut = .presetCmdShiftS
+                        }
+                        Button("⌃ ⌥ S (Control + Option + S)") {
+                            shortcut = .presetControlOptionS
+                        }
                     }
                     if shortcut != nil {
                         Divider()

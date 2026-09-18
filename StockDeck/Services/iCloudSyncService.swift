@@ -483,6 +483,9 @@ final class iCloudSyncService: ObservableObject {
         if let sc = remote.menuBarShortcut {
             merged.menuBarShortcut = sc
         }
+        if let dsc = remote.desktopAppShortcut {
+            merged.desktopAppShortcut = dsc
+        }
         if let rSections = remote.aiChatSections, !rSections.isEmpty {
             var combinedSections = merged.aiChatSections ?? []
             for rs in rSections {
