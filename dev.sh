@@ -30,6 +30,10 @@ for bundle in "$PRODUCTS"/*.bundle; do
     [[ -d "$bundle" ]] && cp -R "$bundle" "$APP/Contents/Resources/"
 done
 
+for lproj in StockDeck/Resources/*.lproj; do
+    [[ -d "$lproj" ]] && cp -R "$lproj" "$APP/Contents/Resources/"
+done
+
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/StockDeck" 2>/dev/null || true
 
 # Dev Info.plist: different bundle ID, no SUFeedURL

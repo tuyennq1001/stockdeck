@@ -2789,19 +2789,56 @@ class StockService: ObservableObject {
         var collected: [NewsArticle] = []
         await withTaskGroup(of: [NewsArticle].self) { group in
             if symbols.isEmpty {
-                group.addTask { [weak self] in
-                    await self?.fetchYahooNews(symbol: "^GSPC") ?? []
-                }
-                group.addTask { [weak self] in
-                    await self?.fetchNewsChunk(query: "stock market", sourceSymbol: nil) ?? []
+                let lang = storageService.appLanguage.lowercased()
+                if lang == "vi" {
+                    group.addTask { [weak self] in
+                        await self?.fetchYahooNews(symbol: "^VNINDEX.VN") ?? []
+                    }
+                    group.addTask { [weak self] in
+                        await self?.fetchNewsChunk(
+                            query: "thị trường chứng khoán OR kinh doanh tài chính",
+                            sourceSymbol: nil,
+                            language: "vi",
+                            region: "VN",
+                            ceid: "VN:vi"
+                        ) ?? []
+                    }
+                } else if lang == "ja" {
+                    group.addTask { [weak self] in
+                        await self?.fetchYahooNews(symbol: "^N225") ?? []
+                    }
+                    group.addTask { [weak self] in
+                        await self?.fetchNewsChunk(
+                            query: "株式市場 OR 日経平均",
+                            sourceSymbol: nil,
+                            language: "ja",
+                            region: "JP",
+                            ceid: "JP:ja"
+                        ) ?? []
+                    }
+                } else {
+                    group.addTask { [weak self] in
+                        await self?.fetchYahooNews(symbol: "^GSPC") ?? []
+                    }
+                    group.addTask { [weak self] in
+                        await self?.fetchNewsChunk(query: "stock market", sourceSymbol: nil) ?? []
+                    }
                 }
             } else {
                 for symbol in symbols.prefix(6) {
+                    let name = self.quotes[symbol]?.name ?? self.quotes[symbol.uppercased()]?.name
+                    let params = Self.smartNewsParameters(symbol: symbol, displayName: name)
                     group.addTask { [weak self] in
                         guard let self else { return [] }
                         let direct = await self.fetchYahooNews(symbol: symbol)
                         if !direct.isEmpty { return direct }
-                        return await self.fetchNewsChunk(query: "\(symbol) stock", sourceSymbol: symbol)
+                        return await self.fetchNewsChunk(
+                            query: params.query,
+                            sourceSymbol: symbol,
+                            language: params.language,
+                            region: params.region,
+                            ceid: params.ceid
+                        )
                     }
                 }
             }
@@ -2842,7 +2879,7 @@ class StockService: ObservableObject {
     }
 
     /// Generates the most accurate search query and localization parameters for a financial asset.
-    static func smartNewsParameters(
+    nonisolated static func smartNewsParameters(
         symbol: String,
         displayName: String? = nil,
         marketCategory: MarketCategory? = nil

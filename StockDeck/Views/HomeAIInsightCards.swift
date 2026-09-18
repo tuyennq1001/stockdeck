@@ -36,7 +36,7 @@ struct AIInsightPulseHeroCard: View {
                         .fill(DS.brand.opacity(0.12))
                 )
 
-                Text("· Cập nhật: \(formattedDate)")
+                (Text("· ") + Text("Updated: \(formattedDate)"))
                     .font(DS.caption)
                     .foregroundStyle(DS.inkTertiary)
 
@@ -50,7 +50,7 @@ struct AIInsightPulseHeroCard: View {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 11))
                         }
-                        Text("Phân tích lại")
+                        Text("Re-analyze")
                             .font(DS.caption)
                     }
                     .foregroundStyle(DS.brand)
@@ -73,7 +73,7 @@ struct AIInsightPulseHeroCard: View {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 11))
                     .foregroundStyle(DS.brand)
-                Text("Phân tích lúc \(formattedDate) dựa trên tin tức 24h & giá phiên chính.")
+                Text("Analyzed at \(formattedDate) based on 24h news & regular session prices.")
                     .font(DS.micro)
                     .foregroundStyle(DS.inkTertiary)
             }
@@ -102,7 +102,7 @@ struct MarketSectionHeader: View {
         HStack(spacing: 8) {
             Text(category.icon)
                 .font(.system(size: 15))
-            Text(category.title)
+            Text(LocalizedStringKey(category.title))
                 .font(.inter(13, weight: .bold, relativeTo: .subheadline))
                 .foregroundStyle(DS.ink)
 
@@ -207,7 +207,7 @@ struct MarketOverviewCard: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(DS.brand)
 
-                Text("Bối cảnh chung thị trường")
+                Text("General Market Context")
                     .font(.inter(10, weight: .bold, relativeTo: .caption2))
                     .tracking(0.8)
                     .foregroundStyle(DS.brand)
@@ -321,7 +321,7 @@ struct SymbolInsightCard: View {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(DS.gold)
-                    Text("Luận điểm cốt lõi")
+                    Text("Core Driver")
                         .font(.inter(10.5, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(DS.gold)
                 }
@@ -363,7 +363,7 @@ struct SymbolInsightCard: View {
             // Sources
             if !item.sources.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Nguồn tin kiểm chứng:")
+                    Text("Verified Sources:")
                         .font(.inter(9.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
 
@@ -434,13 +434,13 @@ struct AIInsightMissingConfigCard: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 16))
                     .foregroundStyle(DS.brand)
-                Text("Kích hoạt Luận điểm Phân tích AI")
+                Text("Activate AI Insights")
                     .font(DS.bodyStrong)
                     .foregroundStyle(DS.ink)
                 Spacer()
             }
 
-            Text("Để xem phân tích tự động vì sao các mã trong danh mục tăng/giảm theo tin tức 24h, vui lòng thêm API Key của bạn trong Cài đặt → AI Review. Hỗ trợ OpenAI, DeepSeek, Groq, OpenRouter và các chuẩn tương thích.")
+            Text("To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers.")
                 .font(DS.caption)
                 .foregroundStyle(DS.inkSecondary)
                 .lineSpacing(2)
@@ -451,7 +451,7 @@ struct AIInsightMissingConfigCard: View {
                 Button(action: onOpenSettings) {
                     HStack(spacing: 6) {
                         Image(systemName: "gearshape")
-                        Text("Cài đặt AI Review")
+                        Text("AI Review Settings")
                     }
                     .font(.inter(11.5, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(.white)
@@ -480,7 +480,7 @@ struct AIInsightLoadingCard: View {
     var body: some View {
         VStack(spacing: 14) {
             DSSpinner(size: 24)
-            Text("AI đang tổng hợp tin tức 24h & phân tích luận điểm biến động…")
+            Text("AI is synthesizing 24h news & analyzing movement drivers…")
                 .font(DS.caption)
                 .foregroundStyle(DS.inkSecondary)
         }

@@ -1,6 +1,20 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum PortfolioCol {
+    static let symbol: CGFloat = 104
+    static let avgPrice: CGFloat = 75
+    static let cost: CGFloat = 82
+    static let price: CGFloat = 80
+    static let change: CGFloat = 78
+    static let value: CGFloat = 84
+    static let todayPnl: CGFloat = 92
+    static let totalPnl: CGFloat = 92
+    static let shares: CGFloat = 68
+    static let lots: CGFloat = 55
+    static let weight: CGFloat = 66
+}
+
 struct PortfolioListView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
@@ -34,25 +48,25 @@ struct PortfolioListView: View {
     private func columnHeader(_ col: PortfolioColumnMetric) -> some View {
         switch col {
         case .avgPrice:
-            Text("Avg Price").frame(width: 68, alignment: .trailing)
+            Text("Avg Price").frame(width: PortfolioCol.avgPrice, alignment: .trailing)
         case .cost:
-            Text("Cost").frame(width: 74, alignment: .trailing)
+            Text("Cost").frame(width: PortfolioCol.cost, alignment: .trailing)
         case .price:
-            Text("Price").frame(width: 74, alignment: .trailing)
+            Text("Price").frame(width: PortfolioCol.price, alignment: .trailing)
         case .change:
-            Text("Today %").frame(width: 68, alignment: .trailing)
+            Text("Today %").frame(width: PortfolioCol.change, alignment: .trailing)
         case .value:
-            Text("Value").frame(width: 78, alignment: .trailing)
+            Text("Value").frame(width: PortfolioCol.value, alignment: .trailing)
         case .todayPnl:
-            Text("Today PnL").frame(width: 80, alignment: .trailing)
+            Text("Today PnL").frame(width: PortfolioCol.todayPnl, alignment: .trailing)
         case .totalPnl:
-            Text("Total PnL").frame(width: 80, alignment: .trailing)
+            Text("Total PnL").frame(width: PortfolioCol.totalPnl, alignment: .trailing)
         case .shares:
-            Text("Shares").frame(width: 62, alignment: .trailing)
+            Text("Shares").frame(width: PortfolioCol.shares, alignment: .trailing)
         case .lots:
-            Text("Lots").frame(width: 50, alignment: .trailing)
+            Text("Lots").frame(width: PortfolioCol.lots, alignment: .trailing)
         case .weight:
-            Text("Weight").frame(width: 60, alignment: .trailing)
+            Text("Weight").frame(width: PortfolioCol.weight, alignment: .trailing)
         }
     }
 
@@ -155,7 +169,7 @@ struct PortfolioListView: View {
                         let activeCols = PortfolioListView.defaultPopoverColumns
                         HStack(spacing: 0) {
                             Text("Symbol")
-                                .frame(width: 96, alignment: .leading)
+                                .frame(width: PortfolioCol.symbol, alignment: .leading)
                             ForEach(activeCols, id: \.self) { col in
                                 columnHeader(col)
                             }
@@ -174,7 +188,7 @@ struct PortfolioListView: View {
                                 ForEach(globals) { p in
                                     PortfolioQuoteRow(stockService: stockService, globalPos: p)
                                     if p.id != globals.last?.id {
-                                        Divider().padding(.leading, 96)
+                                        Divider().padding(.leading, PortfolioCol.symbol)
                                     }
                                 }
                             }
@@ -1282,7 +1296,7 @@ struct PortfolioQuoteRow: View {
                         }
                     }
                 }
-                .frame(width: 96, alignment: .leading)
+                .frame(width: PortfolioCol.symbol, alignment: .leading)
 
                 let activeCols = PortfolioListView.defaultPopoverColumns
 
@@ -1316,7 +1330,7 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 68, alignment: .trailing)
+                .frame(width: PortfolioCol.avgPrice, alignment: .trailing)
 
         case .cost:
             if globalPos.hasCostBasis {
@@ -1331,14 +1345,14 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 74, alignment: .trailing)
+                .frame(width: PortfolioCol.cost, alignment: .trailing)
             } else {
                 Text("—")
                     .font(metricFont)
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                    .frame(width: 74, alignment: .trailing)
+                    .frame(width: PortfolioCol.cost, alignment: .trailing)
             }
 
         case .price:
@@ -1369,7 +1383,7 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 74, alignment: .trailing)
+            .frame(width: PortfolioCol.price, alignment: .trailing)
 
         case .change:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1420,7 +1434,7 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 68, alignment: .trailing)
+            .frame(width: PortfolioCol.change, alignment: .trailing)
 
         case .value:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1448,7 +1462,7 @@ struct PortfolioQuoteRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
-            .frame(width: 78, alignment: .trailing)
+            .frame(width: PortfolioCol.value, alignment: .trailing)
 
         case .totalPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1476,7 +1490,7 @@ struct PortfolioQuoteRow: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: PortfolioCol.totalPnl, alignment: .trailing)
 
         case .todayPnl:
             VStack(alignment: .trailing, spacing: 1) {
@@ -1503,7 +1517,7 @@ struct PortfolioQuoteRow: View {
                         .minimumScaleFactor(0.85)
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: PortfolioCol.todayPnl, alignment: .trailing)
 
         case .shares:
             let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)
@@ -1513,7 +1527,7 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
-                .frame(width: 62, alignment: .trailing)
+                .frame(width: PortfolioCol.shares, alignment: .trailing)
 
         case .lots:
             Text("\(globalPos.lotsCount)")
@@ -1521,7 +1535,7 @@ struct PortfolioQuoteRow: View {
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
                 .lineLimit(1)
-                .frame(width: 50, alignment: .trailing)
+                .frame(width: PortfolioCol.lots, alignment: .trailing)
 
         case .weight:
             Text(String(format: "%.1f%%", globalPos.weight))
@@ -1529,7 +1543,7 @@ struct PortfolioQuoteRow: View {
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-                .frame(width: 60, alignment: .trailing)
+                .frame(width: PortfolioCol.weight, alignment: .trailing)
         }
     }
 }

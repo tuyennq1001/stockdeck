@@ -48,10 +48,10 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .us: return "Chứng khoán Mỹ"
-        case .japan: return "Chứng khoán & Quỹ Nhật"
-        case .vietnam: return "Chứng khoán Việt Nam"
-        case .crypto: return "Tiền mã hóa (Crypto)"
+        case .us: return "US Stocks"
+        case .japan: return "Japan Stocks & Funds"
+        case .vietnam: return "Vietnam Stocks"
+        case .crypto: return "Crypto"
         }
     }
 
@@ -394,6 +394,7 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
     let portfolioSummary: String
     let marketOverviews: [String: String]? // [MarketCategory.rawValue: "Overview of SPX/Nasdaq/DJI/Nikkei/VNINDEX..."]
     let items: [SymbolInsightItem]
+    let language: String?
     let generatedAt: Date
 
     init(
@@ -402,6 +403,7 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
         portfolioSummary: String,
         marketOverviews: [String: String]? = nil,
         items: [SymbolInsightItem],
+        language: String? = nil,
         generatedAt: Date = Date()
     ) {
         self.date = date
@@ -415,11 +417,12 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
         self.portfolioSummary = portfolioSummary
         self.marketOverviews = marketOverviews
         self.items = items
+        self.language = language
         self.generatedAt = generatedAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case date, dateString, portfolioSummary, marketOverviews, items, generatedAt
+        case date, dateString, portfolioSummary, marketOverviews, items, language, generatedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -435,6 +438,7 @@ struct HomeAIInsight: Codable, Equatable, Identifiable {
         self.portfolioSummary = try container.decode(String.self, forKey: .portfolioSummary)
         self.marketOverviews = try container.decodeIfPresent([String: String].self, forKey: .marketOverviews)
         self.items = try container.decodeIfPresent([SymbolInsightItem].self, forKey: .items) ?? []
+        self.language = try container.decodeIfPresent(String.self, forKey: .language)
         self.generatedAt = try container.decodeIfPresent(Date.self, forKey: .generatedAt) ?? Date()
     }
 

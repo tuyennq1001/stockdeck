@@ -244,6 +244,7 @@
 "Ticker + Portfolio" = "Ticker + Portfolio";
 "Today" = "Heute";
 "Today's movers" = "Bewegungen heute";
+"Today PnL" = "Heute PnL";
 "Total PnL" = "Gesamt-PnL";
 "Total portfolio" = "Gesamtportfolio";
 "Totals and PnL are converted here" = "Summen und PnL werden hierhin umgerechnet";
@@ -261,3 +262,69 @@
 "you bought here" = "hier gekauft";
 "Your average cost" = "Dein durchschnittlicher Kaufpreis";
 "Your first trend appears tomorrow." = "Dein erster Trend erscheint morgen.";
+
+/* Navigation Tabs */
+"Watchlists" = "Watchlists";
+"Utilities" = "Dienstprogramme";
+
+/* Home & Modes */
+"AI Insights" = "KI-Einblicke";
+"News Feed" = "Newsfeed";
+"Explanations of portfolio movements via AI & 24h news" = "Erklärungen von Portfolio-Bewegungen durch KI & 24h-News";
+"Search news or ticker" = "News oder Ticker suchen";
+"Filter news by headline, ticker or publisher" = "News nach Schlagzeile, Ticker oder Quelle filtern";
+"No stories match “%@”" = "Keine Artikel entsprechen „%@“";
+"No stories match" = "Keine passenden Artikel";
+"Clear search" = "Suche löschen";
+"%lld stories for your symbols" = "%lld Artikel zu deinen Symbolen";
+"%lld of %lld stories match" = "%lld von %lld Artikeln passen";
+"Key Highlights" = "Wichtigste Highlights";
+"Loading complete story…" = "Vollständigen Artikel laden…";
+"Back" = "Zurück";
+"Open" = "Öffnen";
+"Open original article in default browser" = "Originalartikel im Standardbrowser öffnen";
+"Read original story on %@" = "Originalartikel auf %@ lesen";
+
+/* Market Sentiment / Fear & Greed */
+"MARKET SENTIMENT" = "MARKTSTIMMUNG";
+"FEAR & GREED INDEX" = "FEAR & GREED INDEX";
+"Source: CNN Business (Stocks) · Alternative.me (Crypto)" = "Quelle: CNN Business (Aktien) · Alternative.me (Krypto)";
+"vs yesterday" = "ggü. gestern";
+"Last week: %lld" = "Letzte Woche: %lld";
+"Last month: %lld" = "Letzter Monat: %lld";
+"Extreme Fear" = "Extreme Angst";
+"Fear" = "Angst";
+"Neutral" = "Neutral";
+"Greed" = "Gier";
+"Extreme Greed" = "Extreme Gier";
+
+/* AI Insights Pulse & Cards */
+"DAILY MARKET PULSE" = "TÄGLICHER MARKTIMPULS";
+"Updated: %@" = "Aktualisiert: %@";
+"Re-analyze" = "Neu analysieren";
+"Analyzed at %@ based on 24h news & regular session prices." = "Analysiert um %@ basierend auf 24h-News & regulären Kursen.";
+"General Market Context" = "Allgemeiner Marktkontext";
+"Core Driver" = "Haupttreiber";
+"Verified Sources:" = "Verifizierte Quellen:";
+"Activate AI Insights" = "KI-Einblicke aktivieren";
+"To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers." = "Um automatisierte Analysen von Portfoliobewegungen basierend auf 24h-News zu sehen, hinterlege deinen API-Schlüssel in Einstellungen → KI-Review.";
+"AI Review Settings" = "KI-Review-Einstellungen";
+"AI is synthesizing 24h news & analyzing movement drivers…" = "KI synthetisiert 24h-News & analysiert Kurstreiber…";
+"AI is analyzing 24h price movement drivers…" = "KI analysiert 24h-Kurstreiber…";
+"No detailed drivers available for individual symbols" = "Keine detaillierten Treiber für einzelne Symbole verfügbar";
+"Re-analyze Tracked Symbols" = "Beobachtete Symbole neu analysieren";
+"AI Analysis Error: %@" = "KI-Analysefehler: %@";
+"Unable to load AI insights: %@" = "KI-Einblicke konnten nicht geladen werden: %@";
+"Try Again" = "Erneut versuchen";
+"No AI insights available for today" = "Keine KI-Einblicke für heute verfügbar";
+"Analyze Now" = "Jetzt analysieren";
+
+/* Market Categories */
+"US Stocks" = "US-Aktien";
+"Japan Stocks & Funds" = "Japanische Aktien & Fonds";
+"Vietnam Stocks" = "Vietnam-Aktien";
+
+/* Performance & Benchmark */
+"Performance & Benchmark" = "Performance & Benchmark";
+"Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Asset-Backtest: Simuliert die historische Kursentwicklung Ihres aktuellen Anlagekorbs über verschiedene Zeiträume im Vergleich zum S&P 500, unabhängig vom Kaufdatum. Für die geldgewichtete Rendite siehe Tatsächliche Rendite (XIRR) unten.";
+"Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Asset-Backtest — simuliert die vergangene Wertentwicklung Ihres aktuellen Anlagekorbs im Vergleich zum S&P 500.";

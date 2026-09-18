@@ -154,7 +154,7 @@ struct ContentView: View {
                 selectedDetailSymbol = symbol
             }
         })
-        .frame(width: 420, height: 520)
+        .frame(width: 462, height: 520)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         .onAppear {
             selectedTab = Tab.resolve(stored: storageService.lastSelectedTab)
@@ -302,7 +302,7 @@ struct ContentView: View {
                 selectedTab = tab
             }
         }) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.inter(11, weight: isSelected ? .semibold : .medium, relativeTo: .caption))
                 .foregroundStyle(isSelected ? DS.ink : DS.inkSecondary)
                 .frame(maxWidth: .infinity)

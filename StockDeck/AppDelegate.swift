@@ -151,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let p = NSPopover()
-        p.contentSize = NSSize(width: 420, height: 520)
+        p.contentSize = NSSize(width: 462, height: 520)
         p.behavior = .transient
         p.delegate = self
         // Appearance follows the user's preference (issue #11), applied reactively

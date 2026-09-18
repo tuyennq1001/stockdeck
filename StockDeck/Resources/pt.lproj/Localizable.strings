@@ -244,6 +244,7 @@
 "Ticker + Portfolio" = "Ticker + Carteira";
 "Today" = "Hoje";
 "Today's movers" = "Movimentações de hoje";
+"Today PnL" = "PnL de hoje";
 "Total PnL" = "PnL total";
 "Total portfolio" = "Carteira total";
 "Totals and PnL are converted here" = "Totais e PnL são convertidos aqui";
@@ -261,3 +262,69 @@
 "you bought here" = "você comprou aqui";
 "Your average cost" = "Seu preço médio de compra";
 "Your first trend appears tomorrow." = "Sua primeira tendência aparecerá amanhã.";
+
+/* Navigation Tabs */
+"Watchlists" = "Listas de acompanhamento";
+"Utilities" = "Utilitários";
+
+/* Home & Modes */
+"AI Insights" = "Percepções de IA";
+"News Feed" = "Feed de notícias";
+"Explanations of portfolio movements via AI & 24h news" = "Explicações de movimentos do portfólio via IA e notícias 24h";
+"Search news or ticker" = "Buscar notícias ou ticker";
+"Filter news by headline, ticker or publisher" = "Filtrar notícias por manchete, ticker ou fonte";
+"No stories match “%@”" = "Nenhuma notícia corresponde a «%@»";
+"No stories match" = "Nenhuma notícia correspondente";
+"Clear search" = "Limpar busca";
+"%lld stories for your symbols" = "%lld notícias sobre seus símbolos";
+"%lld of %lld stories match" = "%lld de %lld notícias correspondem";
+"Key Highlights" = "Destaques principais";
+"Loading complete story…" = "Carregando notícia completa…";
+"Back" = "Voltar";
+"Open" = "Abrir";
+"Open original article in default browser" = "Abrir artigo original no navegador padrão";
+"Read original story on %@" = "Ler notícia original em %@";
+
+/* Market Sentiment / Fear & Greed */
+"MARKET SENTIMENT" = "SENTIMENTO DO MERCADO";
+"FEAR & GREED INDEX" = "ÍNDICE DE MEDO E GANÂNCIA";
+"Source: CNN Business (Stocks) · Alternative.me (Crypto)" = "Fonte: CNN Business (Ações) · Alternative.me (Cripto)";
+"vs yesterday" = "vs ontem";
+"Last week: %lld" = "Semana passada: %lld";
+"Last month: %lld" = "Mês passado: %lld";
+"Extreme Fear" = "Medo extremo";
+"Fear" = "Medo";
+"Neutral" = "Neutro";
+"Greed" = "Ganância";
+"Extreme Greed" = "Ganância extrema";
+
+/* AI Insights Pulse & Cards */
+"DAILY MARKET PULSE" = "PULSO DIÁRIO DO MERCADO";
+"Updated: %@" = "Atualizado: %@";
+"Re-analyze" = "Reanalisar";
+"Analyzed at %@ based on 24h news & regular session prices." = "Analisado às %@ com base em notícias de 24h e cotações de sessão regular.";
+"General Market Context" = "Contexto geral de mercado";
+"Core Driver" = "Fator principal";
+"Verified Sources:" = "Fontes verificadas:";
+"Activate AI Insights" = "Ativar percepções de IA";
+"To view automated analysis of why portfolio symbols move based on 24h news, please add your API Key in Settings → AI Review. Supports OpenAI, DeepSeek, Groq, OpenRouter, and compatible providers." = "Para visualizar a análise automatizada dos movimentos do seu portfólio, adicione sua chave de API em Configurações → Revisão de IA.";
+"AI Review Settings" = "Configurações de Revisão de IA";
+"AI is synthesizing 24h news & analyzing movement drivers…" = "A IA está sintetizando notícias de 24h e analisando fatores de movimento…";
+"AI is analyzing 24h price movement drivers…" = "A IA está analisando fatores de variação de preço em 24h…";
+"No detailed drivers available for individual symbols" = "Nenhum fator detalhado disponível para símbolos individuais";
+"Re-analyze Tracked Symbols" = "Reanalisar símbolos monitorados";
+"AI Analysis Error: %@" = "Erro de análise da IA: %@";
+"Unable to load AI insights: %@" = "Não foi possível carregar as percepções de IA: %@";
+"Try Again" = "Tentar novamente";
+"No AI insights available for today" = "Nenhuma percepção de IA disponível para hoje";
+"Analyze Now" = "Analisar agora";
+
+/* Market Categories */
+"US Stocks" = "Ações dos EUA";
+"Japan Stocks & Funds" = "Ações e fundos do Japão";
+"Vietnam Stocks" = "Ações do Vietnã";
+
+/* Performance & Benchmark */
+"Performance & Benchmark" = "Desempenho e benchmark";
+"Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Backtest de ativos: Simula o desempenho histórico de preço da sua cesta atual de ativos em cada período em relação ao S&P 500, independentemente das datas de compra. Para o retorno ponderado pelo dinheiro, veja seu Retorno Real (XIRR) abaixo.";
+"Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Backtest de ativos — simula o desempenho passado da sua cesta atual de ativos em relação ao S&P 500.";
