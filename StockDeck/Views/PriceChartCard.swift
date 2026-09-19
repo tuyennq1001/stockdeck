@@ -275,9 +275,9 @@ struct PriceChartCard: View {
 
                 Button(action: { chartStyle = .tradingview }) {
                     HStack(spacing: 5) {
-                        Text("Trading")
+                        Text(verbatim: "Trading")
                             .font(.inter(11, weight: .bold, relativeTo: .caption))
-                        Text("View")
+                        Text(verbatim: "View")
                             .font(.inter(11, weight: .semibold, relativeTo: .caption))
                     }
                     .foregroundStyle(chartStyle == .tradingview ? .white : DS.inkSecondary)

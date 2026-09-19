@@ -277,7 +277,7 @@ struct SettingsView: View {
                     subHeader("Default chart")
                     Picker("Default chart", selection: $storageService.defaultChartStyle) {
                         Text("Line chart").tag("line")
-                        Text("Trading View").tag("tradingview")
+                        Text(verbatim: "TradingView").tag("tradingview")
                     }
                     .pickerStyle(.menu)
                     caption("Default style when opening a stock chart")
