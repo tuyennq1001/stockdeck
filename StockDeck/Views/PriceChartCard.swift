@@ -10,6 +10,7 @@ struct PriceChartCard: View {
     let symbol: String
     let quote: StockQuote
     var chartHeight: CGFloat = 280
+    var tradingViewHeight: CGFloat = 500
     var showStylePicker: Bool = true
 
     enum ChartRange: String, CaseIterable {
@@ -63,6 +64,10 @@ struct PriceChartCard: View {
 
     private var effectiveChartStyle: ChartStyle {
         showStylePicker ? chartStyle : .line
+    }
+
+    private var resolvedChartHeight: CGFloat {
+        effectiveChartStyle == .tradingview && tradingViewSymbol != nil ? tradingViewHeight : chartHeight
     }
 
     /// The TradingView widget symbol for the current stock, or nil when the
@@ -226,7 +231,7 @@ struct PriceChartCard: View {
 
             // Row 3: Chart.
             chart
-                .frame(height: chartHeight)
+                .frame(height: resolvedChartHeight)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
@@ -243,7 +248,9 @@ struct PriceChartCard: View {
             }
         }
         .onChange(of: storageService.defaultChartStyle) { _, newValue in
-            chartStyle = ChartStyle(rawValue: newValue) ?? .line
+            withAnimation(.easeInOut(duration: 0.2)) {
+                chartStyle = ChartStyle(rawValue: newValue) ?? .line
+            }
         }
         .onChange(of: chartRange) { _, newRange in
             storageService.lastStockChartRange = newRange.rawValue
@@ -257,7 +264,11 @@ struct PriceChartCard: View {
     @ViewBuilder private var stylePicker: some View {
         if tradingViewSymbol != nil {
             HStack(spacing: 4) {
-                Button(action: { chartStyle = .line }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        chartStyle = .line
+                    }
+                }) {
                     HStack(spacing: 5) {
                         Image(systemName: "line.uptrend.xyaxis")
                             .font(.system(size: 12, weight: .semibold))
@@ -273,7 +284,11 @@ struct PriceChartCard: View {
                 .pointingHandCursor()
                 .help("Line chart")
 
-                Button(action: { chartStyle = .tradingview }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        chartStyle = .tradingview
+                    }
+                }) {
                     HStack(spacing: 5) {
                         Text(verbatim: "Trading")
                             .font(.inter(11, weight: .bold, relativeTo: .caption))
