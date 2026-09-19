@@ -458,7 +458,7 @@ struct SettingsWideView: View {
                           isOn: $storageService.showExtendedHours)
             SettingDivider()
             SettingRow("Default chart", caption: "Style used when opening a stock chart") {
-                DSPicker(options: [("line", "Line chart"), ("tradingview", "Trading View")],
+                DSPicker(options: [("line", "Line chart"), ("tradingview", "TradingView")],
                          selection: $storageService.defaultChartStyle, width: 160)
             }
         }

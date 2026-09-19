@@ -129,3 +129,9 @@ Khi giải quyết bất kỳ lỗi hoặc phát triển tính năng nào, bắt
 ## 7. Quy tắc Build & Nền tảng StockDeck (Build Rules)
 - **Dùng `./dev.sh` làm lệnh build chính thức**: Luôn dùng `./dev.sh` thay vì `swift build` trực tiếp để đảm bảo nhất quán môi trường build macOS.
 - **Nền tảng thuần macOS**: Dự án là ứng dụng thuần macOS (Menu Bar & Desktop App). Mỗi khi chỉnh sửa code hoặc hoàn thành tính năng, **bắt buộc phải build macOS (`./dev.sh`)** và chạy test tự động (`swift test`) để kiểm tra.
+
+---
+
+## 8. Bản địa hóa & Tên riêng / Thương hiệu (Localization & Proper Nouns)
+- **Tuyệt đối không dịch tên riêng**: Các danh từ riêng, tên công ty, sàn giao dịch, mã chỉ số và nền tảng đối tác (ví dụ: TradingView, Yahoo Finance, Binance, S&P 500, Sparkle, Google, Gemini...) **bắt buộc giữ nguyên 100% tên gốc**, không dịch sang tiếng Việt hay bất kỳ ngôn ngữ nào.
+- **Dùng `Text(verbatim:)` trong SwiftUI**: Khi hiển thị tên riêng hoặc nhãn thương hiệu trên giao diện SwiftUI, bắt buộc dùng `Text(verbatim: "...")` thay vì `Text("...")` để tránh việc SwiftUI tự động tra cứu từ điển `LocalizedStringKey` (ngăn chặn các lỗi dịch nhầm như `Text("Trading")` thành `Giao dịch`).
