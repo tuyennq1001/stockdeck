@@ -72,7 +72,7 @@ final class PortfolioViewModel {
     /// Aggregated per-symbol data for position rows, piggybacked on valuation.
     private(set) var symbolAggregates: [String: SymbolAggregate] = [:]
 
-    struct AllocationSlice: Identifiable, Sendable {
+    struct AllocationSlice: Identifiable, Sendable, Equatable {
         let id: String
         let symbol: String
         let value: Double
@@ -190,7 +190,15 @@ final class PortfolioViewModel {
 
     /// Called when scope changes (e.g. user switches portfolios).
     func scopeChanged() {
+        clearHistoricalCaches()
         recomputeAll()
+    }
+
+    func clearHistoricalCaches() {
+        displaySeriesCache.removeAll(keepingCapacity: true)
+        dailyPnlCache.removeAll(keepingCapacity: true)
+        monthlyPnlCache.removeAll(keepingCapacity: true)
+        sortedSymbolsCache = nil
     }
 
     private func invalidateValuation() {
@@ -200,8 +208,9 @@ final class PortfolioViewModel {
         }
     }
 
-    private func recomputeAll() {
+    func recomputeAll() {
         refreshTask?.cancel()
+        clearHistoricalCaches()
         recomputeValuation()
         recomputePerformance()
         recomputeMoneyWeightedReturn()
@@ -248,10 +257,6 @@ final class PortfolioViewModel {
 
     private func recomputeValuation() {
         guard let stockService = stockService, let storageService = storageService else { return }
-        displaySeriesCache.removeAll(keepingCapacity: true)
-        dailyPnlCache.removeAll(keepingCapacity: true)
-        monthlyPnlCache.removeAll(keepingCapacity: true)
-        sortedSymbolsCache = nil
         var valued: [ValuedHolding] = []
         var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
