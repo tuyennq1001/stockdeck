@@ -60,7 +60,19 @@ struct PriceChartCard: View {
     @State private var chartRange: ChartRange = .month
     @State private var chartStyle: ChartStyle = .line
     @State private var hoverPoint: PricePoint?
+    @State private var cachedGroupedTrades: [GroupedInsiderTrade] = []
+    @ObservedObject private var insiderService = InsiderTradingService.shared
     @Environment(\.colorScheme) private var colorScheme
+
+    private var isEligibleForInsider: Bool {
+        insiderService.isEligibleUSSymbol(symbol)
+    }
+
+    private var cleanSym: String {
+        symbol.uppercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ".US", with: "")
+    }
 
     private var effectiveChartStyle: ChartStyle {
         showStylePicker ? chartStyle : .line
@@ -109,6 +121,87 @@ struct PriceChartCard: View {
         }
     }
 
+    // MARK: - Insider Trades Data
+
+    struct GroupedInsiderTrade: Identifiable {
+        let id: String
+        let date: Date
+        let price: Double
+        let isBuy: Bool
+        let trades: [InsiderTransaction]
+
+        var totalShares: Double { trades.reduce(0) { $0 + $1.shares } }
+        var totalValue: Double { trades.reduce(0) { $0 + $1.totalValue } }
+        var count: Int { trades.count }
+        var primaryOwner: String { trades.first?.ownerName ?? "Insider" }
+        var primaryRole: String { trades.first?.displayRole ?? "Insider" }
+    }
+
+    private func updateCachedInsiderTrades() {
+        guard storageService.showInsiderMarkers, isEligibleForInsider else {
+            if !cachedGroupedTrades.isEmpty { cachedGroupedTrades = [] }
+            return
+        }
+        cachedGroupedTrades = computeGroupedTrades()
+    }
+
+    private func computeGroupedTrades() -> [GroupedInsiderTrade] {
+        guard let firstDate = history.first?.date, let lastDate = history.last?.date else { return [] }
+        let minDate = min(firstDate, lastDate)
+        let maxDate = max(firstDate, lastDate)
+        let raw = insiderService.getTransactions(for: cleanSym, startDate: minDate, endDate: maxDate, openMarketOnly: true)
+        let trades = raw.filter { $0.price > 0 && $0.shares > 0 }
+        guard !trades.isEmpty else { return [] }
+
+        var groups: [String: [InsiderTransaction]] = [:]
+        let cal = Calendar.current
+        let df = DateFormatter.secDate
+
+        for trade in trades {
+            let key: String
+            switch chartRange {
+            case .week, .month, .threeMonths:
+                // Daily granularity
+                key = "\(df.string(from: trade.transactionDate))_\(trade.isBuy)"
+            case .sixMonths, .ytd, .year:
+                // Weekly granularity
+                if let weekStart = cal.dateInterval(of: .weekOfYear, for: trade.transactionDate)?.start {
+                    key = "W_\(df.string(from: weekStart))_\(trade.isBuy)"
+                } else {
+                    key = "\(df.string(from: trade.transactionDate))_\(trade.isBuy)"
+                }
+            case .threeYears, .fiveYears, .all:
+                // Monthly granularity
+                if let monthStart = cal.dateInterval(of: .month, for: trade.transactionDate)?.start {
+                    key = "M_\(df.string(from: monthStart))_\(trade.isBuy)"
+                } else {
+                    key = "\(df.string(from: trade.transactionDate))_\(trade.isBuy)"
+                }
+            }
+            groups[key, default: []].append(trade)
+        }
+
+        return groups.compactMap { (key, groupTrades) -> GroupedInsiderTrade? in
+            guard let first = groupTrades.first else { return nil }
+            let totalShares = groupTrades.reduce(0.0) { $0 + $1.shares }
+            let weightedPrice = totalShares > 0 ? (groupTrades.reduce(0.0) { $0 + $1.price * $1.shares } / totalShares) : first.price
+            let fallbackPrice = nearestClose(for: first.transactionDate) ?? (history.last?.close ?? 0)
+            let finalPrice = weightedPrice > 0 ? weightedPrice : fallbackPrice
+            guard finalPrice > 0 else { return nil }
+            return GroupedInsiderTrade(
+                id: key,
+                date: first.transactionDate,
+                price: finalPrice,
+                isBuy: first.isBuy,
+                trades: groupTrades
+            )
+        }.sorted { $0.date < $1.date }
+    }
+
+    private func nearestClose(for date: Date) -> Double? {
+        history.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })?.close
+    }
+
     /// Smooth hover crosshair drawn as an overlay (not chart marks), so moving the
     /// mouse doesn't re-render the whole chart. Vertical rule + dot + tooltip.
     @ViewBuilder private func chartCrosshair(_ proxy: ChartProxy, tint: Color) -> some View {
@@ -133,6 +226,17 @@ struct PriceChartCard: View {
                        let py = proxy.position(forY: h.close) {
                         let cx = plot.minX + px
                         let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: h.close)
+                        let matchedInsider = cachedGroupedTrades.first(where: {
+                            let diff = abs($0.date.timeIntervalSince(h.date))
+                            switch chartRange {
+                            case .week, .month, .threeMonths:
+                                return Calendar.current.isDate($0.date, inSameDayAs: h.date)
+                            case .sixMonths, .ytd, .year:
+                                return diff < 86400 * 4
+                            case .threeYears, .fiveYears, .all:
+                                return diff < 86400 * 16
+                            }
+                        })
                         Group {
                             Path { p in p.move(to: CGPoint(x: cx, y: plot.minY)); p.addLine(to: CGPoint(x: cx, y: plot.maxY)) }
                                 .stroke(DS.inkTertiary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
@@ -140,10 +244,11 @@ struct PriceChartCard: View {
                                 .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
                                 .position(x: cx, y: plot.minY + py)
 
-                            ChartTooltip(title: hoverLabel(h.date),
-                                         value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
-                                         tint: tint)
-                                .position(x: min(max(cx, plot.minX + 50), plot.maxX - 50), y: plot.minY + 12)
+                            ChartTooltipWithInsider(title: hoverLabel(h.date),
+                                                    value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
+                                                    tint: tint,
+                                                    insiderTrade: matchedInsider)
+                                .position(x: min(max(cx, plot.minX + 60), plot.maxX - 60), y: plot.minY + (matchedInsider != nil ? 20 : 12))
                         }
                         .allowsHitTesting(false)
                     }
@@ -225,8 +330,15 @@ struct PriceChartCard: View {
 
             // Row 2: Range Picker (7D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, All) placed above chart
             if effectiveChartStyle == .line || tradingViewSymbol == nil {
-                rangePicker
-                    .padding(.top, 2)
+                HStack(spacing: 8) {
+                    rangePicker
+
+                    if isEligibleForInsider {
+                        Spacer()
+                        insiderToggleButton
+                    }
+                }
+                .padding(.top, 2)
             }
 
             // Row 3: Chart.
@@ -237,15 +349,23 @@ struct PriceChartCard: View {
         .padding(.vertical, 14)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .premiumCard()
-        .task(id: symbol) { await stockService.ensurePriceHistory(for: symbol) }
+        .task(id: symbol) {
+            await stockService.ensurePriceHistory(for: symbol)
+            if isEligibleForInsider {
+                await insiderService.ensureTransactions(for: symbol)
+            }
+            updateCachedInsiderTrades()
+        }
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
             if chartRange == .all { await stockService.ensurePriceHistoryMax(for: symbol) }
+            updateCachedInsiderTrades()
         }
         .onAppear {
             chartStyle = ChartStyle(rawValue: storageService.defaultChartStyle) ?? .line
             if let savedRange = ChartRange(rawValue: storageService.lastStockChartRange) {
                 chartRange = savedRange
             }
+            updateCachedInsiderTrades()
         }
         .onChange(of: storageService.defaultChartStyle) { _, newValue in
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -254,11 +374,45 @@ struct PriceChartCard: View {
         }
         .onChange(of: chartRange) { _, newRange in
             storageService.lastStockChartRange = newRange.rawValue
+            updateCachedInsiderTrades()
+        }
+        .onChange(of: storageService.showInsiderMarkers) { _, _ in
+            updateCachedInsiderTrades()
+        }
+        .onChange(of: insiderService.transactions[cleanSym]) { _, _ in
+            updateCachedInsiderTrades()
+        }
+        .onChange(of: history.count) { _, _ in
+            updateCachedInsiderTrades()
         }
     }
 
     private var rangePicker: some View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
+    }
+
+    private var insiderToggleButton: some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                storageService.showInsiderMarkers.toggle()
+            }
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: storageService.showInsiderMarkers ? "person.badge.shield.checkmark.fill" : "person.badge.shield.checkmark")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Insider")
+                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
+            }
+            .foregroundStyle(storageService.showInsiderMarkers ? .white : DS.inkSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(storageService.showInsiderMarkers ? DS.brand : DS.cardAlt)
+            )
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help(storageService.showInsiderMarkers ? "Hide insider trades on chart" : "Show insider trades on chart")
     }
 
     @ViewBuilder private var stylePicker: some View {
@@ -337,6 +491,45 @@ struct PriceChartCard: View {
                         .symbolSize(50)
                         .foregroundStyle(tint)
                 }
+                if storageService.showInsiderMarkers && isEligibleForInsider {
+                    ForEach(cachedGroupedTrades) { trade in
+                        PointMark(
+                            x: .value("Day", trade.date),
+                            y: .value("Close", trade.price)
+                        )
+                        .symbol {
+                            ZStack {
+                                Circle()
+                                    .fill(trade.isBuy ? DS.up : DS.down)
+                                    .frame(width: 8, height: 8)
+                                Circle()
+                                    .strokeBorder(Color.white, lineWidth: 1.5)
+                                    .frame(width: 8, height: 8)
+                            }
+                            .shadow(color: (trade.isBuy ? DS.up : DS.down).opacity(0.6), radius: 2)
+                        }
+                        .annotation(position: trade.isBuy ? .bottom : .top, spacing: 3) {
+                            HStack(spacing: 2) {
+                                Image(systemName: trade.isBuy ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                                    .font(.system(size: 7, weight: .bold))
+                                Text(trade.isBuy ? "Buy" : "Sell")
+                                    .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                                if trade.count > 1 {
+                                    Text("\(trade.count)x")
+                                        .font(.inter(7, weight: .semibold, relativeTo: .caption2))
+                                }
+                            }
+                            .foregroundStyle(trade.isBuy ? DS.up : DS.down)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(DS.cardAlt.opacity(0.95))
+                                    .overlay(Capsule().stroke(DS.hairline, lineWidth: 0.5))
+                            )
+                        }
+                    }
+                }
             }
             .chartYScale(domain: chartDomain)
             .chartYAxis {
@@ -384,8 +577,14 @@ struct PriceChartCard: View {
     }
 
     private var chartDomain: ClosedRange<Double> {
-        let mins = history.map(\.effectiveLow)
-        let maxs = history.map(\.effectiveHigh)
+        var mins = history.map(\.effectiveLow)
+        var maxs = history.map(\.effectiveHigh)
+        if storageService.showInsiderMarkers && isEligibleForInsider {
+            for trade in cachedGroupedTrades where trade.price > 0 {
+                mins.append(trade.price)
+                maxs.append(trade.price)
+            }
+        }
         guard let min = mins.min(), let max = maxs.max(), max > min else { return 0...1 }
         let pad = (max - min) * 0.08
         return (min - pad)...(max + pad)
@@ -476,5 +675,70 @@ struct Sparkline: View {
             }
         }
         .frame(width: width, height: height)
+    }
+}
+
+/// Floating chart tooltip capable of displaying both price snapshot and matched insider trading events.
+struct ChartTooltipWithInsider: View {
+    let title: String
+    let value: String
+    let tint: Color
+    var insiderTrade: PriceChartCard.GroupedInsiderTrade? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(DS.micro).foregroundStyle(DS.inkTertiary)
+            Text(value).font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit()).foregroundStyle(tint)
+
+            if let trade = insiderTrade {
+                Divider().opacity(0.3)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(trade.isBuy ? DS.up : DS.down)
+                        .frame(width: 6, height: 6)
+                    Text(trade.isBuy ? "BUY" : "SELL")
+                        .font(.inter(9, weight: .bold, relativeTo: .caption2))
+                        .foregroundStyle(trade.isBuy ? DS.up : DS.down)
+
+                    let sharesStr = formatShares(trade.totalShares)
+                    let valStr = formatCurrency(trade.totalValue)
+                    if trade.count > 1 {
+                        Text("\(trade.count) Trades: \(sharesStr) shs (\(valStr))")
+                            .font(.inter(10, weight: .medium, relativeTo: .caption2))
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                    } else {
+                        Text("\(trade.primaryOwner): \(sharesStr) shs (\(valStr))")
+                            .font(.inter(10, weight: .medium, relativeTo: .caption2))
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.card)
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 2))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline))
+        .fixedSize()
+    }
+
+    private func formatShares(_ shares: Double) -> String {
+        if shares >= 1_000_000 {
+            return String(format: "%.1fM", shares / 1_000_000)
+        } else if shares >= 1_000 {
+            return String(format: "%.1fK", shares / 1_000)
+        }
+        return String(format: "%.0f", shares)
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        let absVal = abs(value)
+        if absVal >= 1_000_000 {
+            return "$\(String(format: "%.1fM", absVal / 1_000_000))"
+        } else if absVal >= 1_000 {
+            return "$\(String(format: "%.0fK", absVal / 1_000))"
+        }
+        return "$\(String(format: "%.0f", absVal))"
     }
 }

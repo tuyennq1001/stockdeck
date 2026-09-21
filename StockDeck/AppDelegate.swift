@@ -195,6 +195,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             alertMonitor.check(quotes: stockService.quotes)
             portfolioMonitor.check()
             recordSnapshots()
+
+            // Phase 3: Background sync for insider transactions of US holdings & watchlist
+            Task(priority: .background) {
+                await InsiderTradingService.shared.syncAllUserSymbols(storageService: self.storageService)
+            }
         }
 
         // REST polling at low frequency for exchange rates and as WSS fallback

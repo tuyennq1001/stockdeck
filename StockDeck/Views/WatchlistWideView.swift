@@ -321,6 +321,7 @@ struct WatchlistWideView: View {
                     PriceChartCard(symbol: symbol, quote: quote)
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
+                    InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
                     SymbolNewsCard(stockService: stockService, symbol: symbol)
                 }
