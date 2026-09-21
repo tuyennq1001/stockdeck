@@ -85,9 +85,13 @@ enum TradingViewSymbol {
         if upper.hasSuffix("=F") {
             let futures: [String: String] = [
                 "ES": "CME:ES1!",
+                "MES": "CME:MES1!",
                 "NQ": "CME:NQ1!",
+                "MNQ": "CME:MNQ1!",
                 "YM": "CBOT:YM1!",
+                "MYM": "CBOT:MYM1!",
                 "RTY": "CME:RTY1!",
+                "M2K": "CME:M2K1!",
                 "CL": "TVC:CL",
                 "BZ": "TVC:BRENT",
                 "GC": "TVC:GOLD",
