@@ -1081,6 +1081,7 @@ private struct WatchRowView<Menu: View>: View {
         if row.loaded {
             let isCrypto = storageService.type(for: row.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: row.symbol) != nil
             let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, quote: row.quote, isCrypto: isCrypto)
+            let isSessionOpen = MarketCategory.isSessionOpen(symbol: row.symbol, quote: row.quote, isCrypto: isCrypto)
 
             VStack(alignment: .trailing, spacing: 2) {
                 let pctColor = isMarketActive ? DS.pnlColor(row.changePercent) : DS.inkTertiary
@@ -1100,7 +1101,7 @@ private struct WatchRowView<Menu: View>: View {
                     }
                     .foregroundStyle(DS.pnlColor(extPct))
                     .lineLimit(1)
-                } else if !isMarketActive {
+                } else if !isSessionOpen {
                     HStack(spacing: 2) {
                         Image(systemName: "moon.fill")
                             .font(.system(size: 8))

@@ -650,6 +650,27 @@ class StockService: ObservableObject {
 
                         let companyName = isIndex ? "VN-Index" : (Self.popularVietnameseStocks.first(where: { $0.symbol.uppercased() == ticker })?.name ?? ticker)
                         let currency = isIndex ? "PTS" : "VND"
+
+                        let lastTimestamp = response.t?.last
+                        let lastTradeDate = lastTimestamp.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                        let schedule = MarketCategory.marketSchedule(for: symbol, isCrypto: false)
+                        var calendar = Calendar(identifier: .gregorian)
+                        calendar.timeZone = schedule.timeZone
+                        let currentDate = Date()
+                        let comps = calendar.dateComponents([.weekday, .hour, .minute], from: currentDate)
+                        let weekday = comps.weekday ?? 1
+                        let currentMinutes = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+                        let isWeekday = (weekday >= 2 && weekday <= 6)
+                        let isWithinTradingHours = currentMinutes >= schedule.mondayOpenMinutes && currentMinutes <= schedule.regularCloseMinutes
+
+                        let hasTradedToday = lastTradeDate.map { calendar.isDate($0, inSameDayAs: currentDate) } ?? false
+                        let marketState: String
+                        if isWeekday && isWithinTradingHours && hasTradedToday {
+                            marketState = "REGULAR"
+                        } else {
+                            marketState = "CLOSED"
+                        }
+
                         let quote = StockQuote(
                             symbol: symbol,
                             name: companyName,
@@ -658,6 +679,8 @@ class StockService: ObservableObject {
                             changePercent: changePercent,
                             regularMarketPreviousClose: prevClose * scale,
                             currency: currency,
+                            marketState: marketState,
+                            regularMarketTime: lastTradeDate,
                             fiftyTwoWeekHigh: high,
                             fiftyTwoWeekLow: low
                         )
@@ -667,17 +690,60 @@ class StockService: ObservableObject {
                     }
                 }
             }
+            var collectedQuotes: [(String, StockQuote)] = []
             for await (originalSymbol, quote) in group {
                 if let quote = quote {
-                    let upperOriginal = originalSymbol.uppercased()
-                    let upperQuoteSym = quote.symbol.uppercased()
-                    self.quotes[upperOriginal] = quote
-                    self.quotes[upperQuoteSym] = quote
-                    if upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") {
-                        self.quotes["^VNINDEX"] = quote
-                        self.quotes["^VNINDEX.VN"] = quote
-                        self.quotes["VNINDEX"] = quote
-                    }
+                    collectedQuotes.append((originalSymbol, quote))
+                }
+            }
+
+            // Market umbrella check: if any Vietnamese symbol (or VN-Index) has active trades today
+            // and we are currently within trading hours on a weekday, propagate REGULAR state
+            // to any other Vietnamese symbols in the batch that might be thinly traded.
+            let schedule = MarketCategory.marketSchedule(for: "VNINDEX", isCrypto: false)
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = schedule.timeZone
+            let now = Date()
+            let comps = calendar.dateComponents([.weekday, .hour, .minute], from: now)
+            let weekday = comps.weekday ?? 1
+            let currentMinutes = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+            let isWeekday = (weekday >= 2 && weekday <= 6)
+            let isWithinTradingHours = currentMinutes >= schedule.mondayOpenMinutes && currentMinutes <= schedule.regularCloseMinutes
+
+            let anySymbolTradedToday = collectedQuotes.contains { (_, q) in
+                guard let rmt = q.regularMarketTime else { return false }
+                return calendar.isDate(rmt, inSameDayAs: now)
+            }
+            let isMarketWideOpen = isWeekday && isWithinTradingHours && (anySymbolTradedToday || self.quotes["^VNINDEX.VN"]?.marketState == "REGULAR" || self.quotes["^VNINDEX"]?.marketState == "REGULAR")
+
+            for (originalSymbol, quote) in collectedQuotes {
+                var finalQuote = quote
+                if isMarketWideOpen && finalQuote.marketState != "REGULAR" {
+                    finalQuote = StockQuote(
+                        symbol: quote.symbol,
+                        name: quote.name,
+                        price: quote.price,
+                        change: quote.change,
+                        changePercent: quote.changePercent,
+                        regularMarketPreviousClose: quote.regularMarketPreviousClose,
+                        currency: quote.currency,
+                        marketState: "REGULAR",
+                        regularMarketTime: quote.regularMarketTime ?? now,
+                        dayHigh: quote.dayHigh,
+                        dayLow: quote.dayLow,
+                        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
+                        fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
+                        marketCap: quote.marketCap
+                    )
+                }
+                let upperOriginal = originalSymbol.uppercased()
+                let upperQuoteSym = finalQuote.symbol.uppercased()
+                self.quotes[upperOriginal] = finalQuote
+                self.quotes[upperQuoteSym] = finalQuote
+                if upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") {
+                    self.quotes["^VNINDEX"] = finalQuote
+                    self.quotes["^VNINDEX.VN"] = finalQuote
+                    self.quotes["VNINDEX"] = finalQuote
                 }
             }
         }

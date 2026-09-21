@@ -149,7 +149,7 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         let upper = symbol.uppercased()
 
         // Vietnam (HOSE/HNX): ICT (UTC+7), regular session opens at 09:00 ICT (540 mins), closes 15:00 ICT (900 mins)
-        if StockService.isVietnameseStock(upper) || upper.hasSuffix(".VN") || upper == "^VNINDEX.VN" || upper == "VNINDEX" || upper == "HNX" {
+        if StockService.isVietnameseStock(upper) || upper.hasSuffix(".VN") || upper == "^VNINDEX.VN" || upper == "^VNINDEX" || upper == "VNINDEX" || upper == "HNX" {
             return (TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current, 9 * 60, 15 * 60)
         }
 
@@ -310,6 +310,62 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         }
 
         return true
+    }
+
+    /// Returns true if the regular trading session (or active extended session) is CURRENTLY in progress right now.
+    /// Returns false if the session has closed for the day, or it is a weekend/holiday/pre-market.
+    static func isSessionOpen(
+        symbol: String,
+        quote: StockQuote? = nil,
+        isCrypto: Bool = false,
+        at date: Date = Date(),
+        customTimeZone: TimeZone? = nil
+    ) -> Bool {
+        if isCrypto || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil {
+            return true
+        }
+
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let isFuture = upper.hasSuffix("=F")
+        let isFX = upper.hasSuffix("=X")
+
+        let schedule = marketSchedule(for: symbol, isCrypto: isCrypto)
+        let tz = customTimeZone ?? schedule.timeZone
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = components.weekday, let hour = components.hour, let minute = components.minute else {
+            return false
+        }
+        let currentMinutes = hour * 60 + minute
+
+        if isFuture || isFX {
+            if weekday == 7 { return false }
+            if weekday == 1 { return currentMinutes >= 18 * 60 }
+            if weekday == 6 { return currentMinutes < 17 * 60 }
+            return true
+        }
+
+        // Saturday (7) & Sunday (1) are closed
+        if weekday == 1 || weekday == 7 {
+            return false
+        }
+
+        // If provider explicitly tells us regular session is active / closed
+        if let quote = quote {
+            let state = quote.marketState.uppercased()
+            if state == "REGULAR" {
+                return true
+            }
+            if state == "CLOSED" {
+                return false
+            }
+        }
+
+        // Otherwise check timezone-aware session opening and closing minutes
+        return currentMinutes >= schedule.mondayOpenMinutes && currentMinutes <= schedule.regularCloseMinutes
     }
 }
 

@@ -829,6 +829,7 @@ struct QuoteRow: View {
         VStack(alignment: .trailing, spacing: 1) {
             let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
             let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
+            let isSessionOpen = MarketCategory.isSessionOpen(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
 
             let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
             Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
@@ -850,7 +851,7 @@ struct QuoteRow: View {
                 .foregroundColor(extPct >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            } else if !isMarketActive {
+            } else if !isSessionOpen {
                 HStack(spacing: 1) {
                     Image(systemName: "moon.fill")
                         .font(.system(size: 7, weight: .semibold))
