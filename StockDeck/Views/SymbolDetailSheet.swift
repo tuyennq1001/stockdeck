@@ -53,6 +53,7 @@ struct SymbolDetailView: View {
                             fiftyTwoWeekCard(quote)
                         }
                         factsCard(quote)
+                        InsiderTradingCard(symbol: symbol)
                         SymbolNotesCard(storageService: storageService, symbol: symbol)
                         SymbolNewsCard(
                             stockService: stockService,

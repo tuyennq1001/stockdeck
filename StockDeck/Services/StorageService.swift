@@ -162,6 +162,9 @@ class StorageService: ObservableObject {
     @Published var showAbsoluteChange: Bool = false {
         didSet { scheduleSave() }
     }
+    @Published var showInsiderMarkers: Bool = true {
+        didSet { scheduleSave() }
+    }
 
     // MARK: - Appearance & tabs (issue #11)
     /// "system" | "light" | "dark". The 1.9.0 redesign forced light; this restores
@@ -1970,6 +1973,7 @@ class StorageService: ObservableObject {
         showDayRange = true
         show52WeekBar = true
         showAbsoluteChange = false
+        showInsiderMarkers = true
         menuBarDisplay = "pnl"
         gainColorHex = ""
         lossColorHex = ""
@@ -2085,6 +2089,7 @@ class StorageService: ObservableObject {
         var showDayRange: Bool?
         var show52WeekBar: Bool?
         var showAbsoluteChange: Bool?
+        var showInsiderMarkers: Bool?
         var portfolioNotifications: [String: [PortfolioNotification]]?
         var portfolioSnapshots: [String: [PortfolioSnapshot]]?
         var portfolioChartRanges: [String: String]?
@@ -2145,6 +2150,7 @@ class StorageService: ObservableObject {
             showDayRange: showDayRange,
             show52WeekBar: show52WeekBar,
             showAbsoluteChange: showAbsoluteChange,
+            showInsiderMarkers: showInsiderMarkers,
             portfolioNotifications: portfolioNotifications,
             portfolioSnapshots: portfolioSnapshots,
             portfolioChartRanges: portfolioChartRanges,
@@ -2279,6 +2285,7 @@ class StorageService: ObservableObject {
         showDayRange = decoded.showDayRange ?? true
         show52WeekBar = decoded.show52WeekBar ?? true
         showAbsoluteChange = decoded.showAbsoluteChange ?? false
+        showInsiderMarkers = decoded.showInsiderMarkers ?? true
         fontSizeLevel = decoded.fontSizeLevel ?? 9
         fontFamily = decoded.fontFamily ?? "Inter Variable"
         appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue

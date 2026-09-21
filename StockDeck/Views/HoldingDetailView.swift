@@ -105,6 +105,7 @@ struct HoldingDetailView: View {
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
+                    InsiderTradingCard(symbol: holding.symbol)
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
                         stockService: stockService,
