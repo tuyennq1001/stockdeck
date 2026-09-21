@@ -2277,6 +2277,7 @@ private struct PositionSummaryRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 if let liveQuote {
                     let isMarketActive = aggregate?.isMarketActive ?? MarketCategory.isTradingDay(symbol: liveQuote.symbol, quote: liveQuote, isCrypto: isCrypto)
+                    let isSessionOpen = MarketCategory.isSessionOpen(symbol: liveQuote.symbol, quote: liveQuote, isCrypto: isCrypto)
 
                     let pct = liveQuote.changePercent
                     let pctColor = isMarketActive ? DS.pnlColor(pct) : DS.inkTertiary
@@ -2297,7 +2298,7 @@ private struct PositionSummaryRow: View {
                         }
                         .foregroundStyle(DS.pnlColor(extPct))
                         .lineLimit(1)
-                    } else if !isMarketActive {
+                    } else if !isSessionOpen {
                         HStack(spacing: 2) {
                             Image(systemName: "moon.fill")
                                 .font(.system(size: 8))

@@ -6,7 +6,7 @@ final class PortfolioPnlPersistenceTests: XCTestCase {
 
     func testDailyAndMonthlyPnlRangePerScope() {
         let storage = StorageService()
-        let scopeAll = "all"
+        let scopeAll = "test-all-" + UUID().uuidString
         let scope1 = UUID().uuidString
         let scope2 = UUID().uuidString
 

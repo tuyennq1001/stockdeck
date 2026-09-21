@@ -250,5 +250,78 @@ final class TodayPerformanceTests: XCTestCase {
             regularMarketTime: isoFormatter.date(from: "2026-09-21T15:30:00+09:00")
         )
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^N225", quote: activeTradingDayNikkei, at: monday6pmJST))
+
+        // 15. Vietnam stocks during regular session hours (e.g. Monday 14:16 ICT)
+        // Normal active trading day: marketState == "REGULAR" and regularMarketTime from earlier today -> ACTIVE
+        let monday216pmICT = isoFormatter.date(from: "2026-09-21T14:16:00+07:00")!
+        let activeMBBQuote = StockQuote(
+            symbol: "MBB",
+            name: "MBBank",
+            price: 20000,
+            marketState: "REGULAR",
+            regularMarketTime: isoFormatter.date(from: "2026-09-21T09:00:00+07:00")
+        )
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "MBB", quote: activeMBBQuote, at: monday216pmICT))
+
+        let activeVNIndexQuote = StockQuote(
+            symbol: "^VNINDEX.VN",
+            name: "VN-Index",
+            price: 1791.69,
+            marketState: "REGULAR",
+            regularMarketTime: isoFormatter.date(from: "2026-09-21T14:15:00+07:00")
+        )
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^VNINDEX.VN", quote: activeVNIndexQuote, at: monday216pmICT))
+
+        // 16. Vietnam special holiday (e.g. National Day Sep 2 / Tet during weekday session hours)
+        // Exchange observes full-day holiday: marketState is "CLOSED" and last traded candle was prior date -> MUST BE CLOSED
+        let wednesday10amICTHoliday = isoFormatter.date(from: "2026-09-02T10:00:00+07:00")!
+        let holidayMBBQuote = StockQuote(
+            symbol: "MBB",
+            name: "MBBank",
+            price: 19800,
+            marketState: "CLOSED",
+            regularMarketTime: isoFormatter.date(from: "2026-09-01T15:00:00+07:00")
+        )
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "MBB", quote: holidayMBBQuote, at: wednesday10amICTHoliday))
+
+        // 17. Vietnam after-hours: Normal trading day vs Special holiday
+        let monday6pmICT = isoFormatter.date(from: "2026-09-21T18:00:00+07:00")!
+        // Normal trading day after 15:00 ICT -> ACTIVE (holds session close)
+        let closedSessionMBB = StockQuote(
+            symbol: "MBB",
+            name: "MBBank",
+            price: 20000,
+            marketState: "CLOSED",
+            regularMarketTime: isoFormatter.date(from: "2026-09-21T15:00:00+07:00")
+        )
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "MBB", quote: closedSessionMBB, at: monday6pmICT))
+
+        // Special holiday after 15:00 ICT -> CLOSED (no session took place today)
+        let holidayEveningMBB = StockQuote(
+            symbol: "MBB",
+            name: "MBBank",
+            price: 19800,
+            marketState: "CLOSED",
+            regularMarketTime: isoFormatter.date(from: "2026-09-01T15:00:00+07:00")
+        )
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "MBB", quote: holidayEveningMBB, at: monday6pmICT))
+
+        // 18. MarketCategory.isSessionOpen tests (Option A: closed badge behavior)
+        // (a) Vietnam stock during trading hours (14:16 ICT) -> session is OPEN (no Closed badge)
+        XCTAssertTrue(MarketCategory.isSessionOpen(symbol: "MBB", quote: activeMBBQuote, at: monday216pmICT))
+        XCTAssertTrue(MarketCategory.isSessionOpen(symbol: "^VNINDEX.VN", quote: activeVNIndexQuote, at: monday216pmICT))
+
+        // (b) Vietnam stock after trading hours (16:27 ICT / 18:00 ICT) -> session is CLOSED (shows Closed badge)
+        let monday427pmICT = isoFormatter.date(from: "2026-09-21T16:27:00+07:00")!
+        XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "MBB", quote: closedSessionMBB, at: monday427pmICT))
+        XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "MBB", quote: closedSessionMBB, at: monday6pmICT))
+
+        // (c) Vietnam stock during holiday -> session is CLOSED
+        XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "MBB", quote: holidayMBBQuote, at: wednesday10amICTHoliday))
+
+        // (d) Crypto is always open 24/7
+        XCTAssertTrue(MarketCategory.isSessionOpen(symbol: "BTC-USD", quote: nil, isCrypto: true, at: monday427pmICT))
+        XCTAssertTrue(MarketCategory.isSessionOpen(symbol: "BTC-USD", quote: nil, isCrypto: true, at: wednesday10amICTHoliday))
     }
 }
+
