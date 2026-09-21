@@ -91,20 +91,28 @@ final class TodayPerformanceTests: XCTestCase {
         XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: mondayEarlyJST))
         XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: mondayEarlyJST))
 
-        // Symbol helper check at Monday 5:37 AM JST
+        // Symbol helper check at Monday 5:37 AM JST (Sun 16:37 EDT) -> CME futures NOT yet open (opens 18:00 EDT)
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "GOOG", at: mondayEarlyJST))
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "VOO", at: mondayEarlyJST))
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "7203.T", at: mondayEarlyJST))
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "VNM", at: mondayEarlyJST))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "ES=F", at: mondayEarlyJST))
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", at: mondayEarlyJST))
 
         // 2. Monday 10:00 AM JST (2026-08-31T10:00:00+09:00)
         // - In Tokyo: Monday 10:00 JST -> JP is ACTIVE (TSE opened at 09:00)
-        // - In NY: Sunday 21:00 EDT -> US is CLOSED (Sunday)
+        // - In NY: Sunday 21:00 EDT -> US stock is CLOSED, but CME Globex Futures ARE ACTIVE (opened at 18:00 EDT)
         // - In VN: Monday 08:00 ICT -> VN is CLOSED (before 09:00 open)
         let monday10amJST = isoFormatter.date(from: "2026-08-31T10:00:00+09:00")!
         XCTAssertTrue(MarketCategory.japan.isTradingDay(at: monday10amJST))
         XCTAssertFalse(MarketCategory.us.isTradingDay(at: monday10amJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "ES=F", at: monday10amJST))
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "NQ=F", at: monday10amJST))
+
+        // Live quote at active time
+        let liveRegularQuote = StockQuote(symbol: "ES=F", name: "E-mini S&P 500", price: 7743, change: 30.5, changePercent: 0.4, currency: "USD", marketState: "REGULAR")
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "ES=F", quote: liveRegularQuote, at: monday10amJST))
+
         XCTAssertFalse(MarketCategory.vietnam.isTradingDay(at: monday10amJST))
         XCTAssertTrue(MarketCategory.crypto.isTradingDay(at: monday10amJST))
 
@@ -202,5 +210,45 @@ final class TodayPerformanceTests: XCTestCase {
         // Crypto quote is always active
         let mockCryptoQuote = StockQuote(symbol: "BTC-USD", name: "Bitcoin", price: 60000, marketState: "CLOSED")
         XCTAssertTrue(MarketCategory.isTradingDay(symbol: "BTC-USD", quote: mockCryptoQuote, at: sundayNoonJST))
+
+        // 12. Market holiday during regular session hours (e.g. 2026-09-21 Respect for the Aged Day in Japan)
+        // - In Tokyo: Monday 11:00 AM JST (normally regular hours 09:00 - 15:30 JST)
+        // - Live provider explicitly marks marketState == "CLOSED" for holiday -> MUST BE CLOSED
+        let monday11amJST = isoFormatter.date(from: "2026-09-21T11:00:00+09:00")!
+        let closedNikkeiQuote = StockQuote(
+            symbol: "^N225",
+            name: "Nikkei 225",
+            price: 45630,
+            marketState: "CLOSED",
+            regularMarketTime: isoFormatter.date(from: "2026-09-18T15:30:00+09:00")
+        )
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^N225", quote: closedNikkeiQuote, at: monday11amJST))
+
+        // 13. Active foreign session during regular session hours on the same calendar day (South Korea open)
+        // - In Seoul: Monday 11:00 AM KST
+        // - Live provider marks marketState == "REGULAR" -> ACTIVE
+        let regularSamsungQuote = StockQuote(
+            symbol: "005930.KS",
+            name: "Samsung Electronics",
+            price: 80000,
+            marketState: "REGULAR",
+            regularMarketTime: isoFormatter.date(from: "2026-09-21T10:46:00+09:00")
+        )
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "005930.KS", quote: regularSamsungQuote, at: monday11amJST))
+
+        // 14. After-hours check: Holiday (last trade was prior Friday) vs Active trading day
+        let monday6pmJST = isoFormatter.date(from: "2026-09-21T18:00:00+09:00")!
+        // A full-day holiday where last regularMarketTime was Friday Sep 18 -> CLOSED
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "^N225", quote: closedNikkeiQuote, at: monday6pmJST))
+
+        // A normal trading day where regularMarketTime was from earlier today Sep 21 at 15:30 JST -> ACTIVE (holds session)
+        let activeTradingDayNikkei = StockQuote(
+            symbol: "^N225",
+            name: "Nikkei 225",
+            price: 45630,
+            marketState: "CLOSED",
+            regularMarketTime: isoFormatter.date(from: "2026-09-21T15:30:00+09:00")
+        )
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "^N225", quote: activeTradingDayNikkei, at: monday6pmJST))
     }
 }

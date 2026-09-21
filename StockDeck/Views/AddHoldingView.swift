@@ -111,12 +111,14 @@ struct AddHoldingView: View {
                         }) {
                             HStack(spacing: 8) {
                                 SymbolLogo(symbol: result.symbol, size: 24)
-                                Text(StockService.beautifiedSymbol(result.symbol))
+                                Text(result.displayTitle)
                                     .fontWeight(.semibold)
-                                Text(result.name)
-                                    .font(.inter(10, relativeTo: .caption))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
+                                if !result.displaySubtitle.isEmpty {
+                                    Text(result.displaySubtitle)
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
                                 Spacer()
                                 if !result.exchange.isEmpty {
                                     Text(result.exchange.uppercased())

@@ -151,4 +151,70 @@ final class StockQuoteTests: XCTestCase {
                               currency: "USD", marketState: "REGULAR")
         XCTAssertEqual(aapl.displayName, "AAPL")
     }
+
+    // MARK: - SearchResult decoding & display names
+
+    func testSearchResultDecodingWithLongname() throws {
+        let json = """
+        {
+            "symbol": "AAPL",
+            "longname": "Apple Inc.",
+            "shortname": "Apple",
+            "exchange": "NMS",
+            "quoteType": "EQUITY"
+        }
+        """.data(using: .utf8)!
+
+        let result = try JSONDecoder().decode(SearchResult.self, from: json)
+        XCTAssertEqual(result.symbol, "AAPL")
+        XCTAssertEqual(result.name, "Apple Inc.")
+        XCTAssertEqual(result.displayTitle, "AAPL")
+        XCTAssertEqual(result.displaySubtitle, "Apple Inc.")
+    }
+
+    func testSearchResultDecodingWithShortnameFallback() throws {
+        // Yahoo futures typically return shortname but NO longname
+        let json = """
+        {
+            "symbol": "ES=F",
+            "shortname": "E-Mini S&P 500 Dec 26",
+            "exchange": "CME",
+            "quoteType": "FUTURE"
+        }
+        """.data(using: .utf8)!
+
+        let result = try JSONDecoder().decode(SearchResult.self, from: json)
+        XCTAssertEqual(result.symbol, "ES=F")
+        XCTAssertEqual(result.name, "E-Mini S&P 500 Dec 26")
+        XCTAssertEqual(result.displayTitle, "E-Mini S&P 500 Dec 26")
+        XCTAssertEqual(result.displaySubtitle, "ES=F")
+
+        let fallbackWithoutName = SearchResult(symbol: "ES=F", name: "", exchange: "CME", type: "FUTURE")
+        XCTAssertEqual(fallbackWithoutName.displayTitle, "E-mini S&P 500 Futures")
+        XCTAssertEqual(fallbackWithoutName.displaySubtitle, "ES=F")
+    }
+
+    func testSearchResultDisplayTitleAndSubtitleForUncuratedFuture() throws {
+        let json = """
+        {
+            "symbol": "QI=F",
+            "shortname": "E-mini S&P 500 Index Futures",
+            "exchange": "CMX",
+            "quoteType": "FUTURE"
+        }
+        """.data(using: .utf8)!
+
+        let result = try JSONDecoder().decode(SearchResult.self, from: json)
+        XCTAssertEqual(result.symbol, "QI=F")
+        XCTAssertEqual(result.displayTitle, "E-mini S&P 500 Index Futures")
+        XCTAssertEqual(result.displaySubtitle, "QI=F")
+    }
+
+    func testPopularIndexAliasesContainsEminiAndMicroFutures() {
+        XCTAssertEqual(StockService.popularIndexAliases["E-MINI S&P 500 FUTURES"]?.symbol, "ES=F")
+        XCTAssertEqual(StockService.popularIndexAliases["ES"]?.symbol, "ES=F")
+        XCTAssertEqual(StockService.popularIndexAliases["MES"]?.symbol, "MES=F")
+        XCTAssertEqual(StockService.popularIndexAliases["NQ"]?.symbol, "NQ=F")
+        XCTAssertEqual(StockService.popularIndexAliases["MNQ"]?.symbol, "MNQ=F")
+    }
 }

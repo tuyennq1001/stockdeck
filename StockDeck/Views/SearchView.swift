@@ -25,7 +25,7 @@ struct SearchView: View {
         case .all: return results
         case .stocks: return results.filter { r in
             let t = r.type.uppercased()
-            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK"
+            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK" || t == "FUTURE" || t == "COMMODITY"
         }
         case .funds: return results.filter { r in
             let t = r.type.uppercased()
@@ -131,13 +131,15 @@ struct SearchView: View {
         HStack(spacing: 10) {
             SymbolLogo(symbol: r.symbol, size: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(StockService.beautifiedSymbol(r.symbol))
+                Text(r.displayTitle)
                     .font(DS.figure)
                     .foregroundStyle(DS.ink)
-                Text(r.name)
-                    .font(DS.micro)
-                    .foregroundStyle(DS.inkTertiary)
-                    .lineLimit(1)
+                if !r.displaySubtitle.isEmpty {
+                    Text(r.displaySubtitle)
+                        .font(DS.micro)
+                        .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
+                }
             }
             Spacer()
             if !r.exchange.isEmpty {

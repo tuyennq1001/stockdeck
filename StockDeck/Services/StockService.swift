@@ -1092,6 +1092,7 @@ class StockService: ObservableObject {
                 regularMarketPreviousClose: previousClose,
                 currency: (q.currency?.isEmpty == false) ? q.currency! : Self.detectedCurrency(for: q.symbol),
                 marketState: marketState,
+                regularMarketTime: q.regularMarketTime.map { Date(timeIntervalSince1970: TimeInterval($0)) },
                 dayHigh: q.regularMarketDayHigh,
                 dayLow: q.regularMarketDayLow,
                 fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
@@ -1200,6 +1201,7 @@ class StockService: ObservableObject {
                 regularMarketPreviousClose: previousClose,
                 currency: (meta.currency?.isEmpty == false) ? meta.currency! : detectedCurrency(for: meta.symbol),
                 marketState: marketState,
+                regularMarketTime: meta.regularMarketTime.map { Date(timeIntervalSince1970: TimeInterval($0)) },
                 dayHigh: nil,
                 dayLow: nil,
                 fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
@@ -2023,23 +2025,58 @@ class StockService: ObservableObject {
         "STI": SearchResult(symbol: "^STI", name: "Straits Times Index", exchange: "SGX", type: "INDEX"),
         // Index futures
         "ES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "ES=F": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
         "SPX FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "S&P 500 FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "E-MINI": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "EMINI": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "E-MINI S&P 500": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "E-MINI S&P 500 FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "EMINI S&P 500": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "EMINI S&P 500 FUTURES": SearchResult(symbol: "ES=F", name: "E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "MES": SearchResult(symbol: "MES=F", name: "Micro E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "MES=F": SearchResult(symbol: "MES=F", name: "Micro E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "MICRO E-MINI S&P 500": SearchResult(symbol: "MES=F", name: "Micro E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
+        "MICRO S&P 500": SearchResult(symbol: "MES=F", name: "Micro E-mini S&P 500 Futures", exchange: "CME", type: "FUTURE"),
         "NQ": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "NQ=F": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
         "NASDAQ FUTURES": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "E-MINI NASDAQ": SearchResult(symbol: "NQ=F", name: "E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "MNQ": SearchResult(symbol: "MNQ=F", name: "Micro E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
+        "MNQ=F": SearchResult(symbol: "MNQ=F", name: "Micro E-mini NASDAQ-100 Futures", exchange: "CME", type: "FUTURE"),
         "YM": SearchResult(symbol: "YM=F", name: "Mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
+        "YM=F": SearchResult(symbol: "YM=F", name: "Mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
         "DOW FUTURES": SearchResult(symbol: "YM=F", name: "Mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
+        "MYM": SearchResult(symbol: "MYM=F", name: "Micro E-mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
+        "MYM=F": SearchResult(symbol: "MYM=F", name: "Micro E-mini Dow Jones Futures", exchange: "CBOT", type: "FUTURE"),
         "RTY": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        "RTY=F": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
         "RUSSELL": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        "RUSSELL FUTURES": SearchResult(symbol: "RTY=F", name: "E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        "M2K": SearchResult(symbol: "M2K=F", name: "Micro E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
+        "M2K=F": SearchResult(symbol: "M2K=F", name: "Micro E-mini Russell 2000 Futures", exchange: "CME", type: "FUTURE"),
         // Commodities
+        "GC": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
+        "GC=F": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
         "XAUUSD": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
         "GOLD": SearchResult(symbol: "GC=F", name: "Gold Futures", exchange: "NYMEX", type: "FUTURE"),
+        "SI": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
+        "SI=F": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
         "XAGUSD": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
         "SILVER": SearchResult(symbol: "SI=F", name: "Silver Futures", exchange: "NYMEX", type: "FUTURE"),
+        "CL": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
+        "CL=F": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
         "OIL": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
         "WTI": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
         "CRUDE": SearchResult(symbol: "CL=F", name: "Crude Oil WTI Futures", exchange: "NYMEX", type: "FUTURE"),
+        "BZ": SearchResult(symbol: "BZ=F", name: "Brent Crude Oil Futures", exchange: "ICE", type: "FUTURE"),
+        "BZ=F": SearchResult(symbol: "BZ=F", name: "Brent Crude Oil Futures", exchange: "ICE", type: "FUTURE"),
         "BRENT": SearchResult(symbol: "BZ=F", name: "Brent Crude Oil Futures", exchange: "ICE", type: "FUTURE"),
+        "HG": SearchResult(symbol: "HG=F", name: "Copper Futures", exchange: "NYMEX", type: "FUTURE"),
+        "HG=F": SearchResult(symbol: "HG=F", name: "Copper Futures", exchange: "NYMEX", type: "FUTURE"),
         "COPPER": SearchResult(symbol: "HG=F", name: "Copper Futures", exchange: "NYMEX", type: "FUTURE"),
+        "NG": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE"),
+        "NG=F": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE"),
         "NATGAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE"),
         "GAS": SearchResult(symbol: "NG=F", name: "Natural Gas Futures", exchange: "NYMEX", type: "FUTURE")
     ]
@@ -2694,10 +2731,17 @@ class StockService: ObservableObject {
             }
         }
 
-        // Exact alias match (SPX, ES, XAUUSD, GOLD, ...) before hitting Yahoo
+        // Exact alias match (SPX, ES, XAUUSD, GOLD, ...) or matching name before hitting Yahoo
         if let aliasResult = Self.popularIndexAliases[upperQuery] {
             if !fundResults.contains(where: { $0.symbol == aliasResult.symbol }) {
                 fundResults.append(aliasResult)
+            }
+        }
+        for (_, alias) in Self.popularIndexAliases {
+            if alias.name.localizedCaseInsensitiveContains(cleanQuery) || alias.symbol.uppercased() == upperQuery {
+                if !fundResults.contains(where: { $0.symbol == alias.symbol }) {
+                    fundResults.append(alias)
+                }
             }
         }
 
@@ -2752,7 +2796,9 @@ class StockService: ObservableObject {
             }
         }
 
-        return fundResults + final
+        let existingSymbols = Set(fundResults.map { $0.symbol.uppercased() })
+        let uniqueFinal = final.filter { !existingSymbols.contains($0.symbol.uppercased()) }
+        return fundResults + uniqueFinal
     }
 
     private func fetchYahooSearch(query: String) async -> [SearchResult] {
@@ -3263,6 +3309,7 @@ private struct YahooV7Response: Codable {
         let regularMarketChangePercent: Double?
         let regularMarketPreviousClose: Double?
         let marketState: String?
+        let regularMarketTime: Int?
         let regularMarketDayHigh: Double?
         let regularMarketDayLow: Double?
         let fiftyTwoWeekHigh: Double?

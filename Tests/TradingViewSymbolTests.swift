@@ -38,8 +38,13 @@ final class TradingViewSymbolTests: XCTestCase {
 
     func testIndexFutures() {
         XCTAssertEqual(map("ES=F"), "CME:ES1!")
+        XCTAssertEqual(map("MES=F"), "CME:MES1!")
         XCTAssertEqual(map("NQ=F"), "CME:NQ1!")
+        XCTAssertEqual(map("MNQ=F"), "CME:MNQ1!")
         XCTAssertEqual(map("YM=F"), "CBOT:YM1!")
+        XCTAssertEqual(map("MYM=F"), "CBOT:MYM1!")
+        XCTAssertEqual(map("RTY=F"), "CME:RTY1!")
+        XCTAssertEqual(map("M2K=F"), "CME:M2K1!")
     }
 
     func testCommodities() {

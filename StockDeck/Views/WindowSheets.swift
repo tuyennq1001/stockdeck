@@ -705,7 +705,7 @@ struct WatchlistSearchSheet: View {
         case .all: return results
         case .stocks: return results.filter { r in
             let t = r.type.uppercased()
-            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK"
+            return t == "EQUITY" || t == "ETF" || t == "INDEX" || t == "STOCK" || t == "FUTURE" || t == "COMMODITY"
         }
         case .funds: return results.filter { r in
             let t = r.type.uppercased()
@@ -766,7 +766,7 @@ struct WatchlistSearchSheet: View {
                                 .background(
                                     RoundedRectangle(cornerRadius: 6)
                                         .fill(hoveredSymbol == r.id ? DS.brand.opacity(0.06) : Color.clear)
-                                )
+                                 )
                             if r.id != filteredResults.last?.id {
                                 Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                             }
@@ -786,8 +786,10 @@ struct WatchlistSearchSheet: View {
         HStack(spacing: 10) {
             SymbolLogo(symbol: r.symbol, size: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(r.symbol).font(DS.figure).foregroundStyle(DS.ink)
-                Text(r.name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                Text(r.displayTitle).font(DS.figure).foregroundStyle(DS.ink)
+                if !r.displaySubtitle.isEmpty {
+                    Text(r.displaySubtitle).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                }
             }
             Spacer()
             if !r.exchange.isEmpty {

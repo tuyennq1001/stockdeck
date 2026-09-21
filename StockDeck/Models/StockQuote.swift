@@ -10,6 +10,7 @@ struct StockQuote: Identifiable, Codable {
     var regularMarketPreviousClose: Double? = nil
     let currency: String
     let marketState: String
+    var regularMarketTime: Date? = nil
 
     // Extended hours
     let dayHigh: Double?
@@ -40,6 +41,7 @@ struct StockQuote: Identifiable, Codable {
         regularMarketPreviousClose: Double? = nil,
         currency: String = "USD",
         marketState: String = "CLOSED",
+        regularMarketTime: Date? = nil,
         dayHigh: Double? = nil,
         dayLow: Double? = nil,
         fiftyTwoWeekHigh: Double? = nil,
@@ -60,6 +62,7 @@ struct StockQuote: Identifiable, Codable {
         self.regularMarketPreviousClose = regularMarketPreviousClose
         self.currency = currency
         self.marketState = marketState
+        self.regularMarketTime = regularMarketTime
         self.dayHigh = dayHigh
         self.dayLow = dayLow
         self.fiftyTwoWeekHigh = fiftyTwoWeekHigh
@@ -475,7 +478,8 @@ struct SearchResult: Identifiable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case symbol
-        case name = "longname"
+        case longname
+        case shortname
         case exchange
         case type = "quoteType"
     }
@@ -486,9 +490,26 @@ struct SearchResult: Identifiable, Codable {
         // symbol (observed on q=soxl). Decode defensively so one bad row
         // can't throw away every result; callers filter these out later.
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? ""
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        let long = try container.decodeIfPresent(String.self, forKey: .longname)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let short = try container.decodeIfPresent(String.self, forKey: .shortname)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let long, !long.isEmpty {
+            name = long
+        } else if let short, !short.isEmpty {
+            name = short
+        } else {
+            name = ""
+        }
         exchange = try container.decodeIfPresent(String.self, forKey: .exchange) ?? ""
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(symbol, forKey: .symbol)
+        try container.encode(name, forKey: .longname)
+        try container.encode(name, forKey: .shortname)
+        try container.encode(exchange, forKey: .exchange)
+        try container.encode(type, forKey: .type)
     }
 
     init(symbol: String, name: String, exchange: String, type: String) {
@@ -496,5 +517,32 @@ struct SearchResult: Identifiable, Codable {
         self.name = name
         self.exchange = exchange
         self.type = type
+    }
+
+    var displayTitle: String {
+        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if let jpName = StockService.codeToFundNameMap[clean], !jpName.isEmpty {
+            return jpName
+        }
+        if StockService.isDisplayNameAsset(symbol) {
+            if !name.isEmpty && name != symbol {
+                return name
+            }
+            let beautified = StockService.beautifiedSymbol(symbol)
+            if beautified != symbol && !beautified.isEmpty {
+                return beautified
+            }
+        }
+        return symbol
+    }
+
+    var displaySubtitle: String {
+        let clean = symbol.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if StockService.codeToFundNameMap[clean] != nil || StockService.isDisplayNameAsset(symbol) {
+            if displayTitle != symbol {
+                return symbol
+            }
+        }
+        return name
     }
 }
