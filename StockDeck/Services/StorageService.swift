@@ -1751,6 +1751,21 @@ class StorageService: ObservableObject {
               !portfolios[index].isReadOnly else { return }
         let holding = Holding(symbol: symbol, quantity: quantity, avgPrice: avgPrice, purchaseDate: purchaseDate, leverage: leverage)
         portfolios[index].holdings.append(holding)
+
+        let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let scale = StockService.isJapaneseMutualFund(cleanSymbol) ? 10000.0 : 1.0
+        let tx = Transaction(
+            date: purchaseDate ?? Date(),
+            symbol: cleanSymbol,
+            type: .buy,
+            quantity: quantity,
+            price: avgPrice,
+            amount: (quantity * avgPrice) / scale,
+            currency: StockService.detectedCurrency(for: cleanSymbol),
+            notes: "Manual position add"
+        )
+        portfolios[index].transactions.insert(tx, at: 0)
+
         prefetchLogo(symbol)
     }
 
@@ -1943,14 +1958,16 @@ class StorageService: ObservableObject {
 
         portfolios[pIndex].closedTrades.append(closedTrade)
 
+        let cleanSymbol = holding.symbol.uppercased()
+        let scale = StockService.isJapaneseMutualFund(cleanSymbol) ? 10000.0 : 1.0
         let tx = Transaction(
             date: sellDate,
-            symbol: holding.symbol,
+            symbol: cleanSymbol,
             type: .sell,
             quantity: qtyToClose,
             price: sellPrice,
-            amount: qtyToClose * sellPrice,
-            currency: "USD",
+            amount: (qtyToClose * sellPrice) / scale,
+            currency: StockService.detectedCurrency(for: cleanSymbol),
             account: holding.account,
             notes: "Manual position sell"
         )
@@ -1962,6 +1979,87 @@ class StorageService: ObservableObject {
         } else {
             portfolios[pIndex].holdings[hIndex].quantity = remainingQty
         }
+    }
+
+    /// Reconstructs ledger transactions from closed trades and active holdings.
+    static func reconstructTransactions(fromClosedTrades closedTrades: [ClosedTrade], holdings: [Holding]) -> [Transaction] {
+        var results: [Transaction] = []
+
+        // 1. Recover from closed trades (Buy & Sell fills)
+        for ct in closedTrades {
+            guard ct.quantity > 0 else { continue }
+            let scale = StockService.isJapaneseMutualFund(ct.symbol) ? 10000.0 : 1.0
+            if let bDate = ct.buyDate, ct.buyPrice > 0 {
+                let buyTx = Transaction(
+                    date: bDate,
+                    symbol: ct.symbol,
+                    type: .buy,
+                    quantity: ct.quantity,
+                    price: ct.buyPrice,
+                    amount: (ct.quantity * ct.buyPrice) / scale,
+                    currency: StockService.detectedCurrency(for: ct.symbol),
+                    account: ct.account,
+                    notes: "Historical trade fill"
+                )
+                results.append(buyTx)
+            }
+            if let sDate = ct.sellDate, ct.sellPrice > 0 {
+                let sellTx = Transaction(
+                    date: sDate,
+                    symbol: ct.symbol,
+                    type: .sell,
+                    quantity: ct.quantity,
+                    price: ct.sellPrice,
+                    amount: (ct.quantity * ct.sellPrice) / scale,
+                    currency: StockService.detectedCurrency(for: ct.symbol),
+                    account: ct.account,
+                    notes: "Historical trade fill"
+                )
+                results.append(sellTx)
+            }
+        }
+
+        // 2. Recover from active holdings (Buy fills)
+        for h in holdings {
+            guard h.quantity > 0 else { continue }
+            let price = max(0.0, h.avgPrice.isNaN ? 0.0 : h.avgPrice)
+            let scale = StockService.isJapaneseMutualFund(h.symbol) ? 10000.0 : 1.0
+            let buyTx = Transaction(
+                date: h.purchaseDate ?? Date(),
+                symbol: h.symbol,
+                type: .buy,
+                quantity: h.quantity,
+                price: price,
+                amount: (h.quantity * price) / scale,
+                currency: StockService.detectedCurrency(for: h.symbol),
+                account: h.account,
+                notes: "Active position fill"
+            )
+            results.append(buyTx)
+        }
+
+        results.sort { $0.date > $1.date }
+        return results
+    }
+
+    /// Automatically backfills ledger transactions if a manual portfolio has 0 transactions but has holdings or closed trades.
+    @discardableResult
+    func migrateEmptyTransactionsIfNeeded() -> Bool {
+        var didMigrate = false
+        for i in 0..<portfolios.count {
+            guard !portfolios[i].isReadOnly else { continue }
+            guard portfolios[i].transactions.isEmpty else { continue }
+            guard !portfolios[i].closedTrades.isEmpty || !portfolios[i].holdings.isEmpty else { continue }
+
+            let recovered = StorageService.reconstructTransactions(
+                fromClosedTrades: portfolios[i].closedTrades,
+                holdings: portfolios[i].holdings
+            )
+            guard !recovered.isEmpty else { continue }
+            portfolios[i].transactions = recovered
+            didMigrate = true
+        }
+        return didMigrate
     }
 
     func resetToDefaults() {
@@ -2313,6 +2411,7 @@ class StorageService: ObservableObject {
         FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
 
         if isFromSync {
+            migrateEmptyTransactionsIfNeeded()
             isLoading = false
             performSave()
         }
@@ -2361,6 +2460,9 @@ class StorageService: ObservableObject {
             let data = try Data(contentsOf: fileURL)
             let decoded = try JSONDecoder().decode(AppData.self, from: data)
             applyAppData(decoded, isFromSync: false)
+            if migrateEmptyTransactionsIfNeeded() {
+                performSave()
+            }
         } catch {
             decodeFailure = true
             let formatter = DateFormatter()

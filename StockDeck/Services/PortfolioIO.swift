@@ -181,16 +181,24 @@ enum PortfolioIO {
             if !portfolios.isEmpty {
                 var allItems: [ParsedImportItem] = []
                 var allClosed: [ClosedTrade] = []
+                var allTransactions: [Transaction] = []
                 for p in portfolios {
                     for h in p.holdings {
                         let isFund = StockService.isJapaneseMutualFund(h.symbol)
                         allItems.append(ParsedImportItem(holding: h, isChecked: true, isFund: isFund, originalAccountName: p.name))
                     }
                     allClosed.append(contentsOf: p.closedTrades)
+                    allTransactions.append(contentsOf: p.transactions)
                 }
                 let suggestedName = suggestedNames.first
                 let isFundImport = !allItems.isEmpty && allItems.allSatisfy { $0.isFund }
-                return .success(ImportResult(items: allItems, closedTrades: allClosed, suggestedPortfolioName: suggestedName, isFundImport: isFundImport))
+                return .success(ImportResult(
+                    items: allItems,
+                    closedTrades: allClosed,
+                    transactions: allTransactions,
+                    suggestedPortfolioName: suggestedName,
+                    isFundImport: isFundImport
+                ))
             } else {
                 return .allTradesClosed(tradesCount: allBrokerRecords.count)
             }

@@ -1138,14 +1138,16 @@ enum SpreadsheetIO {
 
                 lots.append(PositionLot(symbol: rec.symbol, qty: rec.qty, unitPrice: actualUnitPrice, date: actualDate))
 
+                let buyPrice = actualUnitPrice > 0 ? actualUnitPrice : rec.unitPrice
+                let scale = StockService.isJapaneseMutualFund(rec.symbol) ? 10000.0 : 1.0
                 let tx = Transaction(
                     date: actualDate ?? rec.date ?? Date(),
                     symbol: rec.symbol,
                     type: txType,
                     quantity: rec.qty,
-                    price: actualUnitPrice > 0 ? actualUnitPrice : rec.unitPrice,
-                    amount: rec.qty * (actualUnitPrice > 0 ? actualUnitPrice : rec.unitPrice),
-                    currency: "USD",
+                    price: buyPrice,
+                    amount: (rec.qty * buyPrice) / scale,
+                    currency: StockService.detectedCurrency(for: rec.symbol),
                     account: rec.account,
                     notes: rec.isTransferIn ? "Transfer In (入庫)" : nil
                 )
