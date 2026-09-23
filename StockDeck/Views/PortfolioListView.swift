@@ -647,6 +647,10 @@ struct PortfolioSection: View {
         PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
     }
 
+    private func exportSingleMD() {
+        PortfolioIO.exportAllMarkdown([portfolio], restoreActivationPolicy: true)
+    }
+
     private var currSymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
@@ -833,6 +837,9 @@ struct PortfolioSection: View {
                         }
                         Button(action: exportSingle) {
                             Label("Export (XLSX)", systemImage: "square.and.arrow.up")
+                        }
+                        Button(action: exportSingleMD) {
+                            Label("Export (Markdown)", systemImage: "doc.text")
                         }
                         Divider()
                         Button(role: .destructive) {

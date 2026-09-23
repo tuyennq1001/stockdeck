@@ -12,7 +12,11 @@ struct ImportExportWideView: View {
     let onDownloadJapaneseFundSample: () -> Void
     let onDownloadWatchlistSample: () -> Void
     let onExportPortfolios: () -> Void
+    let onExportPortfoliosMD: () -> Void
     let onExportWatchlists: () -> Void
+    let onExportWatchlistsMD: () -> Void
+    let onExportTransactions: () -> Void
+    let onExportTransactionsMD: () -> Void
 
     var body: some View {
         ScrollView {
@@ -113,26 +117,35 @@ struct ImportExportWideView: View {
 
                 // Section 3: Export Data
                 HubTableSection(sectionTitle: "EXPORT DATA", actionHeader: "EXPORT ACTION") {
-                    HubTableRow(
+                    HubExportTableRow(
                         index: "1",
                         icon: "star.fill",
                         title: "Export Watchlists",
-                        subtitle: "Export all your watchlists and symbols to Excel (.xlsx)",
-                        buttonIcon: "square.and.arrow.up",
-                        buttonTitle: "Export Watchlists…",
-                        action: onExportWatchlists
+                        subtitle: "Export all your watchlists and symbols to Excel (.xlsx) or AI-friendly Markdown (.md)",
+                        onExportXLSX: onExportWatchlists,
+                        onExportMD: onExportWatchlistsMD
                     )
 
                     Divider().overlay(DS.hairline)
 
-                    HubTableRow(
+                    HubExportTableRow(
                         index: "2",
                         icon: "briefcase.fill",
                         title: "Export Portfolios",
-                        subtitle: "Export all your portfolios and holdings to Excel (.xlsx)",
-                        buttonIcon: "square.and.arrow.up",
-                        buttonTitle: "Export Portfolios…",
-                        action: onExportPortfolios
+                        subtitle: "Export all your portfolios and holdings to Excel (.xlsx) or AI-friendly Markdown (.md)",
+                        onExportXLSX: onExportPortfolios,
+                        onExportMD: onExportPortfoliosMD
+                    )
+
+                    Divider().overlay(DS.hairline)
+
+                    HubExportTableRow(
+                        index: "3",
+                        icon: "doc.text.fill",
+                        title: "Export Transactions",
+                        subtitle: "Export all your logged transactions and broker trade history to Excel (.xlsx) or AI-friendly Markdown (.md)",
+                        onExportXLSX: onExportTransactions,
+                        onExportMD: onExportTransactionsMD
                     )
                 }
             }
@@ -373,6 +386,69 @@ private struct HubTableRow: View {
             .controlSize(.small)
             .pointingHandCursor()
             .frame(width: 160, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+private struct HubExportTableRow: View {
+    let index: String
+    let icon: String
+    let title: String
+    let subtitle: String
+    let onExportXLSX: () -> Void
+    let onExportMD: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(index)
+                .font(.inter(12, weight: .medium, relativeTo: .caption).monospacedDigit())
+                .foregroundStyle(DS.inkTertiary)
+                .frame(width: 32, alignment: .center)
+
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(DS.brand)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(DS.brand.opacity(0.08)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.inter(13, weight: .semibold, relativeTo: .body))
+                    .foregroundStyle(DS.ink)
+                Text(subtitle)
+                    .font(DS.micro)
+                    .foregroundStyle(DS.inkSecondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                Button(action: onExportXLSX) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "tablecells")
+                            .font(.system(size: 11))
+                        Text("Excel (.xlsx)")
+                            .font(DS.caption)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .pointingHandCursor()
+
+                Button(action: onExportMD) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 11))
+                        Text("Markdown (.md)")
+                            .font(DS.caption)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .pointingHandCursor()
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

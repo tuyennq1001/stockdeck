@@ -664,7 +664,11 @@ struct PortfolioWindowView: View {
                 onDownloadJapaneseFundSample: { downloadJapaneseFundSampleFile() },
                 onDownloadWatchlistSample: { downloadWatchlistSampleFile() },
                 onExportPortfolios: { exportPortfolios(storageService.portfolios) },
-                onExportWatchlists: { exportWatchlists(storageService.watchlists) }
+                onExportPortfoliosMD: { exportPortfoliosMD(storageService.portfolios) },
+                onExportWatchlists: { exportWatchlists(storageService.watchlists) },
+                onExportWatchlistsMD: { exportWatchlistsMD(storageService.watchlists) },
+                onExportTransactions: { exportTransactions(storageService.portfolios) },
+                onExportTransactionsMD: { exportTransactionsMD(storageService.portfolios) }
             )
         case .portfoliosAll:
             NavigationStack(path: $portfolioPath) {
@@ -702,8 +706,24 @@ struct PortfolioWindowView: View {
         PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: false)
     }
 
+    private func exportPortfoliosMD(_ portfolios: [Portfolio]) {
+        PortfolioIO.exportAllMarkdown(portfolios, restoreActivationPolicy: false)
+    }
+
     private func exportWatchlists(_ watchlists: [Watchlist]) {
         PortfolioIO.exportWatchlists(watchlists, stockService: stockService, restoreActivationPolicy: false)
+    }
+
+    private func exportWatchlistsMD(_ watchlists: [Watchlist]) {
+        PortfolioIO.exportWatchlistsMarkdown(watchlists, stockService: stockService, restoreActivationPolicy: false)
+    }
+
+    private func exportTransactions(_ portfolios: [Portfolio]) {
+        PortfolioIO.exportTransactions(portfolios, restoreActivationPolicy: false)
+    }
+
+    private func exportTransactionsMD(_ portfolios: [Portfolio]) {
+        PortfolioIO.exportTransactionsMarkdown(portfolios, restoreActivationPolicy: false)
     }
 
     private func importStandard() {

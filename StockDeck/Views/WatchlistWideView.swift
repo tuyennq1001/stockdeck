@@ -580,18 +580,28 @@ struct WatchlistWideView: View {
             Spacer()
 
             if !isCompact {
-                Button {
-                    PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+                Menu {
+                    Button {
+                        PortfolioIO.exportWatchlists(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+                    } label: {
+                        Label("Excel (.xlsx)", systemImage: "tablecells")
+                    }
+                    Button {
+                        PortfolioIO.exportWatchlistsMarkdown(storageService.watchlists, stockService: stockService, restoreActivationPolicy: false)
+                    } label: {
+                        Label("Markdown (.md)", systemImage: "doc.text")
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .medium))
                         Text("Export").font(DS.caption)
+                        Image(systemName: "chevron.down").font(.system(size: 8))
                     }
                     .foregroundStyle(DS.inkSecondary)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
                 .pointingHandCursor()
 
                 Button { showMetricCustomizer = true } label: {
