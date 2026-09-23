@@ -120,10 +120,15 @@ struct ContentView: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.openWindowAction) private var openWindowAction
     @Namespace private var tabAnimation
-    @State private var selectedTab: Tab = .watchlist
+    @State private var selectedTab: Tab
     @State private var showSearch = false
     @State private var addHoldingPortfolioId: UUID?
     @State private var selectedDetailSymbol: String?
+
+    init(storageService: StorageService = .shared) {
+        let initialTab = Tab.resolve(stored: storageService.lastSelectedTab)
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         Group {

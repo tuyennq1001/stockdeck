@@ -990,7 +990,17 @@ class StorageService: ObservableObject {
         }
     }
 
-    var lastSelectedTab: String = "Watchlist"
+    @Published var lastSelectedTab: String = {
+        if let stored = UserDefaults.standard.string(forKey: "lastSelectedTab") {
+            return stored == "Watchlist" ? "Watchlists" : stored
+        }
+        return "Watchlists"
+    }() {
+        didSet {
+            UserDefaults.standard.set(lastSelectedTab, forKey: "lastSelectedTab")
+            scheduleSave()
+        }
+    }
 
     static let supportedCurrencies = ["EUR", "USD", "GBP", "CHF", "JPY", "VND", "CAD", "AUD"]
 
@@ -2087,7 +2097,8 @@ class StorageService: ObservableObject {
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
         symbolNotes = [:]
-        lastSelectedTab = "Watchlist"
+        lastSelectedTab = "Watchlists"
+        UserDefaults.standard.removeObject(forKey: "lastSelectedTab")
         aiBaseURL = "https://api.openai.com/v1"
         aiModel = "gpt-4o-mini"
         aiProvider = "openai"
@@ -2221,6 +2232,7 @@ class StorageService: ObservableObject {
         var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
         var portfolioPositionSorts: [String: String]?
+        var lastSelectedTab: String?
         var menuBarShortcut: MenuBarShortcut?
         var desktopAppShortcut: MenuBarShortcut?
         var iCloudSyncEnabled: Bool?
@@ -2282,6 +2294,7 @@ class StorageService: ObservableObject {
             investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
             portfolioPositionSorts: portfolioPositionSorts,
+            lastSelectedTab: lastSelectedTab,
             menuBarShortcut: menuBarShortcut,
             desktopAppShortcut: desktopAppShortcut,
             iCloudSyncEnabled: iCloudSyncEnabled,
@@ -2397,6 +2410,9 @@ class StorageService: ObservableObject {
         investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
+        if let tab = decoded.lastSelectedTab ?? UserDefaults.standard.string(forKey: "lastSelectedTab") {
+            lastSelectedTab = (tab == "Watchlist") ? "Watchlists" : tab
+        }
         menuBarShortcut = decoded.menuBarShortcut
         desktopAppShortcut = decoded.desktopAppShortcut
         let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
