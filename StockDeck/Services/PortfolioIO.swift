@@ -44,6 +44,32 @@ enum PortfolioIO {
         }
     }
 
+    /// Presents an NSSavePanel and writes the exported Markdown (.md) on confirm.
+    static func exportAllMarkdown(_ portfolios: [Portfolio], restoreActivationPolicy: Bool) {
+        guard let data = SpreadsheetIO.generatePortfoliosMarkdownData(portfolios) else { return }
+        let panel = NSSavePanel()
+        if let mdType = UTType(filenameExtension: "md") {
+            panel.allowedContentTypes = [mdType]
+        }
+        let name = portfolios.count == 1 ? portfolios[0].name : "StockDeck Portfolios"
+        panel.nameFieldStringValue = "\(name).md"
+        panel.title = "Export Portfolios (Markdown)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     /// Presents an NSSavePanel and writes the exported watchlists XLSX on confirm.
     static func exportWatchlists(_ watchlists: [Watchlist], stockService: StockService, restoreActivationPolicy: Bool) {
         guard let data = SpreadsheetIO.generateWatchlistsXLSXData(watchlists: watchlists, stockService: stockService) else { return }
@@ -54,6 +80,84 @@ enum PortfolioIO {
         let name = watchlists.count == 1 ? watchlists[0].name : "StockDeck Watchlists"
         panel.nameFieldStringValue = "\(name).xlsx"
         panel.title = "Export Watchlists (XLSX)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Presents an NSSavePanel and writes the exported watchlists Markdown (.md) on confirm.
+    static func exportWatchlistsMarkdown(_ watchlists: [Watchlist], stockService: StockService, restoreActivationPolicy: Bool) {
+        guard let data = SpreadsheetIO.generateWatchlistsMarkdownData(watchlists: watchlists, stockService: stockService) else { return }
+        let panel = NSSavePanel()
+        if let mdType = UTType(filenameExtension: "md") {
+            panel.allowedContentTypes = [mdType]
+        }
+        let name = watchlists.count == 1 ? watchlists[0].name : "StockDeck Watchlists"
+        panel.nameFieldStringValue = "\(name).md"
+        panel.title = "Export Watchlists (Markdown)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Presents an NSSavePanel and writes the exported transactions XLSX on confirm.
+    static func exportTransactions(_ portfolios: [Portfolio], restoreActivationPolicy: Bool) {
+        guard let data = SpreadsheetIO.generateTransactionsXLSXData(portfolios) else { return }
+        let panel = NSSavePanel()
+        if let xlsxType = UTType(filenameExtension: "xlsx") {
+            panel.allowedContentTypes = [xlsxType]
+        }
+        let name = portfolios.count == 1 ? "\(portfolios[0].name) Transactions" : "StockDeck Transactions"
+        panel.nameFieldStringValue = "\(name).xlsx"
+        panel.title = "Export Transactions (XLSX)"
+        if restoreActivationPolicy {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        panel.begin { response in
+            if restoreActivationPolicy {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+            guard response == .OK, let url = panel.url else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Presents an NSSavePanel and writes the exported transactions Markdown (.md) on confirm.
+    static func exportTransactionsMarkdown(_ portfolios: [Portfolio], restoreActivationPolicy: Bool) {
+        guard let data = SpreadsheetIO.generateTransactionsMarkdownData(portfolios) else { return }
+        let panel = NSSavePanel()
+        if let mdType = UTType(filenameExtension: "md") {
+            panel.allowedContentTypes = [mdType]
+        }
+        let name = portfolios.count == 1 ? "\(portfolios[0].name) Transactions" : "StockDeck Transactions"
+        panel.nameFieldStringValue = "\(name).md"
+        panel.title = "Export Transactions (Markdown)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -91,9 +195,15 @@ enum PortfolioIO {
         if let xlsxType = UTType(filenameExtension: "xlsx") {
             types.append(xlsxType)
         }
+        if let mdType = UTType(filenameExtension: "md") {
+            types.append(mdType)
+        }
+        if let markdownType = UTType(filenameExtension: "markdown") {
+            types.append(markdownType)
+        }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = true
-        panel.title = "Import Portfolios (CSV, XLSX, JSON)"
+        panel.title = "Import Portfolios (CSV, XLSX, JSON, MD)"
         if restoreActivationPolicy {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -132,6 +242,12 @@ enum PortfolioIO {
         var types: [UTType] = [.commaSeparatedText, .plainText, .data]
         if let xlsxType = UTType(filenameExtension: "xlsx") {
             types.append(xlsxType)
+        }
+        if let mdType = UTType(filenameExtension: "md") {
+            types.append(mdType)
+        }
+        if let markdownType = UTType(filenameExtension: "markdown") {
+            types.append(markdownType)
         }
         panel.allowedContentTypes = types
         panel.allowsMultipleSelection = true

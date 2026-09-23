@@ -56,12 +56,14 @@ enum SpreadsheetIO {
             sheetDataXML += "    <row r=\"\(rowNum)\">\n"
             for (cIdx, val) in row.enumerated() {
                 let colLetter = columnLetter(cIdx + 1)
-                let escaped = escapeXML(val)
-                // Only numeric if round-trip String(Double(val)) matches original.
-                // Prevents "7203" → "7203.0" which breaks JP stock re-import.
-                if let num = Double(val), String(num) == val {
+                let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty || trimmed.lowercased() == "nan" || trimmed.lowercased() == "inf" {
+                    sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"/>\n"
+                } else if let num = Double(trimmed), num.isFinite, !trimmed.lowercased().contains("nan"), !trimmed.lowercased().contains("inf"),
+                          (String(num) == trimmed || (Int(trimmed) != nil && cIdx != 1)) {
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\"><v>\(num)</v></c>\n"
                 } else {
+                    let escaped = escapeXML(val)
                     sheetDataXML += "      <c r=\"\(colLetter)\(rowNum)\" t=\"inlineStr\"><is><t>\(escaped)</t></is></c>\n"
                 }
             }
@@ -130,10 +132,66 @@ enum SpreadsheetIO {
         for p in portfolios {
             for h in p.holdings {
                 let dateStr = h.purchaseDate.map { df.string(from: $0) } ?? ""
-                rows.append([p.name, h.symbol, String(h.quantity), String(h.avgPrice), dateStr, String(h.effectiveLeverage)])
+                let priceStr: String
+                if h.avgPrice.isFinite && h.avgPrice > 0 {
+                    priceStr = h.avgPrice.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(h.avgPrice)) : String(h.avgPrice)
+                } else {
+                    priceStr = ""
+                }
+                let qtyStr = h.quantity.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(h.quantity)) : String(h.quantity)
+                let levStr = h.effectiveLeverage == 1.0 ? "1" : String(h.effectiveLeverage)
+                rows.append([p.name, h.symbol, qtyStr, priceStr, dateStr, levStr])
             }
         }
         return generateXLSXData(headers: headers, rows: rows)
+    }
+
+    /// Generates Markdown string for portfolios (optimized for AI/LLMs).
+    static func generatePortfoliosMarkdownString(_ portfolios: [Portfolio]) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let displayDF = DateFormatter()
+        displayDF.dateFormat = "yyyy-MM-dd HH:mm"
+        let nowStr = displayDF.string(from: Date())
+
+        let totalHoldings = portfolios.reduce(0) { $0 + $1.holdings.count }
+
+        var md = "# StockDeck Portfolios Export\n\n"
+        md += "> **Export Date:** \(nowStr) | **Portfolios:** \(portfolios.count) | **Total Positions:** \(totalHoldings)\n\n"
+        md += "| Portfolio Name | Symbol | Quantity | Avg Price | Purchase Date | Leverage | Asset Type |\n"
+        md += "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
+
+        for p in portfolios {
+            for h in p.holdings {
+                let dateStr = h.purchaseDate.map { df.string(from: $0) } ?? ""
+                let priceStr: String
+                if h.avgPrice.isFinite && h.avgPrice > 0 {
+                    priceStr = h.avgPrice.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(h.avgPrice)) : String(h.avgPrice)
+                } else {
+                    priceStr = ""
+                }
+                let qtyStr = h.quantity.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(h.quantity)) : String(h.quantity)
+                let levStr = h.effectiveLeverage == 1.0 ? "1" : String(h.effectiveLeverage)
+                let assetType: String
+                if h.isJapaneseFund || StockService.isJapaneseMutualFund(h.symbol) {
+                    assetType = "投資信託 (基準価額 / 10,000口)"
+                } else if h.symbol.contains("-USD") || h.symbol.contains("-EUR") || h.symbol.contains("-USDT") {
+                    assetType = "Crypto"
+                } else if h.symbol.hasSuffix(".T") {
+                    assetType = "JP Stock"
+                } else {
+                    assetType = "Stock / ETF"
+                }
+
+                md += "| \(p.name) | \(h.symbol) | \(qtyStr) | \(priceStr) | \(dateStr) | \(levStr) | \(assetType) |\n"
+            }
+        }
+        return md
+    }
+
+    /// Generates Markdown Data for portfolios.
+    static func generatePortfoliosMarkdownData(_ portfolios: [Portfolio]) -> Data? {
+        generatePortfoliosMarkdownString(portfolios).data(using: .utf8)
     }
 
     /// Generates .xlsx file data for watchlists.
@@ -144,17 +202,220 @@ enum SpreadsheetIO {
         for wl in watchlists {
             for sym in wl.symbols {
                 let q = stockService.quotes[sym]
+                let priceStr = (q?.price.isFinite == true) ? String(q!.price) : ""
+                let changeStr = (q?.change.isFinite == true) ? String(q!.change) : ""
+                let changePctStr = (q?.changePercent.isFinite == true) ? String(format: "%.2f", q!.changePercent) : ""
                 rows.append([
                     wl.name,
                     sym,
                     q?.name ?? "",
-                    q.map { String($0.price) } ?? "",
-                    q.map { String($0.change) } ?? "",
-                    q.map { String(format: "%.2f", $0.changePercent) } ?? ""
+                    priceStr,
+                    changeStr,
+                    changePctStr
                 ])
             }
         }
         return generateXLSXData(headers: headers, rows: rows)
+    }
+
+    /// Generates Markdown string for watchlists.
+    @MainActor
+    static func generateWatchlistsMarkdownString(watchlists: [Watchlist], stockService: StockService) -> String {
+        let displayDF = DateFormatter()
+        displayDF.dateFormat = "yyyy-MM-dd HH:mm"
+        let nowStr = displayDF.string(from: Date())
+        let totalSymbols = watchlists.reduce(0) { $0 + $1.symbols.count }
+
+        var md = "# StockDeck Watchlists Export\n\n"
+        md += "> **Export Date:** \(nowStr) | **Watchlists:** \(watchlists.count) | **Total Symbols:** \(totalSymbols)\n\n"
+        md += "| Watchlist Name | Symbol | Name | Price | Change | Change % |\n"
+        md += "| :--- | :--- | :--- | :--- | :--- | :--- |\n"
+
+        for wl in watchlists {
+            for sym in wl.symbols {
+                let q = stockService.quotes[sym]
+                let name = q?.name ?? ""
+                let priceStr = (q?.price.isFinite == true) ? String(format: "%.2f", q!.price) : ""
+                let changeStr: String
+                if let ch = q?.change, ch.isFinite {
+                    changeStr = ch >= 0 ? "+\(String(format: "%.2f", ch))" : String(format: "%.2f", ch)
+                } else {
+                    changeStr = ""
+                }
+                let changePctStr: String
+                if let pct = q?.changePercent, pct.isFinite {
+                    changePctStr = pct >= 0 ? "+\(String(format: "%.2f", pct))%" : "\(String(format: "%.2f", pct))%"
+                } else {
+                    changePctStr = ""
+                }
+                md += "| \(wl.name) | \(sym) | \(name) | \(priceStr) | \(changeStr) | \(changePctStr) |\n"
+            }
+        }
+        return md
+    }
+
+    /// Generates Markdown Data for watchlists.
+    @MainActor
+    static func generateWatchlistsMarkdownData(watchlists: [Watchlist], stockService: StockService) -> Data? {
+        generateWatchlistsMarkdownString(watchlists: watchlists, stockService: stockService).data(using: .utf8)
+    }
+
+    /// Generates .xlsx file data for transactions across portfolios.
+    static func generateTransactionsXLSXData(_ portfolios: [Portfolio]) -> Data? {
+        let headers = [
+            "Date",
+            "Portfolio Name",
+            "Symbol",
+            "Type",
+            "Quantity",
+            "Price",
+            "Total Amount",
+            "Currency",
+            "Fee",
+            "Tax",
+            "Account",
+            "Notes"
+        ]
+
+        var allTxs: [(tx: Transaction, portfolioName: String)] = []
+        for p in portfolios {
+            for tx in p.transactions {
+                allTxs.append((tx: tx, portfolioName: p.name))
+            }
+        }
+        allTxs.sort { $0.tx.date > $1.tx.date }
+
+        var rows: [[String]] = []
+        for item in allTxs {
+            let tx = item.tx
+            let dateStr = TradeDateKey.ymdString(from: tx.date)
+            let qtyStr = tx.quantity.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tx.quantity)) : String(tx.quantity)
+            let priceStr: String
+            if tx.price.isFinite && tx.price >= 0 {
+                priceStr = tx.price.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tx.price)) : String(tx.price)
+            } else {
+                priceStr = ""
+            }
+            let amountStr: String
+            let effAmt = tx.effectiveAmount
+            if effAmt.isFinite && effAmt >= 0 {
+                amountStr = effAmt.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(effAmt)) : String(format: "%.2f", effAmt)
+            } else {
+                amountStr = ""
+            }
+            let feeStr: String
+            if let fee = tx.fee, fee > 0 {
+                feeStr = fee.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(fee)) : String(format: "%.2f", fee)
+            } else {
+                feeStr = ""
+            }
+            let taxStr: String
+            if let tax = tx.tax, tax > 0 {
+                taxStr = tax.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tax)) : String(format: "%.2f", tax)
+            } else {
+                taxStr = ""
+            }
+            let acctStr = tx.account ?? ""
+            let notesStr = tx.notes ?? ""
+
+            rows.append([
+                dateStr,
+                item.portfolioName,
+                tx.symbol,
+                tx.type.displayName,
+                qtyStr,
+                priceStr,
+                amountStr,
+                tx.effectiveCurrency,
+                feeStr,
+                taxStr,
+                acctStr,
+                notesStr
+            ])
+        }
+        return generateXLSXData(headers: headers, rows: rows)
+    }
+
+    /// Generates Markdown string for transactions (optimized for AI/LLMs).
+    static func generateTransactionsMarkdownString(_ portfolios: [Portfolio]) -> String {
+        let displayDF = DateFormatter()
+        displayDF.dateFormat = "yyyy-MM-dd HH:mm"
+        let nowStr = displayDF.string(from: Date())
+
+        var allTxs: [(tx: Transaction, portfolioName: String)] = []
+        for p in portfolios {
+            for tx in p.transactions {
+                allTxs.append((tx: tx, portfolioName: p.name))
+            }
+        }
+        allTxs.sort { $0.tx.date > $1.tx.date }
+
+        var md = "# StockDeck Transactions Export\n\n"
+        md += "> **Export Date:** \(nowStr) | **Portfolios:** \(portfolios.count) | **Total Transactions:** \(allTxs.count)\n\n"
+        md += "| Date | Portfolio Name | Symbol | Type | Quantity | Price | Total Amount | Currency | Fee | Tax | Account | Notes |\n"
+        md += "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n"
+
+        for item in allTxs {
+            let tx = item.tx
+            let dateStr = TradeDateKey.ymdString(from: tx.date)
+            let qtyStr = tx.quantity.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tx.quantity)) : String(tx.quantity)
+            let priceStr: String
+            if tx.price.isFinite && tx.price >= 0 {
+                priceStr = tx.price.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tx.price)) : String(tx.price)
+            } else {
+                priceStr = "-"
+            }
+            let amountStr: String
+            let effAmt = tx.effectiveAmount
+            if effAmt.isFinite && effAmt >= 0 {
+                amountStr = effAmt.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(effAmt)) : String(format: "%.2f", effAmt)
+            } else {
+                amountStr = "-"
+            }
+            let feeStr: String
+            if let fee = tx.fee, fee > 0 {
+                feeStr = fee.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(fee)) : String(format: "%.2f", fee)
+            } else {
+                feeStr = "-"
+            }
+            let taxStr: String
+            if let tax = tx.tax, tax > 0 {
+                taxStr = tax.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(tax)) : String(format: "%.2f", tax)
+            } else {
+                taxStr = "-"
+            }
+            let acctStr = (tx.account?.isEmpty == false) ? tx.account! : "-"
+            let rawNotes = tx.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let notesStr = rawNotes.isEmpty ? "-" : rawNotes.replacingOccurrences(of: "|", with: "\\|")
+
+            md += "| \(dateStr) | \(item.portfolioName) | \(tx.symbol) | \(tx.type.displayName) | \(qtyStr) | \(priceStr) | \(amountStr) | \(tx.effectiveCurrency) | \(feeStr) | \(taxStr) | \(acctStr) | \(notesStr) |\n"
+        }
+        return md
+    }
+
+    /// Generates Markdown Data for transactions.
+    static func generateTransactionsMarkdownData(_ portfolios: [Portfolio]) -> Data? {
+        generateTransactionsMarkdownString(portfolios).data(using: .utf8)
+    }
+
+
+    /// Parses Markdown tables into standard portfolio rows.
+    static func parseMarkdownPortfolios(content: String) -> [Portfolio]? {
+        let lines = content.components(separatedBy: .newlines)
+        var rows: [[String]] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("|") && trimmed.hasSuffix("|") else { continue }
+            let inner = String(trimmed.dropFirst().dropLast())
+            let parts = inner.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            let isSeparator = parts.allSatisfy { cell in
+                !cell.isEmpty && cell.allSatisfy { $0 == "-" || $0 == ":" || $0 == " " }
+            }
+            if isSeparator { continue }
+            rows.append(parts)
+        }
+        guard !rows.isEmpty else { return nil }
+        return convertRowsToPortfolios(rows: rows)
     }
 
     /// Generates a valid .xlsx file data with sample portfolios and holdings.
@@ -434,7 +695,7 @@ enum SpreadsheetIO {
         }
     }
 
-    /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON).
+    /// Option 1: Standard symbol/portfolio file import (XLSX, CSV, JSON, MD).
     static func parseStandardPortfolios(from fileURL: URL) -> [Portfolio]? {
         let ext = fileURL.pathExtension.lowercased()
         if ext == "xlsx" {
@@ -442,6 +703,9 @@ enum SpreadsheetIO {
         } else if ext == "csv" {
             guard let content = readTextFile(url: fileURL) else { return nil }
             return parseStandardCSV(content: content)
+        } else if ext == "md" || ext == "markdown" {
+            guard let content = readTextFile(url: fileURL) else { return nil }
+            return parseMarkdownPortfolios(content: content)
         }
         return nil
     }
@@ -1289,7 +1553,15 @@ enum SpreadsheetIO {
             let qtyStr = r[2].replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
             let priceStr = r[3].replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
 
-            guard let qty = Double(qtyStr), let price = Double(priceStr), price >= 0 else { continue }
+            guard let qty = Double(qtyStr) else { continue }
+            let price: Double
+            if priceStr.isEmpty || priceStr == "-" || priceStr.lowercased() == "nan" {
+                price = .nan
+            } else if let p = Double(priceStr), p >= 0 {
+                price = p
+            } else {
+                continue
+            }
 
             var pDate: Date? = nil
             if r.count > 4, !r[4].isEmpty {
