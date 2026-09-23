@@ -24,4 +24,44 @@ final class TabVisibilityTests: XCTestCase {
         XCTAssertEqual(Tab.resolve(stored: "Portfolios"), .portfolios)
         XCTAssertEqual(Tab.resolve(stored: "garbage"), .home)
     }
+
+    @MainActor
+    private func createIsolatedStorage() -> StorageService {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        return StorageService(fileURL: tempDir.appendingPathComponent("test_stockdeck.json"))
+    }
+
+    @MainActor
+    func testLastSelectedTabPersistenceRoundTrip() {
+        let storage = createIsolatedStorage()
+        storage.lastSelectedTab = "Portfolios"
+        let exported = storage.exportAppData()
+        XCTAssertEqual(exported.lastSelectedTab, "Portfolios")
+
+        let newStorage = createIsolatedStorage()
+        newStorage.applyAppData(exported)
+        XCTAssertEqual(newStorage.lastSelectedTab, "Portfolios")
+    }
+
+    @MainActor
+    func testLastSelectedTabLegacyWatchlistNormalization() {
+        let storage = createIsolatedStorage()
+        var appData = storage.exportAppData()
+        appData.lastSelectedTab = "Watchlist"
+        storage.applyAppData(appData)
+        XCTAssertEqual(storage.lastSelectedTab, "Watchlists")
+    }
+
+    @MainActor
+    func testLastSelectedTabUserDefaultsFallback() {
+        UserDefaults.standard.set("Settings", forKey: "lastSelectedTab")
+        defer { UserDefaults.standard.removeObject(forKey: "lastSelectedTab") }
+
+        let storage = createIsolatedStorage()
+        var appData = storage.exportAppData()
+        appData.lastSelectedTab = nil
+        storage.applyAppData(appData)
+        XCTAssertEqual(storage.lastSelectedTab, "Settings")
+    }
 }
