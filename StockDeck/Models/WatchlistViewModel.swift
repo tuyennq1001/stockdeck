@@ -73,7 +73,15 @@ final class WatchlistViewModel {
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
             let history = stockService.watchlistHistory[symbol] ?? []
             let allTimeHistory = stockService.priceHistoryMax[symbol] ?? []
-            let histForPeriods = allTimeHistory.isEmpty ? history : allTimeHistory
+            
+            // Prefer high-resolution daily closes when available for the boundary date;
+            // fall back to all-time monthly history for periods extending beyond daily coverage (e.g. 10Y).
+            func series(covering boundary: Date) -> [PricePoint] {
+                if let first = history.first?.date, first <= boundary {
+                    return history
+                }
+                return allTimeHistory.isEmpty ? history : allTimeHistory
+            }
             
             let regularPrice = q?.price ?? 0
             let convPrice = regularPrice * rate
@@ -137,15 +145,15 @@ final class WatchlistViewModel {
                 extLabel: q?.marketStateLabel ?? "",
                 change: (q?.change ?? 0) * rate,
                 changePercent: q?.changePercent ?? 0,
-                oneMonthChangePercent: PriceHistory.percentChange(points: history, currentPrice: regularPrice, since: monthStart),
-                threeMonthChangePercent: PriceHistory.percentChange(points: history, currentPrice: regularPrice, since: threeMonthStart),
-                sixMonthChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: sixMonthStart),
-                ytdChangePercent: PriceHistory.percentChange(points: history, currentPrice: regularPrice, since: yearStart),
-                oneYearChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: oneYearStart),
-                twoYearChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: twoYearStart),
-                threeYearChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: threeYearStart),
-                fiveYearChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: fiveYearStart),
-                tenYearChangePercent: PriceHistory.percentChange(points: histForPeriods, currentPrice: regularPrice, since: tenYearStart),
+                oneMonthChangePercent: PriceHistory.percentChange(points: series(covering: monthStart), currentPrice: regularPrice, since: monthStart),
+                threeMonthChangePercent: PriceHistory.percentChange(points: series(covering: threeMonthStart), currentPrice: regularPrice, since: threeMonthStart),
+                sixMonthChangePercent: PriceHistory.percentChange(points: series(covering: sixMonthStart), currentPrice: regularPrice, since: sixMonthStart),
+                ytdChangePercent: PriceHistory.percentChange(points: series(covering: yearStart), currentPrice: regularPrice, since: yearStart),
+                oneYearChangePercent: PriceHistory.percentChange(points: series(covering: oneYearStart), currentPrice: regularPrice, since: oneYearStart),
+                twoYearChangePercent: PriceHistory.percentChange(points: series(covering: twoYearStart), currentPrice: regularPrice, since: twoYearStart),
+                threeYearChangePercent: PriceHistory.percentChange(points: series(covering: threeYearStart), currentPrice: regularPrice, since: threeYearStart),
+                fiveYearChangePercent: PriceHistory.percentChange(points: series(covering: fiveYearStart), currentPrice: regularPrice, since: fiveYearStart),
+                tenYearChangePercent: PriceHistory.percentChange(points: series(covering: tenYearStart), currentPrice: regularPrice, since: tenYearStart),
                 allTimeHigh: athVal,
                 allTimeLow: atlVal,
                 fromAthPercent: fromAth,

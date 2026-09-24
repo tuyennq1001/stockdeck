@@ -34,6 +34,30 @@ struct PriceChartCard: View {
             case .all: return nil
             }
         }
+
+        /// Calendar-accurate period start date matching Watchlist and Portfolio benchmark metrics.
+        func startDate(from now: Date = Date(), calendar: Calendar = .current) -> Date? {
+            switch self {
+            case .week:
+                return calendar.date(byAdding: .day, value: -7, to: now)
+            case .month:
+                return calendar.date(byAdding: .month, value: -1, to: now)
+            case .threeMonths:
+                return calendar.date(byAdding: .month, value: -3, to: now)
+            case .sixMonths:
+                return calendar.date(byAdding: .month, value: -6, to: now)
+            case .ytd:
+                return calendar.date(from: calendar.dateComponents([.year], from: now))
+            case .year:
+                return calendar.date(byAdding: .year, value: -1, to: now)
+            case .threeYears:
+                return calendar.date(byAdding: .year, value: -3, to: now)
+            case .fiveYears:
+                return calendar.date(byAdding: .year, value: -5, to: now)
+            case .all:
+                return nil
+            }
+        }
         /// Daily closes for all ranges.
         var isIntraday: Bool { false }
 
@@ -100,7 +124,7 @@ struct PriceChartCard: View {
             return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
         }
 
-        let lastPrice = history.last?.close ?? basePrice
+        let lastPrice = basePrice > 0 ? basePrice : (history.last?.close ?? basePrice)
         let diff = lastPrice - firstPrice
         let diffPct = (diff / firstPrice) * 100
         return (lastPrice, diff, diffPct, chartRange.changeLabel)
@@ -116,8 +140,10 @@ struct PriceChartCard: View {
         switch chartRange {
         case .week: return date.formatted(.dateTime.weekday(.abbreviated))
         case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .threeYears, .fiveYears, .all:
+        case .year, .threeYears, .fiveYears:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        case .all:
+            return date.formatted(.dateTime.year())
         }
     }
 
@@ -263,23 +289,52 @@ struct PriceChartCard: View {
         }
         
         let daily = stockService.priceHistory[symbol] ?? []
-        let cutoff: Date?
-        if let days = chartRange.days {
-            cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-        } else {
-            cutoff = nil
+        let maxPoints = stockService.priceHistoryMax[symbol] ?? []
+        
+        if chartRange == .all {
+            if !maxPoints.isEmpty {
+                // If maxPoints spans further back than daily, or daily is missing, prefer full history
+                if let maxEarliest = maxPoints.first?.date,
+                   let dailyEarliest = daily.first?.date {
+                    if maxEarliest < dailyEarliest {
+                        return maxPoints
+                    }
+                } else if daily.isEmpty {
+                    return maxPoints
+                }
+            }
+            return daily
         }
         
-        let filteredDaily = cutoff != nil ? daily.filter { $0.date >= cutoff! } : daily
+        guard let cutoff = chartRange.startDate() else {
+            return daily
+        }
         
-        // Tư duy triển khai ngang: Nếu khoảng thời gian thực tế <= 2 năm, ép dùng Daily để biểu đồ mượt nhất
-        if let earliest = filteredDaily.first?.date, Calendar.current.dateComponents([.day], from: earliest, to: Date()).day ?? 0 <= 730 {
+        // Helper to filter series and include baseline point immediately before cutoff
+        func prepareSeries(_ source: [PricePoint]) -> [PricePoint] {
+            guard !source.isEmpty else { return [] }
+            var filtered = source.filter { $0.date >= cutoff }
+            if let before = source.last(where: { $0.date < cutoff }) {
+                filtered.insert(before, at: 0)
+            }
+            return filtered
+        }
+        
+        let filteredDaily = prepareSeries(daily)
+        
+        // If daily data goes back to cutoff (or earlier via baseline)
+        if let dailyFirst = daily.first?.date, dailyFirst <= cutoff {
             return filteredDaily
         }
         
-        if chartRange == .all {
-            let maxPoints = stockService.priceHistoryMax[symbol] ?? []
-            return cutoff != nil ? maxPoints.filter { $0.date >= cutoff! } : maxPoints
+        // If daily doesn't reach back to cutoff, but maxPoints has older data that extends further
+        if !maxPoints.isEmpty {
+            let filteredMax = prepareSeries(maxPoints)
+            if let maxFirst = filteredMax.first?.date,
+               let dailyFirst = filteredDaily.first?.date,
+               maxFirst < dailyFirst {
+                return filteredMax
+            }
         }
         
         return filteredDaily
@@ -287,8 +342,12 @@ struct PriceChartCard: View {
 
     private var isLoadingCurrent: Bool {
         switch chartRange {
-        case .all: return stockService.priceHistoryMax[symbol] == nil
-        default: return stockService.priceHistory[symbol] == nil
+        case .all:
+            return stockService.priceHistoryMax[symbol] == nil && stockService.priceHistory[symbol] == nil
+        case .threeYears, .fiveYears:
+            return stockService.priceHistory[symbol] == nil && stockService.priceHistoryMax[symbol] == nil
+        default:
+            return stockService.priceHistory[symbol] == nil
         }
     }
 
@@ -357,7 +416,9 @@ struct PriceChartCard: View {
             updateCachedInsiderTrades()
         }
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
-            if chartRange == .all { await stockService.ensurePriceHistoryMax(for: symbol) }
+            if chartRange == .all || chartRange == .fiveYears || chartRange == .threeYears {
+                await stockService.ensureFullHistoryMax(for: symbol)
+            }
             updateCachedInsiderTrades()
         }
         .onAppear {

@@ -21,6 +21,30 @@ enum ChartRange: String, CaseIterable {
         case .all: return nil
         }
     }
+
+    /// Calendar-accurate period start date matching PerformancePeriod.cutoffDate().
+    func startDate(from now: Date = Date(), calendar: Calendar = .current) -> Date? {
+        switch self {
+        case .week:
+            return calendar.date(byAdding: .day, value: -7, to: now)
+        case .month:
+            return calendar.date(byAdding: .month, value: -1, to: now)
+        case .threeMonths:
+            return calendar.date(byAdding: .month, value: -3, to: now)
+        case .sixMonths:
+            return calendar.date(byAdding: .month, value: -6, to: now)
+        case .ytd:
+            return calendar.date(from: calendar.dateComponents([.year], from: now))
+        case .year:
+            return calendar.date(byAdding: .year, value: -1, to: now)
+        case .threeYears:
+            return calendar.date(byAdding: .year, value: -3, to: now)
+        case .fiveYears:
+            return calendar.date(byAdding: .year, value: -5, to: now)
+        case .all:
+            return nil
+        }
+    }
     /// Suffix for the hero pill, describing the span it measures.
     var changeLabel: String {
         switch self {
@@ -794,14 +818,14 @@ final class PortfolioViewModel {
             computed = valueSeries(from: stockService.intradayWeek)
         } else {
             var cutoff: Date? = nil
-            if let days = chartRange.days {
-                cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())
-            } else if chartRange == .all {
+            if chartRange == .all {
                 if let purchaseDate = earliestPurchaseDate {
                     cutoff = Calendar.current.startOfDay(for: purchaseDate)
                 } else {
                     cutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date())
                 }
+            } else if let start = chartRange.startDate() {
+                cutoff = start
             }
 
             let allHoldingsDated = !portfolios.flatMap(\.holdings).contains(where: { $0.purchaseDate == nil })
