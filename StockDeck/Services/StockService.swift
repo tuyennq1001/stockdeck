@@ -1486,7 +1486,15 @@ class StockService: ObservableObject {
     func ensurePriceHistory(for symbol: String) async {
         if let at = priceHistoryFetchedAt[symbol],
            Date().timeIntervalSince(at) < 21600,
-           priceHistory[symbol]?.isEmpty == false { return }
+           let points = priceHistory[symbol], !points.isEmpty {
+            // Self-healing: if cached Vietnamese stock history only has ~1 year (from previous version <= 300 points),
+            // bypass cache to upgrade to the full 10-year history
+            if isVietnameseStock(symbol) && points.count <= 300 {
+                // proceed to re-fetch
+            } else {
+                return
+            }
+        }
 
         if let existing = dailyHistoryTasks[symbol] {
             await existing.value
@@ -1540,8 +1548,8 @@ class StockService: ObservableObject {
             let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
             let scale = isIndex ? 1.0 : 1000.0
             let now = Int64(Date().timeIntervalSince1970)
-            let oneYearAgo = now - (365 * 86400)
-            let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(oneYearAgo)&to=\(now)"
+            let tenYearsAgo = now - (10 * 365 * 86400)
+            let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(tenYearsAgo)&to=\(now)"
             guard let url = URL(string: urlString) else { return }
             do {
                 let (data, _) = try await session.data(from: url)
@@ -1555,6 +1563,14 @@ class StockService: ObservableObject {
                 guard !points.isEmpty else { return }
                 priceHistory[symbol] = points
                 priceHistoryFetchedAt[symbol] = Date()
+                if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
+                    let monthly = PriceHistory.deriveMonthly(from: points)
+                    if !monthly.isEmpty {
+                        priceHistoryMax[symbol] = monthly
+                        priceHistoryMaxAt[symbol] = Date()
+                    }
+                }
+                scheduleHistoryCacheSave()
             } catch { return }
             return
         }
@@ -1623,7 +1639,7 @@ class StockService: ObservableObject {
             let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
             let scale = isIndex ? 1.0 : 1000.0
             let now = Int64(Date().timeIntervalSince1970)
-            let maxAgo = now - (15 * 365 * 86400)
+            let maxAgo = now - (20 * 365 * 86400)
             let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(maxAgo)&to=\(now)"
             guard let url = URL(string: urlString) else { return }
             do {
@@ -1638,6 +1654,7 @@ class StockService: ObservableObject {
                 guard !points.isEmpty else { return }
                 priceHistoryMax[symbol] = points
                 priceHistoryMaxAt[symbol] = Date()
+                scheduleHistoryCacheSave()
             } catch { return }
             return
         }
@@ -1834,7 +1851,7 @@ class StockService: ObservableObject {
 
         if !vnMissing.isEmpty {
             let now = Int64(Date().timeIntervalSince1970)
-            let fiveYearsAgo = now - (5 * 365 * 86400)
+            let tenYearsAgo = now - (10 * 365 * 86400)
             await withTaskGroup(of: (String, [PricePoint]).self) { group in
                 for sym in vnMissing {
                     group.addTask { [weak self] in
@@ -1844,7 +1861,7 @@ class StockService: ObservableObject {
                             .replacingOccurrences(of: "^", with: "")
                         let isIndex = clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
                         let scale = isIndex ? 1.0 : 1000.0
-                        let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(fiveYearsAgo)&to=\(now)"
+                        let urlString = "\(VNMarketConfig.apiBaseURL)?resolution=D&symbol=\(clean)&from=\(tenYearsAgo)&to=\(now)"
                         guard let url = URL(string: urlString) else { return (sym, []) }
                         do {
                             let (data, _) = try await self.session.data(from: url)
