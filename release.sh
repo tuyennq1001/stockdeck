@@ -127,8 +127,8 @@ fi
 step 3 "Code-sign"
 
 HAS_DEV_ID=false
-DEV_ID_IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application:" | head -1 | awk -F'"' '{print $2}')
-APPLE_DEV_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}')
+DEV_ID_IDENTITY=$( (security find-identity -v -p codesigning | grep "Developer ID Application:" | head -1 | awk -F'"' '{print $2}') || true )
+APPLE_DEV_IDENTITY=$( (security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}') || true )
 
 if [[ -n "$DEV_ID_IDENTITY" ]]; then
     codesign --deep --force --verify --verbose \
