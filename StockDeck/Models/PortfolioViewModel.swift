@@ -203,6 +203,17 @@ final class PortfolioViewModel {
     var dayChangeValue: Double { valuationCache.dayChangeValue }
     var dayChangePercent: Double { valuationCache.dayChangePercent }
 
+    var secondaryCurrency: String { storageService?.secondaryCurrency ?? "" }
+    var secondaryCurrencySymbol: String? { valuationCache.secondaryCurrencySymbol }
+    var secondaryTotalValue: Double? { valuationCache.secondaryTotalValue }
+    var secondaryTotalPnl: Double? { valuationCache.secondaryTotalPnl }
+    var secondaryDayChangeValue: Double? { valuationCache.secondaryDayChangeValue }
+    var secondaryDecimals: Int {
+        let sec = secondaryCurrency
+        guard !sec.isEmpty else { return 2 }
+        return StorageService.defaultDecimals(for: sec)
+    }
+
     var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })).sorted() }
 
     var earliestPurchaseDate: Date? {
@@ -274,9 +285,17 @@ final class PortfolioViewModel {
         let totalPnlPercent: Double
         let dayChangeValue: Double
         let dayChangePercent: Double
+        let secondaryTotalValue: Double?
+        let secondaryTotalPnl: Double?
+        let secondaryDayChangeValue: Double?
+        let secondaryCurrencySymbol: String?
 
-        static let empty = ValuationBundle(totalValue: 0, totalCost: 0, totalPnl: 0,
-                                           totalPnlPercent: 0, dayChangeValue: 0, dayChangePercent: 0)
+        static let empty = ValuationBundle(
+            totalValue: 0, totalCost: 0, totalPnl: 0,
+            totalPnlPercent: 0, dayChangeValue: 0, dayChangePercent: 0,
+            secondaryTotalValue: nil, secondaryTotalPnl: nil,
+            secondaryDayChangeValue: nil, secondaryCurrencySymbol: nil
+        )
     }
 
     private func recomputeValuation() {
@@ -386,13 +405,33 @@ final class PortfolioViewModel {
         let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
         let todayTotals = TodayPerformance.totals(todayInputs)
 
+        var secVal: Double? = nil
+        var secPnl: Double? = nil
+        var secDayGain: Double? = nil
+        var secSym: String? = nil
+
+        let secCurr = storageService.secondaryCurrency.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !secCurr.isEmpty && secCurr != storageService.preferredCurrency {
+            let rate = stockService.rate(from: storageService.preferredCurrency, to: secCurr)
+            if rate > 0 {
+                secVal = totalVal * rate
+                secPnl = pnl * rate
+                secDayGain = todayTotals.gain * rate
+                secSym = StorageService.currencySymbol(for: secCurr)
+            }
+        }
+
         valuationCache = ValuationBundle(
             totalValue: totalVal,
             totalCost: totalCst,
             totalPnl: pnl,
             totalPnlPercent: pnlPct,
             dayChangeValue: todayTotals.gain,
-            dayChangePercent: todayTotals.percent
+            dayChangePercent: todayTotals.percent,
+            secondaryTotalValue: secVal,
+            secondaryTotalPnl: secPnl,
+            secondaryDayChangeValue: secDayGain,
+            secondaryCurrencySymbol: secSym
         )
 
         // Build symbol aggregates from our single pass

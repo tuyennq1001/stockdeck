@@ -124,9 +124,16 @@ struct PortfolioListView: View {
                             Text("Total value")
                                 .font(.inter(10, relativeTo: .caption))
                                 .foregroundColor(.secondary)
-                            Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
-                                .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
+                            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
+                                    .font(.inter(13.5, relativeTo: .body).monospacedDigit())
+                                    .fontWeight(.bold)
+                                if let secVal = viewModel.secondaryTotalValue, let secSym = viewModel.secondaryCurrencySymbol {
+                                    Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: viewModel.secondaryDecimals))")
+                                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 3) {
@@ -675,9 +682,22 @@ struct PortfolioSection: View {
                     Text("Total value")
                         .font(.inter(10, relativeTo: .caption))
                         .foregroundColor(.secondary)
-                    Text(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))
-                        .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                        .fontWeight(.bold)
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Text(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))
+                            .font(.inter(13.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                        if !storageService.secondaryCurrency.isEmpty, storageService.secondaryCurrency != storageService.preferredCurrency {
+                            let secRate = stockService.rate(from: storageService.preferredCurrency, to: storageService.secondaryCurrency)
+                            if secRate > 0 {
+                                let secVal = totalValue * secRate
+                                let secSym = StorageService.currencySymbol(for: storageService.secondaryCurrency)
+                                let secDec = StorageService.defaultDecimals(for: storageService.secondaryCurrency)
+                                Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: secDec))")
+                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

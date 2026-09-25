@@ -200,6 +200,14 @@ struct SettingsWideView: View {
                     }
             }
             SettingDivider()
+            SettingRow("Secondary currency", caption: "Shows converted total (e.g. ≈ ₫) under portfolio totals") {
+                DSPicker(options: [("", "None")] + StorageService.supportedCurrencies.map { ($0, "\(StorageService.currencySymbol(for: $0)) \($0)") },
+                         selection: $storageService.secondaryCurrency, width: 200)
+                    .onChange(of: storageService.secondaryCurrency) {
+                        Task { await stockService.refreshExchangeRates(storageService: storageService, force: true) }
+                    }
+            }
+            SettingDivider()
             SettingToggle("Launch at login",
                           caption: "Automatically start StockDeck when you log into your Mac",
                           isOn: $storageService.launchAtLogin)

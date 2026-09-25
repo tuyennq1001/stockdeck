@@ -301,6 +301,24 @@ struct SettingsView: View {
                         }
                     }
                     caption("Portfolio totals and PnL converted to \(storageService.preferredCurrency)")
+
+                    subHeader("Secondary currency")
+                    Picker("Secondary currency", selection: $storageService.secondaryCurrency) {
+                        Text("None").tag("")
+                        ForEach(StorageService.supportedCurrencies, id: \.self) { code in
+                            Text("\(StorageService.currencySymbol(for: code)) \(code)")
+                                .tag(code)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .onChange(of: storageService.secondaryCurrency) {
+                        Task {
+                            await stockService.refreshExchangeRates(storageService: storageService, force: true)
+                        }
+                    }
+                    caption(storageService.secondaryCurrency.isEmpty
+                            ? "No secondary currency displayed"
+                            : "Displays converted total value in \(storageService.secondaryCurrency) (e.g. ≈ \(StorageService.currencySymbol(for: storageService.secondaryCurrency))) under portfolio totals")
                 }
 
                 // MARK: - Positions & Market

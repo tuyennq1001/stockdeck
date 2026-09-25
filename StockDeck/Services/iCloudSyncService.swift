@@ -401,6 +401,9 @@ final class iCloudSyncService: ObservableObject {
         if let sc = remote.stockPriceCurrency, !sc.isEmpty {
             merged.stockPriceCurrency = sc
         }
+        if let sec = remote.secondaryCurrency {
+            merged.secondaryCurrency = sec
+        }
         if let exh = remote.showExtendedHours {
             merged.showExtendedHours = exh
         }
