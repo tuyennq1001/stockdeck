@@ -13,9 +13,7 @@ APPCAST="appcast.xml"
 PLIST="StockDeck/Info.plist"
 GITHUB_REPO="tuyennq1001/stockdeck"
 HOMEBREW_TAP_CASK="/opt/homebrew/Library/Taps/tuyennq1001/homebrew-tap/Casks/stockdeck.rb"
-BUILD_DIR=".build/xcode"
 MIN_SYSTEM_VERSION="14.0"
-PRODUCTS_DIR="${BUILD_DIR}/Build/Products/Release"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,9 +39,10 @@ VERSION="$1"
 BUILD_NUMBER="$2"
 TAG="v${VERSION}"
 ZIP_NAME="${APP_NAME}.zip"
-APP_PATH="${PRODUCTS_DIR}/${APP_NAME}.app"
-
 cd "$(dirname "$0")"
+
+PRODUCTS_DIR="$(swift build -c release --show-bin-path)"
+APP_PATH="${PRODUCTS_DIR}/${APP_NAME}.app"
 
 # --- Preflight checks ---
 step 0 "Preflight checks"
@@ -77,13 +76,7 @@ info "CFBundleVersion → ${BUILD_NUMBER}"
 # --- Step 2: Build Release + assemble .app ---
 step 2 "Build Release"
 
-xcodebuild -scheme "$SCHEME" \
-    -configuration Release \
-    -destination 'platform=macOS' \
-    -derivedDataPath "$BUILD_DIR" \
-    ARCHS="arm64 x86_64" \
-    ONLY_ACTIVE_ARCH=NO \
-    build 2>&1 | tail -5
+swift build -c release
 
 BINARY="${PRODUCTS_DIR}/${APP_NAME}"
 [[ -f "$BINARY" ]] || fail "Build failed: $BINARY not found"
@@ -114,22 +107,19 @@ for lproj in StockDeck/Resources/*.lproj; do
     [[ -d "$lproj" ]] && cp -R "$lproj" "$APP_PATH/Contents/Resources/"
 done
 
-install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_PATH/Contents/MacOS/${APP_NAME}"
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_PATH/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
 
 info "App bundle assembled: $APP_PATH"
 
 # --- Step 2b: Smoke test ---
 step 2b "Smoke test (launch → 3s → check alive)"
 
-"$APP_PATH/Contents/MacOS/${APP_NAME}" &
-SMOKE_PID=$!
+open -g "$APP_PATH"
 sleep 3
-if kill -0 "$SMOKE_PID" 2>/dev/null; then
-    kill "$SMOKE_PID" 2>/dev/null || true
-    wait "$SMOKE_PID" 2>/dev/null || true
+if pgrep -f "$APP_PATH/Contents/MacOS/${APP_NAME}" >/dev/null; then
+    pkill -f "$APP_PATH/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
     info "App launched and stayed alive for 3s"
 else
-    wait "$SMOKE_PID" 2>/dev/null || true
     fail "App crashed during smoke test — aborting release"
 fi
 
@@ -137,17 +127,25 @@ fi
 step 3 "Code-sign"
 
 HAS_DEV_ID=false
-if security find-identity -v -p codesigning | grep -q "$SIGNING_IDENTITY"; then
+DEV_ID_IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application:" | head -1 | awk -F'"' '{print $2}')
+APPLE_DEV_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}')
+
+if [[ -n "$DEV_ID_IDENTITY" ]]; then
     codesign --deep --force --verify --verbose \
-        --sign "$SIGNING_IDENTITY" \
+        --sign "$DEV_ID_IDENTITY" \
         --entitlements "$ENTITLEMENTS" \
         --options runtime \
         "$APP_PATH"
     codesign --verify --deep --strict "$APP_PATH" || fail "Code-sign verification failed"
-    info "Code-signed with Developer ID ($SIGNING_IDENTITY)"
+    info "Code-signed with Developer ID ($DEV_ID_IDENTITY)"
     HAS_DEV_ID=true
+elif [[ -n "$APPLE_DEV_IDENTITY" ]]; then
+    warn "Developer ID identity not found. Using Apple Development identity ($APPLE_DEV_IDENTITY)."
+    codesign --deep --force --sign "$APPLE_DEV_IDENTITY" "$APP_PATH"
+    codesign --verify --deep "$APP_PATH" || fail "Code-sign verification failed"
+    info "Code-signed with Apple Development identity"
 else
-    warn "Developer ID identity ($SIGNING_IDENTITY) not found. Using ad-hoc signing."
+    warn "Developer ID identity not found. Using ad-hoc signing."
     codesign --deep --force --sign - "$APP_PATH"
     info "Code-signed with ad-hoc identity"
 fi
@@ -240,7 +238,7 @@ info "appcast.xml updated"
 # --- Step 9: GitHub Release ---
 step 9 "GitHub Release + push"
 
-git add "$PLIST" "$APPCAST" "$NOTES_FILE" 2>/dev/null || git add "$PLIST" "$APPCAST"
+git add "$PLIST" "$APPCAST" "$NOTES_FILE" release.sh 2>/dev/null || git add "$PLIST" "$APPCAST"
 git commit -m "Release v${VERSION} (build ${BUILD_NUMBER})"
 git push
 
