@@ -276,6 +276,13 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
             return false
         }
 
+        let isJpFund = StockService.isJapaneseMutualFund(upper) || (quote?.isJapaneseFund ?? false)
+        if isJpFund {
+            // Japanese mutual funds (投資信託) publish daily NAVs. On weekdays (Mon-Fri)
+            // they are active trading days with valid daily changes, unaffected by intraday market sessions.
+            return true
+        }
+
         // On Monday, market remains closed until the opening bell of the first session of the week:
         if weekday == 2 {
             if currentMinutes < schedule.mondayOpenMinutes {
@@ -351,6 +358,13 @@ enum MarketCategory: String, Codable, CaseIterable, Identifiable {
         // Saturday (7) & Sunday (1) are closed
         if weekday == 1 || weekday == 7 {
             return false
+        }
+
+        let isJpFund = StockService.isJapaneseMutualFund(upper) || (quote?.isJapaneseFund ?? false)
+        if isJpFund {
+            // Japanese mutual funds publish daily NAVs. On weekdays they are active
+            // and should not display a misleading "Closed" badge during daytime.
+            return true
         }
 
         // If provider explicitly tells us regular session is active / closed

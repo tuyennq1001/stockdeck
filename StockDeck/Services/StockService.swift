@@ -2396,66 +2396,125 @@ class StockService: ObservableObject {
             guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200,
                   let html = String(data: data, encoding: .utf8) else { return nil }
 
-            let pattern = "\"code\":\"\(targetCode)\".*?\"changePriceRate\":\"([^\"]*)\""
-            var price: Double = 0
-            var change: Double = 0
-            var percent: Double = 0
-            var name = Self.codeToFundNameMap[targetCode] ?? symbol
-
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]),
-               let match = regex.firstMatch(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count)) {
-                let jsonSnippet = "{" + (html as NSString).substring(with: match.range) + "}"
-                if let snippetData = jsonSnippet.data(using: .utf8),
-                   let dict = try? JSONSerialization.jsonObject(with: snippetData) as? [String: Any] {
-
-                    let parsedName = (dict["name"] as? String) ?? (dict["fundNickName"] as? String)
-                    if let parsedName, !parsedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        name = parsedName
-                    }
-                    let priceStr = (dict["price"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
-                    let changeStr = (dict["changePrice"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
-                    let percentStr = (dict["changePriceRate"] as? String)?.replacingOccurrences(of: ",", with: "") ?? "0"
-
-                    price = Double(priceStr) ?? 0.0
-                    change = Double(changeStr) ?? 0.0
-                    percent = Double(percentStr) ?? 0.0
-                }
-            }
-
-            if price <= 0 {
-                let pricePattern = "\"price\":\"([0-9,]+)\""
-                if let pRegex = try? NSRegularExpression(pattern: pricePattern),
-                   let pMatch = pRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
-                    let priceStr = (html as NSString).substring(with: pMatch.range(at: 1)).replacingOccurrences(of: ",", with: "")
-                    price = Double(priceStr) ?? 0.0
-                }
-            }
-
-            guard price > 0 else { return nil }
-
-            return StockQuote(
-                symbol: symbol,
-                name: name,
-                price: price,
-                change: change,
-                changePercent: percent,
-                regularMarketPreviousClose: price - change,
-                currency: "JPY",
-                marketState: "CLOSED",
-                dayHigh: nil,
-                dayLow: nil,
-                fiftyTwoWeekHigh: nil,
-                fiftyTwoWeekLow: nil,
-                preMarketPrice: nil,
-                preMarketChange: nil,
-                preMarketChangePercent: nil,
-                postMarketPrice: nil,
-                postMarketChange: nil,
-                postMarketChangePercent: nil
-            )
+            return Self.parseJapaneseFundQuote(html: html, symbol: symbol, targetCode: targetCode)
         } catch {
             return nil
         }
+    }
+
+    /// Parses the Yahoo Japan mutual fund quote page into a StockQuote.
+    /// Handles both the modern Yahoo Finance Japan DOM structure (_BasePriceBoard with _StyledNumber__value)
+    /// and the Next.js preloaded state script JSON stream.
+    nonisolated static func parseJapaneseFundQuote(html: String, symbol: String, targetCode: String) -> StockQuote? {
+        var price: Double = 0
+        var change: Double = 0
+        var percent: Double = 0
+
+        func cleanNumber(_ str: String) -> Double? {
+            let sanitized = str
+                .replacingOccurrences(of: ",", with: "")
+                .replacingOccurrences(of: "+", with: "")
+                .replacingOccurrences(of: "−", with: "-") // Unicode minus U+2212
+                .replacingOccurrences(of: "%", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return Double(sanitized)
+        }
+
+        let nsHtml = html as NSString
+        let numPattern = "<span class=\"[^\"]*_StyledNumber__value[^\"]*\">([^<]+)</span>"
+
+        // Strategy 1: DOM parsing inside <section class="..._BasePriceBoard...">
+        if let numRegex = try? NSRegularExpression(pattern: numPattern) {
+            var searchRange = NSRange(location: 0, length: html.utf16.count)
+            let secPattern = "<section class=\"[^\"]*_BasePriceBoard[^\"]*\">(.*?)</section>"
+            if let secRegex = try? NSRegularExpression(pattern: secPattern, options: [.dotMatchesLineSeparators]),
+               let secMatch = secRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                searchRange = secMatch.range
+            }
+
+            let matches = numRegex.matches(in: html, options: [], range: searchRange)
+            if matches.count >= 3 {
+                let pStr = nsHtml.substring(with: matches[0].range(at: 1))
+                let cStr = nsHtml.substring(with: matches[1].range(at: 1))
+                let pctStr = nsHtml.substring(with: matches[2].range(at: 1))
+                if let p = cleanNumber(pStr), p > 0 {
+                    price = p
+                    change = cleanNumber(cStr) ?? 0
+                    percent = cleanNumber(pctStr) ?? 0
+                }
+            }
+        }
+
+        // Strategy 2: Preloaded Next.js JSON stream in script tag
+        // Matches "value":"19,952","changePrice":"389","changePriceRate":"1.99" (with or without escaping)
+        if price <= 0 {
+            let jsonPattern = "value[\\\\\"\\s:]+([0-9,]+)[\\\\\",\\s]+changePrice[\\\\\"\\s:]+([+−\\-]?[0-9,]+)[\\\\\",\\s]+changePriceRate[\\\\\"\\s:]+([+−\\-]?[0-9,.]+)"
+            if let jRegex = try? NSRegularExpression(pattern: jsonPattern),
+               let jMatch = jRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                let pStr = nsHtml.substring(with: jMatch.range(at: 1))
+                let cStr = nsHtml.substring(with: jMatch.range(at: 2))
+                let pctStr = nsHtml.substring(with: jMatch.range(at: 3))
+                if let p = cleanNumber(pStr), p > 0 {
+                    price = p
+                    change = cleanNumber(cStr) ?? 0
+                    percent = cleanNumber(pctStr) ?? 0
+                }
+            }
+        }
+
+        // Strategy 3: Legacy flat JSON or fallback price pattern
+        if price <= 0 {
+            let legacyPattern = "\"price\":\"([0-9,]+)\""
+            if let pRegex = try? NSRegularExpression(pattern: legacyPattern),
+               let pMatch = pRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                let pStr = nsHtml.substring(with: pMatch.range(at: 1))
+                price = cleanNumber(pStr) ?? 0
+            }
+        }
+
+        guard price > 0 else { return nil }
+
+        // Determine name
+        var name = Self.codeToFundNameMap[targetCode] ?? symbol
+        if name == symbol || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let titlePattern = "<title>(.*?)【([0-9A-Za-z]+)】"
+            if let tRegex = try? NSRegularExpression(pattern: titlePattern),
+               let tMatch = tRegex.firstMatch(in: html, range: NSRange(location: 0, length: html.utf16.count)) {
+                let rawName = nsHtml.substring(with: tMatch.range(at: 1))
+                let cleaned = rawName
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleaned.isEmpty {
+                    name = cleaned
+                }
+            }
+        }
+
+        var tokyoCal = Calendar(identifier: .gregorian)
+        tokyoCal.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+        let isWeekend = tokyoCal.isDateInWeekend(Date())
+        let marketState = isWeekend ? "CLOSED" : "REGULAR"
+
+        return StockQuote(
+            symbol: symbol,
+            name: name,
+            price: price,
+            change: change,
+            changePercent: percent,
+            regularMarketPreviousClose: price - change,
+            currency: "JPY",
+            marketState: marketState,
+            dayHigh: nil,
+            dayLow: nil,
+            fiftyTwoWeekHigh: nil,
+            fiftyTwoWeekLow: nil,
+            preMarketPrice: nil,
+            preMarketChange: nil,
+            preMarketChangePercent: nil,
+            postMarketPrice: nil,
+            postMarketChange: nil,
+            postMarketChangePercent: nil
+        )
     }
 
     /// Fallback NAV when the Yahoo Japan quote page is unreachable (rate-limited
@@ -2469,6 +2528,11 @@ class StockService: ObservableObject {
         let change = prev.isFinite ? last.close - prev : 0
         let percent = (prev.isFinite && prev > 0) ? change / prev * 100 : 0
         let targetCode = japaneseFundTargetCode(for: symbol)
+        var tokyoCal = Calendar(identifier: .gregorian)
+        tokyoCal.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+        let isWeekend = tokyoCal.isDateInWeekend(Date())
+        let marketState = isWeekend ? "CLOSED" : "REGULAR"
+
         return StockQuote(
             symbol: symbol,
             name: Self.codeToFundNameMap[targetCode] ?? symbol,
@@ -2477,7 +2541,7 @@ class StockService: ObservableObject {
             changePercent: percent,
             regularMarketPreviousClose: prev.isFinite ? prev : last.close,
             currency: "JPY",
-            marketState: "CLOSED",
+            marketState: marketState,
             dayHigh: nil,
             dayLow: nil,
             fiftyTwoWeekHigh: nil,

@@ -109,4 +109,78 @@ final class JapaneseFundTests: XCTestCase {
         let firstDay = calendar.dateComponents([.day], from: points[0].date).day
         XCTAssertEqual(firstDay, 3)
     }
+
+    func testParseJapaneseFundQuoteFromDOM() {
+        // Mirrors real Yahoo Finance Japan DOM with _BasePriceBoard and _StyledNumber__value
+        let htmlPositive = """
+        <title>楽天・プラス・S&amp;P500インデックス・ファンド【9I31223A】：基準価格・投資信託情報 - Yahoo!ファイナンス</title>
+        <section class="_BasePriceBoard_k0vsv_10 _CommonPriceBoard_b3h1j_1">
+            <span class="_StyledNumber__value_1arhg_9">19,952</span>
+            <dt class="_PriceChangeLabel__term_hse06_35">前日比</dt>
+            <span class="_StyledNumber__value_1arhg_9">+389</span>
+            <span class="_StyledNumber__value_1arhg_9">+1.99</span>
+        </section>
+        """
+
+        let quote = StockService.parseJapaneseFundQuote(html: htmlPositive, symbol: "9I31223A", targetCode: "9I31223A")
+        XCTAssertNotNil(quote)
+        XCTAssertEqual(quote?.price, 19952.0)
+        XCTAssertEqual(quote?.change, 389.0)
+        XCTAssertEqual(quote?.changePercent ?? 0, 1.99, accuracy: 0.001)
+        XCTAssertEqual(quote?.regularMarketPreviousClose, 19952.0 - 389.0)
+        XCTAssertEqual(quote?.name, "楽天・プラス・Ｓ＆Ｐ５００インデックス・ファンド")
+
+        // Mirrors real Yahoo Finance Japan DOM with negative change
+        let htmlNegative = """
+        <title>楽天・高配当株式・日本ファンド【9I312252】：基準価格・投資信託情報 - Yahoo!ファイナンス</title>
+        <section class="_BasePriceBoard_k0vsv_10 _CommonPriceBoard_b3h1j_1">
+            <span class="_StyledNumber__value_1arhg_9">15,365</span>
+            <dt class="_PriceChangeLabel__term_hse06_35">前日比</dt>
+            <span class="_StyledNumber__value_1arhg_9">-158</span>
+            <span class="_StyledNumber__value_1arhg_9">-1.02</span>
+        </section>
+        """
+
+        let quoteNeg = StockService.parseJapaneseFundQuote(html: htmlNegative, symbol: "9I312252", targetCode: "9I312252")
+        XCTAssertNotNil(quoteNeg)
+        XCTAssertEqual(quoteNeg?.price, 15365.0)
+        XCTAssertEqual(quoteNeg?.change, -158.0)
+        XCTAssertEqual(quoteNeg?.changePercent ?? 0, -1.02, accuracy: 0.001)
+    }
+
+    func testParseJapaneseFundQuoteFromJSONScript() {
+        // Mirrors Next.js preloaded state script tag with escaped quotes
+        let htmlJSON = """
+        <title>eMAXIS Slim 米国株式(S&amp;P500)【03311187】：基準価格 - Yahoo!ファイナンス</title>
+        <script>
+        {\\"priceBoard\\":{\\"code\\":\\"03311187\\",\\"price\\":{\\"value\\":\\"44,842\\",\\"changePrice\\":\\"876\\",\\"changePriceRate\\":\\"1.99\\",\\"updateDate\\":\\"9/24\\"}
+        </script>
+        """
+
+        let quote = StockService.parseJapaneseFundQuote(html: htmlJSON, symbol: "03311187", targetCode: "03311187")
+        XCTAssertNotNil(quote)
+        XCTAssertEqual(quote?.price, 44842.0)
+        XCTAssertEqual(quote?.change, 876.0)
+        XCTAssertEqual(quote?.changePercent ?? 0, 1.99, accuracy: 0.001)
+    }
+
+    func testJapaneseMutualFundTradingDayAndSessionOpen() {
+        let iso = ISO8601DateFormatter()
+        let fridayMiddayJST = iso.date(from: "2026-09-25T13:28:00+09:00")!
+        let saturdayMorningJST = iso.date(from: "2026-09-26T10:00:00+09:00")!
+        let sundayAfternoonJST = iso.date(from: "2026-09-27T15:00:00+09:00")!
+
+        let jpTz = TimeZone(identifier: "Asia/Tokyo")!
+
+        // Weekday (Friday 13:28 JST): Both isTradingDay and isSessionOpen must be TRUE
+        XCTAssertTrue(MarketCategory.isTradingDay(symbol: "9I31223A", at: fridayMiddayJST, customTimeZone: jpTz))
+        XCTAssertTrue(MarketCategory.isSessionOpen(symbol: "9I31223A", at: fridayMiddayJST, customTimeZone: jpTz))
+
+        // Weekends (Saturday & Sunday JST): Both must be FALSE
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "9I31223A", at: saturdayMorningJST, customTimeZone: jpTz))
+        XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "9I31223A", at: saturdayMorningJST, customTimeZone: jpTz))
+        XCTAssertFalse(MarketCategory.isTradingDay(symbol: "9I31223A", at: sundayAfternoonJST, customTimeZone: jpTz))
+        XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "9I31223A", at: sundayAfternoonJST, customTimeZone: jpTz))
+    }
 }
+
