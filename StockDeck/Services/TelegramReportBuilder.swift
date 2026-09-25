@@ -164,8 +164,6 @@ enum TelegramReportBuilder {
         }
         let totalClosed = consolidatedClosed.count
         let totalProfit = unrealizedPnl + totalRealized
-        let totalProfitBase = totalCost > 0 ? totalCost : totalClosedCost
-        let totalProfitPercent = totalProfitBase > 0 ? (totalProfit / totalProfitBase) * 100.0 : 0.0
 
         // 3. Today's Performance (Regular session)
         var todayInputs: [TodayPerformance.Input] = []
@@ -336,16 +334,30 @@ enum TelegramReportBuilder {
         var message = titleText
         message += "🗓 <i>\(dateString)</i>\n"
         message += "━━━━━━━━━━━━━━━━━━━━━\n"
-        message += "💰 <b>\(netWorthLabel)</b> <code>\(StorageService.formatAmount(totalVal, symbol: currSym))</code>\n"
+
+        // Secondary currency support (e.g. USD preferred + JPY secondary)
+        let secondaryCurrency = storageService.secondaryCurrency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let hasSecondary = !secondaryCurrency.isEmpty && secondaryCurrency != preferredCurrency
+        let secondaryRate: Double = hasSecondary ? stockService.rate(from: preferredCurrency, to: secondaryCurrency) : 0
+        let secondarySymbol = hasSecondary ? StorageService.currencySymbol(for: secondaryCurrency) : ""
+        let secondaryDecimals = hasSecondary ? StorageService.defaultDecimals(for: secondaryCurrency) : 0
+
+        func secSuffix(_ amount: Double, signed: Bool = false) -> String {
+            guard hasSecondary && secondaryRate > 0 else { return "" }
+            let converted = amount * secondaryRate
+            let formatted = StorageService.formatAmount(converted, symbol: secondarySymbol, decimals: secondaryDecimals, signed: signed)
+            return " <i>(≈ \(formatted))</i>"
+        }
+
+        message += "💰 <b>\(netWorthLabel)</b> <code>\(StorageService.formatAmount(totalVal, symbol: currSym))</code>\(secSuffix(totalVal))\n"
 
         let dayTrendIcon = totalDayChange >= 0 ? "📈" : "📉"
         let daySign = totalDayChange >= 0 ? "+" : ""
         let dayChangeFormatted = StorageService.formatAmount(totalDayChange, symbol: currSym, signed: true)
-        message += "\(dayTrendIcon) <b>\(todayLabel)</b> <code>\(dayChangeFormatted) (\(daySign)\(String(format: "%.2f", dayChangePercent))%)</code>\n"
+        message += "\(dayTrendIcon) <b>\(todayLabel)</b> <code>\(dayChangeFormatted) (\(daySign)\(String(format: "%.2f", dayChangePercent))%)</code>\(secSuffix(totalDayChange, signed: true))\n"
 
         if totalCost > 0 || totalClosed > 0 {
             let profitTrendIcon = totalProfit >= 0 ? "🏆" : "⚠️"
-            let profitSign = totalProfit >= 0 ? "+" : ""
             let profitFormatted = StorageService.formatAmount(totalProfit, symbol: currSym, signed: true)
 
             let unrealizedSign = unrealizedPnl >= 0 ? "+" : ""
@@ -353,9 +365,9 @@ enum TelegramReportBuilder {
 
             let realizedFormatted = StorageService.formatAmount(totalRealized, symbol: currSym, signed: true)
 
-            message += "\(profitTrendIcon) <b>\(profitLabel)</b> <code>\(profitFormatted) (\(profitSign)\(String(format: "%.2f", totalProfitPercent))%)</code>\n"
-            message += "  • <i>\(unrealizedLabel)</i> <code>\(unrealizedFormatted) (\(unrealizedSign)\(String(format: "%.2f", unrealizedPnlPercent))%)</code>\n"
-            message += "  • <i>\(realizedLabel)</i> <code>\(realizedFormatted)</code>\n"
+            message += "\(profitTrendIcon) <b>\(profitLabel)</b> <code>\(profitFormatted)</code>\(secSuffix(totalProfit, signed: true))\n"
+            message += "  • <i>\(unrealizedLabel)</i> <code>\(unrealizedFormatted) (\(unrealizedSign)\(String(format: "%.2f", unrealizedPnlPercent))%)</code>\(secSuffix(unrealizedPnl, signed: true))\n"
+            message += "  • <i>\(realizedLabel)</i> <code>\(realizedFormatted)</code>\(secSuffix(totalRealized, signed: true))\n"
         }
         message += "━━━━━━━━━━━━━━━━━━━━━\n"
 

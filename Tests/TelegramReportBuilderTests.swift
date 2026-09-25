@@ -44,7 +44,8 @@ final class TelegramReportBuilderTests: XCTestCase {
             change: 4.0,
             changePercent: 2.0,
             regularMarketPreviousClose: 196.0,
-            currency: "USD"
+            currency: "USD",
+            marketState: "REGULAR"
         )
         stockService.quotes["BTCUSDT"] = StockQuote(
             symbol: "BTCUSDT",
@@ -53,7 +54,8 @@ final class TelegramReportBuilderTests: XCTestCase {
             change: 1200.0,
             changePercent: 2.0,
             regularMarketPreviousClose: 58800.0,
-            currency: "USD"
+            currency: "USD",
+            marketState: "REGULAR"
         )
 
         let p1 = Portfolio(id: UUID(), name: "US Equities", holdings: [
@@ -101,7 +103,8 @@ final class TelegramReportBuilderTests: XCTestCase {
             change: 4.0,
             changePercent: 2.0,
             regularMarketPreviousClose: 196.0,
-            currency: "USD"
+            currency: "USD",
+            marketState: "REGULAR"
         )
 
         let p1 = Portfolio(id: UUID(), name: "Cổ phiếu Mỹ", holdings: [
@@ -140,7 +143,8 @@ final class TelegramReportBuilderTests: XCTestCase {
             change: 4.0,
             changePercent: 2.0,
             regularMarketPreviousClose: 196.0,
-            currency: "USD"
+            currency: "USD",
+            marketState: "REGULAR"
         )
 
         let p1 = Portfolio(id: UUID(), name: "米国株", holdings: [
@@ -280,6 +284,58 @@ final class TelegramReportBuilderTests: XCTestCase {
         // Total Profit is Unrealized ($50) + Realized ($30) = +$80.00
         XCTAssertTrue(report.contains("Tổng Lợi Nhuận:"))
         XCTAssertTrue(report.contains("+$80.00"))
+    }
+
+    func testSecondaryCurrencyDisplayAndNoPercentOnTotalProfit() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let storage = StorageService(fileURL: tempDir.appendingPathComponent("test_data_sec.json"))
+        storage.preferredCurrency = "USD"
+        storage.secondaryCurrency = "JPY"
+        storage.appLanguage = "vi"
+
+        let stockService = StockService.shared
+        stockService.exchangeRates["USDJPY"] = 150.0
+        stockService.quotes["AAPL"] = StockQuote(
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            price: 200.0,
+            change: 4.0,
+            changePercent: 2.0,
+            regularMarketPreviousClose: 196.0,
+            currency: "USD",
+            marketState: "REGULAR"
+        )
+
+        var p = Portfolio(id: UUID(), name: "US", holdings: [
+            Holding(symbol: "AAPL", quantity: 10, avgPrice: 150) // Val: $2000, Cost: $1500, PnL: +$500
+        ])
+        p.closedTrades = [
+            ClosedTrade(symbol: "AAPL", quantity: 5, buyPrice: 100, sellPrice: 120, sellDate: Date()) // Realized +$100
+        ]
+        storage.portfolios = [p]
+
+        let report = TelegramReportBuilder.buildAllPortfoliosReport(
+            storageService: storage,
+            stockService: stockService
+        )
+
+        // 1. Net worth: $2,000.00 (≈ ¥300,000)
+        XCTAssertTrue(report.contains("$2,000.00"))
+        XCTAssertTrue(report.contains("≈ ¥300,000"))
+
+        // 2. Today: +$40.00 (+2.04%) (≈ +¥6,000)
+        XCTAssertTrue(report.contains("+$40.00"))
+        XCTAssertTrue(report.contains("≈ +¥6,000"))
+
+        // 3. Total Profit: +$600.00 (≈ +¥90,000) - NO percentage in Total Profit line
+        XCTAssertTrue(report.contains("Tổng Lợi Nhuận:</b> <code>+$600.00</code> <i>(≈ +¥90,000)</i>"))
+
+        // 4. Unrealized: +$500.00 (+33.33%) (≈ +¥75,000) - HAS percentage
+        XCTAssertTrue(report.contains("Chưa chốt:</i> <code>+$500.00 (+33.33%)</code> <i>(≈ +¥75,000)</i>"))
+
+        // 5. Realized: +$100.00 (≈ +¥15,000)
+        XCTAssertTrue(report.contains("Đã chốt:</i> <code>+$100.00</code> <i>(≈ +¥15,000)</i>"))
     }
 
     func testScheduleDescriptionLocalization() {
