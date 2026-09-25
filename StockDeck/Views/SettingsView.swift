@@ -30,6 +30,13 @@ struct SettingsView: View {
     @State private var aiTestIsLoading = false
     @State private var showCustomModelField = false
     @State private var showApiKeyText = false
+    @State private var telegramTesting = false
+    @State private var telegramTestResult: (success: Bool, message: String)? = nil
+    @State private var newScheduleDate: Date = {
+        var c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        c.hour = 7; c.minute = 30
+        return Calendar.current.date(from: c) ?? Date()
+    }()
 
     private var availableModelOptions: [String] {
         storageService.availableModels(for: storageService.aiProvider)
@@ -76,7 +83,7 @@ struct SettingsView: View {
 
     /// Small secondary caption used throughout the settings list.
     private func caption(_ text: String) -> some View {
-        Text(text)
+        Text(LocalizedStringKey(text))
             .font(.inter(10, relativeTo: .caption))
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -84,7 +91,7 @@ struct SettingsView: View {
 
     /// Sub-section label inside a category (e.g. "Language" under "General").
     private func subHeader(_ text: String) -> some View {
-        Text(text)
+        Text(LocalizedStringKey(text))
             .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
             .foregroundColor(.secondary)
     }
@@ -98,6 +105,38 @@ struct SettingsView: View {
         panel.message = "Choose a folder StockDeck AI Review should use as long-term memory (ai-context.md)."
         if panel.runModal() == .OK, let url = panel.url {
             storageService.aiWorkspacePath = url.path
+        }
+    }
+
+    private func addSchedule(_ sched: String) {
+        guard !storageService.telegramSchedules.contains(sched) else { return }
+        var list = storageService.telegramSchedules
+        list.append(sched)
+        list.sort()
+        storageService.telegramSchedules = list
+    }
+
+    private func removeSchedule(_ sched: String) {
+        storageService.telegramSchedules.removeAll { $0 == sched }
+    }
+
+    private func sendTelegramReport() {
+        telegramTesting = true
+        telegramTestResult = nil
+        Task {
+            let res = await TelegramService.sendReport(
+                storageService: storageService,
+                stockService: stockService
+            )
+            await MainActor.run {
+                telegramTesting = false
+                switch res {
+                case .success(let msg):
+                    telegramTestResult = (true, msg)
+                case .failure(let err):
+                    telegramTestResult = (false, err.localizedDescription)
+                }
+            }
         }
     }
 
@@ -592,8 +631,87 @@ struct SettingsView: View {
 
                 // MARK: - Notifications
                 SettingsGroup(title: "Notifications", icon: "bell", isExpanded: $groupNotifications) {
-                    // Channels (Discord / Slack webhook)
-                    subHeader("Channels")
+                    // Telegram Bot
+                    subHeader("Telegram Bot")
+                    Toggle("Send reports to Telegram Bot", isOn: $storageService.telegramEnabled)
+                        .toggleStyle(.switch)
+                    if storageService.telegramEnabled {
+                        caption("Bot Token:")
+                        SecureField("123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ", text: $storageService.telegramBotToken)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.inter(10, relativeTo: .caption))
+                        caption("Chat ID:")
+                        TextField("123456789 or @channel", text: $storageService.telegramChatId)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.inter(10, relativeTo: .caption))
+
+                        HStack {
+                            if let res = telegramTestResult {
+                                Text(res.message)
+                                    .font(.inter(10, relativeTo: .caption))
+                                    .foregroundColor(res.success ? .green : .red)
+                            }
+                            Spacer()
+                            Button("Send Report") {
+                                sendTelegramReport()
+                            }
+                            .controlSize(.small)
+                            .disabled(telegramTesting || storageService.telegramBotToken.isEmpty || storageService.telegramChatId.isEmpty)
+                        }
+
+                        Divider()
+
+                        subHeader("Scheduled Summaries (All Portfolios)")
+                        caption("Consolidated summary of all portfolios sent daily at:")
+                        ForEach(storageService.telegramSchedules, id: \.self) { sched in
+                            HStack {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text(sched)
+                                    .font(.inter(11, weight: .semibold, relativeTo: .caption).monospacedDigit())
+                                Text(TelegramReportBuilder.scheduleDescription(sched, lang: storageService.appLanguage))
+                                    .font(.inter(9, relativeTo: .caption2))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Button(action: { removeSchedule(sched) }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+
+                        HStack(spacing: 4) {
+                            Button("+ 07:30") { addSchedule("07:30") }
+                                .controlSize(.mini)
+                                .disabled(storageService.telegramSchedules.contains("07:30"))
+                            Button("+ 15:30") { addSchedule("15:30") }
+                                .controlSize(.mini)
+                                .disabled(storageService.telegramSchedules.contains("15:30"))
+                            Button("+ 21:00") { addSchedule("21:00") }
+                                .controlSize(.mini)
+                                .disabled(storageService.telegramSchedules.contains("21:00"))
+                            Spacer()
+                            DatePicker("", selection: $newScheduleDate, displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                                .controlSize(.mini)
+                            Button("Add") {
+                                let f = DateFormatter()
+                                f.dateFormat = "HH:mm"
+                                addSchedule(f.string(from: newScheduleDate))
+                            }
+                            .controlSize(.mini)
+                        }
+
+                        Toggle("Forward price & buy target alerts", isOn: $storageService.telegramNotifyBuyTargets)
+                            .toggleStyle(.switch)
+                    }
+
+                    Divider()
+
+                    // Discord / Slack Webhook
+                    subHeader("Discord / Slack Webhook")
                     Toggle("Mirror notifications to a Discord/Slack webhook", isOn: $storageService.discordEnabled)
                         .toggleStyle(.switch)
                     TextField("https://discord.com/api/webhooks/… or hooks.slack.com/…", text: $storageService.discordWebhookURL)
@@ -751,7 +869,7 @@ struct SettingsGroup<Content: View>: View {
                         .font(.inter(11, relativeTo: .caption))
                         .foregroundColor(.accentColor)
                         .frame(width: 16)
-                    Text(title)
+                    Text(LocalizedStringKey(title))
                         .font(.inter(13, weight: .bold, relativeTo: .headline))
                     Spacer()
                     Image(systemName: "chevron.right")

@@ -500,6 +500,26 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    // MARK: - Telegram Notifications
+    @Published var telegramEnabled: Bool = false {
+        didSet { scheduleSave() }
+    }
+    @Published var telegramBotToken: String = "" {
+        didSet { scheduleSave() }
+    }
+    @Published var telegramChatId: String = "" {
+        didSet { scheduleSave() }
+    }
+    @Published var telegramSchedules: [String] = ["07:30", "15:30"] {
+        didSet { scheduleSave() }
+    }
+    @Published var telegramLastSentSchedule: [String: String] = [:] {
+        didSet { scheduleSave() }
+    }
+    @Published var telegramNotifyBuyTargets: Bool = true {
+        didSet { scheduleSave() }
+    }
+
     // MARK: - AI Review
 
     /// OpenAI-compatible chat history for the AI Review tab. Stored in full
@@ -2260,6 +2280,12 @@ class StorageService: ObservableObject {
         var portfolioPnlViewModes: [String: String]?
         var discordWebhookURL: String?
         var discordEnabled: Bool?
+        var telegramEnabled: Bool?
+        var telegramBotToken: String?
+        var telegramChatId: String?
+        var telegramSchedules: [String]?
+        var telegramLastSentSchedule: [String: String]?
+        var telegramNotifyBuyTargets: Bool?
         var gainColorHex: String?
         var lossColorHex: String?
         var percentTwoDecimals: Bool?   // legacy (pre-#10) — migrated on decode
@@ -2323,6 +2349,12 @@ class StorageService: ObservableObject {
             portfolioPnlViewModes: portfolioPnlViewModes,
             discordWebhookURL: discordWebhookURL,
             discordEnabled: discordEnabled,
+            telegramEnabled: telegramEnabled,
+            telegramBotToken: telegramBotToken,
+            telegramChatId: telegramChatId,
+            telegramSchedules: telegramSchedules,
+            telegramLastSentSchedule: telegramLastSentSchedule,
+            telegramNotifyBuyTargets: telegramNotifyBuyTargets,
             gainColorHex: gainColorHex,
             lossColorHex: lossColorHex,
             percentTwoDecimals: nil,
@@ -2434,6 +2466,12 @@ class StorageService: ObservableObject {
         portfolioPnlViewModes = decoded.portfolioPnlViewModes ?? [:]
         discordWebhookURL = decoded.discordWebhookURL ?? ""
         discordEnabled = decoded.discordEnabled ?? false
+        telegramEnabled = decoded.telegramEnabled ?? false
+        telegramBotToken = decoded.telegramBotToken ?? ""
+        telegramChatId = decoded.telegramChatId ?? ""
+        telegramSchedules = decoded.telegramSchedules ?? ["07:30", "15:30"]
+        telegramLastSentSchedule = decoded.telegramLastSentSchedule ?? [:]
+        telegramNotifyBuyTargets = decoded.telegramNotifyBuyTargets ?? true
         gainColorHex = decoded.gainColorHex ?? ""
         lossColorHex = decoded.lossColorHex ?? ""
         percentDecimals = decoded.percentDecimals ?? (decoded.percentTwoDecimals == true ? 2 : 1)

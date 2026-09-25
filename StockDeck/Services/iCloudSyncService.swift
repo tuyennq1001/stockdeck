@@ -510,6 +510,21 @@ final class iCloudSyncService: ObservableObject {
             }
             merged.aiChatSections = combinedSections
         }
+        if let tgEnabled = remote.telegramEnabled {
+            merged.telegramEnabled = tgEnabled
+        }
+        if let tgToken = remote.telegramBotToken, !tgToken.isEmpty {
+            merged.telegramBotToken = tgToken
+        }
+        if let tgChat = remote.telegramChatId, !tgChat.isEmpty {
+            merged.telegramChatId = tgChat
+        }
+        if let tgScheds = remote.telegramSchedules, !tgScheds.isEmpty {
+            merged.telegramSchedules = tgScheds
+        }
+        if let tgNotifyBuy = remote.telegramNotifyBuyTargets {
+            merged.telegramNotifyBuyTargets = tgNotifyBuy
+        }
 
         return merged
     }

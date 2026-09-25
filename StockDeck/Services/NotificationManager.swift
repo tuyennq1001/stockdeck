@@ -48,6 +48,7 @@ final class NotificationManager {
 
         // Forward to the configured webhook regardless of bundle state (works in dev too).
         forwardToWebhook(title: title, body: body, sentiment: sentiment)
+        forwardToTelegram(title: title, body: body, identifier: identifier)
 
         guard isAvailable else {
             NSLog("[Notifications] (dev no-op) %@ — %@", title, body)
@@ -83,6 +84,32 @@ final class NotificationManager {
         guard WebhookNotifier.isValid(url) else { return }
         Task.detached {
             await WebhookNotifier.send(to: url, title: title, body: body, color: sentiment.color)
+        }
+    }
+
+    private func forwardToTelegram(title: String, body: String, identifier: String) {
+        let storage = StorageService.shared
+        guard storage.telegramEnabled && storage.telegramNotifyBuyTargets else { return }
+        // Keep Telegram dedicated to All Portfolios summaries and individual stock targets/alerts.
+        // Skip individual portfolio-level step alerts (identifier prefixed with "pf-") to prevent spam.
+        guard !identifier.hasPrefix("pf-") else { return }
+
+        let token = storage.telegramBotToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chatId = storage.telegramChatId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty, !chatId.isEmpty else { return }
+
+        var text = "<b>\(TelegramService.escapeHTML(title))</b>\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
+        text += TelegramService.escapeHTML(body) + "\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━\n"
+        let lang = storage.appLanguage.lowercased()
+        let footer = (lang == "vi") ? "💡 <i>Cảnh báo StockDeck macOS</i>" :
+                     (lang == "ja") ? "💡 <i>StockDeck macOS アラート</i>" :
+                     "💡 <i>StockDeck macOS Alert</i>"
+        text += footer
+
+        Task.detached {
+            try? await TelegramService.sendMessage(botToken: token, chatId: chatId, text: text)
         }
     }
 }

@@ -21,6 +21,15 @@ struct SettingsWideView: View {
     @State private var modelFetchError: String? = nil
     @State private var showCustomModelField = false
     @State private var showApiKeyText = false
+    @FocusState private var telegramTokenFocused: Bool
+    @FocusState private var telegramChatFocused: Bool
+    @State private var telegramTesting = false
+    @State private var telegramTestResult: (success: Bool, message: String)? = nil
+    @State private var newScheduleDate: Date = {
+        var c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        c.hour = 7; c.minute = 30
+        return Calendar.current.date(from: c) ?? Date()
+    }()
 
     private var availableModelOptions: [(String, String)] {
         let list = storageService.availableModels(for: storageService.aiProvider)
@@ -557,41 +566,289 @@ struct SettingsWideView: View {
 
     private var notificationsCard: some View {
         SettingsCard(title: "Notifications") {
-            SettingToggle("Mirror to a Discord/Slack webhook",
-                          caption: "Price alerts and portfolio notifications are also sent there",
-                          isOn: $storageService.discordEnabled)
-            if storageService.discordEnabled {
-                SettingDivider()
-                let trimmed = storageService.discordWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "link").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
-                        TextField("https://discord.com/api/webhooks/…", text: $storageService.discordWebhookURL)
-                            .textFieldStyle(.plain)
-                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                            .focused($webhookFocused)
-                    }
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(webhookFocused ? DS.brand : .clear, lineWidth: 1.5))
-                    .animation(.easeOut(duration: 0.15), value: webhookFocused)
-                    HStack {
-                        if !trimmed.isEmpty && !WebhookNotifier.isValid(trimmed) {
-                            Text("Not a valid Discord or Slack webhook URL (must be https).")
-                                .font(DS.micro).foregroundStyle(DS.down)
-                        }
-                        Spacer()
-                        Button("Send test") {
-                            NotificationManager.shared.send(title: "StockDeck test", body: "Webhook is working ✅", sentiment: .positive)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.inter(11, weight: .medium, relativeTo: .caption))
-                        .foregroundStyle(WebhookNotifier.isValid(trimmed) ? DS.brand : DS.inkTertiary)
-                        .disabled(!WebhookNotifier.isValid(trimmed))
-                    }
+            // MARK: - Telegram Bot Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DS.brand)
+                    Text("Telegram Bot")
+                        .font(DS.bodyStrong)
+                        .foregroundStyle(DS.ink)
                 }
-                .padding(.vertical, 6)
+
+                SettingToggle("Send reports to Telegram Bot",
+                              caption: "Receive consolidated All-Portfolios summaries & price alerts directly on your phone",
+                              isOn: $storageService.telegramEnabled)
+
+                if storageService.telegramEnabled {
+                    SettingDivider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Bot Token
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("BOT TOKEN")
+                                .font(DS.label)
+                                .foregroundStyle(DS.inkTertiary)
+                                .tracking(0.8)
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(DS.inkTertiary)
+                                SecureField("123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ", text: $storageService.telegramBotToken)
+                                    .textFieldStyle(.plain)
+                                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                    .focused($telegramTokenFocused)
+                            }
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(telegramTokenFocused ? DS.brand : .clear, lineWidth: 1.5))
+
+                            Text("Get a Bot Token by messaging @BotFather on Telegram.")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+
+                        // Chat ID
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("CHAT ID")
+                                .font(DS.label)
+                                .foregroundStyle(DS.inkTertiary)
+                                .tracking(0.8)
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "number")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(DS.inkTertiary)
+                                TextField("123456789 or @channel", text: $storageService.telegramChatId)
+                                    .textFieldStyle(.plain)
+                                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                    .focused($telegramChatFocused)
+                            }
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(telegramChatFocused ? DS.brand : .clear, lineWidth: 1.5))
+
+                            Text("Your Telegram user ID from @userinfobot or group/channel username.")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+
+                        // Test button & status
+                        HStack {
+                            if let res = telegramTestResult {
+                                HStack(spacing: 4) {
+                                    Image(systemName: res.success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                        .foregroundStyle(res.success ? DS.up : DS.down)
+                                    Text(res.message)
+                                        .font(DS.micro)
+                                        .foregroundStyle(res.success ? DS.up : DS.down)
+                                }
+                            }
+                            Spacer()
+                            Button(action: sendTelegramReport) {
+                                if telegramTesting {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Text("Send Report")
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(!storageService.telegramBotToken.isEmpty && !storageService.telegramChatId.isEmpty ? DS.brand : DS.inkTertiary)
+                            .disabled(telegramTesting || storageService.telegramBotToken.isEmpty || storageService.telegramChatId.isEmpty)
+                        }
+
+                        SettingDivider()
+
+                        // Multiple Schedules Section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("SCHEDULED SUMMARIES (ALL PORTFOLIOS)")
+                                .font(DS.label)
+                                .foregroundStyle(DS.inkTertiary)
+                                .tracking(0.8)
+
+                            Text("Consolidated summary of all portfolios will be sent at these times every day:")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkSecondary)
+
+                            if storageService.telegramSchedules.isEmpty {
+                                Text("No schedules configured. Add one below.")
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+                                    .padding(.vertical, 4)
+                            } else {
+                                VStack(spacing: 6) {
+                                    ForEach(storageService.telegramSchedules, id: \.self) { sched in
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "clock.fill")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(DS.brand)
+
+                                            Text(sched)
+                                                .font(.inter(12, weight: .semibold, relativeTo: .body).monospacedDigit())
+                                                .foregroundStyle(DS.ink)
+
+                                            Text(TelegramReportBuilder.scheduleDescription(sched, lang: storageService.appLanguage))
+                                                .font(DS.micro)
+                                                .foregroundStyle(DS.inkTertiary)
+
+                                            Spacer()
+
+                                            Button {
+                                                removeSchedule(sched)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(DS.inkTertiary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .pointingHandCursor()
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt.opacity(0.6)))
+                                    }
+                                }
+                            }
+
+                            // Presets & Custom add
+                            HStack(spacing: 6) {
+                                Text("Presets:")
+                                    .font(DS.micro)
+                                    .foregroundStyle(DS.inkTertiary)
+
+                                Button("+ 07:30 (US)") { addSchedule("07:30") }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .disabled(storageService.telegramSchedules.contains("07:30"))
+
+                                Button("+ 15:30 (VN/JP)") { addSchedule("15:30") }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .disabled(storageService.telegramSchedules.contains("15:30"))
+
+                                Button("+ 21:00") { addSchedule("21:00") }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .disabled(storageService.telegramSchedules.contains("21:00"))
+
+                                Spacer()
+
+                                DatePicker("", selection: $newScheduleDate, displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                                    .controlSize(.small)
+
+                                Button("Add") {
+                                    let f = DateFormatter()
+                                    f.dateFormat = "HH:mm"
+                                    addSchedule(f.string(from: newScheduleDate))
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(DS.brand)
+                                .controlSize(.mini)
+                            }
+                            .padding(.top, 4)
+                        }
+
+                        SettingDivider()
+
+                        SettingToggle("Forward Stock Price & Buy Target Alerts",
+                                      caption: "Alerts when a stock enters your buy target zone or crosses price thresholds",
+                                      isOn: $storageService.telegramNotifyBuyTargets)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
+            SettingDivider()
+
+            // MARK: - Discord / Slack Webhook Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DS.inkSecondary)
+                    Text("Discord / Slack Webhook")
+                        .font(DS.bodyStrong)
+                        .foregroundStyle(DS.ink)
+                }
+
+                SettingToggle("Mirror to a Discord/Slack webhook",
+                              caption: "Price alerts and portfolio notifications are also sent there",
+                              isOn: $storageService.discordEnabled)
+
+                if storageService.discordEnabled {
+                    SettingDivider()
+                    let trimmed = storageService.discordWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "link").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
+                            TextField("https://discord.com/api/webhooks/…", text: $storageService.discordWebhookURL)
+                                .textFieldStyle(.plain)
+                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                .focused($webhookFocused)
+                        }
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(webhookFocused ? DS.brand : .clear, lineWidth: 1.5))
+                        .animation(.easeOut(duration: 0.15), value: webhookFocused)
+
+                        HStack {
+                            if !trimmed.isEmpty && !WebhookNotifier.isValid(trimmed) {
+                                Text("Not a valid Discord or Slack webhook URL (must be https).")
+                                    .font(DS.micro).foregroundStyle(DS.down)
+                            }
+                            Spacer()
+                            Button("Send test") {
+                                NotificationManager.shared.send(title: "StockDeck test", body: "Webhook is working ✅", sentiment: .positive)
+                            }
+                            .buttonStyle(.plain)
+                            .font(.inter(11, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(WebhookNotifier.isValid(trimmed) ? DS.brand : DS.inkTertiary)
+                            .disabled(!WebhookNotifier.isValid(trimmed))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private func addSchedule(_ sched: String) {
+        guard !storageService.telegramSchedules.contains(sched) else { return }
+        var list = storageService.telegramSchedules
+        list.append(sched)
+        list.sort()
+        storageService.telegramSchedules = list
+    }
+
+    private func removeSchedule(_ sched: String) {
+        storageService.telegramSchedules.removeAll { $0 == sched }
+    }
+
+    private func sendTelegramReport() {
+        telegramTesting = true
+        telegramTestResult = nil
+        Task {
+            let res = await TelegramService.sendReport(
+                storageService: storageService,
+                stockService: stockService
+            )
+            await MainActor.run {
+                telegramTesting = false
+                switch res {
+                case .success(let msg):
+                    telegramTestResult = (true, msg)
+                case .failure(let err):
+                    telegramTestResult = (false, err.localizedDescription)
+                }
             }
         }
     }
