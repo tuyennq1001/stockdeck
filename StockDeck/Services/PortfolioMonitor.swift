@@ -35,6 +35,8 @@ final class PortfolioMonitor {
     }
 
     func check(now: Date = Date()) {
+        checkTelegramSchedules(now: now)
+
         guard !storage.portfolioNotifications.isEmpty else { return }
         let today = Self.dayKey(now)
         let hour = Calendar.current.component(.hour, from: now)
@@ -60,6 +62,77 @@ final class PortfolioMonitor {
                     evaluateSummary(n, portfolio: portfolio, today: today, hour: hour, metrics: metrics, currSym: currSym)
                 }
             }
+        }
+    }
+
+    // MARK: - Telegram Scheduled Summaries (All Portfolios)
+
+    nonisolated static func evaluateDueSchedules(
+        schedules: [String],
+        lastSent: [String: String],
+        today: String,
+        currentTotalMinutes: Int
+    ) -> (dueToMark: [String], latestToFire: String?) {
+        var due: [(schedule: String, totalMinutes: Int)] = []
+
+        for sched in schedules {
+            let parts = sched.split(separator: ":")
+            guard parts.count == 2,
+                  let h = Int(parts[0]),
+                  let m = Int(parts[1]) else { continue }
+            let schedMinutes = h * 60 + m
+            let lastSentDay = lastSent[sched]
+
+            if lastSentDay != today && currentTotalMinutes >= schedMinutes {
+                due.append((schedule: sched, totalMinutes: schedMinutes))
+            }
+        }
+
+        guard !due.isEmpty else { return ([], nil) }
+
+        due.sort { $0.totalMinutes < $1.totalMinutes }
+        let dueNames = due.map { $0.schedule }
+        let latest = due.last?.schedule
+
+        return (dueNames, latest)
+    }
+
+    private func checkTelegramSchedules(now: Date = Date()) {
+        guard storage.telegramEnabled else { return }
+        let token = storage.telegramBotToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let chatId = storage.telegramChatId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty, !chatId.isEmpty else { return }
+
+        let hasAnyHolding = storage.portfolios.contains { !$0.holdings.isEmpty }
+        guard hasAnyHolding else { return }
+
+        let today = Self.dayKey(now)
+        let cal = Calendar.current
+        let currentHour = cal.component(.hour, from: now)
+        let currentMinute = cal.component(.minute, from: now)
+        let currentTotalMinutes = currentHour * 60 + currentMinute
+
+        let (dueToMark, latestToFire) = Self.evaluateDueSchedules(
+            schedules: storage.telegramSchedules,
+            lastSent: storage.telegramLastSentSchedule,
+            today: today,
+            currentTotalMinutes: currentTotalMinutes
+        )
+
+        guard let fireSched = latestToFire else { return }
+
+        for sched in dueToMark {
+            storage.telegramLastSentSchedule[sched] = today
+        }
+
+        let report = TelegramReportBuilder.buildAllPortfoliosReport(
+            storageService: storage,
+            stockService: stockService,
+            scheduleLabel: fireSched,
+            now: now
+        )
+        Task {
+            try? await TelegramService.sendMessage(botToken: token, chatId: chatId, text: report)
         }
     }
 
