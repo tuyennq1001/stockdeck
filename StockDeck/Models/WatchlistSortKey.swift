@@ -1,7 +1,7 @@
 import Foundation
 
 /// Unified sorting keys for Watchlists across Desktop, Popover, and Mobile.
-enum WatchlistSortKey: Equatable, Hashable {
+enum WatchlistSortKey: Equatable, Hashable, Sendable {
     case order, symbol, price, changePercent, extChangePercent, metric(WatchlistMetric)
 
     var rawString: String {

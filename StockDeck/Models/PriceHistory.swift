@@ -1,7 +1,7 @@
 import Foundation
 
 /// A price point (closing or full OHLC bar) for detail charts.
-struct PricePoint: Identifiable, Equatable, Codable {
+struct PricePoint: Identifiable, Equatable, Codable, Sendable {
     let date: Date
     let close: Double
     let open: Double?

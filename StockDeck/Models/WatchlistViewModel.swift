@@ -47,14 +47,84 @@ final class WatchlistViewModel {
         }
     }
     
+    private struct ComputationInputs: Sendable {
+        let watchlist: [String]
+        let quotes: [String: StockQuote]
+        let history: [String: [PricePoint]]
+        let historyMax: [String: [PricePoint]]
+        let targets: [String: StockTarget]
+        let priceRates: [String: Double]
+        let rates: [String: Double]
+        let isCryptoMap: [String: Bool]
+        let isIndexMap: [String: Bool]
+        let stockPriceCurrency: String
+        let sortKey: WatchlistSortKey
+        let sortAsc: Bool
+    }
+    
     private func recomputeAll() {
         guard let stockService = stockService, let storageService = storageService else { return }
         let currentWatchlist = storageService.watchlist
+        guard !currentWatchlist.isEmpty else {
+            self.rows = []
+            self.visibleRows = []
+            self.displaySymbols = []
+            return
+        }
         
-        // 1. Build WatchlistWideView.WatchRow
+        var priceRates: [String: Double] = [:]
+        var rates: [String: Double] = [:]
+        var isCryptoMap: [String: Bool] = [:]
+        var isIndexMap: [String: Bool] = [:]
+        
+        for symbol in currentWatchlist {
+            let q = stockService.quotes[symbol]
+            let curr = q?.currency ?? ""
+            if !curr.isEmpty {
+                priceRates[curr] = stockService.priceRate(from: curr)
+                rates[curr] = stockService.rate(from: curr)
+            }
+            let isCrypto = storageService.type(for: symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: symbol) != nil
+            isCryptoMap[symbol] = isCrypto
+            let isIdx = q.map { StorageService.isIndex(symbol: $0.symbol, type: storageService.type(for: $0.symbol)) } ?? StorageService.isIndex(symbol: symbol, type: storageService.type(for: symbol))
+            isIndexMap[symbol] = isIdx
+        }
+        
+        let sortKey = WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
+        let sortAsc = storageService.currentWatchlist.sortAsc ?? true
+        
+        let inputs = ComputationInputs(
+            watchlist: currentWatchlist,
+            quotes: stockService.quotes,
+            history: stockService.watchlistHistory,
+            historyMax: stockService.priceHistoryMax,
+            targets: storageService.stockTargets,
+            priceRates: priceRates,
+            rates: rates,
+            isCryptoMap: isCryptoMap,
+            isIndexMap: isIndexMap,
+            stockPriceCurrency: storageService.stockPriceCurrency,
+            sortKey: sortKey,
+            sortAsc: sortAsc
+        )
+        
+        refreshTask?.cancel()
+        refreshTask = Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.computeRowsAndSort(inputs: inputs)
+            }.value
+            
+            guard !Task.isCancelled else { return }
+            self.rows = result.rows
+            self.visibleRows = result.visibleRows
+            self.displaySymbols = result.displaySymbols
+        }
+    }
+    
+    private nonisolated static func computeRowsAndSort(inputs: ComputationInputs) -> (rows: [WatchlistWideView.WatchRow], visibleRows: [WatchlistWideView.WatchRow], displaySymbols: [String]) {
         var newRows: [WatchlistWideView.WatchRow] = []
+        newRows.reserveCapacity(inputs.watchlist.count)
         
-        // Re-use current time boundaries to avoid recalculating per symbol
         let calendar = Calendar.current
         let now = Date()
         let monthStart = calendar.date(byAdding: .month, value: -1, to: now) ?? now
@@ -67,15 +137,13 @@ final class WatchlistViewModel {
         let fiveYearStart = calendar.date(byAdding: .year, value: -5, to: now) ?? now
         let tenYearStart = calendar.date(byAdding: .year, value: -10, to: now) ?? now
         
-        for (index, symbol) in currentWatchlist.enumerated() {
-            let q = stockService.quotes[symbol]
-            let rate = q.map { stockService.priceRate(from: $0.currency) } ?? 1
+        for (index, symbol) in inputs.watchlist.enumerated() {
+            let q = inputs.quotes[symbol]
+            let rate = q.flatMap { inputs.priceRates[$0.currency] } ?? 1.0
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
-            let history = stockService.watchlistHistory[symbol] ?? []
-            let allTimeHistory = stockService.priceHistoryMax[symbol] ?? []
+            let history = inputs.history[symbol] ?? []
+            let allTimeHistory = inputs.historyMax[symbol] ?? []
             
-            // Prefer high-resolution daily closes when available for the boundary date;
-            // fall back to all-time monthly history for periods extending beyond daily coverage (e.g. 10Y).
             func series(covering boundary: Date) -> [PricePoint] {
                 if let first = history.first?.date, first <= boundary {
                     return history
@@ -85,9 +153,10 @@ final class WatchlistViewModel {
             
             let regularPrice = q?.price ?? 0
             let convPrice = regularPrice * rate
-            let indexFlag = q.map { StorageService.isIndex(symbol: $0.symbol, type: storageService.type(for: $0.symbol)) } ?? StorageService.isIndex(symbol: symbol, type: storageService.type(for: symbol))
+            let indexFlag = inputs.isIndexMap[symbol] ?? false
+            let isCrypto = inputs.isCryptoMap[symbol] ?? false
             
-            // Single-pass ATH & ATL calculation (zero array allocations)
+            // Single-pass ATH & ATL calculation (zero allocations)
             var histHigh: Double? = nil
             var histLow: Double? = nil
             for pt in allTimeHistory {
@@ -133,10 +202,14 @@ final class WatchlistViewModel {
                 fromAtl = nil
             }
             
+            let target = inputs.targets[symbol]
+            let toTargetPct = target?.percentDistance(from: regularPrice)
+            let inBuyZone = target?.isInBuyZone(currentPrice: regularPrice) ?? false
+
             newRows.append(WatchlistWideView.WatchRow(
                 id: symbol, order: index, symbol: symbol,
                 name: q?.name ?? "",
-                currency: indexFlag ? "" : ((storageService.stockPriceCurrency.isEmpty ? q?.currency : storageService.stockPriceCurrency) ?? ""),
+                currency: indexFlag ? "" : ((inputs.stockPriceCurrency.isEmpty ? q?.currency : inputs.stockPriceCurrency) ?? ""),
                 isIndex: indexFlag,
                 rate: rate,
                 price: convPrice,
@@ -161,32 +234,50 @@ final class WatchlistViewModel {
                 history: history,
                 allTimeHistory: allTimeHistory,
                 loaded: q != nil, quote: q,
-                marketCap: q?.marketCap.map { $0 * (q.map { stockService.rate(from: $0.currency) } ?? 1) }
+                marketCap: q?.marketCap.map { $0 * (q.flatMap { inputs.rates[$0.currency] } ?? 1) },
+                buyTarget: target,
+                toBuyTargetPercent: toTargetPct,
+                isInBuyZone: inBuyZone,
+                isCrypto: isCrypto
             ))
         }
         
-        self.rows = newRows
+        // Direct in-memory sort using precalculated WatchRow metrics (O(N log N) without history binary search)
+        let sortedRows: [WatchlistWideView.WatchRow]
+        if inputs.sortKey == .order {
+            sortedRows = inputs.sortAsc ? newRows : Array(newRows.reversed())
+        } else if inputs.sortKey == .symbol {
+            sortedRows = newRows.sorted {
+                inputs.sortAsc ? $0.symbol.localizedCompare($1.symbol) == .orderedAscending : $0.symbol.localizedCompare($1.symbol) == .orderedDescending
+            }
+        } else {
+            sortedRows = newRows.sorted { a, b in
+                let valA = sortValue(row: a, key: inputs.sortKey)
+                let valB = sortValue(row: b, key: inputs.sortKey)
+                if let vA = valA, let vB = valB {
+                    if vA != vB {
+                        return inputs.sortAsc ? vA < vB : vA > vB
+                    }
+                } else if valA != nil {
+                    return true
+                } else if valB != nil {
+                    return false
+                }
+                return a.order < b.order
+            }
+        }
         
-        // 2. Sort rows
-        let sortKey = WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
-        let sortAsc = storageService.currentWatchlist.sortAsc ?? true
-        
-        let sortedSymbols = StorageService.sortWatchlistSymbols(
-            currentWatchlist,
-            key: sortKey,
-            ascending: sortAsc,
-            quotes: stockService.quotes,
-            history: stockService.watchlistHistory,
-            priceHistoryMax: stockService.priceHistoryMax,
-            priceRate: { stockService.priceRate(from: $0) },
-            rate: { stockService.rate(from: $0) },
-            showExtendedHours: storageService.showExtendedHours
-        )
-        
-        let rowsBySymbol = Dictionary(uniqueKeysWithValues: newRows.map { ($0.symbol, $0) })
-        self.visibleRows = sortedSymbols.compactMap { rowsBySymbol[$0] }
-        
-        // 3. For WatchlistView (compact)
-        self.displaySymbols = sortedSymbols
+        let displaySymbols = sortedRows.map(\.symbol)
+        return (rows: newRows, visibleRows: sortedRows, displaySymbols: displaySymbols)
+    }
+    
+    private nonisolated static func sortValue(row: WatchlistWideView.WatchRow, key: WatchlistSortKey) -> Double? {
+        switch key {
+        case .order, .symbol: return nil
+        case .price: return row.price
+        case .changePercent: return row.changePercent
+        case .extChangePercent: return row.extChangePercent
+        case .metric(let m): return row.metricValue(for: m)
+        }
     }
 }

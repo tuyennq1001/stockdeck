@@ -42,7 +42,7 @@ struct WatchlistWideView: View {
     @State private var multiAlertSymbols: [String] = []
     @State private var showMetricCustomizer = false
 
-    struct WatchRow: Identifiable {
+    struct WatchRow: Identifiable, Sendable {
         let id: String
         let order: Int
         let symbol: String
@@ -74,6 +74,10 @@ struct WatchlistWideView: View {
         let loaded: Bool
         let quote: StockQuote?
         let marketCap: Double?         // market cap in target currency for fair cross-currency sorting
+        let buyTarget: StockTarget?
+        let toBuyTargetPercent: Double?
+        let isInBuyZone: Bool
+        let isCrypto: Bool
 
         func metricValue(for metric: WatchlistMetric) -> Double? {
             switch metric {
@@ -111,6 +115,8 @@ struct WatchlistWideView: View {
                 return fromAthPercent
             case .fromAtl:
                 return fromAtlPercent
+            case .buyTarget:
+                return toBuyTargetPercent
             case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
                 return nil
             }
@@ -119,7 +125,9 @@ struct WatchlistWideView: View {
     struct AddTarget: Identifiable { let symbol: String; let portfolioId: UUID; var id: String { "\(symbol)-\(portfolioId)" } }
     struct AlertTarget: Identifiable { let symbol: String; var id: String { symbol } }
     struct DetailTarget: Identifiable { let symbol: String; var id: String { symbol } }
+    struct TargetTarget: Identifiable { let symbol: String; var id: String { symbol } }
     @State private var detailSymbol: DetailTarget?
+    @State private var targetSymbol: TargetTarget?
 
     @State private var selectedSymbols: Set<String> = []
     @State private var activeDetailSymbol: String? = nil
@@ -222,6 +230,10 @@ struct WatchlistWideView: View {
             PriceAlertSheet(symbol: t.symbol) { alertSymbol = nil }
                 .environmentObject(stockService).environmentObject(storageService)
         }
+        .sheet(item: $targetSymbol) { t in
+            StockTargetSheet(symbol: t.symbol) { targetSymbol = nil }
+                .environmentObject(stockService).environmentObject(storageService)
+        }
         .sheet(isPresented: Binding(
             get: { !multiAlertSymbols.isEmpty },
             set: { if !$0 { multiAlertSymbols = [] } }
@@ -280,6 +292,27 @@ struct WatchlistWideView: View {
                     }
                 }
                 Spacer()
+                Button {
+                    targetSymbol = TargetTarget(symbol: symbol)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "target").font(.system(size: 10, weight: .bold))
+                        if let target = storageService.buyTarget(for: symbol) {
+                            Text(target.isInBuyZone(currentPrice: quote.effectivePrice) ? "Buy Zone" : "Target")
+                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        } else {
+                            Text("Buy Target")
+                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        }
+                    }
+                    .foregroundStyle(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? .white : DS.brand)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? DS.up : DS.brand.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Set a buy target price for this stock")
+
                 if !storageService.portfolios.isEmpty {
                     DSMenu(width: 200, sections: [storageService.portfolios.map { p in
                         DSMenuAction(title: p.name, icon: "briefcase") {
@@ -675,7 +708,7 @@ struct WatchlistWideView: View {
                                          onToggleSelect: {
                                              toggleSelection(of: row.symbol)
                                          },
-                                         menu: { rowMenu(row) })
+                                         menu: { rowMenu(row, isFirst: idx == 0, isLast: idx == visibleRows.count - 1) })
                                 .opacity(0)
                         } else {
                             WatchRowView(row: row,
@@ -693,7 +726,7 @@ struct WatchlistWideView: View {
                                          onToggleSelect: {
                                              toggleSelection(of: row.symbol)
                                          },
-                                         menu: { rowMenu(row) })
+                                         menu: { rowMenu(row, isFirst: idx == 0, isLast: idx == visibleRows.count - 1) })
                         }
                     }
                     if idx < visibleRows.count - 1 {
@@ -852,7 +885,7 @@ struct WatchlistWideView: View {
     }
 
     @ViewBuilder
-    private func rowMenu(_ row: WatchRow) -> some View {
+    private func rowMenu(_ row: WatchRow, isFirst: Bool, isLast: Bool) -> some View {
         let targets = selectedSymbols.contains(row.symbol) && selectedSymbols.count > 1 ? selectedSymbols : [row.symbol]
         let count = targets.count
 
@@ -905,13 +938,23 @@ struct WatchlistWideView: View {
 
         if count == 1 {
             Button { alertSymbol = AlertTarget(symbol: row.symbol) } label: { Label("Set Price Alert…", systemImage: "bell") }
-            if let idx = storageService.watchlist.firstIndex(of: row.symbol) {
-                Divider()
-                Button { move(row.symbol, by: -1) } label: { Label("Move Up", systemImage: "arrow.up") }
-                    .disabled(idx == 0)
-                Button { move(row.symbol, by: 1) } label: { Label("Move Down", systemImage: "arrow.down") }
-                    .disabled(idx == storageService.watchlist.count - 1)
+            Button {
+                targetSymbol = TargetTarget(symbol: row.symbol)
+            } label: {
+                Label(storageService.buyTarget(for: row.symbol) != nil ? "Edit Buy Target…" : "Set Buy Target…", systemImage: "target")
             }
+            if storageService.buyTarget(for: row.symbol) != nil {
+                Button(role: .destructive) {
+                    storageService.removeBuyTarget(for: row.symbol)
+                } label: {
+                    Label("Remove Buy Target", systemImage: "trash")
+                }
+            }
+            Divider()
+            Button { move(row.symbol, by: -1) } label: { Label("Move Up", systemImage: "arrow.up") }
+                .disabled(isFirst)
+            Button { move(row.symbol, by: 1) } label: { Label("Move Down", systemImage: "arrow.down") }
+                .disabled(isLast)
         }
 
         Divider()
@@ -1043,6 +1086,7 @@ private enum WCol {
         switch metric {
         case .price: return price
         case .today, .todayChange: return 82
+        case .buyTarget: return 110
         default: return metric.isChart ? 76 : (metric.category == .price ? 92 : period)
         }
     }
@@ -1050,7 +1094,6 @@ private enum WCol {
 
 /// One custom watchlist row: hover tint, click-to-open, right-click actions.
 private struct WatchRowView<Menu: View>: View {
-    @EnvironmentObject private var storageService: StorageService
     let row: WatchlistWideView.WatchRow
     let position: Int
     let showExtended: Bool
@@ -1090,7 +1133,7 @@ private struct WatchRowView<Menu: View>: View {
     @ViewBuilder
     private var todayPercentCell: some View {
         if row.loaded {
-            let isCrypto = storageService.type(for: row.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: row.symbol) != nil
+            let isCrypto = row.isCrypto
             let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, quote: row.quote, isCrypto: isCrypto)
             let isSessionOpen = MarketCategory.isSessionOpen(symbol: row.symbol, quote: row.quote, isCrypto: isCrypto)
 
@@ -1166,6 +1209,8 @@ private struct WatchRowView<Menu: View>: View {
                 periodCell(row.fromAthPercent)
             case .fromAtl:
                 periodCell(row.fromAtlPercent)
+            case .buyTarget:
+                buyTargetCell
             case .marketCap:
                 marketCapCell
             case .chart24h:
@@ -1185,6 +1230,36 @@ private struct WatchRowView<Menu: View>: View {
             }
         }
         .frame(width: WCol.width(for: metric), alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private var buyTargetCell: some View {
+        if let target = row.buyTarget {
+            let currSym = row.isIndex ? "" : StorageService.currencySymbol(for: row.currency)
+            let formattedPrice = StorageService.formatNumber(target.targetPrice, decimals: priceDec(target.targetPrice))
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(currSym)\(formattedPrice)")
+                    .font(DS.figure.monospacedDigit())
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                if row.isInBuyZone {
+                    Text("🎯 MUA")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundStyle(DS.up)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(DS.up.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                } else if let pct = row.toBuyTargetPercent {
+                    Text(String(format: "%+.\(percentDecimals)f%%", pct))
+                        .font(DS.micro.monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
+                }
+            }
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
     }
 
     @ViewBuilder

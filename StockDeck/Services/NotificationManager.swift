@@ -20,7 +20,8 @@ final class NotificationManager {
     private static let dedupWindow: TimeInterval = 120
 
     private init() {
-        isAvailable = Bundle.main.bundleIdentifier != nil
+        let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil
+        isAvailable = !isTesting && Bundle.main.bundleIdentifier != nil && Bundle.main.bundlePath.hasSuffix(".app")
     }
 
     func requestAuthorization() {
@@ -125,6 +126,33 @@ final class AlertMonitor {
             storage.updateAlertPosition(id: alert.id, nowAbove: result.nowAbove)
             guard result.fire else { continue }
             fire(alert: alert, quote: quote)
+        }
+
+        checkBuyTargets(quotes: quotes)
+    }
+
+    private func checkBuyTargets(quotes: [String: StockQuote]) {
+        for (symbol, target) in storage.stockTargets {
+            guard target.notifyWhenReached, !target.isReached, let quote = quotes[symbol] else { continue }
+            let currentPrice = quote.effectivePrice
+            guard currentPrice > 0, currentPrice <= target.targetPrice else { continue }
+
+            storage.markTargetReached(symbol: symbol)
+
+            let currSym = quote.currency.isEmpty ? "" : StorageService.currencySymbol(for: quote.currency)
+            let dec = storage.resolvedPriceDecimals(symbol: symbol, price: currentPrice)
+            let currStr = "\(currSym)\(StorageService.formatNumber(currentPrice, decimals: dec))"
+            let targetStr = "\(currSym)\(StorageService.formatNumber(target.targetPrice, decimals: dec))"
+
+            let noteSuffix = (target.note?.isEmpty == false) ? " (\(target.note!))" : ""
+            let body = "\(symbol) has entered buy target zone at \(targetStr)\(noteSuffix)! Current price: \(currStr)"
+
+            notifier.send(
+                title: "🎯 \(symbol) Buy Target Reached!",
+                body: body,
+                identifier: "buy_target_\(symbol)_\(target.targetPrice)",
+                sentiment: .positive
+            )
         }
     }
 

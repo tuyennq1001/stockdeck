@@ -25,7 +25,9 @@ struct UtilitiesView: View {
 
     @State private var selectedSegment: UtilitySegment = .alerts
     @State private var showAddAlertSheet = false
+    @State private var showAddTargetSheet = false
     @State private var editingAlert: PriceAlert? = nil
+    @State private var editingTarget: StockTarget? = nil
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var pendingBackupData: StorageService.AppData? = nil
     @State private var showRestoreConfirmation = false
@@ -47,6 +49,20 @@ struct UtilitiesView: View {
         .sheet(item: $editingAlert) { alert in
             AlertEditView(symbol: alert.symbol) {
                 editingAlert = nil
+            }
+            .environmentObject(storageService)
+            .environmentObject(stockService)
+        }
+        .sheet(isPresented: $showAddTargetSheet) {
+            StockTargetSheet {
+                showAddTargetSheet = false
+            }
+            .environmentObject(storageService)
+            .environmentObject(stockService)
+        }
+        .sheet(item: $editingTarget) { target in
+            StockTargetSheet(symbol: target.symbol) {
+                editingTarget = nil
             }
             .environmentObject(storageService)
             .environmentObject(stockService)
@@ -140,20 +156,31 @@ struct UtilitiesView: View {
                 // Header Bar with count and + Add Alert
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Price Alerts")
+                        Text("Alerts & Targets")
                             .font(.inter(15, weight: .bold, relativeTo: .headline))
                             .foregroundColor(DS.ink)
-                        Text("\(storageService.alerts.count) active or triggered alerts")
+                        let total = storageService.alerts.count + storageService.stockTargets.count
+                        Text("\(total) active alert\(total == 1 ? "" : "s") & targets")
                             .font(.inter(11, relativeTo: .caption))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Button {
-                        showAddAlertSheet = true
+                    Menu {
+                        Button {
+                            showAddAlertSheet = true
+                        } label: {
+                            Label("Add Price Alert…", systemImage: "bell")
+                        }
+                        Button {
+                            showAddTargetSheet = true
+                        } label: {
+                            Label("Set Buy Target…", systemImage: "target")
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus.circle.fill")
-                            Text("Add Alert")
+                            Text("Add")
+                            Image(systemName: "chevron.down").font(.system(size: 8))
                         }
                         .font(.inter(12, weight: .semibold, relativeTo: .subheadline))
                     }
@@ -163,12 +190,15 @@ struct UtilitiesView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-                if storageService.alerts.isEmpty {
+                if storageService.alerts.isEmpty && storageService.stockTargets.isEmpty {
                     emptyAlertsView
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(storageService.alerts) { alert in
                             alertCard(alert)
+                        }
+                        ForEach(Array(storageService.stockTargets.values.sorted(by: { $0.symbol < $1.symbol }))) { target in
+                            targetCard(target)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -184,7 +214,7 @@ struct UtilitiesView: View {
                 .font(.system(size: 36))
                 .foregroundColor(.secondary.opacity(0.5))
                 .padding(.top, 40)
-            Text("No Price Alerts")
+            Text("No Alerts or Targets")
                 .font(.inter(14, weight: .semibold, relativeTo: .headline))
                 .foregroundColor(DS.ink)
             Text("Get notified when a stock reaches your target price, crosses moving averages, or moves by a percentage.")
@@ -192,13 +222,23 @@ struct UtilitiesView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button {
-                showAddAlertSheet = true
-            } label: {
-                Label("Create First Alert", systemImage: "plus")
-                    .font(.inter(12, weight: .semibold, relativeTo: .subheadline))
+            HStack(spacing: 8) {
+                Button {
+                    showAddAlertSheet = true
+                } label: {
+                    Label("Add Price Alert", systemImage: "plus")
+                        .font(.inter(12, weight: .semibold, relativeTo: .subheadline))
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    showAddTargetSheet = true
+                } label: {
+                    Label("Set Buy Target", systemImage: "target")
+                        .font(.inter(12, weight: .semibold, relativeTo: .subheadline))
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.borderedProminent)
             .padding(.top, 8)
             .padding(.bottom, 40)
         }
@@ -221,6 +261,17 @@ struct UtilitiesView: View {
                     Text(StockService.beautifiedSymbol(alert.symbol))
                         .font(.inter(13, weight: .bold, relativeTo: .body))
                         .foregroundColor(DS.ink)
+
+                    // Type Badge
+                    HStack(spacing: 2) {
+                        Image(systemName: "bell.fill").font(.system(size: 7.5))
+                        Text("Price Alert").font(.inter(9, weight: .bold, relativeTo: .caption2))
+                    }
+                    .foregroundColor(DS.brand)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(DS.brand.opacity(0.12)))
+
                     if isTriggered {
                         Text("Triggered")
                             .font(.inter(9, weight: .bold, relativeTo: .caption2))
@@ -274,6 +325,116 @@ struct UtilitiesView: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(DS.card))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(DS.hairline, lineWidth: 0.5))
+    }
+
+    private func targetCard(_ target: StockTarget) -> some View {
+        let quote = stockService.quotes[target.symbol]
+        let currSym = StorageService.currencySymbol(for: quote?.currency ?? storageService.preferredCurrency)
+        let currentPrice = quote?.effectivePrice ?? quote?.price ?? 0
+        let isBuyZone = target.isInBuyZone(currentPrice: currentPrice)
+        let dec = storageService.resolvedPriceDecimals(symbol: target.symbol, price: target.targetPrice)
+        let targetStr = "\(currSym)\(StorageService.formatNumber(target.targetPrice, decimals: dec))"
+
+        return HStack(spacing: 12) {
+            SymbolLogo(symbol: target.symbol, size: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(StockService.beautifiedSymbol(target.symbol))
+                        .font(.inter(13, weight: .bold, relativeTo: .body))
+                        .foregroundColor(DS.ink)
+
+                    // Type Badge
+                    HStack(spacing: 2) {
+                        Image(systemName: "target").font(.system(size: 8))
+                        Text("Buy Target").font(.inter(9, weight: .bold, relativeTo: .caption2))
+                    }
+                    .foregroundColor(DS.up)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(DS.up.opacity(0.12)))
+
+                    // Status Badge
+                    if isBuyZone {
+                        Text("🎯 In Zone")
+                            .font(.inter(9, weight: .bold, relativeTo: .caption2))
+                            .foregroundColor(DS.up)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(DS.up.opacity(0.15)))
+                    } else if target.notifyWhenReached {
+                        Text("Active")
+                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.green.opacity(0.15)))
+                    } else {
+                        Text("Silent")
+                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                    }
+                }
+
+                HStack(spacing: 4) {
+                    Text("Target: \(targetStr)")
+                        .font(.inter(11, weight: .medium, relativeTo: .caption))
+                        .foregroundColor(DS.ink)
+                    if let dist = target.percentDistance(from: currentPrice), currentPrice > 0 {
+                        Text(String(format: "(%+.1f%%)", dist))
+                            .font(.inter(10.5, relativeTo: .caption))
+                            .foregroundColor(isBuyZone ? DS.up : .secondary)
+                    }
+                    if let note = target.note, !note.isEmpty {
+                        Text("• \(note)")
+                            .font(.inter(10.5, relativeTo: .caption))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                if currentPrice > 0 {
+                    Text("Current: \(currSym)\(StorageService.formatNumber(currentPrice, decimals: dec))")
+                        .font(.inter(10, weight: .medium, relativeTo: .caption2))
+                        .foregroundColor(DS.inkSecondary)
+                }
+            }
+
+            Spacer()
+
+            // Edit button
+            Button {
+                editingTarget = target
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.borderless)
+
+            // Delete button
+            Button(role: .destructive) {
+                withAnimation {
+                    storageService.removeBuyTarget(for: target.symbol)
+                }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .padding(.trailing, 4)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(DS.card))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(DS.hairline, lineWidth: 0.5))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            editingTarget = target
+        }
     }
 
     // MARK: - 2. IMPORT / EXPORT SUB-TAB
