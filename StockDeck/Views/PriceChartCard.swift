@@ -358,7 +358,31 @@ struct PriceChartCard: View {
             let info = displayedPriceInfo
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
-                    SectionLabel("Last price")
+                    HStack(spacing: 8) {
+                        SectionLabel("Last price")
+                        if let buyTarget = storageService.buyTarget(for: symbol) {
+                            let inZone = buyTarget.isInBuyZone(currentPrice: quote.effectivePrice)
+                            HStack(spacing: 3) {
+                                Image(systemName: "target")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("Buy Target: \(priceSymbol)\(StorageService.formatCompactNumber(buyTarget.targetPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: buyTarget.targetPrice)))")
+                                    .font(.inter(10, weight: .semibold, relativeTo: .caption2).monospacedDigit())
+                                if inZone {
+                                    Text("• IN ZONE")
+                                        .font(.system(size: 8.5, weight: .bold))
+                                } else if let dist = buyTarget.percentDistance(from: quote.effectivePrice) {
+                                    Text(String(format: "(%+.1f%%)", dist))
+                                        .font(.inter(9.5, weight: .medium, relativeTo: .caption2).monospacedDigit())
+                                }
+                            }
+                            .foregroundStyle(inZone ? DS.up : DS.brand)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(inZone ? DS.up.opacity(0.12) : DS.brand.opacity(0.10))
+                            )
+                        }
+                    }
                     let dec = storageService.resolvedPriceDecimals(symbol: symbol, price: info.price)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(StorageService.formatAmount(info.price, symbol: priceSymbol, decimals: dec))
@@ -591,6 +615,27 @@ struct PriceChartCard: View {
                         }
                     }
                 }
+                if let buyTarget = storageService.buyTarget(for: symbol) {
+                    RuleMark(y: .value("Buy Target", buyTarget.targetPrice))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        .foregroundStyle(DS.up)
+                        .annotation(position: .top, alignment: .trailing) {
+                            HStack(spacing: 3) {
+                                Text("🎯 Buy")
+                                    .font(.system(size: 8, weight: .bold))
+                                Text("\(priceSymbol)\(StorageService.formatCompactNumber(buyTarget.targetPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: buyTarget.targetPrice)))")
+                                    .font(.inter(8.5, weight: .semibold, relativeTo: .caption2).monospacedDigit())
+                            }
+                            .foregroundStyle(DS.up)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(DS.cardAlt.opacity(0.92))
+                                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(DS.up.opacity(0.4), lineWidth: 0.5))
+                            )
+                        }
+                }
             }
             .chartYScale(domain: chartDomain)
             .chartYAxis {
@@ -645,6 +690,10 @@ struct PriceChartCard: View {
                 mins.append(trade.price)
                 maxs.append(trade.price)
             }
+        }
+        if let target = storageService.buyTarget(for: symbol), target.targetPrice > 0 {
+            mins.append(target.targetPrice)
+            maxs.append(target.targetPrice)
         }
         guard let min = mins.min(), let max = maxs.max(), max > min else { return 0...1 }
         let pad = (max - min) * 0.08

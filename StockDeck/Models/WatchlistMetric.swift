@@ -2,11 +2,11 @@ import Foundation
 
 /// Optional columns a user can add to a watchlist. Rank, symbol, and price stay fixed;
 /// this list controls the investment metrics that follow them.
-enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
+enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case price
     case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears, tenYears
     case ath, fromAth, atl, fromAtl
-    case marketCap
+    case marketCap, buyTarget
     case chart24h, chart7d, chart30d, chart60d, chart90d, chartYtd, chart1y
 
     var id: String { rawValue }
@@ -29,6 +29,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
         case .atl: return "ATL"
         case .fromAtl: return "From ATL"
         case .marketCap: return "Mkt Cap"
+        case .buyTarget: return "Buy Target"
         case .chart24h: return "24h chart"
         case .chart7d: return "7d chart"
         case .chart30d: return "30d chart"
@@ -45,7 +46,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable {
             return .core
         case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
             return .change
-        case .ath, .fromAth, .atl, .fromAtl, .marketCap:
+        case .ath, .fromAth, .atl, .fromAtl, .marketCap, .buyTarget:
             return .price
         case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
             return .chart

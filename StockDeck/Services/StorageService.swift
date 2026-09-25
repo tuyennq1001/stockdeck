@@ -451,6 +451,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// User-defined buy targets per symbol.
+    @Published var stockTargets: [String: StockTarget] = [:] {
+        didSet { scheduleSave() }
+    }
+
     /// User-authored notes per symbol, shared across watchlist and portfolio.
     @Published var symbolNotes: [String: [SymbolNote]] = [:] {
         didSet { scheduleSave() }
@@ -872,6 +877,47 @@ class StorageService: ObservableObject {
         }
     }
 
+    // MARK: - Stock Buy Targets
+
+    func buyTarget(for symbol: String) -> StockTarget? {
+        stockTargets[symbol]
+    }
+
+    func setBuyTarget(symbol: String, targetPrice: Double, note: String? = nil, notifyWhenReached: Bool = true) {
+        var item = stockTargets[symbol] ?? StockTarget(symbol: symbol, targetPrice: targetPrice)
+        item.targetPrice = targetPrice
+        item.note = note
+        item.notifyWhenReached = notifyWhenReached
+        item.updatedAt = Date()
+        item.isReached = false
+        item.reachedAt = nil
+        stockTargets[symbol] = item
+    }
+
+    func removeBuyTarget(for symbol: String) {
+        stockTargets.removeValue(forKey: symbol)
+    }
+
+    func removeBuyTargets(symbols: [String]) {
+        for s in symbols {
+            stockTargets.removeValue(forKey: s)
+        }
+    }
+
+    func setBuyTargetNotify(symbol: String, notify: Bool) {
+        guard var item = stockTargets[symbol] else { return }
+        item.notifyWhenReached = notify
+        item.updatedAt = Date()
+        stockTargets[symbol] = item
+    }
+
+    func markTargetReached(symbol: String, reached: Bool = true) {
+        guard var item = stockTargets[symbol] else { return }
+        item.isReached = reached
+        if reached { item.reachedAt = Date() }
+        stockTargets[symbol] = item
+    }
+
     // MARK: - Portfolio notifications
 
     func notifications(for portfolioId: UUID) -> [PortfolioNotification] {
@@ -1139,6 +1185,7 @@ class StorageService: ObservableObject {
         quotes: [String: StockQuote],
         history: [String: [PricePoint]] = [:],
         priceHistoryMax: [String: [PricePoint]] = [:],
+        stockTargets: [String: StockTarget] = [:],
         priceRate: (String) -> Double = { _ in 1.0 },
         rate: (String) -> Double = { _ in 1.0 },
         showExtendedHours: Bool = true
@@ -1260,6 +1307,9 @@ class StorageService: ObservableObject {
                     return max(0.0, (priceConverted - atl) / atl * 100)
                 case .marketCap:
                     return q?.marketCap.map { $0 * mRate }
+                case .buyTarget:
+                    guard let target = stockTargets[symbol], target.targetPrice > 0, regularPrice > 0 else { return nil }
+                    return target.percentDistance(from: regularPrice)
                 case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
                     return nil
                 }
@@ -2097,6 +2147,7 @@ class StorageService: ObservableObject {
         fontFamily = "Inter Variable"
         appearanceRaw = AppearanceMode.default.rawValue
         symbolNotes = [:]
+        stockTargets = [:]
         lastSelectedTab = "Watchlists"
         UserDefaults.standard.removeObject(forKey: "lastSelectedTab")
         aiBaseURL = "https://api.openai.com/v1"
@@ -2120,6 +2171,7 @@ class StorageService: ObservableObject {
         watchlist = []
         alerts = []
         symbolNotes = [:]
+        stockTargets = [:]
         portfolioNotifications = [:]
         portfolioSnapshots = [:]
         portfolioChartRanges = [:]
@@ -2193,6 +2245,7 @@ class StorageService: ObservableObject {
         var fontFamily: String?
         var alerts: [PriceAlert]?
         var symbolNotes: [String: [SymbolNote]]?
+        var stockTargets: [String: StockTarget]?
         var showCompanyName: Bool?
         var showWatchlistSparkline: Bool?
         var showDayRange: Bool?
@@ -2255,6 +2308,7 @@ class StorageService: ObservableObject {
             fontFamily: fontFamily,
             alerts: alerts,
             symbolNotes: symbolNotes.isEmpty ? nil : symbolNotes,
+            stockTargets: stockTargets.isEmpty ? nil : stockTargets,
             showCompanyName: showCompanyName,
             showWatchlistSparkline: showWatchlistSparkline,
             showDayRange: showDayRange,
@@ -2371,6 +2425,7 @@ class StorageService: ObservableObject {
         isinMap = decoded.isinMap ?? [:]
         alerts = decoded.alerts ?? []
         symbolNotes = decoded.symbolNotes ?? [:]
+        stockTargets = decoded.stockTargets ?? [:]
         portfolioNotifications = decoded.portfolioNotifications ?? [:]
         portfolioSnapshots = decoded.portfolioSnapshots ?? [:]
         portfolioChartRanges = decoded.portfolioChartRanges ?? [:]

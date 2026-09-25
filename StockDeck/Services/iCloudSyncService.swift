@@ -379,6 +379,21 @@ final class iCloudSyncService: ObservableObject {
         }
         merged.symbolNotes = combinedNotes
 
+        // 4b. Merge Stock Targets (prefer newest updatedAt)
+        var combinedTargets = local.stockTargets ?? [:]
+        if let remoteTargets = remote.stockTargets {
+            for (sym, rTarget) in remoteTargets {
+                if let existing = combinedTargets[sym] {
+                    if rTarget.updatedAt > existing.updatedAt {
+                        combinedTargets[sym] = rTarget
+                    }
+                } else {
+                    combinedTargets[sym] = rTarget
+                }
+            }
+        }
+        merged.stockTargets = combinedTargets
+
         // 5. Merge User Preferences & Settings
         if let rc = remote.preferredCurrency, !rc.isEmpty {
             merged.preferredCurrency = rc

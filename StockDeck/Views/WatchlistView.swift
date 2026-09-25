@@ -31,6 +31,9 @@ struct WatchlistView: View {
     @State private var dropIndicator: DropIndicator<String>? = nil
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     @State private var alertSymbol: String? = nil
+    struct TargetSheetItem: Identifiable { let symbol: String; var id: String { symbol } }
+    @State private var targetSymbol: TargetSheetItem? = nil
+    @State private var alertTarget: TargetSheetItem? = nil
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
 
@@ -110,16 +113,26 @@ struct WatchlistView: View {
         }
     }
 
+    private var rowsBySymbol: [String: WatchlistWideView.WatchRow] {
+        Dictionary(uniqueKeysWithValues: viewModel.rows.map { ($0.symbol, $0) })
+    }
+
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
     /// loaded, else a column-aligned placeholder.
     @ViewBuilder
     private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
-        if let quote = stockService.quotes[symbol] {
+        if let row = rowsBySymbol[symbol] {
             Button(action: {
-                showSymbolDetail.perform(quote.symbol)
+                showSymbolDetail.perform(row.symbol)
             }) {
-                QuoteRow(quote: quote)
-                    .contentShape(Rectangle())
+                QuoteRow(
+                    row: row,
+                    showCompanyName: storageService.showCompanyName,
+                    showExtendedHours: storageService.showExtendedHours,
+                    percentDecimals: storageService.percentDecimals,
+                    valueDecimals: storageService.valueDecimals
+                )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
@@ -266,6 +279,16 @@ struct WatchlistView: View {
                 .environmentObject(stockService)
                 .environmentObject(storageService)
                 .frame(width: 300, height: storageService.advancedPositions ? 290 : 220)
+            }
+            .sheet(item: $alertTarget) { item in
+                PriceAlertSheet(symbol: item.symbol) { alertTarget = nil }
+                    .environmentObject(stockService)
+                    .environmentObject(storageService)
+            }
+            .sheet(item: $targetSymbol) { item in
+                StockTargetSheet(symbol: item.symbol) { targetSymbol = nil }
+                    .environmentObject(stockService)
+                    .environmentObject(storageService)
             }
             .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
                 TextField("Watchlist name", text: $newWatchlistName)
@@ -539,9 +562,22 @@ struct WatchlistView: View {
         Divider()
 
         Button {
-            alertSymbol = symbol
+            alertTarget = TargetSheetItem(symbol: symbol)
         } label: {
             Label("Set Price Alert…", systemImage: "bell")
+        }
+
+        Button {
+            targetSymbol = TargetSheetItem(symbol: symbol)
+        } label: {
+            Label(storageService.buyTarget(for: symbol) != nil ? "Edit Buy Target…" : "Set Buy Target…", systemImage: "target")
+        }
+        if storageService.buyTarget(for: symbol) != nil {
+            Button(role: .destructive) {
+                storageService.removeBuyTarget(for: symbol)
+            } label: {
+                Label("Remove Buy Target", systemImage: "trash")
+            }
         }
         if let idx = storageService.watchlist.firstIndex(of: symbol) {
             Divider()
@@ -762,42 +798,56 @@ struct QuickAddHoldingView: View {
 }
 
 struct QuoteRow: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-    let quote: StockQuote
-
-    private func periodChange(_ metric: WatchlistMetric) -> Double? {
-        let calendar = Calendar.current
-        let now = Date()
-        let boundary: Date?
-        switch metric {
-        case .oneMonth: boundary = calendar.date(byAdding: .month, value: -1, to: now)
-        case .threeMonths: boundary = calendar.date(byAdding: .month, value: -3, to: now)
-        case .sixMonths: boundary = calendar.date(byAdding: .month, value: -6, to: now)
-        case .oneYear: boundary = calendar.date(byAdding: .year, value: -1, to: now)
-        case .twoYears: boundary = calendar.date(byAdding: .year, value: -2, to: now)
-        case .threeYears: boundary = calendar.date(byAdding: .year, value: -3, to: now)
-        case .fiveYears: boundary = calendar.date(byAdding: .year, value: -5, to: now)
-        case .tenYears: boundary = calendar.date(byAdding: .year, value: -10, to: now)
-        case .ytd: boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
-        default: boundary = nil
-        }
-        guard let boundary else { return nil }
-        let hist = stockService.priceHistoryMax[quote.symbol] ?? stockService.watchlistHistory[quote.symbol] ?? []
-        return PriceHistory.percentChange(points: hist, currentPrice: quote.price, since: boundary)
-    }
+    let row: WatchlistWideView.WatchRow
+    let showCompanyName: Bool
+    let showExtendedHours: Bool
+    let percentDecimals: Int
+    let valueDecimals: Int
 
     private var macOSSymbolCell: some View {
-        let isDisplayAsset = StockService.isDisplayNameAsset(quote.symbol)
+        let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
+        let isBuyZone = row.isInBuyZone
+
         return HStack(spacing: 5) {
-            SymbolLogo(symbol: quote.symbol, size: 20)
+            SymbolLogo(symbol: row.symbol, size: 20)
             VStack(alignment: .leading, spacing: 0) {
-                Text(isDisplayAsset ? quote.displayName : quote.symbol)
-                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                    .lineLimit(1)
-                if storageService.showCompanyName {
-                    Text(isDisplayAsset ? quote.symbol : quote.name)
+                HStack(spacing: 3) {
+                    Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : row.symbol)
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    if isBuyZone {
+                        Text("🎯 MUA")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(DS.up)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 0.5)
+                            .background(DS.up.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
+                    }
+                }
+                if let target = row.buyTarget {
+                    let currSym = row.currency.isEmpty ? "" : StorageService.currencySymbol(for: row.currency)
+                    let dec = valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: target.targetPrice)
+                    let priceStr = StorageService.formatCompactNumber(target.targetPrice, decimals: dec, stripTrailingZeros: true)
+                    if isBuyZone {
+                        Text("🎯 \(currSym)\(priceStr)")
+                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                            .fontWeight(.medium)
+                            .foregroundStyle(DS.up)
+                            .lineLimit(1)
+                    } else if let dist = row.toBuyTargetPercent {
+                        Text(String(format: "🎯 %@%@ (%+.1f%%)", currSym, priceStr, dist))
+                            .font(.inter(9.5, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text("🎯 \(currSym)\(priceStr)")
+                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                } else if showCompanyName {
+                    Text(isDisplayAsset ? row.symbol : row.name)
                         .font(.inter(10, relativeTo: .caption2))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -808,18 +858,18 @@ struct QuoteRow: View {
     }
 
     private var macOSPriceCell: some View {
-        let displayPrice = quote.price
-        let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)
-        let formattedChange = StorageService.formatCompactNumber(quote.change, decimals: dec, stripTrailingZeros: true)
+        let displayPrice = row.price
+        let dec = valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: displayPrice)
+        let formattedChange = StorageService.formatCompactNumber(row.change, decimals: dec, stripTrailingZeros: true)
 
         return VStack(alignment: .trailing, spacing: 1) {
             Text(StorageService.formatCompactNumber(displayPrice, decimals: dec))
                 .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
-            Text((quote.change >= 0 ? "+" : "") + formattedChange)
+            Text((row.change >= 0 ? "+" : "") + formattedChange)
                 .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                 .fontWeight(.semibold)
-                .foregroundColor(quote.isPositive ? DS.up : DS.down)
+                .foregroundColor(row.change >= 0 ? DS.up : DS.down)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
@@ -827,24 +877,23 @@ struct QuoteRow: View {
 
     private var macOSChangeCell: some View {
         VStack(alignment: .trailing, spacing: 1) {
-            let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
-            let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
-            let isSessionOpen = MarketCategory.isSessionOpen(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
+            let isMarketActive = MarketCategory.isTradingDay(symbol: row.symbol, quote: row.quote, isCrypto: row.isCrypto)
+            let isSessionOpen = MarketCategory.isSessionOpen(symbol: row.symbol, quote: row.quote, isCrypto: row.isCrypto)
 
-            let pctColor: Color = isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary
-            Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
+            let pctColor: Color = isMarketActive ? (row.changePercent >= 0 ? DS.up : DS.down) : DS.inkTertiary
+            Text(String(format: "%+.\(percentDecimals)f%%", row.changePercent))
                 .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                 .fontWeight(.medium)
                 .foregroundColor(pctColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
 
-            if storageService.showExtendedHours, quote.isExtendedHours, let extPct = quote.extendedChangePercent {
-                let isPre = quote.marketState.hasPrefix("PRE")
+            if showExtendedHours, let q = row.quote, q.isExtendedHours, let extPct = q.extendedChangePercent {
+                let isPre = q.marketState.hasPrefix("PRE")
                 HStack(spacing: 1) {
                     Image(systemName: isPre ? "sun.max.fill" : "moon.fill")
                         .font(.system(size: 8, weight: .semibold))
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", extPct))
+                    Text(String(format: "%+.\(percentDecimals)f%%", extPct))
                         .font(.inter(10, relativeTo: .caption2).monospacedDigit())
                         .fontWeight(.semibold)
                 }
@@ -866,14 +915,13 @@ struct QuoteRow: View {
         }
     }
 
-    private func macOSPeriodCell(for metric: WatchlistMetric, width: CGFloat) -> some View {
-        let pct = periodChange(metric)
-        return Group {
-            if let pct {
-                Text(String(format: "%+.\(storageService.percentDecimals)f%%", pct))
+    private func macOSPeriodCell(value: Double?, width: CGFloat) -> some View {
+        Group {
+            if let value {
+                Text(String(format: "%+.\(percentDecimals)f%%", value))
                     .font(.inter(11.5, relativeTo: .body).monospacedDigit())
                     .fontWeight(.medium)
-                    .foregroundColor(pct >= 0 ? DS.up : DS.down)
+                    .foregroundColor(value >= 0 ? DS.up : DS.down)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             } else {
@@ -892,8 +940,8 @@ struct QuoteRow: View {
             macOSSymbolCell
             macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
             macOSChangeCell.frame(width: WatchlistCol.change, alignment: .trailing)
-            macOSPeriodCell(for: .oneYear, width: WatchlistCol.oneYear)
-            macOSPeriodCell(for: .threeYears, width: WatchlistCol.threeYears)
+            macOSPeriodCell(value: row.oneYearChangePercent, width: WatchlistCol.oneYear)
+            macOSPeriodCell(value: row.threeYearChangePercent, width: WatchlistCol.threeYears)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4.5)
