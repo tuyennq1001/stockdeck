@@ -667,10 +667,18 @@ struct PortfolioOverview: View {
                     Spacer()
                     if !ds.isEmpty { rangePicker }
                 }
-                Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
-                    .font(DS.display).tracking(-0.5)
-                    .foregroundStyle(DS.ink)
-                    .contentTransition(.numericText())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(StorageService.formatAmount(totalValue, symbol: currencySymbol, decimals: storageService.amountDecimals))
+                        .font(DS.display).tracking(-0.5)
+                        .foregroundStyle(DS.ink)
+                        .contentTransition(.numericText())
+                    if let secVal = viewModel.secondaryTotalValue, let secSym = viewModel.secondaryCurrencySymbol {
+                        Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: viewModel.secondaryDecimals))")
+                            .font(.inter(15, weight: .medium, relativeTo: .body).monospacedDigit())
+                            .foregroundStyle(DS.inkSecondary)
+                            .contentTransition(.numericText())
+                    }
+                }
                 HStack(spacing: 10) {
                     ChangePill(value: periodValue, text: pillText)
                     if !useRealAllTime {
@@ -745,10 +753,25 @@ struct PortfolioOverview: View {
     }
 
     private var statRow: some View {
-        HStack(spacing: 12) {
+        let secRate: Double? = {
+            let secCurr = storageService.secondaryCurrency
+            guard !secCurr.isEmpty, secCurr != storageService.preferredCurrency else { return nil }
+            let r = stockService.rate(from: storageService.preferredCurrency, to: secCurr)
+            return r > 0 ? r : nil
+        }()
+        let secSym = viewModel.secondaryCurrencySymbol
+        let secDec = viewModel.secondaryDecimals
+
+        func secFmt(_ amount: Double) -> String? {
+            guard let rate = secRate, let sym = secSym else { return nil }
+            return "≈ \(StorageService.formatAmount(amount * rate, symbol: sym, decimals: secDec, signed: true))"
+        }
+
+        return HStack(spacing: 12) {
             StatTile(
                 label: "Total Profit",
                 value: StorageService.formatAmount(totalProfit, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                secondaryValue: secFmt(totalProfit),
                 caption: realizedPnlStats.totalClosed > 0
                     ? "Unrealized + Realized"
                     : String(format: "%+.\(decimals)f%% on cost", totalPnlPercent),
@@ -760,6 +783,7 @@ struct PortfolioOverview: View {
             StatTile(
                 label: "Unrealized P&L",
                 value: StorageService.formatAmount(totalPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                secondaryValue: secFmt(totalPnl),
                 caption: String(format: "%+.\(decimals)f%% · %d active", totalPnlPercent, activeSymbolsCount),
                 captionTint: DS.pnlColor(totalPnl),
                 valueTint: DS.pnlColor(totalPnl),
@@ -769,6 +793,7 @@ struct PortfolioOverview: View {
             StatTile(
                 label: "Realized P&L",
                 value: StorageService.formatAmount(realizedPnlStats.realizedPnl, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                secondaryValue: secFmt(realizedPnlStats.realizedPnl),
                 caption: realizedPnlStats.totalClosed > 0
                     ? String(format: "%d closed · %.1f%% win", realizedPnlStats.totalClosed, realizedPnlStats.winRate)
                     : "No closed trades",
@@ -780,6 +805,7 @@ struct PortfolioOverview: View {
             StatTile(
                 label: "Today",
                 value: StorageService.formatAmount(dayChangeValue, symbol: currencySymbol, decimals: storageService.amountDecimals, signed: true),
+                secondaryValue: secFmt(dayChangeValue),
                 caption: String(format: "%+.\(decimals)f%%", dayChangePercent),
                 captionTint: DS.pnlColor(dayChangeValue),
                 valueTint: DS.pnlColor(dayChangeValue),

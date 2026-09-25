@@ -409,11 +409,17 @@ struct PortfolioWindowView: View {
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
             let totals = sidebarTotals
+            let secCurr = storageService.secondaryCurrency
+            let secRate = !secCurr.isEmpty && secCurr != storageService.preferredCurrency
+                ? stockService.rate(from: storageService.preferredCurrency, to: secCurr)
+                : 0
             TotalFooter(value: totals.value,
                         cost: totals.cost,
                         pnl: totals.pnl,
                         currency: storageService.preferredCurrency,
-                        decimals: storageService.amountDecimals)
+                        decimals: storageService.amountDecimals,
+                        secondaryCurrency: secCurr,
+                        secondaryRate: secRate)
             quitRow
         }
         .background(DS.sidebarBG)
@@ -832,6 +838,8 @@ private struct TotalFooter: View {
     let pnl: Double
     let currency: String
     var decimals: Int = 2
+    var secondaryCurrency: String = ""
+    var secondaryRate: Double = 0
 
     var body: some View {
         let symbol = StorageService.currencySymbol(for: currency)
@@ -846,6 +854,15 @@ private struct TotalFooter: View {
                 .font(.inter(17, weight: .bold, relativeTo: .title3).monospacedDigit())
                 .foregroundStyle(DS.ink)
                 .contentTransition(.numericText())
+            if !secondaryCurrency.isEmpty && secondaryCurrency != currency && secondaryRate > 0 {
+                let secVal = value * secondaryRate
+                let secSym = StorageService.currencySymbol(for: secondaryCurrency)
+                let secDec = StorageService.defaultDecimals(for: secondaryCurrency)
+                Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: secDec))")
+                    .font(.inter(12, weight: .medium, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.inkSecondary)
+                    .contentTransition(.numericText())
+            }
             HStack(spacing: 5) {
                 Image(systemName: pnl >= 0 ? "arrow.up.right" : "arrow.down.right")
                     .font(.system(size: 8, weight: .bold))

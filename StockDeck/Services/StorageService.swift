@@ -142,6 +142,10 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    @Published var secondaryCurrency: String = "" {
+        didSet { scheduleSave() }
+    }
+
     @Published var showExtendedHours: Bool = true {
         didSet { scheduleSave() }
     }
@@ -1369,6 +1373,14 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Default decimal count for a currency code. Zero decimals for VND, JPY, KRW; two for others.
+    nonisolated static func defaultDecimals(for currencyCode: String) -> Int {
+        switch currencyCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "VND", "JPY", "KRW": return 0
+        default: return 2
+        }
+    }
+
     /// Formats a number compactly with K/M suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
@@ -2145,6 +2157,7 @@ class StorageService: ObservableObject {
     func resetToDefaults() {
         preferredCurrency = "EUR"
         stockPriceCurrency = ""
+        secondaryCurrency = ""
         showExtendedHours = true
         showCompanyName = true
         showWatchlistSparkline = true
@@ -2258,6 +2271,7 @@ class StorageService: ObservableObject {
         var portfolios: [Portfolio]
         var preferredCurrency: String?
         var stockPriceCurrency: String?
+        var secondaryCurrency: String?
         var showExtendedHours: Bool?
         var menuBarDisplay: String?
         var isinMap: [String: String]?
@@ -2327,6 +2341,7 @@ class StorageService: ObservableObject {
             portfolios: portfolios,
             preferredCurrency: preferredCurrency,
             stockPriceCurrency: stockPriceCurrency,
+            secondaryCurrency: secondaryCurrency,
             showExtendedHours: showExtendedHours,
             menuBarDisplay: menuBarDisplay,
             isinMap: isinMap,
@@ -2452,6 +2467,7 @@ class StorageService: ObservableObject {
         }
         preferredCurrency = decoded.preferredCurrency ?? "EUR"
         stockPriceCurrency = decoded.stockPriceCurrency ?? ""
+        secondaryCurrency = decoded.secondaryCurrency ?? ""
         showExtendedHours = decoded.showExtendedHours ?? true
         menuBarDisplay = decoded.menuBarDisplay ?? "pnl"
         isinMap = decoded.isinMap ?? [:]

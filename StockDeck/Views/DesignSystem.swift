@@ -472,6 +472,7 @@ extension View {
 struct StatTile: View {
     let label: String
     let value: String
+    var secondaryValue: String? = nil
     var caption: String? = nil
     var captionTint: Color = DS.inkTertiary
     var valueTint: Color = DS.ink
@@ -479,7 +480,7 @@ struct StatTile: View {
     @State private var hover = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 5) {
             SectionLabel(label)
             Text(value)
                 .font(DS.figureLG)
@@ -487,6 +488,13 @@ struct StatTile: View {
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.45, dampingFraction: 0.9), value: value)
                 .lineLimit(1).minimumScaleFactor(0.6)
+            if let secondaryValue, !secondaryValue.isEmpty {
+                Text(secondaryValue)
+                    .font(.inter(11.5, weight: .medium, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.inkSecondary)
+                    .contentTransition(.numericText())
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
             // Always reserve the caption line so every tile is the same height.
             if let caption {
                 Text(LocalizedStringKey(caption))
