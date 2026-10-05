@@ -127,7 +127,7 @@ fi
 step 3 "Code-sign"
 
 HAS_DEV_ID=false
-DEV_ID_IDENTITY=$( (security find-identity -v -p codesigning | grep "Developer ID Application:" | head -1 | awk -F'"' '{print $2}') || true )
+DEV_ID_IDENTITY=$( (security find-identity -v -p codesigning | grep "Developer ID Application: Simone Ruggiero" | head -1 | awk -F'"' '{print $2}') || true )
 APPLE_DEV_IDENTITY=$( (security find-identity -v -p codesigning | grep -E "Apple Development|stockdeck_dev" | head -1 | awk -F'"' '{print $2}') || true )
 
 if [[ -n "$DEV_ID_IDENTITY" ]]; then
@@ -162,20 +162,24 @@ info "Created $ZIP_NAME (${ZIP_SIZE} bytes)"
 if [[ "$HAS_DEV_ID" == "true" ]]; then
     step 5 "Notarize"
 
-    xcrun notarytool submit "$ZIP_NAME" \
-        --keychain-profile "$NOTARY_PROFILE" \
-        --wait
+    if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+        xcrun notarytool submit "$ZIP_NAME" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait
 
-    info "Notarization accepted"
+        info "Notarization accepted"
 
-    # --- Step 6: Staple + re-zip ---
-    step 6 "Staple notarization ticket"
+        # --- Step 6: Staple + re-zip ---
+        step 6 "Staple notarization ticket"
 
-    xcrun stapler staple "$APP_PATH"
-    rm -f "$ZIP_NAME"
-    ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-    ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
-    info "Re-packaged $ZIP_NAME with stapled ticket (${ZIP_SIZE} bytes)"
+        xcrun stapler staple "$APP_PATH"
+        rm -f "$ZIP_NAME"
+        ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
+        ZIP_SIZE=$(stat -f%z "$ZIP_NAME")
+        info "Re-packaged $ZIP_NAME with stapled ticket (${ZIP_SIZE} bytes)"
+    else
+        warn "Notary profile '$NOTARY_PROFILE' not configured in keychain — skipping notarization."
+    fi
 else
     warn "Skipping Notarization & Stapling (requires Developer ID certificate)"
 fi
