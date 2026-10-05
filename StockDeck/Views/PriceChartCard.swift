@@ -288,7 +288,24 @@ struct PriceChartCard: View {
             return stockService.intradayHistory[symbol] ?? []
         }
         
-        let daily = stockService.priceHistory[symbol] ?? []
+        let pHist = stockService.priceHistory[symbol] ?? []
+        let wHist = stockService.watchlistHistory[symbol] ?? []
+        let daily: [PricePoint]
+        if pHist.isEmpty {
+            daily = wHist
+        } else if wHist.isEmpty {
+            daily = pHist
+        } else {
+            let pLast = pHist.last?.date ?? .distantPast
+            let wLast = wHist.last?.date ?? .distantPast
+            if pLast > wLast {
+                daily = pHist
+            } else if wLast > pLast {
+                daily = wHist
+            } else {
+                daily = pHist.count >= wHist.count ? pHist : wHist
+            }
+        }
         let maxPoints = stockService.priceHistoryMax[symbol] ?? []
         
         if chartRange == .all {

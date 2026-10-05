@@ -158,6 +158,8 @@ class StockService: ObservableObject {
 
         await fetchQuotes(symbols: Array(allSymbols))
         await refreshExchangeRates(storageService: storageService)
+        let allWatchlistSymbols = Array(Set(storageService.watchlists.flatMap(\.symbols)))
+        await ensureSparklines(for: allWatchlistSymbols, force: true)
     }
 
     private static let fallbackFxToUSD: [String: Double] = [
@@ -1459,6 +1461,28 @@ class StockService: ObservableObject {
                 watchlistHistory[symbol] = entry.points
             }
         }
+
+        // Self-heal: ensure watchlistHistory and priceHistory are in sync with the freshest available series
+        var didHeal = false
+        for (symbol, daily) in priceHistory where !daily.isEmpty {
+            let spark = watchlistHistory[symbol] ?? []
+            let dailyLast = daily.last?.date ?? .distantPast
+            let sparkLast = spark.last?.date ?? .distantPast
+            if spark.isEmpty || dailyLast > sparkLast || (dailyLast == sparkLast && daily.count > spark.count) {
+                watchlistHistory[symbol] = daily
+                didHeal = true
+            }
+        }
+        for (symbol, spark) in watchlistHistory where !spark.isEmpty {
+            if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
+                priceHistory[symbol] = spark
+                priceHistoryFetchedAt[symbol] = sparkFetchedAt ?? Date()
+                didHeal = true
+            }
+        }
+        if didHeal {
+            scheduleHistoryCacheSave()
+        }
     }
 
     /// Coalesces writes to the on-disk cache: several symbols can finish around
@@ -1485,7 +1509,7 @@ class StockService: ObservableObject {
             }
         }
         for (symbol, points) in watchlistHistory where !points.isEmpty {
-            entries["spark:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: sparkFetchedAt ?? Date())
+            entries["spark:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: priceHistoryFetchedAt[symbol] ?? sparkFetchedAt ?? Date())
         }
         guard !entries.isEmpty, let data = try? JSONEncoder().encode(entries) else { return }
         try? data.write(to: historyCacheURL, options: .atomic)
@@ -1548,6 +1572,7 @@ class StockService: ObservableObject {
             let points = await fetchJapaneseFundHistory(symbol: symbol)
             guard !points.isEmpty, points.count >= (priceHistory[symbol]?.count ?? 0) else { return }
             priceHistory[symbol] = points
+            watchlistHistory[symbol] = points
             priceHistoryFetchedAt[symbol] = Date()
             scheduleHistoryCacheSave()
             return
@@ -1574,6 +1599,17 @@ class StockService: ObservableObject {
                 let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
                 guard !points.isEmpty else { return }
                 priceHistory[symbol] = points
+                priceHistory[symbol.uppercased()] = points
+                watchlistHistory[symbol] = points
+                watchlistHistory[symbol.uppercased()] = points
+                if clean == "VNINDEX" {
+                    priceHistory["^VNINDEX"] = points
+                    priceHistory["^VNINDEX.VN"] = points
+                    priceHistory["VNINDEX"] = points
+                    watchlistHistory["^VNINDEX"] = points
+                    watchlistHistory["^VNINDEX.VN"] = points
+                    watchlistHistory["VNINDEX"] = points
+                }
                 priceHistoryFetchedAt[symbol] = Date()
                 if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                     let monthly = PriceHistory.deriveMonthly(from: points)
@@ -1592,6 +1628,9 @@ class StockService: ObservableObject {
             let points = await fetchBinanceKlines(for: symbol)
             if !points.isEmpty {
                 priceHistory[symbol] = points
+                priceHistory[symbol.uppercased()] = points
+                watchlistHistory[symbol] = points
+                watchlistHistory[symbol.uppercased()] = points
                 priceHistoryFetchedAt[symbol] = Date()
                 if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                     let monthly = PriceHistory.deriveMonthly(from: points)
@@ -1622,6 +1661,7 @@ class StockService: ObservableObject {
                                              lows: q?.low)
             guard !points.isEmpty else { return }
             priceHistory[symbol] = points
+            watchlistHistory[symbol] = points
             priceHistoryFetchedAt[symbol] = Date()
             scheduleHistoryCacheSave()
         } catch {
@@ -1847,25 +1887,36 @@ class StockService: ObservableObject {
     /// Batched Watchlist history: one Yahoo `spark` request fills five years of
     /// daily closes for MANY symbols at once. This supports the configurable
     /// 1Y/2Y/3Y/5Y metrics without one request per table cell.
-    func ensureSparklines(for symbols: [String]) async {
-        if let at = sparkFetchedAt,
-           Date().timeIntervalSince(at) < 600,
-           symbols.allSatisfy({ watchlistHistory[$0]?.isEmpty == false }) { return }
-        let missing = symbols.filter { (watchlistHistory[$0]?.isEmpty ?? true) }
-        guard !missing.isEmpty else { sparkFetchedAt = Date(); return }
+    func ensureSparklines(for symbols: [String], force: Bool = false) async {
+        let isExpired = sparkFetchedAt.map { Date().timeIntervalSince($0) >= 1800 } ?? true
+        let hasStaleSymbols = symbols.contains { sym in
+            guard let last = watchlistHistory[sym]?.last?.date else { return true }
+            return Date().timeIntervalSince(last) >= 86400 * 4
+        }
+        if !force && !isExpired && !hasStaleSymbols && symbols.allSatisfy({ watchlistHistory[$0]?.isEmpty == false }) {
+            return
+        }
 
-        let vnMissing = missing.filter { Self.isVietnameseStock($0) }
-        let cryptoMissing = missing.filter { sym in
-            !vnMissing.contains(sym) &&
+        let targetSymbols: [String]
+        if force || isExpired || hasStaleSymbols {
+            targetSymbols = symbols
+        } else {
+            targetSymbols = symbols.filter { (watchlistHistory[$0]?.isEmpty ?? true) }
+        }
+        guard !targetSymbols.isEmpty else { sparkFetchedAt = Date(); return }
+
+        let vnTargets = targetSymbols.filter { Self.isVietnameseStock($0) }
+        let cryptoTargets = targetSymbols.filter { sym in
+            !vnTargets.contains(sym) &&
             (StorageService.isBinanceNativePair(sym) || StorageService.isStandardCryptoSymbol(sym) || sym.hasSuffix("-USD"))
         }
-        let regularMissing = missing.filter { !vnMissing.contains($0) && !cryptoMissing.contains($0) }
+        let regularTargets = targetSymbols.filter { !vnTargets.contains($0) && !cryptoTargets.contains($0) }
 
-        if !vnMissing.isEmpty {
+        if !vnTargets.isEmpty {
             let now = Int64(Date().timeIntervalSince1970)
             let tenYearsAgo = now - (10 * 365 * 86400)
             await withTaskGroup(of: (String, [PricePoint]).self) { group in
-                for sym in vnMissing {
+                for sym in vnTargets {
                     group.addTask { [weak self] in
                         guard let self = self else { return (sym, []) }
                         let clean = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -1893,19 +1944,36 @@ class StockService: ObservableObject {
                 for await (sym, points) in group where !points.isEmpty {
                     self.watchlistHistory[sym] = points
                     self.watchlistHistory[sym.uppercased()] = points
+                    self.priceHistory[sym] = points
+                    self.priceHistory[sym.uppercased()] = points
+                    self.priceHistoryFetchedAt[sym] = Date()
+                    self.priceHistoryFetchedAt[sym.uppercased()] = Date()
                     if sym.contains("VNINDEX") {
                         self.watchlistHistory["^VNINDEX"] = points
                         self.watchlistHistory["^VNINDEX.VN"] = points
                         self.watchlistHistory["VNINDEX"] = points
+                        self.priceHistory["^VNINDEX"] = points
+                        self.priceHistory["^VNINDEX.VN"] = points
+                        self.priceHistory["VNINDEX"] = points
+                        self.priceHistoryFetchedAt["^VNINDEX"] = Date()
+                        self.priceHistoryFetchedAt["^VNINDEX.VN"] = Date()
+                        self.priceHistoryFetchedAt["VNINDEX"] = Date()
+                    }
+                    if self.priceHistoryMax[sym] == nil || (self.priceHistoryMax[sym]?.isEmpty ?? true) {
+                        let monthly = PriceHistory.deriveMonthly(from: points)
+                        if !monthly.isEmpty {
+                            self.priceHistoryMax[sym] = monthly
+                            self.priceHistoryMaxAt[sym] = Date()
+                        }
                     }
                 }
                 scheduleHistoryCacheSave()
             }
         }
 
-        if !cryptoMissing.isEmpty {
+        if !cryptoTargets.isEmpty {
             await withTaskGroup(of: (String, [PricePoint]).self) { group in
-                for sym in cryptoMissing {
+                for sym in cryptoTargets {
                     group.addTask { [weak self] in
                         guard let self = self else { return (sym, []) }
                         let points = await self.fetchBinanceKlines(for: sym)
@@ -1931,8 +1999,8 @@ class StockService: ObservableObject {
             }
         }
 
-        if !regularMissing.isEmpty {
-            let joined = regularMissing.joined(separator: ",")
+        if !regularTargets.isEmpty {
+            let joined = regularTargets.joined(separator: ",")
             let encoded = joined.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? joined
             if let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/spark?symbols=\(encoded)&range=5y&interval=1d") {
                 do {
@@ -1940,6 +2008,17 @@ class StockService: ObservableObject {
                     let parsed = try YahooSparkParser.parse(data)
                     for (symbol, points) in parsed where !points.isEmpty {
                         watchlistHistory[symbol] = points
+                        if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
+                            priceHistory[symbol] = points
+                            priceHistoryFetchedAt[symbol] = Date()
+                        }
+                        if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
+                            let monthly = PriceHistory.deriveMonthly(from: points)
+                            if !monthly.isEmpty {
+                                priceHistoryMax[symbol] = monthly
+                                priceHistoryMaxAt[symbol] = Date()
+                            }
+                        }
                     }
                     scheduleHistoryCacheSave()
                 } catch {

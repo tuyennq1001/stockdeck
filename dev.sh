@@ -13,7 +13,14 @@ DEV_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 echo "Building..."
 swift build
 
-PRODUCTS=".build/$(uname -m)-apple-macosx/debug"
+PRODUCTS="$(swift build --show-bin-path)"
+if [ ! -d "$PRODUCTS" ] || [ ! -f "$PRODUCTS/StockDeck" ]; then
+    if [ -d ".build/debug" ] && [ -f ".build/debug/StockDeck" ]; then
+        PRODUCTS=".build/debug"
+    else
+        PRODUCTS=".build/$(uname -m)-apple-macosx/debug"
+    fi
+fi
 
 echo "Assembling DEV app bundle..."
 rm -rf "$APP"
