@@ -51,6 +51,7 @@ final class WatchlistViewModel {
         let watchlist: [String]
         let quotes: [String: StockQuote]
         let history: [String: [PricePoint]]
+        let priceHistory: [String: [PricePoint]]
         let historyMax: [String: [PricePoint]]
         let targets: [String: StockTarget]
         let priceRates: [String: Double]
@@ -97,6 +98,7 @@ final class WatchlistViewModel {
             watchlist: currentWatchlist,
             quotes: stockService.quotes,
             history: stockService.watchlistHistory,
+            priceHistory: stockService.priceHistory,
             historyMax: stockService.priceHistoryMax,
             targets: storageService.stockTargets,
             priceRates: priceRates,
@@ -141,7 +143,24 @@ final class WatchlistViewModel {
             let q = inputs.quotes[symbol]
             let rate = q.flatMap { inputs.priceRates[$0.currency] } ?? 1.0
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
-            let history = inputs.history[symbol] ?? []
+            let pHist = inputs.priceHistory[symbol] ?? []
+            let wHist = inputs.history[symbol] ?? []
+            let history: [PricePoint]
+            if pHist.isEmpty {
+                history = wHist
+            } else if wHist.isEmpty {
+                history = pHist
+            } else {
+                let pLast = pHist.last?.date ?? .distantPast
+                let wLast = wHist.last?.date ?? .distantPast
+                if pLast > wLast {
+                    history = pHist
+                } else if wLast > pLast {
+                    history = wHist
+                } else {
+                    history = pHist.count >= wHist.count ? pHist : wHist
+                }
+            }
             let allTimeHistory = inputs.historyMax[symbol] ?? []
             
             func series(covering boundary: Date) -> [PricePoint] {
