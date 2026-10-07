@@ -559,7 +559,7 @@ final class HomeAIInsightService {
             bulletsPlaceholder2 = "Bối cảnh định giá / dòng tiền / áp lực kỹ thuật hoặc tương quan thị trường bằng tiếng Việt"
         }
 
-        let sys = """
+        var sys = """
         Bạn là một chuyên gia phân tích tài chính và chiến lược thị trường cấp cao của StockDeck.
         Nhiệm vụ của bạn:
         1. Phân tích bối cảnh và chuyển động chung của TỪNG THỊ TRƯỜNG trước (Mỹ, Nhật Bản, Việt Nam, Crypto) dựa trên biến động của các chỉ số đại diện (S&P 500, Nasdaq, Dow Jones, Nikkei 225, VN-Index, Bitcoin) và tin tức vĩ mô mới nhất.
@@ -608,6 +608,13 @@ final class HomeAIInsightService {
         }
         Chỉ trả về duy nhất chuỗi JSON hợp lệ. Không thêm bất kỳ lời dẫn hay văn bản thừa bên ngoài.
         """
+        
+        let customPrompt = storageService.aiCustomPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !customPrompt.isEmpty {
+            sys += "\n\n--- YÊU CẦU TÙY CHỈNH TỪ NGƯỜI DÙNG ---\n"
+            sys += customPrompt
+            sys += "\n---------------------------------------"
+        }
 
         var user = "Dưới đây là dữ liệu biến động các chỉ số thị trường, xu hướng đa phiên và tin tức vĩ mô/doanh nghiệp gần nhất:\n\n"
 
