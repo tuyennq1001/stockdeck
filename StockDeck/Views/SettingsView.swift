@@ -476,6 +476,18 @@ struct SettingsView: View {
                         }
                         caption("A folder the assistant reads & writes as long-term memory (ai-context.md) — so durable notes survive across sessions instead of being re-asked.")
 
+                        subHeader("AI Custom Prompt")
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextEditor(text: $storageService.aiCustomPrompt)
+                                .font(DS.micro)
+                                .frame(height: 60)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(DS.inkTertiary, lineWidth: 1)
+                                )
+                            caption("Thêm các quy tắc hoặc yêu cầu riêng của bạn cho AI. VD: 'Không dùng từ sáo rỗng, tập trung vào số liệu'.")
+                        }
+
                         subHeader("Connection Diagnostic")
                         HStack {
                             if let result = aiTestResult {

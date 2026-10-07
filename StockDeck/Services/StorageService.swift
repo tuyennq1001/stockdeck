@@ -555,6 +555,11 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    /// Custom instructions appended to the AI Review system prompt.
+    @Published var aiCustomPrompt: String = "" {
+        didSet { scheduleSave() }
+    }
+
     /// DeepSeek V4 thinking mode. V4 models default to thinking enabled; turning
     /// it off restores the classic fast-chat behavior of the retired
     /// `deepseek-chat` alias. Only sent for DeepSeek.
@@ -2188,6 +2193,7 @@ class StorageService: ObservableObject {
         aiProvider = "openai"
         cachedModelsByProvider = [:]
         aiWorkspacePath = ""
+        aiCustomPrompt = ""
         aiDeepseekThinking = false
         menuBarShortcut = nil
         desktopAppShortcut = nil
@@ -2321,6 +2327,7 @@ class StorageService: ObservableObject {
         var aiProvider: String?
         var cachedModelsByProvider: [String: [String]]?
         var aiWorkspacePath: String?
+        var aiCustomPrompt: String?
         var aiDeepseekThinking: Bool?
         var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
@@ -2391,6 +2398,7 @@ class StorageService: ObservableObject {
             aiProvider: aiProvider,
             cachedModelsByProvider: cachedModelsByProvider.isEmpty ? nil : cachedModelsByProvider,
             aiWorkspacePath: aiWorkspacePath,
+            aiCustomPrompt: aiCustomPrompt,
             aiDeepseekThinking: aiDeepseekThinking,
             investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
@@ -2515,6 +2523,7 @@ class StorageService: ObservableObject {
         aiProvider = decoded.aiProvider ?? "openai"
         cachedModelsByProvider = decoded.cachedModelsByProvider ?? [:]
         aiWorkspacePath = decoded.aiWorkspacePath ?? ""
+        aiCustomPrompt = decoded.aiCustomPrompt ?? ""
         aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
         investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
