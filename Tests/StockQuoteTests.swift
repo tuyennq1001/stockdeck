@@ -217,4 +217,22 @@ final class StockQuoteTests: XCTestCase {
         XCTAssertEqual(StockService.popularIndexAliases["NQ"]?.symbol, "NQ=F")
         XCTAssertEqual(StockService.popularIndexAliases["MNQ"]?.symbol, "MNQ=F")
     }
+
+    func testVietnameseStocksIncludeHNXAndUPCOM() {
+        XCTAssertTrue(StockService.isVietnameseStock("SHS"))
+        XCTAssertTrue(StockService.isVietnameseStock("CEO"))
+        XCTAssertTrue(StockService.isVietnameseStock("MBS"))
+        XCTAssertTrue(StockService.isVietnameseStock("BSR"))
+        XCTAssertTrue(StockService.isVietnameseStock("VEA"))
+        XCTAssertTrue(StockService.isVietnameseStock("ABC", exchange: "HNX"))
+        XCTAssertTrue(StockService.isVietnameseStock("XYZ", exchange: "UPCOM"))
+        XCTAssertTrue(StockService.isVietnameseStock("XYZ", exchange: "HOSE"))
+    }
+
+    func testVietnameseStockDetectedCurrency() {
+        XCTAssertEqual(StockService.detectedCurrency(for: "SHS"), "VND")
+        XCTAssertEqual(StockService.detectedCurrency(for: "CEO"), "VND")
+        XCTAssertEqual(StockService.detectedCurrency(for: "BSR"), "VND")
+    }
 }
+
