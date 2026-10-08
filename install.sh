@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 APP_DEST="/Applications/StockDeck.app"
 PLIST="StockDeck/Info.plist"
-PRODUCTS=".build/$(uname -m)-apple-macosx/release"
+PRODUCTS="$(swift build -c release --show-bin-path)"
 
 echo "1. Building release binary..."
 swift build -c release 2>&1 | tail -3
