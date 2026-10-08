@@ -1295,10 +1295,13 @@ struct NavRow: View {
 enum CursorManager {
     private static var activeCount = 0
     private static var isPushed = false
+    private static var popTask: Task<Void, Never>?
 
     static func update(inside: Bool) {
         if inside {
             activeCount += 1
+            popTask?.cancel()
+            popTask = nil
             if !isPushed {
                 NSCursor.pointingHand.push()
                 isPushed = true
@@ -1306,13 +1309,22 @@ enum CursorManager {
         } else {
             activeCount = max(0, activeCount - 1)
             if activeCount == 0 && isPushed {
-                NSCursor.pop()
-                isPushed = false
+                popTask?.cancel()
+                popTask = Task {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard !Task.isCancelled else { return }
+                    if activeCount == 0 && isPushed {
+                        NSCursor.pop()
+                        isPushed = false
+                    }
+                }
             }
         }
     }
 
     static func reset() {
+        popTask?.cancel()
+        popTask = nil
         if isPushed {
             NSCursor.pop()
             isPushed = false
@@ -1327,6 +1339,25 @@ extension View {
         self.onHover { inside in
             CursorManager.update(inside: inside)
         }
+    }
+}
+
+// MARK: - DS focusable container
+
+/// A container that manages its own focus state and draws the brand focus ring,
+/// avoiding the macOS scroll-lag bug caused by top-level FocusState properties.
+struct DSFocusableContainer<Content: View>: View {
+    @FocusState private var isFocused: Bool
+    @ViewBuilder let content: (_ focused: FocusState<Bool>.Binding) -> Content
+    
+    var body: some View {
+        content($isFocused)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(isFocused ? DS.brand : .clear, lineWidth: 1.5))
+            .animation(.easeOut(duration: 0.15), value: isFocused)
     }
 }
 

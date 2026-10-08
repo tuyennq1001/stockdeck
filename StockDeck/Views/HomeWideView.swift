@@ -12,7 +12,6 @@ struct HomeWideView: View {
     @State private var selectedNewsArticle: NewsArticle?
     @State private var isLoadingInsight = false
     @State private var insightError: String? = nil
-    @FocusState private var searchFocused: Bool
 
     let onOpenSettings: () -> Void
 
@@ -314,27 +313,8 @@ struct HomeWideView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(DS.inkTertiary)
-            TextField("Search news or ticker", text: $query)
-                .textFieldStyle(.plain)
-                .font(DS.body)
-                .focused($searchFocused)
-                .frame(width: 180)
-            if !query.isEmpty {
-                Button { query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 11).padding(.vertical, 6)
-        .background(Capsule().fill(DS.cardAlt))
-        .overlay(Capsule().strokeBorder(searchFocused ? DS.brand : .clear, lineWidth: 1.5))
-        .animation(.easeOut(duration: 0.15), value: searchFocused)
-        .help("Filter news by headline, ticker or publisher")
+        HomeSearchField(query: $query)
     }
-
     private var noMatchesState: some View {
         VStack(spacing: 12) {
             Spacer()
@@ -617,5 +597,32 @@ private struct TickerChipWide: View {
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(emphasized ? DS.brand : DS.brand.opacity(0.10)))
+    }
+}
+
+struct HomeSearchField: View {
+    @Binding var query: String
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(DS.inkTertiary)
+            TextField("Search news or ticker", text: $query)
+                .textFieldStyle(.plain)
+                .font(DS.body)
+                .focused($searchFocused)
+                .frame(width: 180)
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 11).padding(.vertical, 6)
+        .background(Capsule().fill(DS.cardAlt))
+        .overlay(Capsule().strokeBorder(searchFocused ? DS.brand : .clear, lineWidth: 1.5))
+        .animation(.easeOut(duration: 0.15), value: searchFocused)
+        .help("Filter news by headline, ticker or publisher")
     }
 }

@@ -6,13 +6,24 @@ import AppKit
 /// instead of the system-gray grouped form. Same bindings as the popover —
 /// changes apply everywhere at once.
 struct SettingsWideView: View {
+    var body: some View {
+        PageScaffold("Settings", caption: "Preferences are shared with the menu bar.") {
+            EmptyView()
+        } content: {
+            ScrollView {
+                SettingsContentView()
+            }
+        }
+        .navigationTitle("Settings")
+    }
+}
+
+private struct SettingsContentView: View {
     @EnvironmentObject var storageService: StorageService
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
-    @FocusState private var webhookFocused: Bool
-    @FocusState private var aiApiKeyFocused: Bool
     @State private var aiTestResult: String?
     @State private var aiTestIsLoading = false
     @State private var showAiKeyHelp = false
@@ -21,8 +32,6 @@ struct SettingsWideView: View {
     @State private var modelFetchError: String? = nil
     @State private var showCustomModelField = false
     @State private var showApiKeyText = false
-    @FocusState private var telegramTokenFocused: Bool
-    @FocusState private var telegramChatFocused: Bool
     @State private var telegramTesting = false
     @State private var telegramTestResult: (success: Bool, message: String)? = nil
     @State private var newScheduleDate: Date = {
@@ -67,12 +76,8 @@ struct SettingsWideView: View {
         }
     }
     var body: some View {
-        PageScaffold("Settings", caption: "Preferences are shared with the menu bar.") {
-            EmptyView()
-        } content: {
-            ScrollView {
-                // Two balanced columns so Settings occupies the same content
-                // width as every other tab.
+        // Two balanced columns so Settings occupies the same content
+        // width as every other tab.
                 HStack(alignment: .top, spacing: DS.gap) {
                     VStack(alignment: .leading, spacing: DS.gap) {
                         generalCard
@@ -91,9 +96,6 @@ struct SettingsWideView: View {
                 }
                 .pageColumn()
                 .padding(.top, 4)
-            }
-        }
-        .navigationTitle("Settings")
         .dsAlert($showResetAlert, title: "Reset Settings",
                  message: "This will reset all settings to their defaults. Your portfolios and watchlist will not be affected.",
                  confirmTitle: "Reset", destructive: true) {
@@ -217,62 +219,60 @@ struct SettingsWideView: View {
     private var aiReviewCard: some View {
         SettingsCard(title: "AI Review") {
             SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
-                HStack(spacing: 8) {
-                    if showApiKeyText {
-                        TextField("sk-… / AIzaSy…", text: Binding(
-                            get: { storageService.aiApiKey },
-                            set: {
-                                storageService.aiApiKey = $0
-                                if !storageService.aiApiKey.isEmpty {
-                                    loadModels(silent: true)
-                                }
-                            }))
-                            .textFieldStyle(.plain)
-                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                            .focused($aiApiKeyFocused)
-                    } else {
-                        SecureField("sk-… / AIzaSy…", text: Binding(
-                            get: { storageService.aiApiKey },
-                            set: {
-                                storageService.aiApiKey = $0
-                                if !storageService.aiApiKey.isEmpty {
-                                    loadModels(silent: true)
-                                }
-                            }))
-                            .textFieldStyle(.plain)
-                            .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                            .focused($aiApiKeyFocused)
-                    }
-
-                    Button {
-                        withAnimation {
-                            showApiKeyText.toggle()
+                DSFocusableContainer { focused in
+                    HStack(spacing: 8) {
+                        if showApiKeyText {
+                            TextField("sk-… / AIzaSy…", text: Binding(
+                                get: { storageService.aiApiKey },
+                                set: {
+                                    storageService.aiApiKey = $0
+                                    if !storageService.aiApiKey.isEmpty {
+                                        loadModels(silent: true)
+                                    }
+                                }))
+                                .textFieldStyle(.plain)
+                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                .focused(focused)
+                        } else {
+                            SecureField("sk-… / AIzaSy…", text: Binding(
+                                get: { storageService.aiApiKey },
+                                set: {
+                                    storageService.aiApiKey = $0
+                                    if !storageService.aiApiKey.isEmpty {
+                                        loadModels(silent: true)
+                                    }
+                                }))
+                                .textFieldStyle(.plain)
+                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                .focused(focused)
                         }
-                    } label: {
-                        Image(systemName: showApiKeyText ? "eye.slash" : "eye")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(DS.inkSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                    .help(showApiKeyText ? "Hide API key" : "Show API key")
 
-                    Button {
-                        storageService.aiApiKey = ""
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(storageService.aiApiKey.isEmpty ? DS.inkTertiary : DS.down)
+                        Button {
+                            withAnimation {
+                                showApiKeyText.toggle()
+                            }
+                        } label: {
+                            Image(systemName: showApiKeyText ? "eye.slash" : "eye")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(DS.inkSecondary)
+                        }
+                        .buttonStyle(.plain)
+                        .pointingHandCursor()
+                        .help(showApiKeyText ? "Hide API key" : "Show API key")
+
+                        Button {
+                            storageService.aiApiKey = ""
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(storageService.aiApiKey.isEmpty ? DS.inkTertiary : DS.down)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(storageService.aiApiKey.isEmpty)
+                        .pointingHandCursor()
+                        .help("Remove the stored API key")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(storageService.aiApiKey.isEmpty)
-                    .pointingHandCursor()
-                    .help("Remove the stored API key")
                 }
-                .padding(.horizontal, 11).padding(.vertical, 7)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(aiApiKeyFocused ? DS.brand : .clear, lineWidth: 1.5))
             }
             SettingDivider()
             SettingRow("Provider", caption: "Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, etc.") {
@@ -600,20 +600,17 @@ struct SettingsWideView: View {
                                 .foregroundStyle(DS.inkTertiary)
                                 .tracking(0.8)
 
-                            HStack(spacing: 8) {
-                                Image(systemName: "key.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(DS.inkTertiary)
-                                SecureField("123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ", text: $storageService.telegramBotToken)
-                                    .textFieldStyle(.plain)
-                                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                                    .focused($telegramTokenFocused)
+                            DSFocusableContainer { focused in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "key.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(DS.inkTertiary)
+                                    SecureField("123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ", text: $storageService.telegramBotToken)
+                                        .textFieldStyle(.plain)
+                                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                        .focused(focused)
+                                }
                             }
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 7)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(telegramTokenFocused ? DS.brand : .clear, lineWidth: 1.5))
 
                             Text("Get a Bot Token by messaging @BotFather on Telegram.")
                                 .font(DS.micro)
@@ -627,20 +624,17 @@ struct SettingsWideView: View {
                                 .foregroundStyle(DS.inkTertiary)
                                 .tracking(0.8)
 
-                            HStack(spacing: 8) {
-                                Image(systemName: "number")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(DS.inkTertiary)
-                                TextField("123456789 or @channel", text: $storageService.telegramChatId)
-                                    .textFieldStyle(.plain)
-                                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                                    .focused($telegramChatFocused)
+                            DSFocusableContainer { focused in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "number")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(DS.inkTertiary)
+                                    TextField("123456789 or @channel", text: $storageService.telegramChatId)
+                                        .textFieldStyle(.plain)
+                                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                        .focused(focused)
+                                }
                             }
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 7)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(telegramChatFocused ? DS.brand : .clear, lineWidth: 1.5))
 
                             Text("Your Telegram user ID from @userinfobot or group/channel username.")
                                 .font(DS.micro)
@@ -795,18 +789,15 @@ struct SettingsWideView: View {
                     SettingDivider()
                     let trimmed = storageService.discordWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines)
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "link").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
-                            TextField("https://discord.com/api/webhooks/…", text: $storageService.discordWebhookURL)
-                                .textFieldStyle(.plain)
-                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                                .focused($webhookFocused)
+                        DSFocusableContainer { focused in
+                            HStack(spacing: 8) {
+                                Image(systemName: "link").font(.system(size: 10)).foregroundStyle(DS.inkTertiary)
+                                TextField("https://discord.com/api/webhooks/…", text: $storageService.discordWebhookURL)
+                                    .textFieldStyle(.plain)
+                                    .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                    .focused(focused)
+                            }
                         }
-                        .padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DS.cardAlt))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(webhookFocused ? DS.brand : .clear, lineWidth: 1.5))
-                        .animation(.easeOut(duration: 0.15), value: webhookFocused)
 
                         HStack {
                             if !trimmed.isEmpty && !WebhookNotifier.isValid(trimmed) {
