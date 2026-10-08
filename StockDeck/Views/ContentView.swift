@@ -115,8 +115,32 @@ extension EnvironmentValues {
     }
 }
 
-struct ContentView: View {
+struct RefreshActionView: View {
     @EnvironmentObject var stockService: StockService
+    @EnvironmentObject var storageService: StorageService
+    let selectedTab: Tab
+
+    var body: some View {
+        Button(action: {
+            Task {
+                await stockService.refreshAll(storageService: storageService)
+                if selectedTab == .home {
+                    await stockService.refreshNews(storageService: storageService, force: true)
+                }
+            }
+        }) {
+            Image(systemName: "arrow.clockwise")
+                .font(.inter(12, relativeTo: .callout))
+                .foregroundStyle(DS.inkSecondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(stockService.isLoading)
+        .pointingHandCursor()
+        .help("Refresh quotes")
+    }
+}
+
+struct ContentView: View {
     @EnvironmentObject var storageService: StorageService
     @Environment(\.openWindowAction) private var openWindowAction
     @Namespace private var tabAnimation
@@ -199,22 +223,7 @@ struct ContentView: View {
                     }
                 }
 
-                Button(action: {
-                    Task {
-                        await stockService.refreshAll(storageService: storageService)
-                        if selectedTab == .home {
-                            await stockService.refreshNews(storageService: storageService, force: true)
-                        }
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.inter(12, relativeTo: .callout))
-                        .foregroundStyle(DS.inkSecondary)
-                }
-                .buttonStyle(.plain)
-                .disabled(stockService.isLoading)
-                .pointingHandCursor()
-                .help("Refresh quotes")
+                RefreshActionView(selectedTab: selectedTab)
 
                 // The clear way into the full desktop app.
                 Button(action: {
