@@ -46,8 +46,16 @@ final class UpdaterViewModel: ObservableObject {
     }
 }
 
+@main
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
+    }
+
     private var statusItem: NSStatusItem?
     private var popover: NSPopover?
     private var portfolioWindow: NSWindow?
