@@ -376,7 +376,7 @@ class StockService: ObservableObject {
             await fetchBinanceEquityQuotes(symbols: equitySymbols)
         }
 
-        let vnSymbols = stockSymbols.filter { Self.isVietnameseStock($0) }
+        let vnSymbols = stockSymbols.filter { self.isVietnameseStock($0) }
         let remainingStockSymbols = stockSymbols.filter { !vnSymbols.contains($0) }
 
         if !vnSymbols.isEmpty {
@@ -1905,7 +1905,7 @@ class StockService: ObservableObject {
         }
         guard !targetSymbols.isEmpty else { sparkFetchedAt = Date(); return }
 
-        let vnTargets = targetSymbols.filter { Self.isVietnameseStock($0) }
+        let vnTargets = targetSymbols.filter { self.isVietnameseStock($0) }
         let cryptoTargets = targetSymbols.filter { sym in
             !vnTargets.contains(sym) &&
             (StorageService.isBinanceNativePair(sym) || StorageService.isStandardCryptoSymbol(sym) || sym.hasSuffix("-USD"))
@@ -2296,7 +2296,21 @@ class StockService: ObservableObject {
         SearchResult(symbol: "DXG", name: "Tập đoàn Đất Xanh", exchange: "HOSE", type: "EQUITY"),
         SearchResult(symbol: "KBC", name: "Tổng Công ty Phát triển Đô thị Kinh Bắc", exchange: "HOSE", type: "EQUITY"),
         SearchResult(symbol: "GEX", name: "Tập đoàn GELEX", exchange: "HOSE", type: "EQUITY"),
-        SearchResult(symbol: "VHC", name: "Công ty Cổ phần Vĩnh Hoàn", exchange: "HOSE", type: "EQUITY")
+        SearchResult(symbol: "VHC", name: "Công ty Cổ phần Vĩnh Hoàn", exchange: "HOSE", type: "EQUITY"),
+        
+        // HNX
+        SearchResult(symbol: "SHS", name: "Công ty Cổ phần Chứng khoán Sài Gòn - Hà Nội", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "CEO", name: "Công ty Cổ phần Tập đoàn C.E.O", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "MBS", name: "Công ty Cổ phần Chứng khoán MB", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "IDC", name: "Tổng công ty IDICO - CTCP", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "VCS", name: "Công ty Cổ phần Vicostone", exchange: "HNX", type: "EQUITY"),
+        SearchResult(symbol: "HUT", name: "Công ty Cổ phần Tasco", exchange: "HNX", type: "EQUITY"),
+        
+        // UPCOM
+        SearchResult(symbol: "BSR", name: "Công ty Cổ phần Lọc hóa dầu Bình Sơn", exchange: "UPCOM", type: "EQUITY"),
+        SearchResult(symbol: "VEA", name: "Tổng Công ty Máy động lực và Máy nông nghiệp Việt Nam", exchange: "UPCOM", type: "EQUITY"),
+        SearchResult(symbol: "ACV", name: "Tổng công ty Cảng hàng không Việt Nam", exchange: "UPCOM", type: "EQUITY"),
+        SearchResult(symbol: "QNS", name: "Công ty Cổ phần Đường Quảng Ngãi", exchange: "UPCOM", type: "EQUITY")
     ]
 
     // MARK: - Display names (indices, FX, futures)
@@ -2992,11 +3006,12 @@ class StockService: ObservableObject {
             fundResults.append(SearchResult(symbol: upperQuery, name: "投資信託 (\(upperQuery))", exchange: "JP_FUND", type: "MUTUALFUND"))
         }
 
-        // Run Yahoo and Binance search in parallel
+        // Run VNDirect, Yahoo and Binance search in parallel
+        async let vnTask = fetchVNDirectSearch(query: cleanQuery)
         async let yahooTask = fetchYahooSearch(query: query)
         async let binanceTask = fetchBinanceSearch(query: upperQuery)
 
-        let (yahooResults, binanceResults) = await (yahooTask, binanceTask)
+        let (vnResults, yahooResults, binanceResults) = await (vnTask, yahooTask, binanceTask)
 
         // Merge: canonical key dedup. Yahoo wins for metadata (name/exchange),
         // but we record that Binance also has this asset so the UI can show both sources.
@@ -3034,9 +3049,50 @@ class StockService: ObservableObject {
             }
         }
 
-        let existingSymbols = Set(fundResults.map { $0.symbol.uppercased() })
+        var existingSymbols = Set(fundResults.map { $0.symbol.uppercased() })
+        var vnFinal: [SearchResult] = []
+        for r in vnResults {
+            let sym = r.symbol.uppercased()
+            if !existingSymbols.contains(sym) {
+                existingSymbols.insert(sym)
+                vnFinal.append(r)
+            }
+        }
+
         let uniqueFinal = final.filter { !existingSymbols.contains($0.symbol.uppercased()) }
-        return fundResults + uniqueFinal
+        return fundResults + vnFinal + uniqueFinal
+    }
+
+    private func fetchVNDirectSearch(query: String) async -> [SearchResult] {
+        let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return [] }
+        let encoded = clean.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? clean
+        guard let url = URL(string: "\(VNMarketConfig.searchBaseURL)?query=\(encoded)&limit=15") else {
+            return []
+        }
+        do {
+            let (data, _) = try await session.data(from: url)
+            let items = try JSONDecoder().decode([VNDirectSearchItem].self, from: data)
+            return items.compactMap { item in
+                let sym = item.symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                guard !sym.isEmpty else { return nil }
+                let desc = item.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let rawExchange = (item.exchange?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").uppercased()
+                let exchange = rawExchange.isEmpty ? "HNX" : rawExchange
+                let rawType = (item.type?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").uppercased()
+                let type = (rawType == "CHỈ SỐ" || rawType == "INDEX") ? "INDEX" : "EQUITY"
+                let name = Self.popularVietnameseStocks.first(where: { $0.symbol.uppercased() == sym })?.name
+                    ?? (!desc.isEmpty ? desc : sym)
+                return SearchResult(
+                    symbol: sym,
+                    name: name,
+                    exchange: exchange,
+                    type: type
+                )
+            }
+        } catch {
+            return []
+        }
     }
 
     private func fetchYahooSearch(query: String) async -> [SearchResult] {
@@ -3576,4 +3632,11 @@ private struct VNDirectHistoryResponse: Decodable {
     let l: [Double]?
     let v: [Double]?
     let s: String?
+}
+
+private struct VNDirectSearchItem: Decodable {
+    let symbol: String
+    let description: String?
+    let exchange: String?
+    let type: String?
 }

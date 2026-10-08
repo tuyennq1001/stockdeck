@@ -898,6 +898,7 @@ struct WatchlistSearchSheet: View {
     private func add(_ r: SearchResult) {
         storageService.addToWatchlist(r.symbol)
         if !r.type.isEmpty { storageService.setType(r.type, for: r.symbol) }
+        if !r.exchange.isEmpty { storageService.setExchange(r.exchange, for: r.symbol) }
         if looksLikeISIN { storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: r.symbol) }
         Task { await stockService.fetchQuotes(symbols: [r.symbol]) }
     }
