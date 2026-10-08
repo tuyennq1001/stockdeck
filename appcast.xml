@@ -6,23 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.1</title>
-            <pubDate>Tue, 06 Oct 2026 05:58:55 +0900</pubDate>
-            <sparkle:version>3</sparkle:version>
-            <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
+            <title>Version 1.1.2</title>
+            <pubDate>Thu, 08 Oct 2026 18:43:55 +0900</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.1</h2>
+<h2>What's New in StockDeck 1.1.2</h2>
 <ul>
-    <li><strong>Watchlist Multi-Year History Sync:</strong> Unified historical price data resolution between Watchlist and Symbol Detail cards, ensuring accurate 1Y and 3Y performance metrics for Vietnamese stocks and global assets.</li>
-    <li><strong>Self-Healing Cache & Fresh Data Ingestion:</strong> Automatically refreshes stale sparkline data points and heals on-disk cache with split-adjusted daily series.</li>
-    <li><strong>Build System Improvements:</strong> Dynamically resolves build product paths to ensure seamless developer builds and app packaging.</li>
+    <li><strong>Comprehensive Vietnam Stock Search:</strong> Direct integration with VNDirect search API, supporting full coverage across HOSE, HNX, and UPCOM exchanges (including SHS, CEO, MBS, IDC, BSR, and more).</li>
+    <li><strong>Smart Exchange Routing:</strong> Automatically identifies Vietnamese equities without requiring .HN or .VN suffixes, routing quotes and chart history to high-precision local data feeds.</li>
+    <li><strong>Watchlist Improvements:</strong> Enhanced exchange metadata tracking when adding new assets to watchlists.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.1/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.2/StockDeck.zip"
                        type="application/octet-stream"
                        sparkle:edSignature="NOSIGNATURE"
-                       length="8451208"/>
+                       length="8441985"/>
         </item>
     </channel>
 </rss>
