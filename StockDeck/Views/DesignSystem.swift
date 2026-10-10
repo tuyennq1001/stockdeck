@@ -627,7 +627,7 @@ struct SymbolLogo: View {
     let symbol: String
     var size: CGFloat = 28
 
-    @State private var vnCacheURL: URL?
+    @State private var vnImage: NSImage?
     @State private var vnResolved = false
 
     @MainActor private var isVietnamese: Bool {
@@ -694,13 +694,17 @@ struct SymbolLogo: View {
         }
         .accessibilityHidden(true)
         .onAppear { resolveVNCache() }
-        .onChange(of: symbol) { _, _ in resolveVNCache() }
+        .onChange(of: symbol) { _, _ in
+            vnImage = nil
+            vnResolved = false
+            resolveVNCache()
+        }
     }
 
     /// The cached VN logo once available; a letter monogram while it downloads.
     @ViewBuilder private var vnContent: some View {
-        if let vnCacheURL, let image = NSImage(contentsOf: vnCacheURL) {
-            Image(nsImage: image)
+        if let vnImage {
+            Image(nsImage: vnImage)
                 .resizable()
                 .scaledToFit()
                 .padding(size * 0.12)
@@ -712,16 +716,21 @@ struct SymbolLogo: View {
     private func resolveVNCache() {
         guard isVietnamese else {
             vnResolved = false
+            vnImage = nil
             return
         }
         guard !vnResolved else { return }
         vnResolved = true
-        vnCacheURL = LogoCache.shared.cachedURL(for: symbol)
-        if vnCacheURL == nil {
-            Task {
-                await LogoCache.shared.ensureLogo(for: symbol)
-                vnCacheURL = LogoCache.shared.cachedURL(for: symbol)
-            }
+        let requestedSymbol = symbol
+        if let cachedImage = LogoCache.shared.decodedImage(for: requestedSymbol) {
+            vnImage = cachedImage
+            return
+        }
+        Task {
+            await LogoCache.shared.ensureLogo(for: requestedSymbol)
+            let image = await LogoCache.shared.image(for: requestedSymbol)
+            guard !Task.isCancelled, symbol == requestedSymbol else { return }
+            vnImage = image
         }
     }
 

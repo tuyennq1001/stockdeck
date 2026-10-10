@@ -1,6 +1,6 @@
 import Foundation
 
-struct StockQuote: Identifiable, Codable, Sendable {
+struct StockQuote: Identifiable, Codable, Sendable, Equatable {
     let symbol: String
     let name: String
     let price: Double
@@ -336,7 +336,7 @@ enum HoldingLotAggregation {
     }
 }
 
-struct Holding: Identifiable, Codable {
+struct Holding: Identifiable, Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, symbol, quantity, avgPrice, purchaseDate, leverage, account
     }

@@ -123,6 +123,7 @@ struct RefreshActionView: View {
     var body: some View {
         Button(action: {
             Task {
+                await storageService.waitUntilRestored()
                 await stockService.refreshAll(storageService: storageService)
                 if selectedTab == .home {
                     await stockService.refreshNews(storageService: storageService, force: true)
@@ -156,7 +157,10 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if let symbol = selectedDetailSymbol {
+            if storageService.isRestoringData {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let symbol = selectedDetailSymbol {
                 SymbolDetailView(
                     symbol: symbol,
                     onAddToPortfolio: { portfolioId in
@@ -186,10 +190,15 @@ struct ContentView: View {
         .frame(width: 462, height: 520)
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         .onAppear {
-            selectedTab = Tab.resolve(stored: storageService.lastSelectedTab)
+            if !storageService.isRestoringData {
+                selectedTab = Tab.resolve(stored: storageService.lastSelectedTab)
+            }
+        }
+        .onChange(of: storageService.isRestoringData) { _, isRestoring in
+            if !isRestoring { selectedTab = Tab.resolve(stored: storageService.lastSelectedTab) }
         }
         .onChange(of: selectedTab) { _, newValue in
-            storageService.lastSelectedTab = newValue.rawValue
+            if !storageService.isRestoringData { storageService.lastSelectedTab = newValue.rawValue }
         }
     }
 

@@ -119,6 +119,11 @@ final class PortfolioViewModel {
     private(set) var transactionsCount: Int = 0
     private(set) var typeBreakdown: [(label: String, fraction: Double)] = []
     private(set) var activeSymbolsCount: Int = 0
+    /// Changes when a historical series arrives so SwiftUI invalidates cached charts.
+    private(set) var historyRevision = 0
+    private(set) var valuationRevision: UInt64 = 0
+    private(set) var preparedSeriesRevision: UInt64 = 0
+    private(set) var historicalRowsRevision: UInt64 = 0
 
     /// Performance & benchmark matrix — session-cached.
     private(set) var cachedPerformance: (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?])? = nil
@@ -129,6 +134,8 @@ final class PortfolioViewModel {
     /// Cached display series per chart range, cleared on valuation update.
     @ObservationIgnored
     private var displaySeriesCache: [ChartRange: [ValuePoint]] = [:]
+    @ObservationIgnored private var displaySeriesTasks: [ChartRange: Task<Void, Never>] = [:]
+    @ObservationIgnored private var chartGeneration: UInt64 = 0
     
     /// Pre-grouped holdings by canonical symbol, cached on valuation update.
     private(set) var groupedHoldings: [String: [ValuedHolding]] = [:]
@@ -137,13 +144,22 @@ final class PortfolioViewModel {
     private var dailyPnlCache: [DailyPnlRange: [DailyPnlRow]] = [:]
     @ObservationIgnored
     private var monthlyPnlCache: [MonthlyPnlRange: [MonthlyPnlRow]] = [:]
+    @ObservationIgnored private var dailyPnlTasks: [DailyPnlRange: Task<Void, Never>] = [:]
+    @ObservationIgnored private var monthlyPnlTasks: [MonthlyPnlRange: Task<Void, Never>] = [:]
+    @ObservationIgnored private var historicalRowsGeneration: UInt64 = 0
     @ObservationIgnored
     private var sortedSymbolsCache: (key: String, result: [String])? = nil
     
     private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var valuationGeneration: UInt64 = 0
+    @ObservationIgnored private var performanceTask: Task<Void, Never>?
+    @ObservationIgnored private var performanceGeneration: UInt64 = 0
+    @ObservationIgnored private var moneyWeightedTask: Task<Void, Never>?
+    @ObservationIgnored private var moneyWeightedGeneration: UInt64 = 0
 
-    /// Subscription bag for Combine observation of quote changes.
-    private var cancellable: AnyCancellable?
+    /// Observe only the inputs used for valuation; news and history-cache
+    /// publications must not trigger a live portfolio recomputation.
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
     init(scope: PortfolioScope) {
         self.scope = scope
@@ -154,12 +170,52 @@ final class PortfolioViewModel {
         self.stockService = stockService
         self.storageService = storageService
 
-        // Debounce: wait 500ms after the last quote change before recomputing.
-        cancellable = stockService.objectWillChange
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.invalidateValuation()
+        stockService.marketDataChanges
+            .filter { [weak self] change in
+                guard let self else { return false }
+                if change.kind == .fx { return true }
+                let relevant = Set(self.portfolios.flatMap { portfolio in
+                    portfolio.holdings.map(\.symbol) + portfolio.closedTrades.map(\.symbol)
+                }.map(StockService.canonicalSymbol(for:)))
+                let needsBenchmark = change.symbols.contains(StockService.canonicalSymbol(for: "^GSPC"))
+                let relevantHistory = change.kind == .dailyHistory || change.kind == .maxHistory
+                    || change.kind == .intradayHistory
+                let relevantQuote = change.kind == .regularQuote || change.kind == .extendedQuote
+                return (!change.symbols.isDisjoint(with: relevant))
+                    && (relevantQuote || relevantHistory)
+                    || (needsBenchmark && relevantHistory)
             }
+            .throttle(for: .milliseconds(500), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] change in
+                guard let self else { return }
+                switch change.kind {
+                case .regularQuote:
+                    self.invalidateValuation()
+                case .extendedQuote:
+                    self.updateExtendedQuotes(for: change.symbols)
+                case .dailyHistory, .maxHistory, .intradayHistory:
+                    self.clearHistoricalCaches()
+                    self.historyRevision &+= 1
+                    self.recomputePerformance()
+                case .fx:
+                    self.recomputePortfolioHistoryStats()
+                    self.invalidateValuation()
+                    self.recomputePerformance()
+                    self.recomputeMoneyWeightedReturn()
+                case .watchlistHistory, .metadata:
+                    break
+                }
+            }
+            .store(in: &cancellables)
+
+        let portfolioChanges = storageService.$portfolios.map { _ in () }.eraseToAnyPublisher()
+        let currencyChanges = storageService.$preferredCurrency.map { _ in () }.eraseToAnyPublisher()
+        let secondaryCurrencyChanges = storageService.$secondaryCurrency.map { _ in () }.eraseToAnyPublisher()
+        let typeChanges = storageService.$symbolType.map { _ in () }.eraseToAnyPublisher()
+        Publishers.MergeMany([portfolioChanges, currencyChanges, secondaryCurrencyChanges, typeChanges])
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.recomputeAll() }
+            .store(in: &cancellables)
 
         // Compute immediately on first access.
         recomputeAll()
@@ -230,6 +286,14 @@ final class PortfolioViewModel {
     }
 
     func clearHistoricalCaches() {
+        chartGeneration &+= 1
+        historicalRowsGeneration &+= 1
+        displaySeriesTasks.values.forEach { $0.cancel() }
+        displaySeriesTasks.removeAll()
+        dailyPnlTasks.values.forEach { $0.cancel() }
+        dailyPnlTasks.removeAll()
+        monthlyPnlTasks.values.forEach { $0.cancel() }
+        monthlyPnlTasks.removeAll()
         displaySeriesCache.removeAll(keepingCapacity: true)
         dailyPnlCache.removeAll(keepingCapacity: true)
         monthlyPnlCache.removeAll(keepingCapacity: true)
@@ -237,9 +301,35 @@ final class PortfolioViewModel {
     }
 
     private func invalidateValuation() {
-        refreshTask?.cancel()
-        refreshTask = Task {
-            recomputeValuation()
+        recomputeValuation()
+    }
+
+    /// Update only extended-session cells. Their values are display metadata and
+    /// never participate in the regular-session valuation or P&L calculation.
+    private func updateExtendedQuotes(for symbols: Set<String>) {
+        guard let stockService else { return }
+        var updated = symbolAggregates
+        var changed = false
+        for symbol in symbols {
+            let quote = stockService.quotes[symbol]
+                ?? stockService.quotes.first(where: { StockService.canonicalSymbol(for: $0.key) == symbol })?.value
+            guard let quote, var aggregate = updated[symbol] else { continue }
+            aggregate = SymbolAggregate(
+                id: aggregate.id, value: aggregate.value, cost: aggregate.cost, pnl: aggregate.pnl,
+                pnlPercent: aggregate.pnlPercent, nativeCost: aggregate.nativeCost,
+                nativeValue: aggregate.nativeValue, nativePnl: aggregate.nativePnl,
+                nativePnlPercent: aggregate.nativePnlPercent, avgPrice: aggregate.avgPrice,
+                totalQuantity: aggregate.totalQuantity, todayPnl: aggregate.todayPnl,
+                changePercent: aggregate.changePercent, extendedChangePercent: quote.extendedChangePercent,
+                nativeCurrencySymbol: aggregate.nativeCurrencySymbol, lotsCount: aggregate.lotsCount,
+                hasCostBasis: aggregate.hasCostBasis, isMarketActive: aggregate.isMarketActive, quote: quote
+            )
+            updated[symbol] = aggregate
+            changed = true
+        }
+        if changed {
+            symbolAggregates = updated
+            sortedSymbolsCache = nil
         }
     }
 
@@ -247,6 +337,7 @@ final class PortfolioViewModel {
         refreshTask?.cancel()
         clearHistoricalCaches()
         recomputeValuation()
+        recomputePortfolioHistoryStats()
         recomputePerformance()
         recomputeMoneyWeightedReturn()
     }
@@ -278,7 +369,7 @@ final class PortfolioViewModel {
         let quote: StockQuote?
     }
 
-    struct ValuationBundle {
+    struct ValuationBundle: Sendable {
         let totalValue: Double
         let totalCost: Double
         let totalPnl: Double
@@ -298,258 +389,277 @@ final class PortfolioViewModel {
         )
     }
 
+    private struct ValuationPosition: @unchecked Sendable {
+        let holding: Holding
+        let portfolioId: UUID
+        let quote: StockQuote
+        let currency: String
+        let rate: Double
+        let costRate: Double
+        let isJapaneseFund: Bool
+        let isMarketActive: Bool
+        let type: String
+        let hasLiveQuote: Bool
+    }
+
+    private struct ValuationSnapshot: @unchecked Sendable {
+        let positions: [ValuationPosition]
+        let secondaryCurrency: String
+        let secondaryRate: Double?
+    }
+
+    private struct ValuationResult: @unchecked Sendable {
+        let totals: ValuationBundle
+        let sortedHoldings: [ValuedHolding]
+        let groupedHoldings: [String: [ValuedHolding]]
+        let aggregates: [String: SymbolAggregate]
+        let allocation: [AllocationSlice]
+        let gainers: [ValuedHolding]
+        let losers: [ValuedHolding]
+        let typeBreakdown: [(label: String, fraction: Double)]
+    }
+
     private func recomputeValuation() {
-        guard let stockService = stockService, let storageService = storageService else { return }
+        guard let stockService, let storageService else { return }
+        let scopedPortfolios = portfolios
+        let allHoldings = scopedPortfolios.flatMap { portfolio in
+            portfolio.holdings.map { (portfolio: portfolio, holding: $0) }
+        }
+        var positions: [ValuationPosition] = []
+        positions.reserveCapacity(allHoldings.count)
+        for item in allHoldings {
+            let holding = item.holding
+            let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()]
+            let resolvedQuote = quote ?? StockQuote(
+                symbol: holding.symbol, name: holding.symbol, price: .nan, change: 0,
+                changePercent: 0, currency: stockService.detectedCurrency(for: holding.symbol)
+            )
+            let currency = stockService.detectedCurrency(for: holding.symbol)
+            let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY"
+                || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
+            positions.append(ValuationPosition(
+                holding: holding,
+                portfolioId: item.portfolio.id,
+                quote: resolvedQuote,
+                currency: currency,
+                rate: stockService.rate(from: currency, to: storageService.preferredCurrency),
+                costRate: stockService.rate(from: currency, to: storageService.preferredCurrency,
+                                            for: holding.purchaseDate),
+                isJapaneseFund: resolvedQuote.isJapaneseFund
+                    || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund,
+                isMarketActive: MarketCategory.isTradingDay(symbol: holding.symbol, quote: resolvedQuote,
+                                                            isCrypto: isCrypto),
+                type: storageService.type(for: holding.symbol),
+                hasLiveQuote: quote != nil
+            ))
+        }
+        let secondary = storageService.secondaryCurrency.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondaryRate: Double? = !secondary.isEmpty && secondary != storageService.preferredCurrency
+            ? stockService.rate(from: storageService.preferredCurrency, to: secondary)
+            : nil
+        let snapshot = ValuationSnapshot(positions: positions, secondaryCurrency: secondary,
+                                         secondaryRate: secondaryRate)
+        valuationGeneration &+= 1
+        let generation = valuationGeneration
+        refreshTask?.cancel()
+        let signpostID = PerformanceSignposts.begin("Portfolio valuation", itemCount: positions.count)
+        refreshTask = Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.computeValuation(snapshot)
+            }.value
+            PerformanceSignposts.end("Portfolio valuation", id: signpostID)
+            guard let self, !Task.isCancelled, self.valuationGeneration == generation else { return }
+            self.valuationCache = result.totals
+            self.sortedValuedHoldings = result.sortedHoldings
+            self.groupedHoldings = result.groupedHoldings
+            self.symbolAggregates = result.aggregates
+            self.allocation = result.allocation
+            self.topGainers = result.gainers
+            self.topLosers = result.losers
+            self.typeBreakdown = result.typeBreakdown
+            self.activeSymbolsCount = result.aggregates.count
+            self.valuationRevision &+= 1
+        }
+    }
+
+    private nonisolated static func computeValuation(_ snapshot: ValuationSnapshot) -> ValuationResult {
+        typealias Aggregate = (value: Double, cost: Double, pnl: Double, nativeCost: Double,
+                               nativeValue: Double, nativePnl: Double, nativeQty: Double,
+                               totalQty: Double, todayPnl: Double, changePercent: Double,
+                               extendedChangePercent: Double?, lotsCount: Int,
+                               isMarketActive: Bool, quote: StockQuote?, currency: String)
         var valued: [ValuedHolding] = []
-        var totalVal = 0.0
         var todayInputs: [TodayPerformance.Input] = []
-        var bySymbol: [String: (value: Double, cost: Double, pnl: Double, nativeCost: Double, nativeValue: Double, nativePnl: Double, nativeQty: Double, totalQty: Double, todayPnl: Double, changePercent: Double, extendedChangePercent: Double?, lotsCount: Int, isMarketActive: Bool, quote: StockQuote?)] = [:]
-        var missingCostSymbols: Set<String> = []
+        var bySymbol: [String: Aggregate] = [:]
+        var missingCostSymbols = Set<String>()
+        var totalValue = 0.0
 
-        for portfolio in portfolios {
-            for holding in portfolio.holdings {
-                let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? StockQuote(
-                    symbol: holding.symbol,
-                    name: holding.symbol,
-                    price: .nan,
-                    change: 0,
-                    changePercent: 0,
-                    currency: stockService.detectedCurrency(for: holding.symbol)
-                )
-                let price = quote.price
-                let currency = stockService.detectedCurrency(for: holding.symbol)
-                let rate = stockService.rate(from: currency)
-                let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
-                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
-                let scale = isJpFund ? 10000.0 : 1.0
-                let lev = holding.effectiveLeverage
-                let qty = holding.quantity
-                let hasCost = holding.hasKnownCostBasis
-                let value = price.isFinite ? (price / scale) * qty * lev * rate : 0
-                let cost = hasCost
-                    ? (holding.avgPrice / scale) * qty * lev * costRate
-                    : 0
+        for position in snapshot.positions {
+            let holding = position.holding
+            let quote = position.quote
+            let price = quote.price
+            let scale = position.isJapaneseFund ? 10000.0 : 1.0
+            let leverage = holding.effectiveLeverage
+            let quantity = holding.quantity
+            let hasCost = holding.hasKnownCostBasis
+            let value = price.isFinite ? (price / scale) * quantity * leverage * position.rate : 0
+            let cost = hasCost ? (holding.avgPrice / scale) * quantity * leverage * position.costRate : 0
+            totalValue += value
 
-                totalVal += value
+            let nativeValue = price.isFinite ? (price / scale) * quantity * leverage : 0
+            let nativeCost = holding.avgPrice.isFinite ? (holding.avgPrice / scale) * quantity * leverage : 0
+            let nativePnl = hasCost && price.isFinite
+                ? ((price - holding.avgPrice) / scale) * quantity * leverage
+                : 0
+            let symbol = StockService.canonicalSymbol(for: holding.symbol)
+            if !hasCost { missingCostSymbols.insert(symbol) }
 
-                let nativeVal = price.isFinite ? holding.marketValue(currentPrice: price) : 0
-                let nativeCst = holding.costBasisLocal
-                let nativePnl = holding.pnl(currentPrice: price)
+            var aggregate = bySymbol[symbol] ?? Aggregate(
+                value: 0, cost: 0, pnl: 0, nativeCost: 0, nativeValue: 0, nativePnl: 0,
+                nativeQty: 0, totalQty: 0, todayPnl: 0,
+                changePercent: position.isMarketActive ? quote.changePercent : 0,
+                extendedChangePercent: position.isMarketActive ? quote.extendedChangePercent : nil,
+                lotsCount: 0, isMarketActive: position.isMarketActive, quote: quote,
+                currency: position.currency
+            )
+            aggregate.value += value
+            aggregate.cost += cost
+            aggregate.pnl += hasCost && price.isFinite ? value - cost : 0
+            aggregate.nativeCost += nativeCost
+            aggregate.nativeValue += nativeValue
+            aggregate.nativePnl += nativePnl
+            if hasCost { aggregate.nativeQty += abs(quantity * leverage) }
+            aggregate.totalQty += quantity
+            aggregate.todayPnl += position.isMarketActive ? (quote.change / scale) * quantity * leverage : 0
+            aggregate.lotsCount += 1
+            bySymbol[symbol] = aggregate
 
-                let sym = StockService.canonicalSymbol(for: holding.symbol)
-                let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
-                let isMarketActive = MarketCategory.isTradingDay(symbol: holding.symbol, quote: quote, isCrypto: isCrypto)
-
-                if !hasCost {
-                    missingCostSymbols.insert(sym)
-                }
-                var existing = bySymbol[sym] ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, isMarketActive ? quote.changePercent : 0, isMarketActive ? quote.extendedChangePercent : nil, 0, isMarketActive, quote)
-                existing.value += value
-                existing.cost += cost
-                existing.pnl += (hasCost && price.isFinite) ? (value - cost) : 0
-                existing.nativeCost += nativeCst
-                existing.nativeValue += nativeVal
-                existing.nativePnl += nativePnl
-                if hasCost {
-                    existing.nativeQty += abs(qty * lev)
-                }
-                existing.totalQty += qty
-                existing.todayPnl += isMarketActive ? ((quote.change / scale) * qty * lev) : 0
-                existing.lotsCount += 1
-                bySymbol[sym] = existing
-
-                valued.append(ValuedHolding(
-                    id: holding.id, portfolioId: portfolio.id, holding: holding, quote: quote,
-                    value: value, cost: cost, dayChangePercent: isMarketActive ? quote.changePercent : 0,
-                    type: storageService.type(for: holding.symbol)
+            valued.append(ValuedHolding(
+                id: holding.id, portfolioId: position.portfolioId, holding: holding, quote: quote,
+                value: value, cost: cost,
+                dayChangePercent: position.isMarketActive ? quote.changePercent : 0,
+                type: position.type
+            ))
+            if position.hasLiveQuote {
+                todayInputs.append(TodayPerformance.Input(
+                    holding: holding, regularPrice: quote.price, previousClose: quote.previousClose,
+                    rate: position.rate, isMarketActiveToday: position.isMarketActive
                 ))
-
-                if let liveQuote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] {
-                    todayInputs.append(TodayPerformance.Input(
-                        holding: holding,
-                        regularPrice: liveQuote.price,
-                        previousClose: liveQuote.previousClose,
-                        rate: rate,
-                        isMarketActiveToday: isMarketActive
-                    ))
-                }
             }
+        }
+
+        for symbol in missingCostSymbols {
+            guard var aggregate = bySymbol[symbol] else { continue }
+            aggregate.cost = 0
+            aggregate.pnl = 0
+            aggregate.nativeCost = 0
+            aggregate.nativePnl = 0
+            aggregate.nativeQty = 0
+            bySymbol[symbol] = aggregate
+        }
+        let totalCost = bySymbol.values.reduce(0) { $0 + $1.cost }
+        let totalPnl = bySymbol.values.reduce(0) { $0 + $1.pnl }
+        let pnlPercent = abs(totalCost) >= 0.01 ? totalPnl / abs(totalCost) * 100 : 0
+        let today = TodayPerformance.totals(todayInputs)
+        let secondary = snapshot.secondaryRate.flatMap { $0 > 0 ? $0 : nil }
+        let totals = ValuationBundle(
+            totalValue: totalValue, totalCost: totalCost, totalPnl: totalPnl,
+            totalPnlPercent: pnlPercent, dayChangeValue: today.gain, dayChangePercent: today.percent,
+            secondaryTotalValue: secondary.map { totalValue * $0 },
+            secondaryTotalPnl: secondary.map { totalPnl * $0 },
+            secondaryDayChangeValue: secondary.map { today.gain * $0 },
+            secondaryCurrencySymbol: secondary.map { _ in StorageService.currencySymbol(for: snapshot.secondaryCurrency) }
+        )
+
+        var aggregates: [String: SymbolAggregate] = [:]
+        for (symbol, data) in bySymbol {
+            let nativePnlPercent = abs(data.nativeCost) >= 0.01 ? data.nativePnl / abs(data.nativeCost) * 100 : 0
+            let average = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
+            aggregates[symbol] = SymbolAggregate(
+                id: symbol, value: data.value, cost: data.cost, pnl: data.pnl,
+                pnlPercent: nativePnlPercent, nativeCost: data.nativeCost,
+                nativeValue: data.nativeValue, nativePnl: data.nativePnl,
+                nativePnlPercent: nativePnlPercent, avgPrice: average,
+                totalQuantity: data.totalQty, todayPnl: data.todayPnl,
+                changePercent: data.changePercent,
+                extendedChangePercent: data.extendedChangePercent,
+                nativeCurrencySymbol: StorageService.currencySymbol(for: data.currency),
+                lotsCount: data.lotsCount, hasCostBasis: !missingCostSymbols.contains(symbol),
+                isMarketActive: data.isMarketActive, quote: data.quote
+            )
         }
 
         valued.sort { abs($0.value) > abs($1.value) }
-        sortedValuedHoldings = valued
-        groupedHoldings = Dictionary(grouping: valued) { StockService.canonicalSymbol(for: $0.symbol) }
-
-        // Cost basis is all-or-nothing per symbol: a symbol with ANY lot missing
-        // its cost basis (e.g. a Binance balance where one batch has order history
-        // and another doesn't) is treated as having an unknown cost — its entire
-        // cost basis, P&L, and native aggregates are excluded from the totals so
-        // a partially-known profit is never counted. Matches
-        // PortfolioValuation.totals().
-        for sym in missingCostSymbols {
-            guard var data = bySymbol[sym] else { continue }
-            data.cost = 0
-            data.pnl = 0
-            data.nativeCost = 0
-            data.nativePnl = 0
-            data.nativeQty = 0
-            bySymbol[sym] = data
-        }
-
-        var totalCst = 0.0
-        var pnl = 0.0
-        for agg in bySymbol.values {
-            totalCst += agg.cost
-            pnl += agg.pnl
-        }
-        let pnlPct = abs(totalCst) >= 0.01 ? (pnl / abs(totalCst)) * 100 : 0
-        let todayTotals = TodayPerformance.totals(todayInputs)
-
-        var secVal: Double? = nil
-        var secPnl: Double? = nil
-        var secDayGain: Double? = nil
-        var secSym: String? = nil
-
-        let secCurr = storageService.secondaryCurrency.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !secCurr.isEmpty && secCurr != storageService.preferredCurrency {
-            let rate = stockService.rate(from: storageService.preferredCurrency, to: secCurr)
-            if rate > 0 {
-                secVal = totalVal * rate
-                secPnl = pnl * rate
-                secDayGain = todayTotals.gain * rate
-                secSym = StorageService.currencySymbol(for: secCurr)
-            }
-        }
-
-        valuationCache = ValuationBundle(
-            totalValue: totalVal,
-            totalCost: totalCst,
-            totalPnl: pnl,
-            totalPnlPercent: pnlPct,
-            dayChangeValue: todayTotals.gain,
-            dayChangePercent: todayTotals.percent,
-            secondaryTotalValue: secVal,
-            secondaryTotalPnl: secPnl,
-            secondaryDayChangeValue: secDayGain,
-            secondaryCurrencySymbol: secSym
-        )
-
-        // Build symbol aggregates from our single pass
-        var symAggs: [String: SymbolAggregate] = [:]
-        for (sym, data) in bySymbol {
-            let nativePnlPct = abs(data.nativeCost) >= 0.01 ? (data.nativePnl / abs(data.nativeCost)) * 100 : 0
-            let avg = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
-            let curr = stockService.detectedCurrency(for: sym)
-            symAggs[sym] = SymbolAggregate(
-                id: sym,
-                value: data.value,
-                cost: data.cost,
-                pnl: data.pnl,
-                pnlPercent: nativePnlPct,
-                nativeCost: data.nativeCost,
-                nativeValue: data.nativeValue,
-                nativePnl: data.nativePnl,
-                nativePnlPercent: nativePnlPct,
-                avgPrice: avg,
-                totalQuantity: data.totalQty,
-                todayPnl: data.todayPnl,
-                changePercent: data.changePercent,
-                extendedChangePercent: data.extendedChangePercent,
-                nativeCurrencySymbol: StorageService.currencySymbol(for: curr),
-                lotsCount: data.lotsCount,
-                hasCostBasis: !missingCostSymbols.contains(sym),
-                isMarketActive: data.isMarketActive,
-                quote: data.quote
-            )
-        }
-        symbolAggregates = symAggs
-
-        // Compute Allocation
-        if abs(totalVal) >= 0.01 {
-            var allocMap: [String: Double] = [:]
-            for (sym, agg) in symAggs {
-                allocMap[sym] = abs(agg.value)
-            }
-            allocation = allocMap.map { AllocationSlice(id: $0.key, symbol: $0.key, value: $0.value, fraction: $0.value / abs(totalVal)) }
+        let grouped = Dictionary(grouping: valued) { StockService.canonicalSymbol(for: $0.symbol) }
+        let allocation: [AllocationSlice] = abs(totalValue) >= 0.01
+            ? aggregates.map { AllocationSlice(id: $0.key, symbol: $0.key, value: abs($0.value.value),
+                                                fraction: abs($0.value.value) / abs(totalValue)) }
                 .sorted { $0.value > $1.value }
-        } else {
-            allocation = []
-        }
-
-        // Compute Top Gainers / Losers
+            : []
+        let sortedByDayChange = valued.sorted { $0.dayChangePercent > $1.dayChangePercent }
         var seen = Set<String>()
-        var gainers: [ValuedHolding] = []
-        var losers: [ValuedHolding] = []
-        let sortedDesc = valued.sorted { $0.dayChangePercent > $1.dayChangePercent }
-        
-        for h in sortedDesc {
-            if seen.insert(h.symbol).inserted {
-                if h.dayChangePercent > 0 { gainers.append(h) }
-            }
-        }
-        topGainers = Array(gainers.prefix(5))
-
+        let gainers = Array(sortedByDayChange.filter { $0.dayChangePercent > 0 && seen.insert($0.symbol).inserted }.prefix(5))
         seen.removeAll()
-        for h in sortedDesc.reversed() {
-            if seen.insert(h.symbol).inserted {
-                if h.dayChangePercent < 0 { losers.append(h) }
-            }
+        let losers = Array(sortedByDayChange.reversed().filter { $0.dayChangePercent < 0 && seen.insert($0.symbol).inserted }.prefix(5))
+        let typeTotal = valued.reduce(0) { $0 + abs($1.value) }
+        var typeValues: [String: Double] = [:]
+        if typeTotal >= 0.01 {
+            for holding in valued { typeValues[typeLabelForWorker(holding.type), default: 0] += abs(holding.value) }
         }
-        topLosers = Array(losers.prefix(5))
+        let typeBreakdown = typeValues.map { (label: $0.key, fraction: $0.value / typeTotal) }
+            .sorted { $0.fraction > $1.fraction }
+        return ValuationResult(totals: totals, sortedHoldings: valued, groupedHoldings: grouped,
+                               aggregates: aggregates, allocation: allocation, gainers: gainers,
+                               losers: losers, typeBreakdown: typeBreakdown)
+    }
 
-        // Realized PnL stats (cached once per valuation)
+    private nonisolated static func typeLabelForWorker(_ type: String) -> String {
+        switch type.uppercased() {
+        case "EQUITY": return "Stocks"
+        case "ETF": return "ETFs"
+        case "CRYPTOCURRENCY": return "Crypto"
+        case "INDEX": return "Indices"
+        case "FUTURE": return "Futures"
+        case "MUTUALFUND": return "Funds"
+        case "CURRENCY": return "Currency"
+        case "": return "Other"
+        default: return type.capitalized
+        }
+    }
+
+    /// Closed-trade and transaction summaries are independent of live quotes.
+    /// Rebuild them only when portfolio contents or FX settings change.
+    private func recomputePortfolioHistoryStats() {
+        guard let stockService else { return }
+        let itemCount = portfolios.reduce(0) { $0 + $1.closedTrades.count + $1.transactions.count }
+        let signpostID = PerformanceSignposts.begin("Portfolio history stats", itemCount: itemCount)
+        defer { PerformanceSignposts.end("Portfolio history stats", id: signpostID) }
+
         var rawClosed: [(trade: ClosedTrade, portfolioId: UUID, portfolioName: String)] = []
-        for p in portfolios {
-            for t in p.closedTrades {
-                rawClosed.append((t, p.id, p.name))
-            }
+        var rawTransactions: [(tx: Transaction, portfolioId: UUID, portfolioName: String)] = []
+        for portfolio in portfolios {
+            rawClosed.append(contentsOf: portfolio.closedTrades.map { ($0, portfolio.id, portfolio.name) })
+            rawTransactions.append(contentsOf: portfolio.transactions.map { ($0, portfolio.id, portfolio.name) })
         }
-        let consolidatedClosed = ConsolidatedClosedTrade.consolidate(tradesWithPortfolio: rawClosed)
-        var totalRealized: Double = 0
-        var totalClosedCost: Double = 0
-        var winCount: Int = 0
 
-        for ct in consolidatedClosed {
-            let curr = stockService.detectedCurrency(for: ct.symbol)
-            let rate = stockService.rate(from: curr)
-            totalRealized += ct.realizedPnl * rate
-            totalClosedCost += ct.costBasis * rate
-            if ct.realizedPnl > 0 {
-                winCount += 1
-            }
+        let closed = ConsolidatedClosedTrade.consolidate(tradesWithPortfolio: rawClosed)
+        var realized = 0.0
+        var closedCost = 0.0
+        var winCount = 0
+        for trade in closed {
+            let rate = stockService.rate(from: stockService.detectedCurrency(for: trade.symbol))
+            realized += trade.realizedPnl * rate
+            closedCost += trade.costBasis * rate
+            if trade.realizedPnl > 0 { winCount += 1 }
         }
-        let totalClosed = consolidatedClosed.count
-        let winRate = totalClosed > 0 ? (Double(winCount) / Double(totalClosed)) * 100.0 : 0.0
+        let count = closed.count
         realizedStats = RealizedStats(
-            realizedPnl: totalRealized,
-            closedCost: totalClosedCost,
-            winRate: winRate,
-            totalClosed: totalClosed
+            realizedPnl: realized,
+            closedCost: closedCost,
+            winRate: count > 0 ? Double(winCount) / Double(count) * 100 : 0,
+            totalClosed: count
         )
-
-        // Transactions count (cached once per valuation)
-        var rawTx: [(tx: Transaction, portfolioId: UUID, portfolioName: String)] = []
-        for p in portfolios {
-            for tx in p.transactions {
-                rawTx.append((tx, p.id, p.name))
-            }
-        }
-        transactionsCount = ConsolidatedTransaction.consolidate(transactionsWithPortfolio: rawTx).count
-
-        // Active symbols count (unique canonical symbols in active holdings)
-        activeSymbolsCount = symAggs.count
-
-        // Type diversification breakdown (cached once per valuation)
-        let totalValForTypes = valued.reduce(0) { $0 + abs($1.value) }
-        if totalValForTypes >= 0.01 {
-            var byType: [String: Double] = [:]
-            for h in valued {
-                byType[Self.typeLabel(h.type), default: 0] += abs(h.value)
-            }
-            typeBreakdown = byType.map { ($0.key, $0.value / totalValForTypes) }.sorted { $0.1 > $1.1 }
-        } else {
-            typeBreakdown = []
-        }
+        transactionsCount = ConsolidatedTransaction.consolidate(transactionsWithPortfolio: rawTransactions).count
     }
 
     public static func typeLabel(_ type: String) -> String {
@@ -567,7 +677,7 @@ final class PortfolioViewModel {
     }
 
     func sortedSymbols(column: PortfolioOverview.PositionSortColumn, ascending: Bool, manualOrder: [String]) -> [String] {
-        let cacheKey = "\(column.rawValue):\(ascending):\(manualOrder.hashValue):\(symbolAggregates.count):\(totalValue)"
+        let cacheKey = "\(column.rawValue):\(ascending):\(manualOrder.joined(separator: ",")):\(valuationRevision)"
         if let cached = sortedSymbolsCache, cached.key == cacheKey {
             return cached.result
         }
@@ -633,24 +743,132 @@ final class PortfolioViewModel {
     // MARK: - Performance & Benchmark
 
     private func recomputePerformance() {
-        guard let stockService = stockService else { return }
-        let hs = portfolios.flatMap { $0.holdings }
+        guard let stockService, let storageService else { return }
+        let hs = portfolios.flatMap(\.holdings)
         let holdingsFingerprint = hs.map {
             "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
         }.joined(separator: ";")
-        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
+        let dayKey = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+        let fxRevision = stockService.fxRevision
+        let fullKey = "\(scopeKey):\(holdingsFingerprint):h\(stockService.historyRevision):fx\(fxRevision):d\(dayKey)"
+        let now = Date()
+        let periods = PortfolioOverview.PerformancePeriod.allCases.map { ($0, $0.cutoffDate(now: now)) }
+        let positions = hs.map { holding -> PerformancePosition in
+            let symbol = holding.symbol
+            let quote = stockService.quotes[symbol] ?? stockService.quotes[symbol.uppercased()]
+            let history = stockService.priceHistory[symbol] ?? stockService.priceHistoryMax[symbol] ?? []
+            let currency = stockService.detectedCurrency(for: symbol)
+            return PerformancePosition(
+                holding: holding,
+                currentPrice: quote?.price,
+                scale: (holding.isJapaneseFund || stockService.isJapaneseMutualFund(symbol)) ? 10000 : 1,
+                rate: stockService.rate(from: currency, to: storageService.preferredCurrency),
+                history: history
+            )
+        }
+        let spxHistory = stockService.priceHistory["^GSPC"] ?? stockService.priceHistoryMax["^GSPC"] ?? []
+        let snapshot = PerformanceSnapshot(
+            key: fullKey, positions: positions, spxHistory: spxHistory,
+            inception: earliestPurchaseDate,
+            hasUndatedHoldings: hs.contains { $0.purchaseDate == nil },
+            periods: periods
+        )
+        performanceTask?.cancel()
+        performanceGeneration &+= 1
+        let generation = performanceGeneration
+        let signpostID = PerformanceSignposts.begin("Portfolio Performance and XIRR inputs", itemCount: hs.count + spxHistory.count)
+        performanceTask = Task { [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                Self.computePerformance(snapshot)
+            }.value
+            PerformanceSignposts.end("Portfolio Performance and XIRR inputs", id: signpostID)
+            guard let self, !Task.isCancelled, self.performanceGeneration == generation else { return }
+            self.cachedPerformance = result
+        }
+    }
 
-        let inception = earliestPurchaseDate
-        let svc = stockService
+    private struct PerformancePosition: @unchecked Sendable {
+        let holding: Holding
+        let currentPrice: Double?
+        let scale: Double
+        let rate: Double
+        let history: [PricePoint]
+    }
 
-        cachedPerformance = PerformanceBenchmarkCache.performance(for: fullKey) {
-            var pDict: [PortfolioOverview.PerformancePeriod: Double?] = [:]
-            var sDict: [PortfolioOverview.PerformancePeriod: Double?] = [:]
-            for period in PortfolioOverview.PerformancePeriod.allCases {
-                pDict[period] = Self.portfolioPerformance(for: period, holdings: hs, stockService: svc, inception: inception)
-                sDict[period] = Self.spxPerformance(for: period, stockService: svc)
+    private struct PerformanceSnapshot: @unchecked Sendable {
+        let key: String
+        let positions: [PerformancePosition]
+        let spxHistory: [PricePoint]
+        let inception: Date?
+        let hasUndatedHoldings: Bool
+        let periods: [(PortfolioOverview.PerformancePeriod, Date)]
+    }
+
+    private nonisolated static func computePerformance(
+        _ snapshot: PerformanceSnapshot
+    ) -> (portfolio: [PortfolioOverview.PerformancePeriod: Double?], spx: [PortfolioOverview.PerformancePeriod: Double?]) {
+        PerformanceBenchmarkCache.performance(for: snapshot.key) {
+            let positions = snapshot.positions.map { position in
+                (position: position, points: position.history.filter { $0.close.isFinite && $0.close > 0 }
+                    .sorted { $0.date < $1.date })
             }
-            return (pDict, sDict)
+            let spxPoints = snapshot.spxHistory.filter { $0.close.isFinite && $0.close > 0 }
+                .sorted { $0.date < $1.date }
+            var portfolio: [PortfolioOverview.PerformancePeriod: Double?] = [:]
+            var benchmark: [PortfolioOverview.PerformancePeriod: Double?] = [:]
+            for (period, cutoff) in snapshot.periods {
+                let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
+                let inceptionAllowsPeriod: Bool = {
+                    guard let inception = snapshot.inception, !snapshot.hasUndatedHoldings else { return true }
+                    return inception <= graceCutoff
+                }()
+                var currentValue = 0.0
+                var cutoffValue = 0.0
+                var hasValidCutoff = false
+                for item in (inceptionAllowsPeriod ? positions : []) {
+                    let holding = item.position.holding
+                    let rawCurrent = item.position.currentPrice
+                        ?? (holding.avgPrice.isFinite && holding.avgPrice > 0 ? holding.avgPrice : nil)
+                    let currentPrice: Double
+                    if let rawCurrent, rawCurrent.isFinite, rawCurrent > 0 {
+                        currentPrice = rawCurrent
+                    } else if let last = item.points.last {
+                        currentPrice = last.close
+                    } else { continue }
+
+                    let quantity = holding.quantity.isFinite ? holding.quantity : 0
+                    let leverage = holding.effectiveLeverage.isFinite ? holding.effectiveLeverage : 1
+                    currentValue += (currentPrice / item.position.scale) * quantity * leverage * item.position.rate
+                    let baseline = item.points.last(where: { $0.date <= cutoff })
+                        ?? item.points.first(where: { $0.date <= graceCutoff })
+                    let cutoffPrice: Double
+                    if let baseline {
+                        cutoffPrice = baseline.close
+                        hasValidCutoff = true
+                    } else if let first = item.points.first {
+                        cutoffPrice = first.close
+                    } else if holding.avgPrice.isFinite && holding.avgPrice > 0 {
+                        cutoffPrice = holding.avgPrice
+                    } else {
+                        cutoffPrice = currentPrice
+                    }
+                    cutoffValue += (cutoffPrice / item.position.scale) * quantity * leverage * item.position.rate
+                }
+                if inceptionAllowsPeriod && !snapshot.positions.isEmpty && hasValidCutoff
+                    && cutoffValue > 1e-9 && currentValue > 1e-9 {
+                    portfolio[period] = ((currentValue - cutoffValue) / cutoffValue) * 100
+                } else {
+                    portfolio[period] = nil
+                }
+                if spxPoints.count >= 2, let last = spxPoints.last, abs(last.close) > 1e-9,
+                   let start = spxPoints.last(where: { $0.date <= cutoff })
+                    ?? spxPoints.first(where: { $0.date <= graceCutoff }), abs(start.close) > 1e-9 {
+                    benchmark[period] = ((last.close - start.close) / abs(start.close)) * 100
+                } else {
+                    benchmark[period] = nil
+                }
+            }
+            return (portfolio, benchmark)
         }
     }
 
@@ -738,19 +956,25 @@ final class PortfolioViewModel {
     // MARK: - Money-weighted return
 
     private func recomputeMoneyWeightedReturn() {
-        guard let stockService = stockService, let storageService = storageService else { return }
+        guard let stockService = stockService else { return }
         let hs = portfolios.flatMap { $0.holdings }
         let holdingsFingerprint = hs.map {
             "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.purchaseDate?.timeIntervalSince1970 ?? 0)"
         }.joined(separator: ";")
-        let fullKey = "\(scopeKey):\(holdingsFingerprint)"
+        let fullKey = "\(scopeKey):\(holdingsFingerprint):h\(stockService.historyRevision):fx\(stockService.fxRevision)"
 
-        moneyWeightedResult = MoneyWeightedReturnCache.result(for: fullKey) {
-            InvestmentEffectiveness.evaluate(
-                holdings: hs,
-                stockService: stockService,
-                storageService: storageService
-            )
+        let inputs = InvestmentEffectiveness.inputs(holdings: hs, stockService: stockService)
+        moneyWeightedTask?.cancel()
+        moneyWeightedGeneration &+= 1
+        let generation = moneyWeightedGeneration
+        moneyWeightedTask = Task { [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                MoneyWeightedReturnCache.result(for: fullKey) {
+                    InvestmentEffectiveness.evaluate(inputs)
+                }
+            }.value
+            guard let self, !Task.isCancelled, self.moneyWeightedGeneration == generation else { return }
+            self.moneyWeightedResult = result
         }
     }
 
@@ -773,7 +997,7 @@ final class PortfolioViewModel {
     /// Uses the unified valueSeries representing the true market value trajectory of the portfolio.
     func dailyPnlRows(for range: DailyPnlRange) -> [DailyPnlRow] {
         if let cached = dailyPnlCache[range] { return cached }
-        guard let stockService = stockService else { return [] }
+        guard dailyPnlTasks[range] == nil, let stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
         let closed = portfolios.flatMap { $0.closedTrades }
         var histBySymbol: [String: [PricePoint]] = [:]
@@ -789,20 +1013,29 @@ final class PortfolioViewModel {
                 rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
             }
         }
-        let rows = DailyPnl.rows(
-            holdings: hs,
-            closedTrades: closed,
-            historyBySymbol: histBySymbol,
-            rateBySymbol: rateBySymbol,
-            dayCount: range.dayCount
+        let snapshot = HistoricalRowsSnapshot(
+            holdings: hs, closedTrades: closed, historyBySymbol: histBySymbol,
+            rateBySymbol: rateBySymbol, dayCount: range.dayCount,
+            monthCount: 0, today: Date(), calendar: .current
         )
-        dailyPnlCache[range] = rows
-        return rows
+        let generation = historicalRowsGeneration
+        dailyPnlTasks[range] = Task { [weak self] in
+            let rows = await Task.detached(priority: .userInitiated) {
+                DailyPnl.rows(holdings: snapshot.holdings, closedTrades: snapshot.closedTrades,
+                              historyBySymbol: snapshot.historyBySymbol, rateBySymbol: snapshot.rateBySymbol,
+                              today: snapshot.today, calendar: snapshot.calendar, dayCount: snapshot.dayCount)
+            }.value
+            guard let self, !Task.isCancelled, self.historicalRowsGeneration == generation else { return }
+            self.dailyPnlTasks.removeValue(forKey: range)
+            self.dailyPnlCache[range] = rows
+            self.historicalRowsRevision &+= 1
+        }
+        return []
     }
 
     func monthlyPnlRows(for range: MonthlyPnlRange) -> [MonthlyPnlRow] {
         if let cached = monthlyPnlCache[range] { return cached }
-        guard let stockService = stockService else { return [] }
+        guard monthlyPnlTasks[range] == nil, let stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
         let closed = portfolios.flatMap { $0.closedTrades }
         var histBySymbol: [String: [PricePoint]] = [:]
@@ -835,87 +1068,125 @@ final class PortfolioViewModel {
                 rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
             }
         }
-        let rows = MonthlyPnl.rows(
-            holdings: hs,
-            closedTrades: closed,
-            historyBySymbol: histBySymbol,
-            rateBySymbol: rateBySymbol,
-            monthCount: monthCount
+        let snapshot = HistoricalRowsSnapshot(
+            holdings: hs, closedTrades: closed, historyBySymbol: histBySymbol,
+            rateBySymbol: rateBySymbol, dayCount: 0,
+            monthCount: monthCount, today: Date(), calendar: .current
         )
-        monthlyPnlCache[range] = rows
-        return rows
+        let generation = historicalRowsGeneration
+        monthlyPnlTasks[range] = Task { [weak self] in
+            let rows = await Task.detached(priority: .userInitiated) {
+                MonthlyPnl.rows(holdings: snapshot.holdings, closedTrades: snapshot.closedTrades,
+                                historyBySymbol: snapshot.historyBySymbol, rateBySymbol: snapshot.rateBySymbol,
+                                today: snapshot.today, calendar: snapshot.calendar, monthCount: snapshot.monthCount)
+            }.value
+            guard let self, !Task.isCancelled, self.historicalRowsGeneration == generation else { return }
+            self.monthlyPnlTasks.removeValue(forKey: range)
+            self.monthlyPnlCache[range] = rows
+            self.historicalRowsRevision &+= 1
+        }
+        return []
+    }
+
+    private struct HistoricalRowsSnapshot: @unchecked Sendable {
+        let holdings: [Holding]
+        let closedTrades: [ClosedTrade]
+        let historyBySymbol: [String: [PricePoint]]
+        let rateBySymbol: [String: Double]
+        let dayCount: Int
+        let monthCount: Int
+        let today: Date
+        let calendar: Calendar
     }
 
     func displaySeries(for chartRange: ChartRange) -> [ValuePoint] {
-        guard let stockService = stockService else { return [] }
+        _ = preparedSeriesRevision
         if let cached = displaySeriesCache[chartRange] {
             return cached
         }
+        scheduleDisplaySeriesPreparation(for: chartRange)
+        return []
+    }
 
-        let computed: [ValuePoint]
-        if chartRange == .week {
-            computed = valueSeries(from: stockService.intradayWeek)
+    private struct ChartPreparationSnapshot: @unchecked Sendable {
+        let holdings: [Holding]
+        let histories: [String: [PricePoint]]
+        let rates: [String: Double]
+    }
+
+    private func scheduleDisplaySeriesPreparation(for range: ChartRange) {
+        guard displaySeriesTasks[range] == nil,
+              let stockService,
+              !portfolios.flatMap(\.holdings).isEmpty else { return }
+        let holdings = portfolios.flatMap(\.holdings)
+        let generation = chartGeneration
+        let revision = stockService.historyRevision
+        let chartNow = Date()
+        var chartCutoff: Date?
+        if range == .all {
+            chartCutoff = earliestPurchaseDate.map(Calendar.current.startOfDay(for:))
+                ?? Calendar.current.date(byAdding: .year, value: -5, to: chartNow)
         } else {
-            var cutoff: Date? = nil
-            if chartRange == .all {
-                if let purchaseDate = earliestPurchaseDate {
-                    cutoff = Calendar.current.startOfDay(for: purchaseDate)
-                } else {
-                    cutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date())
-                }
-            } else if let start = chartRange.startDate() {
-                cutoff = start
-            }
-
-            let allHoldingsDated = !portfolios.flatMap(\.holdings).contains(where: { $0.purchaseDate == nil })
-            if allHoldingsDated, let purchaseDate = earliestPurchaseDate {
-                let absoluteCutoff = Calendar.current.startOfDay(for: purchaseDate)
-                if let current = cutoff {
-                    cutoff = max(current, absoluteCutoff)
-                } else {
-                    cutoff = absoluteCutoff
-                }
-            }
-
-            let daysSpan: Int
-            if let c = cutoff {
-                daysSpan = Calendar.current.dateComponents([.day], from: c, to: Date()).day ?? 9999
-            } else {
-                daysSpan = 9999
-            }
-
-            let useMax = daysSpan > 730
-            let originalSource = useMax ? stockService.priceHistoryMax : stockService.priceHistory
-
-            var source = originalSource
-            if let cutoffDate = cutoff {
-                var hasData = false
-                for (sym, points) in source {
-                    var filtered = points.filter { $0.date >= cutoffDate }
-                    if let before = points.last(where: { $0.date < cutoffDate }) {
-                        filtered.insert(before, at: 0)
-                    }
-                    source[sym] = filtered
-                    if filtered.count > 1 { hasData = true }
-                }
-
-                if !hasData && chartRange == .all {
-                    if let fallbackCutoff = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
-                        source = originalSource
-                        for (sym, points) in source {
-                            var filtered = points.filter { $0.date >= fallbackCutoff }
-                            if let before = points.last(where: { $0.date < fallbackCutoff }) {
-                                filtered.insert(before, at: 0)
-                            }
-                            source[sym] = filtered
-                        }
-                    }
-                }
-            }
-            computed = valueSeries(from: source)
+            chartCutoff = range == .week ? nil : range.startDate(from: chartNow)
         }
+        if range != .week, !holdings.contains(where: { $0.purchaseDate == nil }),
+           let purchaseDate = earliestPurchaseDate {
+            let purchaseCutoff = Calendar.current.startOfDay(for: purchaseDate)
+            chartCutoff = chartCutoff.map { max($0, purchaseCutoff) } ?? purchaseCutoff
+        }
+        let signpostID = PerformanceSignposts.begin("Portfolio chart preparation", itemCount: holdings.count)
+        var histories: [String: [PricePoint]] = [:]
+        var rates: [String: Double] = [:]
+        for holding in holdings {
+            let symbol = holding.symbol
+            rates[symbol] = stockService.rate(from: stockService.detectedCurrency(for: symbol),
+                                              to: storageService?.preferredCurrency ?? "USD")
+            if range == .week {
+                histories[symbol] = stockService.intradayWeek[symbol] ?? []
+            } else {
+                let daySpan = chartCutoff.map { Calendar.current.dateComponents([.day], from: $0, to: chartNow).day ?? 9999 } ?? 9999
+                let source = daySpan > 730 ? stockService.priceHistoryMax : stockService.priceHistory
+                histories[symbol] = source[symbol] ?? []
+            }
+        }
+        let snapshot = ChartPreparationSnapshot(holdings: holdings, histories: histories, rates: rates)
+        let cutoff = chartCutoff
+        let task = Task { [weak self] in
+            let computed = await Task.detached(priority: .userInitiated) { () -> [ValuePoint] in
+                let workerID = signpostID
+                defer { PerformanceSignposts.end("Portfolio chart preparation", id: workerID) }
+                let source = Self.clippedHistories(snapshot.histories, cutoff: cutoff)
+                var points = PortfolioBackfill.series(holdings: snapshot.holdings,
+                                                       historyBySymbol: source,
+                                                       rateBySymbol: snapshot.rates)
+                if range == .all, points.count < 2,
+                   let fallback = Calendar.current.date(byAdding: .year, value: -5, to: Date()) {
+                    points = PortfolioBackfill.series(
+                        holdings: snapshot.holdings,
+                        historyBySymbol: Self.clippedHistories(snapshot.histories, cutoff: fallback),
+                        rateBySymbol: snapshot.rates
+                    )
+                }
+                return points
+            }.value
+            guard let self else { return }
+            self.displaySeriesTasks.removeValue(forKey: range)
+            guard !Task.isCancelled, self.chartGeneration == generation,
+                  self.stockService?.historyRevision == revision else { return }
+            self.displaySeriesCache[range] = computed
+            self.preparedSeriesRevision &+= 1
+        }
+        displaySeriesTasks[range] = task
+    }
 
-        displaySeriesCache[chartRange] = computed
-        return computed
+    private nonisolated static func clippedHistories(
+        _ histories: [String: [PricePoint]], cutoff: Date?
+    ) -> [String: [PricePoint]] {
+        guard let cutoff else { return histories }
+        return histories.mapValues { points in
+            var filtered = points.filter { $0.date >= cutoff }
+            if let before = points.last(where: { $0.date < cutoff }) { filtered.insert(before, at: 0) }
+            return filtered
+        }
     }
 }

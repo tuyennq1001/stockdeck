@@ -110,44 +110,61 @@ final class iCloudSyncService: ObservableObject {
     /// Pushes local data directly to iCloud (iCloud Drive + KVS)
     func pushLocalData() {
         guard StorageService.shared.iCloudSyncEnabled else { return }
-        isSyncing = true
-        let appData = StorageService.shared.exportAppData()
-        guard let encoded = try? JSONEncoder().encode(appData) else {
-            isSyncing = false
-            return
-        }
-
-        var wroteDrive = false
-        if let driveURL = iCloudDriveSyncFileURL {
+        Task { @MainActor in
+            isSyncing = true
             do {
-                try encoded.write(to: driveURL, options: .atomic)
-                wroteDrive = true
+                try await StorageService.shared.flush()
+                let snapshot = StorageService.shared.exportAppData()
+                let payload = CloudSnapshot(value: snapshot)
+                let encoded = try await Task.detached(priority: .utility) {
+                    try JSONEncoder().encode(payload.value)
+                }.value
+
+                var wroteDrive = false
+                if let driveURL = iCloudDriveSyncFileURL {
+                    do {
+                        try await Task.detached(priority: .utility) {
+                            try encoded.write(to: driveURL, options: .atomic)
+                        }.value
+                        wroteDrive = true
+                    } catch {
+                        NSLog("[iCloudSync] Failed to write iCloud Drive: %@", error.localizedDescription)
+                    }
+                }
+
+                store.set(encoded, forKey: kSyncPayloadKey)
+                store.set(Date().timeIntervalSince1970, forKey: kSyncTimestampKey)
+                store.set(deviceId, forKey: kSyncDeviceIdKey)
+                let kvsSuccess = store.synchronize()
+
+                let date = Date()
+                lastSyncDate = date
+                if wroteDrive || kvsSuccess {
+                    syncStatus = "Uploaded to iCloud"
+                } else if !isiCloudAvailable {
+                    syncStatus = "Saved locally (iCloud not signed in)"
+                } else {
+                    syncStatus = "Uploaded to iCloud"
+                }
+                StorageService.shared.lastiCloudSyncDate = date
             } catch {
-                NSLog("[iCloudSync] Failed to write iCloud Drive: %@", error.localizedDescription)
+                syncStatus = "Save failed: \(error.localizedDescription)"
             }
+            isSyncing = false
         }
+    }
 
-        let now = Date().timeIntervalSince1970
-        store.set(encoded, forKey: kSyncPayloadKey)
-        store.set(now, forKey: kSyncTimestampKey)
-        store.set(deviceId, forKey: kSyncDeviceIdKey)
-        let kvsSuccess = store.synchronize()
-
-        let date = Date()
-        self.lastSyncDate = date
-        if wroteDrive || kvsSuccess {
-            self.syncStatus = "Uploaded to iCloud"
-        } else if !isiCloudAvailable {
-            self.syncStatus = "Saved locally (iCloud not signed in)"
-        } else {
-            self.syncStatus = "Uploaded to iCloud"
-        }
-        StorageService.shared.lastiCloudSyncDate = date
-        isSyncing = false
+    private struct CloudSnapshot: @unchecked Sendable {
+        let value: StorageService.AppData
     }
 
     /// Pulls remote data from iCloud and smart-merges into local StorageService
     func pullAndMerge(force: Bool = false) {
+        guard StorageService.shared.iCloudSyncEnabled else { return }
+        Task { @MainActor in await pullAndMergeAsync(force: force) }
+    }
+
+    private func pullAndMergeAsync(force: Bool) async {
         guard StorageService.shared.iCloudSyncEnabled else { return }
         isSyncing = true
 
@@ -155,10 +172,9 @@ final class iCloudSyncService: ObservableObject {
         var isFromDrive = false
 
         if let driveURL = iCloudDriveSyncFileURL {
-            if FileManager.default.fileExists(atPath: driveURL.path),
-               let driveData = try? Data(contentsOf: driveURL) {
-                remoteData = driveData
-                isFromDrive = true
+            if FileManager.default.fileExists(atPath: driveURL.path) {
+                remoteData = try? await Task.detached(priority: .utility) { try Data(contentsOf: driveURL) }.value
+                isFromDrive = remoteData != nil
             }
         }
 
@@ -186,7 +202,10 @@ final class iCloudSyncService: ObservableObject {
             return
         }
 
-        guard let decodedRemote = try? JSONDecoder().decode(StorageService.AppData.self, from: remoteDataToUse) else {
+        let decodedRemote = try? await Task.detached(priority: .utility) {
+            try JSONDecoder().decode(StorageService.AppData.self, from: remoteDataToUse)
+        }.value
+        guard let decodedRemote else {
             self.syncStatus = "Cloud data format error"
             isSyncing = false
             return
@@ -202,9 +221,14 @@ final class iCloudSyncService: ObservableObject {
         StorageService.shared.lastiCloudSyncDate = date
 
         // Converge remote to the merged state
-        if let mergedEncoded = try? JSONEncoder().encode(merged) {
+        let mergedSnapshot = CloudSnapshot(value: merged)
+        if let mergedEncoded = try? await Task.detached(priority: .utility, operation: {
+            try JSONEncoder().encode(mergedSnapshot.value)
+        }).value {
             if let driveURL = iCloudDriveSyncFileURL {
-                try? mergedEncoded.write(to: driveURL, options: .atomic)
+                try? await Task.detached(priority: .utility) {
+                    try mergedEncoded.write(to: driveURL, options: .atomic)
+                }.value
             }
             let now = Date().timeIntervalSince1970
             store.set(mergedEncoded, forKey: kSyncPayloadKey)
@@ -422,8 +446,10 @@ final class iCloudSyncService: ObservableObject {
         if let adv = remote.advancedPositions {
             merged.advancedPositions = adv
         }
-        if let dcs = remote.defaultChartStyle {
-            merged.defaultChartStyle = dcs
+        if remote.defaultChartStyle != nil {
+            // Normalize the legacy preference so older synced values cannot
+            // reactivate the removed embedded chart in older app builds.
+            merged.defaultChartStyle = "line"
         }
         if let lang = remote.appLanguage {
             merged.appLanguage = lang

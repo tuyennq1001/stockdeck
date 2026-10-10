@@ -40,7 +40,7 @@ struct PortfolioSnapshot: Identifiable, Codable, Equatable {
 enum PortfolioValuation {
     /// One holding's resolved inputs. Holdings without a live quote are simply
     /// omitted by the caller rather than represented here.
-    struct Input {
+    struct Input: Sendable {
         var holding: Holding
         /// Display price in the stock's own currency (already respects the
         /// extended-hours preference).
@@ -128,8 +128,9 @@ enum PortfolioValuation {
             // Portfolio valuation uses regular session closing price (quote.price) to remain stable after market close, independent of extended hours.
             let price = quote.price
             let currency = stockService.detectedCurrency(for: holding.symbol)
-            let rate = stockService.rate(from: currency)
-            let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
+            let rate = stockService.rate(from: currency, to: storageService.preferredCurrency)
+            let costRate = stockService.rate(from: currency, to: storageService.preferredCurrency,
+                                             for: holding.purchaseDate)
             let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund
             return Input(
                 holding: holding,

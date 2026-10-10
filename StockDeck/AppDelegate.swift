@@ -122,7 +122,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
-        iCloudSyncService.shared.start()
+        Task { @MainActor in
+            await storageService.waitUntilRestored()
+            iCloudSyncService.shared.start()
+        }
 
         // Cold launch from clicking a delivered notification: the system already
         // routed the response to the delegate (set in willFinishLaunching); the
@@ -184,6 +187,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Compare-and-clear: only clear if a newer refresh hasn't superseded
             // us, so a cancelled Task's defer can't unblock a live refresh.
             defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
+
+            await storageService.waitUntilRestored()
+            guard !Task.isCancelled else { return }
 
             // Phase 1: WebSocket first (realtime ticks), then critical watchlist
             // quotes so the menu bar shows a value immediately.
@@ -249,6 +255,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
                 guard let self else { return }
+                guard !self.storageService.isRestoringData else { return }
                 let symbols = Array(self.collectSymbols())
                 guard !symbols.isEmpty else { return }
                 self.webSocketService.updateSymbols(Array(StockService.collectWebSocketSymbols(storageService: self.storageService)))
@@ -257,6 +264,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.refreshStartedAt = start
                 self.refreshTask = Task { @MainActor in
                     defer { if self.refreshStartedAt == start { self.refreshStartedAt = nil } }
+                    await self.storageService.waitUntilRestored()
+                    guard !Task.isCancelled else { return }
                     await self.stockService.refreshAll(storageService: self.storageService)
                     self.updateMenuBarTitle()
                     await self.ensureMAAlertHistory()
@@ -267,8 +276,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor in
+            do {
+                try await storageService.flush()
+                sender.reply(toApplicationShouldTerminate: true)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "StockDeck could not save your latest changes."
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "Retry")
+                alert.addButton(withTitle: "Keep StockDeck Open")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    do {
+                        try await storageService.flush()
+                        sender.reply(toApplicationShouldTerminate: true)
+                    } catch {
+                        sender.reply(toApplicationShouldTerminate: false)
+                    }
+                } else {
+                    sender.reply(toApplicationShouldTerminate: false)
+                }
+            }
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        storageService.saveNow()
         timer?.invalidate()
         timer = nil
         tickBatchTimer?.invalidate()
@@ -444,6 +478,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let start = Date()
             refreshStartedAt = start
             defer { if refreshStartedAt == start { refreshStartedAt = nil } }
+            await storageService.waitUntilRestored()
+            guard !Task.isCancelled else { return }
             await autoSyncBinancePortfolios()
             guard !Task.isCancelled else { return }
             await stockService.refreshAll(storageService: storageService)
@@ -878,7 +914,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         portfolioWindow = nil
 
-        let root = PortfolioWindowView()
+        let root = PortfolioWindowView(stockService: stockService)
             .environmentObject(stockService)
             .environmentObject(storageService)
             .environmentObject(updaterViewModel)

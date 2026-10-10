@@ -4,6 +4,12 @@ import XCTest
 @MainActor
 final class HomeAIInsightTests: XCTestCase {
 
+    private func makeIsolatedStorage() -> StorageService {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("home-ai-insight-\(UUID().uuidString).json")
+        return StorageService(fileURL: url)
+    }
+
     func testInsightEncodingAndDecoding() throws {
         let source = InsightSourceRef(
             articleId: "art-1",
@@ -100,7 +106,7 @@ final class HomeAIInsightTests: XCTestCase {
     }
 
     func testPromptBuilderIncludesSymbolAndNews() {
-        let storage = StorageService.shared
+        let storage = makeIsolatedStorage()
         let mover = HomeAIInsightService.SymbolCandidate(
             symbol: "AAPL",
             name: "Apple Inc.",
@@ -405,7 +411,7 @@ final class HomeAIInsightTests: XCTestCase {
             cryptoFearGreed: nil,
             marketBenchmarks: [:],
             articlesBySymbol: [:],
-            storageService: StorageService.shared
+            storageService: makeIsolatedStorage()
         )
 
         XCTAssertTrue(prompt.userMessage.contains("BITCOIN PROXY"))

@@ -14,8 +14,12 @@ final class LogoCache {
 
     private var cacheDir: URL?
     private var inflight: Set<String> = []
+    private let decodedImages = NSCache<NSString, NSImage>()
+    private var imageLoads: [String: Task<NSImage?, Never>] = [:]
 
     private init() {
+        decodedImages.countLimit = 256
+        decodedImages.totalCostLimit = 16 * 1024 * 1024
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
         let dir = appSupport.appendingPathComponent("StockDeck/Logos", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -27,6 +31,32 @@ final class LogoCache {
         guard let dir = cacheDir else { return nil }
         let file = dir.appendingPathComponent("\(symbol.uppercased()).png")
         return FileManager.default.fileExists(atPath: file.path) ? file : nil
+    }
+
+    func decodedImage(for symbol: String) -> NSImage? {
+        decodedImages.object(forKey: symbol.uppercased() as NSString)
+    }
+
+    /// Reuses an already-decoded logo across rows. Disk reads and bitmap decode
+    /// happen off the main actor, and simultaneous requests for one symbol share
+    /// the same task. NSCache may evict entries under memory pressure; the PNG
+    /// on disk remains the durable cache.
+    func image(for symbol: String) async -> NSImage? {
+        let key = symbol.uppercased()
+        if let image = decodedImages.object(forKey: key as NSString) { return image }
+        if let task = imageLoads[key] { return await task.value }
+        guard let url = cachedURL(for: key) else { return nil }
+
+        let task = Task.detached(priority: .utility) {
+            NSImage(contentsOf: url)
+        }
+        imageLoads[key] = task
+        let image = await task.value
+        imageLoads.removeValue(forKey: key)
+        if let image {
+            decodedImages.setObject(image, forKey: key as NSString, cost: 128 * 128 * 4)
+        }
+        return image
     }
 
     /// Ensures a real logo is cached for a Vietnamese symbol. Safe to call

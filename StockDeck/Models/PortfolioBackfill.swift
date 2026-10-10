@@ -1,7 +1,7 @@
 import Foundation
 
 /// A reconstructed point on the estimated portfolio value curve.
-struct ValuePoint: Identifiable, Equatable {
+struct ValuePoint: Identifiable, Equatable, Sendable {
     let date: Date
     let value: Double
     var id: Date { date }
@@ -17,7 +17,7 @@ struct ValuePoint: Identifiable, Equatable {
 enum PortfolioBackfill {
     private struct CacheKey: Hashable {
         let holdingsKey: String
-        let historyCount: Int
+        let historyFingerprint: Int
         let ratesKey: String
     }
     private static var cache: [CacheKey: [ValuePoint]] = [:]
@@ -28,10 +28,19 @@ enum PortfolioBackfill {
                        rateBySymbol: [String: Double]) -> [ValuePoint] {
         guard !holdings.isEmpty else { return [] }
 
-        let hKey = holdings.map { "\($0.symbol):\($0.quantity):\($0.avgPrice)" }.sorted().joined(separator: "|")
+        let hKey = holdings.map {
+            "\($0.symbol):\($0.quantity):\($0.avgPrice):\($0.effectiveLeverage):\($0.isJapaneseFund)"
+        }.sorted().joined(separator: "|")
         let rKey = rateBySymbol.map { "\($0.key):\($0.value)" }.sorted().joined(separator: "|")
-        let histCount = holdings.reduce(0) { $0 + (historyBySymbol[$1.symbol]?.count ?? 0) }
-        let key = CacheKey(holdingsKey: hKey, historyCount: histCount, ratesKey: rKey)
+        var historyHasher = Hasher()
+        for symbol in Set(holdings.map(\.symbol)).sorted() {
+            historyHasher.combine(symbol)
+            for point in historyBySymbol[symbol] ?? [] {
+                historyHasher.combine(point.date)
+                historyHasher.combine(point.close)
+            }
+        }
+        let key = CacheKey(holdingsKey: hKey, historyFingerprint: historyHasher.finalize(), ratesKey: rKey)
 
         lock.lock()
         if let cached = cache[key] {

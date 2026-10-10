@@ -128,7 +128,8 @@ enum TelegramReportBuilder {
         storageService: StorageService,
         stockService: StockService,
         scheduleLabel: String? = nil,
-        now: Date = Date()
+        now: Date = Date(),
+        numberLocale: Locale = .autoupdatingCurrent
     ) -> String {
         let lang = storageService.appLanguage.lowercased()
         let preferredCurrency = storageService.preferredCurrency
@@ -158,7 +159,7 @@ enum TelegramReportBuilder {
         var totalClosedCost: Double = 0
         for ct in consolidatedClosed {
             let curr = stockService.detectedCurrency(for: ct.symbol)
-            let rate = stockService.rate(from: curr)
+            let rate = stockService.rate(from: curr, to: preferredCurrency)
             totalRealized += ct.realizedPnl * rate
             totalClosedCost += ct.costBasis * rate
         }
@@ -182,8 +183,8 @@ enum TelegramReportBuilder {
 
                 let price = quote.price
                 let currency = stockService.detectedCurrency(for: holding.symbol)
-                let rate = stockService.rate(from: currency)
-                let costRate = stockService.rate(from: currency, for: holding.purchaseDate)
+                let rate = stockService.rate(from: currency, to: preferredCurrency)
+                let costRate = stockService.rate(from: currency, to: preferredCurrency, for: holding.purchaseDate)
                 let canon = StockService.canonicalSymbol(for: holding.symbol)
                 let clean = canon.replacingOccurrences(of: ".JP", with: "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                 let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(holding.symbol) || holding.isJapaneseFund || StockService.codeToFundNameMap[clean] != nil
@@ -196,7 +197,8 @@ enum TelegramReportBuilder {
                 let cost = hasCost ? (holding.avgPrice / scale) * qty * lev * costRate : 0
 
                 let isCrypto = storageService.type(for: holding.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: holding.symbol) != nil
-                let isMarketActive = MarketCategoryHelper.isTradingDay(symbol: holding.symbol, quote: quote, isCrypto: isCrypto)
+                let isMarketActive = MarketCategoryHelper.isTradingDay(symbol: holding.symbol, quote: quote,
+                                                                        isCrypto: isCrypto, at: now)
 
                 if quote.price.isFinite {
                     todayInputs.append(TodayPerformance.Input(
@@ -345,25 +347,26 @@ enum TelegramReportBuilder {
         func secSuffix(_ amount: Double, signed: Bool = false) -> String {
             guard hasSecondary && secondaryRate > 0 else { return "" }
             let converted = amount * secondaryRate
-            let formatted = StorageService.formatAmount(converted, symbol: secondarySymbol, decimals: secondaryDecimals, signed: signed)
+            let formatted = StorageService.formatAmount(converted, symbol: secondarySymbol, decimals: secondaryDecimals,
+                                                        signed: signed, locale: numberLocale)
             return " <i>(≈ \(formatted))</i>"
         }
 
-        message += "💰 <b>\(netWorthLabel)</b> <code>\(StorageService.formatAmount(totalVal, symbol: currSym))</code>\(secSuffix(totalVal))\n"
+        message += "💰 <b>\(netWorthLabel)</b> <code>\(StorageService.formatAmount(totalVal, symbol: currSym, locale: numberLocale))</code>\(secSuffix(totalVal))\n"
 
         let dayTrendIcon = totalDayChange >= 0 ? "📈" : "📉"
         let daySign = totalDayChange >= 0 ? "+" : ""
-        let dayChangeFormatted = StorageService.formatAmount(totalDayChange, symbol: currSym, signed: true)
+        let dayChangeFormatted = StorageService.formatAmount(totalDayChange, symbol: currSym, signed: true, locale: numberLocale)
         message += "\(dayTrendIcon) <b>\(todayLabel)</b> <code>\(dayChangeFormatted) (\(daySign)\(String(format: "%.2f", dayChangePercent))%)</code>\(secSuffix(totalDayChange, signed: true))\n"
 
         if totalCost > 0 || totalClosed > 0 {
             let profitTrendIcon = totalProfit >= 0 ? "🏆" : "⚠️"
-            let profitFormatted = StorageService.formatAmount(totalProfit, symbol: currSym, signed: true)
+            let profitFormatted = StorageService.formatAmount(totalProfit, symbol: currSym, signed: true, locale: numberLocale)
 
             let unrealizedSign = unrealizedPnl >= 0 ? "+" : ""
-            let unrealizedFormatted = StorageService.formatAmount(unrealizedPnl, symbol: currSym, signed: true)
+            let unrealizedFormatted = StorageService.formatAmount(unrealizedPnl, symbol: currSym, signed: true, locale: numberLocale)
 
-            let realizedFormatted = StorageService.formatAmount(totalRealized, symbol: currSym, signed: true)
+            let realizedFormatted = StorageService.formatAmount(totalRealized, symbol: currSym, signed: true, locale: numberLocale)
 
             message += "\(profitTrendIcon) <b>\(profitLabel)</b> <code>\(profitFormatted)</code>\(secSuffix(totalProfit, signed: true))\n"
             message += "  • <i>\(unrealizedLabel)</i> <code>\(unrealizedFormatted) (\(unrealizedSign)\(String(format: "%.2f", unrealizedPnlPercent))%)</code>\(secSuffix(unrealizedPnl, signed: true))\n"
@@ -394,11 +397,12 @@ enum TelegramReportBuilder {
                 let bullet = item.changePercent > 0.0001 ? "🟢" : (item.changePercent < -0.0001 ? "🔴" : "⚪")
                 let sign = item.changePercent >= 0 ? "+" : ""
                 let pctStr = "\(sign)\(String(format: "%.2f", item.changePercent))%"
-                let valStr = StorageService.formatAmount(item.value, symbol: currSym)
+                let valStr = StorageService.formatAmount(item.value, symbol: currSym, locale: numberLocale)
                 let escapedTitle = TelegramService.escapeHTML(item.displayName)
 
                 if abs(item.dayContribution) > 0.01 {
-                    let contribStr = StorageService.formatAmount(item.dayContribution, symbol: currSym, signed: true)
+                    let contribStr = StorageService.formatAmount(item.dayContribution, symbol: currSym,
+                                                                 signed: true, locale: numberLocale)
                     message += "• \(bullet) <b>\(escapedTitle)</b>: \(pctStr) · \(valStr) (<code>\(contribStr)</code>)\n"
                 } else {
                     message += "• \(bullet) <b>\(escapedTitle)</b>: \(pctStr) · \(valStr)\n"
@@ -430,7 +434,7 @@ enum TelegramReportBuilder {
 }
 
 private enum MarketCategoryHelper {
-    static func isTradingDay(symbol: String, quote: StockQuote, isCrypto: Bool) -> Bool {
-        MarketCategory.isTradingDay(symbol: symbol, quote: quote, isCrypto: isCrypto)
+    static func isTradingDay(symbol: String, quote: StockQuote, isCrypto: Bool, at date: Date) -> Bool {
+        MarketCategory.isTradingDay(symbol: symbol, quote: quote, isCrypto: isCrypto, at: date)
     }
 }

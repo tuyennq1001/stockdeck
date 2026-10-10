@@ -5,9 +5,9 @@ import UniformTypeIdentifiers
 /// column headers, hover rows, right-click actions, Move Up/Down reorder) dressed
 /// as a white card over the paper ground — no native `Table`.
 struct WatchlistWideView: View {
-    @EnvironmentObject var stockService: StockService
+    let stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @State private var viewModel = WatchlistViewModel()
+    let viewModel: WatchlistViewModel
     @Binding var showSearch: Bool
 
     typealias SortKey = WatchlistSortKey
@@ -141,6 +141,7 @@ struct WatchlistWideView: View {
     }
 
     private var selectedMetrics: [WatchlistMetric] { storageService.watchlistMetrics }
+    private var isLoadingRows: Bool { viewModel.snapshot.isLoading }
 
     /// True when any watchlist quote is trading pre/post-market. Drives the row
     /// hierarchy: during extended hours the After-hrs price/% reads first and the
@@ -193,7 +194,9 @@ struct WatchlistWideView: View {
         .navigationTitle(storageService.currentWatchlist.name)
         .task {
             viewModel.setup(stockService: stockService, storageService: storageService)
+            viewModel.setActive(true)
         }
+        .onDisappear { viewModel.setActive(false) }
         .task(id: Set(storageService.watchlist)) {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
@@ -346,14 +349,16 @@ struct WatchlistWideView: View {
             Divider().overlay(DS.hairline)
 
             ScrollView {
-                VStack(spacing: DS.gap) {
+                LazyVStack(spacing: DS.gap) {
                     PriceChartCard(symbol: symbol, quote: quote)
+                        .id("price-\(symbol)")
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
-                        .id(symbol)
+                        .id("notes-\(symbol)")
                     SymbolNewsCard(stockService: stockService, symbol: symbol)
+                        .id("news-\(symbol)")
                 }
                 .padding(16)
             }
@@ -665,6 +670,10 @@ struct WatchlistWideView: View {
     private var flatContents: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if isLoadingRows && visibleRows.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 180)
+                }
                 ForEach(Array(visibleRows.enumerated()), id: \.element.id) { idx, row in
                     ReorderRow(
                         id: row.symbol,
@@ -1453,4 +1462,3 @@ private struct WatchlistListCommitDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
-

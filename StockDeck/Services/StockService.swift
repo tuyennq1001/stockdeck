@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 extension Array {
     /// Splits the array into chunks of at most `size` elements.
@@ -14,9 +15,24 @@ extension Array {
 class StockService: ObservableObject {
     static let shared = StockService()
 
-    @Published var quotes: [String: StockQuote] = [:]
+    /// Fine-grained invalidation stream. Existing @Published properties remain
+    /// available for screens that have not migrated yet.
+    let marketDataChanges = PassthroughSubject<MarketDataChange, Never>()
+    private var marketRevision: UInt64 = 0
+    private var revisionsByKindAndSymbol: [MarketDataChange.Kind: [String: UInt64]] = [:]
+    private(set) var fxRevision: UInt64 = 0
+
+    @Published var quotes: [String: StockQuote] = [:] {
+        didSet { publishQuoteChanges(from: oldValue, to: quotes) }
+    }
     @Published var isLoading = false
-    @Published var exchangeRates: [String: Double] = [:]  // e.g. "USDEUR" -> 0.92 (rate to preferred currency)
+    @Published var exchangeRates: [String: Double] = [:] { // e.g. "USDEUR" -> 0.92 (rate to preferred currency)
+        didSet {
+            guard oldValue != exchangeRates else { return }
+            fxRevision &+= 1
+            publish(kind: .fx, symbols: [])
+        }
+    }
     @Published var historicalRates: [String: Double] = [:]  // e.g. "USDEUR:1704067200" -> 0.9045 (rate at date)
     @Published var lastFxFetchDate: Date? = nil
     @Published var news: [NewsArticle] = []
@@ -27,18 +43,129 @@ class StockService: ObservableObject {
     var isLoadingSymbolNews: Set<String> = []
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
-    @Published var priceHistory: [String: [PricePoint]] = [:]
+    @Published var priceHistory: [String: [PricePoint]] = [:] {
+        didSet {
+            let changed = changedSymbols(from: oldValue, to: priceHistory)
+            guard !changed.isEmpty else { return }
+            historyRevision &+= 1
+            publish(kind: .dailyHistory, symbols: changed)
+        }
+    }
     /// Monthly close history over the full available range, for the "All" range.
     /// Cached ~6h. (Yahoo downsamples daily+max to coarse data, so "All" needs its
     /// own monthly series and the shorter ranges need the daily 2y series.)
-    @Published var priceHistoryMax: [String: [PricePoint]] = [:]
+    @Published var priceHistoryMax: [String: [PricePoint]] = [:] {
+        didSet {
+            let changed = changedSymbols(from: oldValue, to: priceHistoryMax)
+            guard !changed.isEmpty else { return }
+            historyRevision &+= 1
+            publish(kind: .maxHistory, symbols: changed)
+        }
+    }
     /// Intraday (5-minute) closes for the "24H" chart range. Cached ~5min.
-    @Published var intradayHistory: [String: [PricePoint]] = [:]
+    @Published var intradayHistory: [String: [PricePoint]] = [:] {
+        didSet {
+            let changed = changedSymbols(from: oldValue, to: intradayHistory)
+            guard !changed.isEmpty else { return }
+            publish(kind: .intradayHistory, symbols: changed)
+        }
+    }
     /// Hourly closes over ~7 days for the "7D" chart range. Cached ~15min.
-    @Published var intradayWeek: [String: [PricePoint]] = [:]
+    @Published var intradayWeek: [String: [PricePoint]] = [:] {
+        didSet {
+            let changed = changedSymbols(from: oldValue, to: intradayWeek)
+            guard !changed.isEmpty else { return }
+            historyRevision &+= 1
+            publish(kind: .intradayHistory, symbols: changed)
+        }
+    }
     /// One year of daily closes loaded in one batched request for Watchlist
     /// sparklines and the 1M / 3M / YTD performance columns.
-    @Published var watchlistHistory: [String: [PricePoint]] = [:]
+    @Published var watchlistHistory: [String: [PricePoint]] = [:] {
+        didSet {
+            let changed = changedSymbols(from: oldValue, to: watchlistHistory)
+            guard !changed.isEmpty else { return }
+            historyRevision &+= 1
+            publish(kind: .watchlistHistory, symbols: changed)
+        }
+    }
+    /// Monotonic history revision for derived chart caches. This lets chart views
+    /// validate caches without walking every historical point during rendering.
+    private(set) var historyRevision: UInt64 = 0
+
+    func dataRevision(for kind: MarketDataChange.Kind, symbol: String) -> UInt64 {
+        revisionsByKindAndSymbol[kind]?[Self.canonicalSymbol(for: symbol)] ?? 0
+    }
+
+    private func changedSymbols<Value: Equatable>(
+        from old: [String: Value], to new: [String: Value]
+    ) -> Set<String> {
+        let keys = Set(old.keys).union(new.keys)
+        return Set(keys.filter { old[$0] != new[$0] }.map(Self.canonicalSymbol(for:)))
+            .filter { !$0.isEmpty }
+    }
+
+    private func publishQuoteChanges(from old: [String: StockQuote], to new: [String: StockQuote]) {
+        let keys = Set(old.keys).union(new.keys)
+        var regular = Set<String>()
+        var extended = Set<String>()
+        var metadata = Set<String>()
+        for key in keys {
+            let before = old[key]
+            let after = new[key]
+            let symbol = Self.canonicalSymbol(for: after?.symbol ?? before?.symbol ?? key)
+            guard !symbol.isEmpty else { continue }
+            if !Self.sameRegularQuote(before, after) { regular.insert(symbol) }
+            if !Self.sameExtendedQuote(before, after) { extended.insert(symbol) }
+            if !Self.sameQuoteMetadata(before, after) { metadata.insert(symbol) }
+        }
+        if !regular.isEmpty { publish(kind: .regularQuote, symbols: regular) }
+        if !extended.isEmpty { publish(kind: .extendedQuote, symbols: extended) }
+        if !metadata.isEmpty { publish(kind: .metadata, symbols: metadata) }
+    }
+
+    private static func sameRegularQuote(_ lhs: StockQuote?, _ rhs: StockQuote?) -> Bool {
+        guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+        return lhs.symbol == rhs.symbol && lhs.name == rhs.name && same(lhs.price, rhs.price)
+            && same(lhs.change, rhs.change) && same(lhs.changePercent, rhs.changePercent)
+            && same(lhs.regularMarketPreviousClose, rhs.regularMarketPreviousClose)
+            && lhs.currency == rhs.currency && lhs.marketState == rhs.marketState
+            && same(lhs.fiftyTwoWeekHigh, rhs.fiftyTwoWeekHigh) && same(lhs.fiftyTwoWeekLow, rhs.fiftyTwoWeekLow)
+    }
+
+    private static func sameExtendedQuote(_ lhs: StockQuote?, _ rhs: StockQuote?) -> Bool {
+        guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+        return lhs.marketState == rhs.marketState && same(lhs.preMarketPrice, rhs.preMarketPrice)
+            && same(lhs.preMarketChange, rhs.preMarketChange) && same(lhs.preMarketChangePercent, rhs.preMarketChangePercent)
+            && same(lhs.postMarketPrice, rhs.postMarketPrice) && same(lhs.postMarketChange, rhs.postMarketChange)
+            && same(lhs.postMarketChangePercent, rhs.postMarketChangePercent)
+    }
+
+    private static func sameQuoteMetadata(_ lhs: StockQuote?, _ rhs: StockQuote?) -> Bool {
+        guard let lhs, let rhs else { return lhs == nil && rhs == nil }
+        return same(lhs.dayHigh, rhs.dayHigh) && same(lhs.dayLow, rhs.dayLow)
+            && same(lhs.marketCap, rhs.marketCap) && lhs.regularMarketTime == rhs.regularMarketTime
+    }
+
+    private static func same(_ lhs: Double, _ rhs: Double) -> Bool {
+        lhs == rhs || (lhs.isNaN && rhs.isNaN)
+    }
+
+    private static func same(_ lhs: Double?, _ rhs: Double?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case let (left?, right?): return same(left, right)
+        default: return false
+        }
+    }
+
+    private func publish(kind: MarketDataChange.Kind, symbols: Set<String>) {
+        marketRevision &+= 1
+        for symbol in symbols {
+            revisionsByKindAndSymbol[kind, default: [:]][symbol] = marketRevision
+        }
+        marketDataChanges.send(MarketDataChange(kind: kind, symbols: symbols, revision: marketRevision))
+    }
 
     // MARK: - Fear & Greed Index
     @Published var stockFearGreed: FearGreedData?
@@ -78,6 +205,8 @@ class StockService: ObservableObject {
     }
     private var historyCacheLoaded = false
     private var historyCacheSaveTask: Task<Void, Never>?
+    private let historyCacheWriter = PersistenceWriter()
+    private var historyCacheRevision: UInt64 = 0
 
     /// Shared NAV history for Japanese mutual funds, keyed by fund code, so the
     /// daily and max-history paths never fetch the Yahoo Japan pages twice.
@@ -95,7 +224,7 @@ class StockService: ObservableObject {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: config)
 
-        loadHistoryCache()
+        Task { await loadHistoryCache() }
         Task {
             _ = await self.fetchCrumb()
         }
@@ -301,6 +430,11 @@ class StockService: ObservableObject {
 
     func rate(from currency: String, for purchaseDate: Date? = nil) -> Double {
         let preferred = StorageService.shared.preferredCurrency
+        return rate(from: currency, to: preferred, for: purchaseDate)
+    }
+
+    func rate(from currency: String, to targetCurrency: String, for purchaseDate: Date?) -> Double {
+        let preferred = targetCurrency
         let fromUpper = currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let prefUpper = preferred.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if fromUpper == prefUpper || fromUpper.isEmpty { return 1.0 }
@@ -1433,7 +1567,7 @@ class StockService: ObservableObject {
         return nil
     }
 
-    private struct HistoryCacheEntry: Codable {
+    private struct HistoryCacheEntry: Codable, Sendable {
         var points: [PricePoint]
         var fetchedAt: Date
     }
@@ -1441,11 +1575,15 @@ class StockService: ObservableObject {
     /// Loads the on-disk history cache into memory. Entries are reused for as
     /// long as their fetch timestamp is still inside the corresponding TTL, so
     /// relaunching the app shortly after a fetch issues no network requests.
-    private func loadHistoryCache() {
-        guard !historyCacheLoaded,
-              let data = try? Data(contentsOf: historyCacheURL),
-              let decoded = try? JSONDecoder().decode([String: HistoryCacheEntry].self, from: data) else { return }
+    private func loadHistoryCache() async {
+        guard !historyCacheLoaded else { return }
         historyCacheLoaded = true
+        let cacheURL = historyCacheURL
+        let decoded: [String: HistoryCacheEntry]? = await Task.detached(priority: .utility) { () -> [String: HistoryCacheEntry]? in
+            guard let data = try? Data(contentsOf: cacheURL) else { return nil }
+            return try? JSONDecoder().decode([String: HistoryCacheEntry].self, from: data)
+        }.value
+        guard let decoded else { return }
         let now = Date()
         for (key, entry) in decoded where !entry.points.isEmpty && entry.fetchedAt <= now {
             if key.hasPrefix("daily:"), priceHistoryFetchedAt[String(key.dropFirst(6))] == nil {
@@ -1511,8 +1649,25 @@ class StockService: ObservableObject {
         for (symbol, points) in watchlistHistory where !points.isEmpty {
             entries["spark:\(symbol)"] = HistoryCacheEntry(points: points, fetchedAt: priceHistoryFetchedAt[symbol] ?? sparkFetchedAt ?? Date())
         }
-        guard !entries.isEmpty, let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: historyCacheURL, options: .atomic)
+        guard !entries.isEmpty else { return }
+        historyCacheRevision &+= 1
+        let revision = historyCacheRevision
+        let destination = historyCacheURL
+        let snapshot = HistoryCacheSnapshot(entries: entries)
+        Task { @MainActor in
+            do {
+                let encoded = try await Task.detached(priority: .utility) {
+                    try JSONEncoder().encode(snapshot.entries)
+                }.value
+                try await historyCacheWriter.write(encoded, to: destination, revision: revision)
+            } catch {
+                NSLog("[StockService] History cache save failed: %@", error.localizedDescription)
+            }
+        }
+    }
+
+    private struct HistoryCacheSnapshot: @unchecked Sendable {
+        let entries: [String: HistoryCacheEntry]
     }
 
     /// Loads (or refreshes after ~6h) ten years of daily closes for the detail
@@ -2045,6 +2200,8 @@ class StockService: ObservableObject {
     @discardableResult
     func applyTicks(_ tickers: [Yaticker]) -> Bool {
         guard !tickers.isEmpty else { return false }
+        let signpostID = PerformanceSignposts.begin("Market tick batch", itemCount: tickers.count)
+        defer { PerformanceSignposts.end("Market tick batch", id: signpostID) }
         var updated = quotes
         var changed = false
 

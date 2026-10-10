@@ -51,10 +51,12 @@ cat > "$APP/Contents/Info.plist" << EOF
 <dict>
     <key>CFBundleExecutable</key>
     <string>StockDeck</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <!-- Launch via `open` (Finder-style) so macOS 26 registers the Menu Bar item
+    <!-- Launch via Finder-style open so macOS 26 registers the Menu Bar item
          reliably and keeps the process alive. Keep this bundle ID stable: the
          Binance API credentials live in the keychain under this identity, and a
          fresh suffix silently breaks access to them (the app re-asks for keys).
@@ -100,7 +102,7 @@ echo "Launching StockDeck DEV..."
 # or hidden, enable it there; bumping Bundle ID / autosave name does not help.
 SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-0}"
 if [ "$SD_OPEN_WINDOW" = "1" ]; then
-    SD_OPEN_WINDOW=1 open "$APP"
+    SD_OPEN_WINDOW=1 /usr/bin/open "$PWD/$APP"
 else
-    SD_OPEN_WINDOW=0 open "$APP"
+    SD_OPEN_WINDOW=0 /usr/bin/open "$PWD/$APP"
 fi

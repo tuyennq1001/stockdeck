@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import Combine
 
 /// The full-window companion to the menu-bar glance. It IS the app in expanded
 /// form: same tabs as the popover (Home, Watchlist, Portfolios, Settings), same
@@ -9,7 +10,7 @@ import UniformTypeIdentifiers
 /// banking" light editorial system: one uninterrupted paper surface under a
 /// transparent titlebar, flat tinted sidebar, floating traffic lights.
 struct PortfolioWindowView: View {
-    @EnvironmentObject var stockService: StockService
+    let stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Namespace private var navNamespace
 
@@ -60,6 +61,12 @@ struct PortfolioWindowView: View {
     @State private var importAlert: String?
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var activeOverviewVM: PortfolioViewModel?
+    @State private var sidebarSummaryCache = SidebarPortfolioSummaryCache()
+    @State private var watchlistViewModel = WatchlistViewModel()
+
+    init(stockService: StockService) {
+        self.stockService = stockService
+    }
 
     /// Shared valuation cache from the active PortfolioOverview ViewModel.
     /// The sidebar TotalFooter reads this instead of recalculating independently.
@@ -84,16 +91,27 @@ struct PortfolioWindowView: View {
     struct PortfolioRef: Identifiable { let id: UUID; let name: String }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
-        } detail: {
-            detail
-                .frame(minWidth: 640)
-                .id(selection)
-                .transition(.opacity.combined(with: .offset(y: 6)))
+        Group {
+            if storageService.isRestoringData {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                NavigationSplitView {
+                    sidebar
+                        .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
+                } detail: {
+                    detail
+                        .frame(minWidth: 640)
+                        .id(selection)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+            }
         }
         .animation(.easeOut(duration: 0.22), value: selection)
+        .task {
+            sidebarSummaryCache.setup(stockService: stockService, storageService: storageService)
+            await sidebarSummaryCache.refresh()
+        }
         .toolbar(removing: .sidebarToggle)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .frame(minWidth: 1000, minHeight: 680)
@@ -240,7 +258,10 @@ struct PortfolioWindowView: View {
             Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
             Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command)
             Button("") {
-                Task { await stockService.refreshAll(storageService: storageService) }
+                Task {
+                    await storageService.waitUntilRestored()
+                    await stockService.refreshAll(storageService: storageService)
+                }
             }.keyboardShortcut("r", modifiers: .command)
             Button("") { showNewPortfolioAlert = true }.keyboardShortcut("n", modifiers: .command)
             // ⌘W closes just this window — StockDeck keeps living in the menu bar.
@@ -253,7 +274,7 @@ struct PortfolioWindowView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             // Top-right support icons, in the traffic-light clearance band (lights
             // sit on the left, so these stay clear of them).
             HStack(spacing: 6) {
@@ -657,7 +678,7 @@ struct PortfolioWindowView: View {
         case .home:
             HomeWideView(onOpenSettings: { navigate(to: .settings) })
         case .watchlist:
-            WatchlistWideView(showSearch: $showSearch)
+            WatchlistWideView(stockService: stockService, viewModel: watchlistViewModel, showSearch: $showSearch)
                 .id(storageService.selectedWatchlistId)
         case .settings:
             SettingsWideView()
@@ -779,15 +800,140 @@ struct PortfolioWindowView: View {
     }
 
     private var sidebarTotals: (value: Double, cost: Double, pnl: Double) {
-        PortfolioValuation.totals(valued(storageService.portfolios))
+        let totals = sidebarSummaryCache.allTotals
+        return (totals.value, totals.cost, totals.pnl)
     }
 
     private func portfolioStats(for portfolios: [Portfolio]) -> (text: String?, percent: Double) {
-        let inputs = valued(portfolios)
-        guard !inputs.isEmpty else { return (nil, 0) }
-        let totals = PortfolioValuation.totals(inputs)
-        let pct = abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
-        return (String(format: "%+.1f%%", pct), pct)
+        guard let first = portfolios.first else { return (nil, 0) }
+        if portfolios.count == storageService.portfolios.count {
+            let stats = sidebarSummaryCache.allStats
+            return (stats.text, stats.percent)
+        }
+        let stats = sidebarSummaryCache.statsByPortfolio[first.id] ?? .init(text: nil, percent: 0)
+        return (stats.text, stats.percent)
+    }
+}
+
+/// Prepares sidebar totals after portfolio or relevant market data changes.
+@Observable
+@MainActor
+private final class SidebarPortfolioSummaryCache {
+    struct Stats: Sendable { var text: String?; var percent: Double }
+    struct Totals: Sendable { var value: Double; var cost: Double; var pnl: Double }
+    private struct SummaryResult: Sendable {
+        var statsByPortfolio: [UUID: Stats]
+        var allStats: Stats
+        var allTotals: Totals
+    }
+
+    private(set) var statsByPortfolio: [UUID: Stats] = [:]
+    private(set) var allStats = Stats(text: nil, percent: 0)
+    private(set) var allTotals = Totals(value: 0, cost: 0, pnl: 0)
+    @ObservationIgnored private weak var stockService: StockService?
+    @ObservationIgnored private weak var storageService: StorageService?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored private var worker: Task<SummaryResult, Never>?
+    @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var fingerprint: Int?
+
+    func setup(stockService: StockService, storageService: StorageService) {
+        guard self.stockService == nil else { return }
+        self.stockService = stockService
+        self.storageService = storageService
+        Publishers.MergeMany([
+            storageService.$portfolios.map { _ in () }.eraseToAnyPublisher(),
+            storageService.$preferredCurrency.map { _ in () }.eraseToAnyPublisher(),
+            storageService.$symbolType.map { _ in () }.eraseToAnyPublisher()
+        ])
+        .throttle(for: .milliseconds(250), scheduler: DispatchQueue.main, latest: true)
+        .sink { [weak self] _ in Task { @MainActor in await self?.refresh() } }
+        .store(in: &cancellables)
+
+        stockService.marketDataChanges
+            .filter { [weak storageService] change in
+                guard let storageService else { return false }
+                if change.kind == .fx { return true }
+                let symbols = Set(storageService.portfolios.flatMap(\.holdings)
+                    .map { StockService.canonicalSymbol(for: $0.symbol) })
+                return !symbols.isDisjoint(with: change.symbols)
+            }
+            .throttle(for: .milliseconds(250), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in Task { @MainActor in await self?.refresh() } }
+            .store(in: &cancellables)
+    }
+
+    func refresh() async {
+        guard let stockService, let storageService else { return }
+        let portfolios = storageService.portfolios
+        var hasher = Hasher()
+        hasher.combine(storageService.preferredCurrency)
+        for portfolio in portfolios {
+            hasher.combine(portfolio.id)
+            for holding in portfolio.holdings {
+                hasher.combine(holding.id)
+                hasher.combine(holding.symbol)
+                hasher.combine(holding.quantity)
+                hasher.combine(holding.avgPrice)
+                hasher.combine(holding.purchaseDate)
+                hasher.combine(holding.effectiveLeverage)
+                let quote = stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()]
+                hasher.combine(quote?.price)
+                hasher.combine(quote?.change)
+                hasher.combine(quote?.changePercent)
+                hasher.combine(quote?.previousClose)
+                hasher.combine(stockService.detectedCurrency(for: holding.symbol))
+                hasher.combine(storageService.type(for: holding.symbol))
+            }
+        }
+        hasher.combine(stockService.fxRevision)
+        let nextFingerprint = hasher.finalize()
+        guard fingerprint != nextFingerprint else { return }
+        fingerprint = nextFingerprint
+        generation &+= 1
+        let requestedGeneration = generation
+
+        let signpostID = PerformanceSignposts.begin(
+            "Portfolio sidebar summaries",
+            itemCount: portfolios.reduce(0) { $0 + $1.holdings.count }
+        )
+        defer { PerformanceSignposts.end("Portfolio sidebar summaries", id: signpostID) }
+        let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService,
+                                                      storageService: storageService)
+        var portfolioIdByHoldingId: [UUID: UUID] = [:]
+        for portfolio in portfolios {
+            for holding in portfolio.holdings { portfolioIdByHoldingId[holding.id] = portfolio.id }
+        }
+        let portfolioIDs = portfolios.map(\.id)
+        worker?.cancel()
+        let task = Task.detached(priority: .utility) {
+            let inputsByPortfolio = Dictionary(grouping: inputs) {
+                portfolioIdByHoldingId[$0.holding.id] ?? UUID()
+            }
+            var nextStats: [UUID: Stats] = [:]
+            for id in portfolioIDs {
+                if Task.isCancelled { break }
+                nextStats[id] = Self.stats(for: PortfolioValuation.totals(inputsByPortfolio[id] ?? []))
+            }
+            let raw = PortfolioValuation.totals(inputs)
+            return SummaryResult(
+                statsByPortfolio: nextStats,
+                allStats: Self.stats(for: raw),
+                allTotals: Totals(value: raw.value, cost: raw.cost, pnl: raw.pnl)
+            )
+        }
+        worker = task
+        let result = await task.value
+        guard generation == requestedGeneration else { return }
+        statsByPortfolio = result.statsByPortfolio
+        allStats = result.allStats
+        allTotals = result.allTotals
+    }
+
+    private nonisolated static func stats(for totals: (value: Double, cost: Double, pnl: Double)) -> Stats {
+        guard abs(totals.cost) >= 0.01 else { return Stats(text: nil, percent: 0) }
+        let percent = (totals.pnl / abs(totals.cost)) * 100
+        return Stats(text: String(format: "%+.1f%%", percent), percent: percent)
     }
 }
 
@@ -878,4 +1024,3 @@ private struct TotalFooter: View {
         .padding(.horizontal, 16)
     }
 }
-

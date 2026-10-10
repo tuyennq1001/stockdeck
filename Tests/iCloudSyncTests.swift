@@ -101,9 +101,11 @@ final class iCloudSyncTests: XCTestCase {
         XCTAssertEqual(exported.iCloudSyncEnabled, true)
         XCTAssertEqual(exported.preferredCurrency, "JPY")
         XCTAssertEqual(exported.watchlist, ["AAPL", "TSLA"])
+        XCTAssertEqual(exported.defaultChartStyle, "line")
 
         var modified = exported
         modified.preferredCurrency = "VND"
+        modified.defaultChartStyle = "tradingview" // Legacy setting from older app versions.
         let newWl = Watchlist(name: "Watchlist", symbols: ["VIC", "VNM"])
         modified.watchlists = [newWl]
         modified.watchlist = ["VIC", "VNM"]
@@ -111,6 +113,7 @@ final class iCloudSyncTests: XCTestCase {
         s.applyAppData(modified, isFromSync: true)
         XCTAssertEqual(s.preferredCurrency, "VND")
         XCTAssertEqual(s.watchlist, ["VIC", "VNM"])
+        XCTAssertEqual(s.exportAppData().defaultChartStyle, "line")
     }
 
     func testSmartMergeWithNaNCostBasisHoldingsDoesNotDuplicate() {

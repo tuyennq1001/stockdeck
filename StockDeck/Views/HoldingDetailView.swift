@@ -98,8 +98,9 @@ struct HoldingDetailView: View {
             }
         } content: {
             ScrollView {
-                VStack(alignment: .leading, spacing: DS.gap) {
+                LazyVStack(alignment: .leading, spacing: DS.gap) {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
+                        .id("price-\(holding.symbol)")
                     statStrip
                     purchaseLotsCard
                     closedTradesForSymbolCard
@@ -116,6 +117,7 @@ struct HoldingDetailView: View {
                             }
                         }
                     )
+                    .id("news-\(holding.symbol)")
                 }
                 .pageColumn()
                 .padding(.top, 4)

@@ -47,8 +47,9 @@ struct SymbolDetailView: View {
 
             if let quote {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: DS.gap) {
-                        PriceChartCard(symbol: symbol, quote: quote, chartHeight: 240, showStylePicker: false)
+                    LazyVStack(alignment: .leading, spacing: DS.gap) {
+                        PriceChartCard(symbol: symbol, quote: quote, chartHeight: 240)
+                            .id("price-\(symbol)")
                         if storageService.show52WeekBar {
                             fiftyTwoWeekCard(quote)
                         }
@@ -64,6 +65,7 @@ struct SymbolDetailView: View {
                                 }
                             }
                         )
+                        .id("news-\(symbol)")
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)

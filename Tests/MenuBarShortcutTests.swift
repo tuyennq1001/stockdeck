@@ -40,7 +40,7 @@ final class MenuBarShortcutTests: XCTestCase {
     }
 
     @MainActor
-    func testStorageServicePersistence() throws {
+    func testStorageServicePersistence() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_shortcut_\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
@@ -52,13 +52,14 @@ final class MenuBarShortcutTests: XCTestCase {
         let desktopShortcut = MenuBarShortcut(keyCode: 2, modifiers: 2048)
         storage.menuBarShortcut = shortcut
         storage.desktopAppShortcut = desktopShortcut
-        storage.saveNow()
+        try await storage.flush()
 
         let storageReloaded = StorageService(fileURL: tempURL)
         XCTAssertEqual(storageReloaded.menuBarShortcut, shortcut)
         XCTAssertEqual(storageReloaded.desktopAppShortcut, desktopShortcut)
 
         storageReloaded.resetToDefaults()
+        try await storageReloaded.flush()
         XCTAssertNil(storageReloaded.menuBarShortcut)
         XCTAssertNil(storageReloaded.desktopAppShortcut)
     }

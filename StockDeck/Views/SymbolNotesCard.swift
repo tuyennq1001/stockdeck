@@ -286,46 +286,72 @@ struct MarkdownRenderer: View {
 struct MarkdownNoteView: View {
     let markdown: String
     @State private var expanded = false
+    @State private var blocks: [Block] = []
+    @State private var lineCount = 0
     private let threshold = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(parsedBlocks(), id: \.id) { block in
+            ForEach(blocks, id: \.id) { block in
                 switch block {
                 case .text(let md): MarkdownRenderer(text: expanded ? md : truncated(md)).frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let f, let alt):
-                    if let img = NSImage(contentsOf: NoteImageStore.imageURL(for: f)) {
-                        Image(nsImage: img).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
-                        if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
-                    }
+                    NoteImageView(filename: f)
+                    if !alt.isEmpty { Text(alt).font(DS.micro).foregroundStyle(DS.inkTertiary) }
                 }
             }
-            if totalLines > threshold && !expanded {
+            if lineCount > threshold && !expanded {
                 Button("Show more") { withAnimation { expanded = true } }
                     .buttonStyle(.plain).font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.brand).pointingHandCursor().padding(.top, 2)
-            } else if expanded && totalLines > threshold {
+            } else if expanded && lineCount > threshold {
                 Button("Show less") { withAnimation { expanded = false } }
                     .buttonStyle(.plain).font(.inter(11, weight: .medium, relativeTo: .caption)).foregroundStyle(DS.brand).pointingHandCursor().padding(.top, 2)
             }
         }
+        .onAppear(perform: prepareMarkdown)
+        .onChange(of: markdown) { _, _ in prepareMarkdown() }
     }
     private func truncated(_ t: String) -> String { let ls = t.components(separatedBy: "\n"); return ls.count > threshold ? ls.prefix(threshold).joined(separator: "\n") : t }
-    private var totalLines: Int { markdown.components(separatedBy: "\n").count }
 
     private enum Block: Identifiable { case text(String), image(filename: String, alt: String); var id: String { switch self { case .text(let s): return "t:\(s.hashValue)"; case .image(let f, _): return "i:\(f)" } } }
-    private func parsedBlocks() -> [Block] {
+    private static let imagePattern = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(note-image://([^\)]+)\)"#, options: [])
+
+    private func prepareMarkdown() {
+        blocks = parseBlocks(markdown)
+        lineCount = markdown.reduce(into: 1) { if $1 == "\n" { $0 += 1 } }
+    }
+
+    private func parseBlocks(_ markdown: String) -> [Block] {
         var blocks: [Block] = []; var remaining = markdown
-        let p = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(note-image://([^\)]+)\)"#, options: [])
         while !remaining.isEmpty { let r = NSRange(remaining.startIndex..., in: remaining)
-            if let m = p.firstMatch(in: remaining, options: [], range: r) {
+            if let m = Self.imagePattern.firstMatch(in: remaining, options: [], range: r) {
                 if let br = Range(NSRange(location: 0, length: m.range.location), in: remaining), !br.isEmpty { let t = String(remaining[br]); if !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { blocks.append(.text(t)) } }
                 if let ar = Range(m.range(at: 1), in: remaining), let fr = Range(m.range(at: 2), in: remaining) { blocks.append(.image(filename: String(remaining[fr]), alt: String(remaining[ar]))) }
                 remaining = String(remaining[remaining.index(remaining.startIndex, offsetBy: m.range.location + m.range.length)...])
             } else { if !remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { blocks.append(.text(remaining)) }; remaining = "" }
         }
         return blocks.isEmpty ? [.text(markdown)] : blocks
+    }
+}
+
+private struct NoteImageView: View {
+    let filename: String
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 520, maxHeight: 340)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(DS.hairline, lineWidth: 0.5))
+            }
+        }
+        .task(id: filename) {
+            let url = NoteImageStore.imageURL(for: filename)
+            let prepared = await Task.detached(priority: .utility) { NSImage(contentsOf: url) }.value
+            guard !Task.isCancelled else { return }
+            image = prepared
+        }
     }
 }
 

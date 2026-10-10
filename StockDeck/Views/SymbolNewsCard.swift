@@ -1,27 +1,27 @@
 import SwiftUI
+import Combine
 
 /// Per-symbol finance news shown at the bottom of the symbol detail page
 /// (below the notes card). Fetches on demand from Google News' public RSS
 /// feed — no API key — and is throttled per symbol so opening a chart
 /// repeatedly stays cheap.
 struct SymbolNewsCard: View {
-    @ObservedObject var stockService: StockService
+    let stockService: StockService
     let symbol: String
     var onSelectArticle: ((NewsArticle) -> Void)? = nil
 
-    private var key: String { symbol.uppercased() }
-    private var articles: [NewsArticle] { stockService.newsBySymbol[key] ?? [] }
+    @StateObject private var model = SymbolNewsViewModel()
     @State private var isLoading = false
 
     var body: some View {
         Card(title: "News") {
             VStack(spacing: 0) {
-                if articles.isEmpty {
+                if model.rows.isEmpty {
                     statusRow
                 } else {
-                    ForEach(articles) { article in
-                        row(article)
-                        if article.id != articles.last?.id {
+                    ForEach(model.rows) { newsRow in
+                        row(newsRow)
+                        if newsRow.id != model.rows.last?.id {
                             Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
                         }
                     }
@@ -29,6 +29,7 @@ struct SymbolNewsCard: View {
             }
         }
         .task(id: symbol) {
+            model.bind(to: stockService.$newsBySymbol.eraseToAnyPublisher(), symbol: symbol)
             isLoading = true
             defer { isLoading = false }
             await stockService.refreshNews(for: symbol)
@@ -51,8 +52,9 @@ struct SymbolNewsCard: View {
         .padding(.vertical, 10)
     }
 
-    private func row(_ article: NewsArticle) -> some View {
-        Button {
+    private func row(_ newsRow: SymbolNewsViewModel.Row) -> some View {
+        let article = newsRow.article
+        return Button {
             if let onSelectArticle {
                 onSelectArticle(article)
             } else if let url = article.url {
@@ -93,7 +95,7 @@ struct SymbolNewsCard: View {
                         Text(article.publisher.isEmpty ? symbol : article.publisher)
                             .font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
                         if article.publishTime > 0 {
-                            Text("· \(relativeTime(article))").font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                            Text("· \(newsRow.relativeTime)").font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
                         }
                     }
                     .padding(.top, 1)
@@ -107,9 +109,4 @@ struct SymbolNewsCard: View {
         .buttonStyle(.plain)
     }
 
-    private func relativeTime(_ article: NewsArticle) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f.localizedString(for: article.publishedAt, relativeTo: Date())
-    }
 }

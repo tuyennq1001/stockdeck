@@ -69,7 +69,9 @@ final class TelegramReportBuilderTests: XCTestCase {
         let report = TelegramReportBuilder.buildAllPortfoliosReport(
             storageService: storage,
             stockService: stockService,
-            scheduleLabel: "07:30"
+            scheduleLabel: "07:30",
+            now: Date(timeIntervalSince1970: 1_759_158_000),
+            numberLocale: Locale(identifier: "en_US_POSIX")
         )
 
         // Verifications
@@ -310,14 +312,17 @@ final class TelegramReportBuilderTests: XCTestCase {
         var p = Portfolio(id: UUID(), name: "US", holdings: [
             Holding(symbol: "AAPL", quantity: 10, avgPrice: 150) // Val: $2000, Cost: $1500, PnL: +$500
         ])
+        let reportNow = Date(timeIntervalSince1970: 1_759_158_000)
         p.closedTrades = [
-            ClosedTrade(symbol: "AAPL", quantity: 5, buyPrice: 100, sellPrice: 120, sellDate: Date()) // Realized +$100
+            ClosedTrade(symbol: "AAPL", quantity: 5, buyPrice: 100, sellPrice: 120, sellDate: reportNow) // Realized +$100
         ]
         storage.portfolios = [p]
 
         let report = TelegramReportBuilder.buildAllPortfoliosReport(
             storageService: storage,
-            stockService: stockService
+            stockService: stockService,
+            now: reportNow,
+            numberLocale: Locale(identifier: "en_US_POSIX")
         )
 
         // 1. Net worth: $2,000.00 (≈ ¥300,000)

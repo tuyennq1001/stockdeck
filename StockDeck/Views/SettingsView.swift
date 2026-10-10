@@ -331,13 +331,6 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                     caption("Show pre-market and after-hours prices")
 
-                    subHeader("Default chart")
-                    Picker("Default chart", selection: $storageService.defaultChartStyle) {
-                        Text("Line chart").tag("line")
-                        Text(verbatim: "TradingView").tag("tradingview")
-                    }
-                    .pickerStyle(.menu)
-                    caption("Default style when opening a stock chart")
                 }
 
                 // MARK: - AI Review

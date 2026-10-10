@@ -2,6 +2,38 @@ import Foundation
 import AppKit
 import ServiceManagement
 
+/// NumberFormatter is relatively expensive to construct and is used by many
+/// visible cells. Cache only its immutable locale separators; keep the existing
+/// numeric formatting rules in `StorageService.formatNumber`.
+private enum NumberSeparatorsCache {
+    private final class Separators: NSObject {
+        let grouping: String
+        let decimal: String
+
+        init(grouping: String, decimal: String) {
+            self.grouping = grouping
+            self.decimal = decimal
+        }
+    }
+
+    private static let values = NSCache<NSString, Separators>()
+
+    static func separators(for locale: Locale) -> (String, String) {
+        let key = locale.identifier as NSString
+        if let cached = values.object(forKey: key) {
+            return (cached.grouping, cached.decimal)
+        }
+
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        let result = Separators(grouping: formatter.groupingSeparator ?? ",",
+                                decimal: formatter.decimalSeparator ?? ".")
+        values.setObject(result, forKey: key)
+        return (result.grouping, result.decimal)
+    }
+}
+
 struct Watchlist: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
@@ -61,10 +93,12 @@ enum InsertPlacement {
 @MainActor
 class StorageService: ObservableObject {
     static let shared = StorageService()
+    private static let sharedPersistenceWriter = PersistenceWriter()
 
     @Published var watchlists: [Watchlist] = [] {
         didSet { scheduleSave() }
     }
+    @Published private(set) var isRestoringData = true
 
     @Published var selectedWatchlistId: UUID? = nil {
         didSet { scheduleSave() }
@@ -351,13 +385,6 @@ class StorageService: ObservableObject {
     /// the add/edit holding sheets. Off by default to keep the common long-only
     /// flow simple.
     @Published var advancedPositions: Bool = false {
-        didSet { scheduleSave() }
-    }
-
-    /// Default chart style for holding / quote charts: "line" (native line
-    /// chart) or "tradingview" (embedded TradingView widget). The style picker
-    /// on each chart still lets the user switch on the fly.
-    @Published var defaultChartStyle: String = "line" {
         didSet { scheduleSave() }
     }
 
@@ -1103,11 +1130,7 @@ class StorageService: ObservableObject {
         // Grouping is inserted manually (every 3 digits from the right) so every value
         // > 1,000 is separated regardless of the locale's CLDR rule (e.g. it/es only group
         // from 10,000 by default), and without needing macOS 15's `minimumGroupingDigits`.
-        let formatter = NumberFormatter()
-        formatter.locale = locale
-        formatter.numberStyle = .decimal
-        let groupSep = formatter.groupingSeparator ?? ","
-        let decSep = formatter.decimalSeparator ?? "."
+        let (groupSep, decSep) = NumberSeparatorsCache.separators(for: locale)
 
         // %f always emits "." as the decimal separator, independent of locale.
         let rounded = String(format: "%.\(decimals)f", abs(value))
@@ -1445,31 +1468,34 @@ class StorageService: ObservableObject {
     private var isLoading = false
     private var decodeFailure = false
     private var saveTask: Task<Void, Never>?
+    private var restoreTask: Task<Void, Never>?
+    private let persistenceWriter = StorageService.sharedPersistenceWriter
+    private var saveRevision: UInt64 = 0
 
     init(fileURL: URL? = nil) {
         self.isCustomStorage = (fileURL != nil)
         if let customURL = fileURL {
             self.fileURL = customURL
+            isLoading = true
+            load()
+            finishInitialRestore()
         } else {
-            guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-                let fallback = FileManager.default.temporaryDirectory
-                self.fileURL = fallback.appendingPathComponent("StockDeck_data.json")
-                isLoading = true
-                load()
-                isLoading = false
-                return
+            if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                self.fileURL = appSupport.appendingPathComponent("StockDeck", isDirectory: true)
+                    .appendingPathComponent("data.json")
+            } else {
+                self.fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("StockDeck_data.json")
             }
-            let dirName = "StockDeck"
-            let dir = appSupport.appendingPathComponent(dirName, isDirectory: true)
-            let oldDir = appSupport.appendingPathComponent("StockBar", isDirectory: true)
-            if FileManager.default.fileExists(atPath: oldDir.path) && !FileManager.default.fileExists(atPath: dir.path) {
-                try? FileManager.default.moveItem(at: oldDir, to: dir)
-            }
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            self.fileURL = dir.appendingPathComponent("data.json")
+            isLoading = true
+            restoreTask = Task { await restoreSharedData() }
         }
-        isLoading = true
-        load()
+    }
+
+    func waitUntilRestored() async {
+        await restoreTask?.value
+    }
+
+    private func finishInitialRestore() {
         if watchlists.isEmpty {
             let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
             watchlists = [def]
@@ -1477,7 +1503,58 @@ class StorageService: ObservableObject {
         }
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
         isLoading = false
+        isRestoringData = false
         updateHotKeyRegistration()
+    }
+
+    private struct InitialDiskLoad: @unchecked Sendable {
+        let data: AppData?
+        let decodeFailed: Bool
+        let corruptedURL: URL?
+    }
+
+    private func restoreSharedData() async {
+        let destination = fileURL
+        let result = await Task.detached(priority: .utility) {
+            Self.readInitialData(at: destination)
+        }.value
+        if let corruptedURL = result.corruptedURL {
+            NSLog("[StorageService] Corrupt data moved to %@", corruptedURL.lastPathComponent)
+        }
+        decodeFailure = result.decodeFailed
+        if let data = result.data {
+            applyAppData(data, isFromSync: false)
+            if migrateEmptyTransactionsIfNeeded() { performSave() }
+        }
+        finishInitialRestore()
+    }
+
+    private nonisolated static func readInitialData(at destination: URL) -> InitialDiskLoad {
+        let manager = FileManager.default
+        let dataDirectory = destination.deletingLastPathComponent()
+        if dataDirectory.lastPathComponent == "StockDeck" {
+            let oldDirectory = dataDirectory.deletingLastPathComponent().appendingPathComponent("StockBar", isDirectory: true)
+            if manager.fileExists(atPath: oldDirectory.path), !manager.fileExists(atPath: dataDirectory.path) {
+                try? manager.moveItem(at: oldDirectory, to: dataDirectory)
+            }
+        }
+        try? manager.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        guard manager.fileExists(atPath: destination.path) else {
+            return InitialDiskLoad(data: nil, decodeFailed: false, corruptedURL: nil)
+        }
+        do {
+            let data = try Data(contentsOf: destination)
+            let decoded = try JSONDecoder().decode(AppData.self, from: data)
+            return InitialDiskLoad(data: decoded, decodeFailed: false, corruptedURL: nil)
+        } catch {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let timestamp = formatter.string(from: Date())
+            let corruptedURL = destination.deletingPathExtension()
+                .appendingPathExtension("corrupted-\(timestamp).json")
+            try? manager.moveItem(at: destination, to: corruptedURL)
+            return InitialDiskLoad(data: nil, decodeFailed: true, corruptedURL: corruptedURL)
+        }
     }
 
     func addToWatchlist(_ symbol: String, targetWatchlistId: UUID? = nil) {
@@ -2178,7 +2255,6 @@ class StorageService: ObservableObject {
         menuBarHidePercent = false
         tickerShowName = false
         advancedPositions = false
-        defaultChartStyle = "line"
         watchlistSort = "manual"
         appLanguage = "en"
         fontSizeLevel = 9
@@ -2389,7 +2465,8 @@ class StorageService: ObservableObject {
             symbolExchange: symbolExchange,
             appLanguage: appLanguage,
             advancedPositions: advancedPositions,
-            defaultChartStyle: defaultChartStyle,
+            // Compatibility only: old app versions may still read this key.
+            defaultChartStyle: "line",
             appearanceRaw: appearanceRaw,
             showNewsTab: nil,
             aiChatSections: aiChatSections,
@@ -2503,7 +2580,7 @@ class StorageService: ObservableObject {
         menuBarHidePercent = decoded.menuBarHidePercent ?? false
         tickerShowName = decoded.tickerShowName ?? false
         advancedPositions = decoded.advancedPositions ?? false
-        defaultChartStyle = decoded.defaultChartStyle ?? "line"
+        // Ignore the legacy chart style preference. Charts now use the native view.
         watchlistSort = decoded.watchlistSort ?? "manual"
         symbolType = decoded.symbolType ?? [:]
         symbolExchange = decoded.symbolExchange ?? [:]
@@ -2557,7 +2634,11 @@ class StorageService: ObservableObject {
         saveTask = Task {
             try? await Task.sleep(nanoseconds: 100_000_000)
             guard !Task.isCancelled else { return }
-            self.performSave()
+            do {
+                try await self.flush()
+            } catch {
+                NSLog("[StorageService] Save failed: %@", error.localizedDescription)
+            }
             if self.isSharedInstance && self.iCloudSyncEnabled {
                 iCloudSyncService.shared.schedulePush()
             }
@@ -2565,27 +2646,58 @@ class StorageService: ObservableObject {
     }
 
     private func performSave() {
-        let bakURL = fileURL.appendingPathExtension("bak")
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try? FileManager.default.removeItem(at: bakURL)
-            try? FileManager.default.copyItem(at: fileURL, to: bakURL)
-        }
-        let data = exportAppData()
-        do {
-            let encoded = try JSONEncoder().encode(data)
-            try encoded.write(to: fileURL, options: .atomic)
-        } catch {
-            // Error saving is non-fatal; data will be retried on next change
-        }
+        saveNow()
     }
 
     func saveNow() {
         saveTask?.cancel()
         saveTask = nil
-        performSave()
+        let snapshot = exportAppData()
+        let destination = fileURL
+        saveRevision &+= 1
+        let revision = saveRevision
+        Task { @MainActor in
+            do {
+                try await Self.encodeAndWrite(snapshot, destination: destination,
+                                              revision: revision, writer: persistenceWriter)
+            } catch {
+                NSLog("[StorageService] Save failed: %@", error.localizedDescription)
+            }
+        }
         if isSharedInstance && iCloudSyncEnabled {
             iCloudSyncService.shared.pushLocalData()
         }
+    }
+
+    /// Captures current main-actor state, then encodes and writes it away from
+    /// the UI thread. Callers that must guarantee persistence can await this.
+    func flush() async throws {
+        saveTask?.cancel()
+        saveTask = nil
+        let snapshot = exportAppData()
+        let destination = fileURL
+        saveRevision &+= 1
+        try await Self.encodeAndWrite(snapshot, destination: destination,
+                                      revision: saveRevision, writer: persistenceWriter)
+    }
+
+    private nonisolated static func encodeAndWrite(
+        _ snapshot: AppData,
+        destination: URL,
+        revision: UInt64,
+        writer: PersistenceWriter
+    ) async throws {
+        // AppData is an immutable value snapshot captured on MainActor. Its
+        // nested Codable model graph is not mutated after this point.
+        let payload = PersistenceSnapshot(value: snapshot)
+        let data = try await Task.detached(priority: .utility) {
+            try JSONEncoder().encode(payload.value)
+        }.value
+        try await writer.write(data, to: destination, revision: revision)
+    }
+
+    private struct PersistenceSnapshot: @unchecked Sendable {
+        let value: AppData
     }
 
     private func load() {

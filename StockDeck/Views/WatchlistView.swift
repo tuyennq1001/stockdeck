@@ -107,15 +107,11 @@ struct WatchlistView: View {
         }
     }
 
-    private var rowsBySymbol: [String: WatchlistWideView.WatchRow] {
-        Dictionary(viewModel.rows.map { ($0.symbol, $0) }, uniquingKeysWith: { first, _ in first })
-    }
-
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
     /// loaded, else a column-aligned placeholder.
     @ViewBuilder
     private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
-        if let row = rowsBySymbol[symbol] {
+        if let row = viewModel.rowsBySymbol[symbol] {
             QuoteRow(
                 row: row,
                 showCompanyName: storageService.showCompanyName,

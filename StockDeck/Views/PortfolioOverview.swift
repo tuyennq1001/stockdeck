@@ -469,11 +469,13 @@ struct PortfolioOverview: View {
     }
 
     private var monthlyPnlRows: [MonthlyPnlRow] {
-        viewModel.monthlyPnlRows(for: monthlyPnlRange)
+        _ = viewModel.historicalRowsRevision
+        return viewModel.monthlyPnlRows(for: monthlyPnlRange)
     }
 
     private var dailyPnlRows: [DailyPnlRow] {
-        viewModel.dailyPnlRows(for: dailyPnlRange)
+        _ = viewModel.historicalRowsRevision
+        return viewModel.dailyPnlRows(for: dailyPnlRange)
     }
 
     var body: some View {
@@ -489,7 +491,7 @@ struct PortfolioOverview: View {
             }
         }) {
             ScrollView {
-                VStack(alignment: .leading, spacing: DS.gap) {
+                LazyVStack(alignment: .leading, spacing: DS.gap) {
                     heroCard
                     statRow
                     performanceMatrixCard
@@ -696,6 +698,7 @@ struct PortfolioOverview: View {
 
             PortfolioHeroChartView(
                 points: ds,
+                seriesRevision: viewModel.historyRevision,
                 chartRange: chartRange,
                 currencySymbol: currencySymbol,
                 amountDecimals: storageService.amountDecimals
@@ -828,9 +831,8 @@ struct PortfolioOverview: View {
 
         var id: String { rawValue }
 
-        func cutoffDate() -> Date {
+        func cutoffDate(now: Date = Date()) -> Date {
             let cal = Calendar.current
-            let now = Date()
             switch self {
             case .m1: return cal.date(byAdding: .month, value: -1, to: now) ?? now
             case .m3: return cal.date(byAdding: .month, value: -3, to: now) ?? now
@@ -1464,12 +1466,14 @@ private struct MoneyWeightedReturnCardView: View, Equatable {
 
 private struct PortfolioHeroChartView: View, Equatable {
     let points: [ValuePoint]
+    let seriesRevision: Int
     let chartRange: ChartRange
     let currencySymbol: String
     let amountDecimals: Int
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         guard lhs.chartRange == rhs.chartRange,
+              lhs.seriesRevision == rhs.seriesRevision,
               lhs.currencySymbol == rhs.currencySymbol,
               lhs.amountDecimals == rhs.amountDecimals,
               lhs.points.count == rhs.points.count else {

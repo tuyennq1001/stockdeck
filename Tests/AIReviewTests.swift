@@ -10,6 +10,12 @@ import XCTest
 @MainActor
 final class AIReviewTests: XCTestCase {
 
+    private func makeIsolatedStorage() -> StorageService {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ai-review-\(UUID().uuidString).json")
+        return StorageService(fileURL: url)
+    }
+
     // MARK: - AIChatSection
 
     private func msg(_ role: AIChatRole, _ i: Int) -> AIChatMessage {
@@ -51,7 +57,7 @@ final class AIReviewTests: XCTestCase {
             holdings.append(makeHolding(symbol: "S\(i)", qty: 10, avg: 100))
         }
         let context = AIPortfolioContext.build(
-            storageService: .shared,
+            storageService: makeIsolatedStorage(),
             stockService: .shared,
             scope: .allPortfolios,
             viewModel: nil
@@ -63,7 +69,7 @@ final class AIReviewTests: XCTestCase {
 
     func testContextTextMentionsMissingHistoryInsteadOfGuessing() {
         let context = AIPortfolioContext.build(
-            storageService: .shared,
+            storageService: makeIsolatedStorage(),
             stockService: .shared,
             scope: .allPortfolios,
             viewModel: nil
@@ -88,10 +94,8 @@ final class AIReviewTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         let notes = tmp.appendingPathComponent("ai-context.md")
         try? "Risk tolerance: moderate; goal: growth over 10y".write(to: notes, atomically: true, encoding: .utf8)
-        let storage = StorageService.shared
-        let original = storage.aiWorkspacePath
+        let storage = makeIsolatedStorage()
         storage.aiWorkspacePath = tmp.path
-        defer { storage.aiWorkspacePath = original }
         let context = AIPortfolioContext.build(
             storageService: storage,
             stockService: .shared,
@@ -129,8 +133,7 @@ final class AIReviewTests: XCTestCase {
     }
 
     func testAIPortfolioContextIncludesInvestorProfile() {
-        let storage = StorageService.shared
-        let originalProfile = storage.investorProfile
+        let storage = makeIsolatedStorage()
         let testProfile = InvestorProfile(
             age: 30,
             maritalStatus: "Đã kết hôn",
@@ -140,8 +143,6 @@ final class AIReviewTests: XCTestCase {
             primaryGoal: "Tự do tài chính sau 15 năm"
         )
         storage.investorProfile = testProfile
-        defer { storage.investorProfile = originalProfile }
-
         let context = AIPortfolioContext.build(
             storageService: storage,
             stockService: .shared,

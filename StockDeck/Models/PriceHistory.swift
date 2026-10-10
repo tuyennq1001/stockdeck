@@ -24,6 +24,24 @@ struct PricePoint: Identifiable, Equatable, Codable, Sendable {
 
 /// Pure transforms over Yahoo v8 chart arrays.
 enum PriceHistory {
+    /// Binary lookup on chronological chart data. Ties keep the earlier point,
+    /// matching the previous linear minimum without scanning every hover tick.
+    static func nearestPoint(to date: Date, in points: [PricePoint]) -> PricePoint? {
+        guard !points.isEmpty else { return nil }
+        var low = 0
+        var high = points.count
+        while low < high {
+            let middle = low + (high - low) / 2
+            if points[middle].date < date { low = middle + 1 }
+            else { high = middle }
+        }
+        if low == 0 { return points[0] }
+        if low == points.count { return points[points.count - 1] }
+        let before = points[low - 1]
+        let after = points[low]
+        return date.timeIntervalSince(before.date) <= after.date.timeIntervalSince(date) ? before : after
+    }
+
     /// Pairs the v8 chart `timestamp` array with OHLC arrays into
     /// chronological price points, skipping nil holes.
     static func points(timestamps: [Int], closes: [Double?], opens: [Double?]? = nil, highs: [Double?]? = nil, lows: [Double?]? = nil) -> [PricePoint] {
