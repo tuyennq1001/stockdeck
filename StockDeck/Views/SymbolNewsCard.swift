@@ -11,7 +11,7 @@ struct SymbolNewsCard: View {
 
     private var key: String { symbol.uppercased() }
     private var articles: [NewsArticle] { stockService.newsBySymbol[key] ?? [] }
-    private var isLoading: Bool { stockService.isLoadingSymbolNews.contains(key) }
+    @State private var isLoading = false
 
     var body: some View {
         Card(title: "News") {
@@ -28,7 +28,11 @@ struct SymbolNewsCard: View {
                 }
             }
         }
-        .task(id: symbol) { await stockService.refreshNews(for: symbol) }
+        .task(id: symbol) {
+            isLoading = true
+            defer { isLoading = false }
+            await stockService.refreshNews(for: symbol)
+        }
     }
 
     private var statusRow: some View {

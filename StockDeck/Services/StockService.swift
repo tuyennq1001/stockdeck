@@ -24,7 +24,7 @@ class StockService: ObservableObject {
     /// Per-symbol news cache used by the symbol detail page. Each key is the
     /// canonical (uppercased) symbol; throttled separately from the Home feed.
     @Published var newsBySymbol: [String: [NewsArticle]] = [:]
-    @Published var isLoadingSymbolNews: Set<String> = []
+    var isLoadingSymbolNews: Set<String> = []
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:]

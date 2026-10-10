@@ -172,11 +172,15 @@ struct WatchlistWideView: View {
                         .frame(width: activeDetailSymbol != nil ? 350 : nil)
                         .frame(maxWidth: activeDetailSymbol != nil ? 350 : .infinity, maxHeight: .infinity)
 
-                    if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
-                        Divider().overlay(DS.hairline)
-                        sideChartPane(symbol: sym, quote: q)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    if activeDetailSymbol != nil {
+                        HStack(spacing: 0) {
+                            Divider().overlay(DS.hairline)
+                            if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
+                                sideChartPane(symbol: sym, quote: q)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -348,6 +352,7 @@ struct WatchlistWideView: View {
                     factsCard(quote)
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
+                        .id(symbol)
                     SymbolNewsCard(stockService: stockService, symbol: symbol)
                 }
                 .padding(16)
@@ -532,15 +537,11 @@ struct WatchlistWideView: View {
         VStack(spacing: 0) {
             tableToolbar
             Divider().overlay(DS.hairline)
-            if isCompact {
+            ScrollView(.horizontal, showsIndicators: !isCompact) {
                 tableContents
-            } else {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    tableContents
-                        .frame(minWidth: tableWidth, alignment: .leading)
-                }
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                    .frame(minWidth: isCompact ? 350 : tableWidth, alignment: .leading)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
         .frame(maxHeight: .infinity)
     }
@@ -689,6 +690,7 @@ struct WatchlistWideView: View {
                                          valueDecimals: storageService.valueDecimals,
                                          metrics: selectedMetrics,
                                          isSelected: selectedSymbols.contains(row.symbol),
+                                         isActive: row.symbol == activeDetailSymbol,
                                          compact: isCompact,
                                          isReordering: draggingSymbol != nil,
                                          onOpen: {
@@ -711,6 +713,7 @@ struct WatchlistWideView: View {
                                          valueDecimals: storageService.valueDecimals,
                                          metrics: selectedMetrics,
                                          isSelected: selectedSymbols.contains(row.symbol),
+                                         isActive: row.symbol == activeDetailSymbol,
                                          compact: isCompact,
                                          isReordering: draggingSymbol != nil,
                                          onOpen: {
@@ -739,7 +742,12 @@ struct WatchlistWideView: View {
     private func handleRowClick(_ symbol: String) {
         // Selection is handled exclusively by the row checkboxes; clicking a row
         // only opens the detail chart.
-        withAnimation(.easeInOut(duration: 0.2)) {
+        guard activeDetailSymbol != symbol else { return }
+        if activeDetailSymbol == nil {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                activeDetailSymbol = symbol
+            }
+        } else {
             activeDetailSymbol = symbol
         }
     }
@@ -787,7 +795,7 @@ struct WatchlistWideView: View {
             // Frozen columns: select all + drag handle + rank (#) + symbol + price
             HStack(spacing: WCol.spacing) {
                 selectAllButton
-                Color.clear.frame(width: 16)
+                Color.clear.frame(width: 16, height: 24)
                 Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
                 if isCompact {
                     headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
@@ -1114,6 +1122,7 @@ private struct WatchRowView<Menu: View>: View {
     let valueDecimals: Int
     let metrics: [WatchlistMetric]
     let isSelected: Bool
+    let isActive: Bool
     var compact: Bool = false
     var isReordering: Bool = false
     let onOpen: () -> Void
@@ -1418,12 +1427,11 @@ private struct WatchRowView<Menu: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 9)
-        .background(hover && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
+        .background((hover || isActive) && !isReordering ? DS.cardAlt.opacity(isActive ? 1.0 : 0.6) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onOpen()
         }
-        .pointingHandCursor()
         .onHover { hover = $0 }
         .contextMenu { menu() }
     }

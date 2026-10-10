@@ -27,8 +27,14 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { height = max(1, geo.size.height) }
-                        .onChange(of: geo.size.height) { _, h in height = max(1, h) }
+                        .onAppear {
+                            let newH = max(1, geo.size.height)
+                            if height != newH { height = newH }
+                        }
+                        .onChange(of: geo.size.height) { _, h in
+                            let newH = max(1, h)
+                            if height != newH { height = newH }
+                        }
                 }
             )
             .overlay(alignment: draggingSide) {
