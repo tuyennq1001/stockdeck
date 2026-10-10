@@ -1340,6 +1340,44 @@ extension View {
             CursorManager.update(inside: inside)
         }
     }
+
+    /// Forces pointingHand cursor on drag handles even when backed by .onDrag.
+    func dragHandleCursor() -> some View {
+        self.modifier(DragHandleCursorModifier())
+    }
+}
+
+/// Dedicated cursor modifier for drag handles and drag sources (.onDrag).
+/// Directly manages its own cursor push/set/pop cycle on the Main Thread,
+/// bypassing the global CursorManager lock and AppKit drag-source resets.
+struct DragHandleCursorModifier: ViewModifier {
+    @State private var isPushed = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                DispatchQueue.main.async {
+                    if inside {
+                        if !isPushed {
+                            NSCursor.pointingHand.push()
+                            isPushed = true
+                        }
+                        NSCursor.pointingHand.set()
+                    } else {
+                        if isPushed {
+                            NSCursor.pop()
+                            isPushed = false
+                        }
+                    }
+                }
+            }
+            .onDisappear {
+                if isPushed {
+                    NSCursor.pop()
+                    isPushed = false
+                }
+            }
+    }
 }
 
 // MARK: - DS focusable container

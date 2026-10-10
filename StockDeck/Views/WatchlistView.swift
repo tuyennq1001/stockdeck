@@ -1,11 +1,11 @@
 import SwiftUI
 
 private enum WatchlistCol {
-    static let symbol: CGFloat = 126
-    static let price: CGFloat = 88
-    static let change: CGFloat = 76
-    static let oneYear: CGFloat = 74
-    static let threeYears: CGFloat = 74
+    static let symbol: CGFloat = 124
+    static let price: CGFloat = 82
+    static let change: CGFloat = 82
+    static let oneYear: CGFloat = 75
+    static let threeYears: CGFloat = 75
 }
 
 
@@ -75,23 +75,17 @@ struct WatchlistView: View {
                         id: symbol,
                         draggingId: $draggingSymbol,
                         isHorizontal: false,
+                        attachDragToContent: false,
                         makeDragItem: {
-                            if currentSortKey != .order || !currentSortAsc {
-                                setSort(.order, ascending: true)
-                            }
-                            if previewSymbolOrder.isEmpty { previewSymbolOrder = storageService.watchlist }
-                            return NSItemProvider(object: symbol as NSString)
+                            startDrag(for: symbol)
                         },
                         onMove: { src, tgt, placement in
-                            if currentSortKey != .order || !currentSortAsc {
-                                setSort(.order, ascending: true)
-                            }
                             moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
                         },
                         onCommit: { commitSymbolPreview() },
                         content: {
                             if draggingSymbol == symbol {
-                                quoteOrPlaceholderRow(symbol).opacity(0)
+                                quoteOrPlaceholderRow(symbol).opacity(0.35)
                             } else {
                                 quoteOrPlaceholderRow(symbol)
                             }
@@ -114,7 +108,7 @@ struct WatchlistView: View {
     }
 
     private var rowsBySymbol: [String: WatchlistWideView.WatchRow] {
-        Dictionary(uniqueKeysWithValues: viewModel.rows.map { ($0.symbol, $0) })
+        Dictionary(viewModel.rows.map { ($0.symbol, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Assembles the row used by the flat list: a real QuoteRow when quotes are
@@ -122,53 +116,51 @@ struct WatchlistView: View {
     @ViewBuilder
     private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
         if let row = rowsBySymbol[symbol] {
-            Button(action: {
-                showSymbolDetail.perform(row.symbol)
-            }) {
-                QuoteRow(
-                    row: row,
-                    showCompanyName: storageService.showCompanyName,
-                    showExtendedHours: storageService.showExtendedHours,
-                    percentDecimals: storageService.percentDecimals,
-                    valueDecimals: storageService.valueDecimals
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .contextMenu {
+            QuoteRow(
+                row: row,
+                showCompanyName: storageService.showCompanyName,
+                showExtendedHours: storageService.showExtendedHours,
+                percentDecimals: storageService.percentDecimals,
+                valueDecimals: storageService.valueDecimals,
+                isReordering: draggingSymbol != nil,
+                onOpen: {
+                    showSymbolDetail.perform(row.symbol)
+                },
+                onStartDrag: {
+                    startDrag(for: symbol)
+                }
+            ) {
                 watchlistContextMenu(symbol: symbol)
             }
         } else {
-            Button(action: {
-                showSymbolDetail.perform(symbol)
-            }) {
-                HStack(spacing: 0) {
-                    HStack(spacing: 5) {
-                        SymbolLogo(symbol: symbol, size: 20)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(StockService.beautifiedSymbol(symbol))
-                                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
+            HStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    SymbolLogo(symbol: symbol, size: 20)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(StockService.beautifiedSymbol(symbol))
+                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                        if storageService.showCompanyName {
+                            Text(" ")
+                                .font(.inter(10, relativeTo: .caption2))
                                 .lineLimit(1)
-                            if storageService.showCompanyName {
-                                Text(" ")
-                                    .font(.inter(10, relativeTo: .caption2))
-                                    .lineLimit(1)
-                            }
                         }
                     }
-                    .frame(width: WatchlistCol.symbol, alignment: .leading)
-
-                    ProgressView()
-                        .scaleEffect(0.6)
-                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4.5)
-                .contentShape(Rectangle())
+                .frame(width: WatchlistCol.symbol, alignment: .leading)
+
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4.5)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showSymbolDetail.perform(symbol)
+            }
             .pointingHandCursor()
             .contextMenu {
                 watchlistContextMenu(symbol: symbol)
@@ -182,7 +174,7 @@ struct WatchlistView: View {
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
             sortHeader("Price", column: .price)
                 .frame(width: WatchlistCol.price, alignment: .trailing)
-            sortHeader("Today %", column: .metric(.today))
+            sortHeader("Today %", column: .changePercent)
                 .frame(width: WatchlistCol.change, alignment: .trailing)
             sortHeader("1Y", column: .metric(.oneYear))
                 .frame(width: WatchlistCol.oneYear, alignment: .trailing)
@@ -616,10 +608,16 @@ struct WatchlistView: View {
         storageService.watchlist.swapAt(i, j)
     }
 
+    private func startDrag(for symbol: String) -> NSItemProvider {
+        draggingSymbol = symbol
+        previewSymbolOrder = displaySymbols
+        return NSItemProvider(object: symbol as NSString)
+    }
+
     /// Live, local-only reorder of the symbol preview while dragging. No storage
     /// writes (mirrors the wide view) — the drop commits once.
     private func moveSymbolInPreview(_ sourceSymbol: String, beforeOrAfter targetSymbol: String, placement: InsertPlacement) {
-        if previewSymbolOrder.isEmpty { previewSymbolOrder = storageService.watchlist }
+        if previewSymbolOrder.isEmpty { previewSymbolOrder = displaySymbols }
         guard sourceSymbol != targetSymbol,
               let srcIndex = previewSymbolOrder.firstIndex(of: sourceSymbol),
               let tgtIndex = previewSymbolOrder.firstIndex(of: targetSymbol) else { return }
@@ -640,10 +638,13 @@ struct WatchlistView: View {
         let final = previewSymbolOrder
         previewSymbolOrder = []
         dropIndicator = nil
+        draggingSymbol = nil
         if final != storageService.watchlist {
             storageService.watchlist = final
         }
-        draggingSymbol = nil
+        if currentSortKey != .order || !currentSortAsc {
+            setSort(.order, ascending: true)
+        }
     }
 
     /// Live, local-only reorder of the watchlist tab preview while dragging.
@@ -797,19 +798,68 @@ struct QuickAddHoldingView: View {
     }
 }
 
-struct QuoteRow: View {
+struct QuoteRow<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
     let showCompanyName: Bool
     let showExtendedHours: Bool
     let percentDecimals: Int
     let valueDecimals: Int
+    var isReordering: Bool = false
+    let onOpen: () -> Void
+    var onStartDrag: (() -> NSItemProvider)? = nil
+    @ViewBuilder let menu: () -> Menu
+    @State private var isHovered = false
+
+    private var dragPreviewBadge: some View {
+        HStack(spacing: 6) {
+            SymbolLogo(symbol: row.symbol, size: 18)
+            let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
+            Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : row.symbol)
+                .font(.inter(12, weight: .bold, relativeTo: .body))
+                .foregroundStyle(DS.ink)
+            let dec = valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: row.price)
+            Text(StorageService.formatCompactNumber(row.price, decimals: dec))
+                .font(.inter(11, relativeTo: .body).monospacedDigit())
+                .foregroundStyle(DS.inkSecondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(DS.ground)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(DS.brand.opacity(0.6), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+    }
+
+    private var symbolLogoOrHandle: some View {
+        ZStack {
+            SymbolLogo(symbol: row.symbol, size: 20)
+                .opacity(isHovered ? 0 : 1)
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DS.inkSecondary)
+                .opacity(isHovered ? 1 : 0)
+        }
+        .frame(width: 20, height: 20)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .contentShape(Rectangle())
+        .onDrag({
+            onStartDrag?() ?? NSItemProvider(object: row.symbol as NSString)
+        }, preview: {
+            dragPreviewBadge
+        })
+        .dragHandleCursor()
+        .help("Drag to reorder")
+    }
 
     private var macOSSymbolCell: some View {
         let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
         let isBuyZone = row.isInBuyZone
 
         return HStack(spacing: 5) {
-            SymbolLogo(symbol: row.symbol, size: 20)
+            symbolLogoOrHandle
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 3) {
                     Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : row.symbol)
@@ -943,7 +993,16 @@ struct QuoteRow: View {
             macOSPeriodCell(value: row.oneYearChangePercent, width: WatchlistCol.oneYear)
             macOSPeriodCell(value: row.threeYearChangePercent, width: WatchlistCol.threeYears)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 4.5)
+        .background(isHovered && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onOpen()
+        }
+        .pointingHandCursor()
+        .onHover { isHovered = $0 }
+        .contextMenu { menu() }
     }
 }

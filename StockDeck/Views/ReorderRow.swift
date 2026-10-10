@@ -8,6 +8,7 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
     let id: Target
     @Binding var draggingId: Target?
     let isHorizontal: Bool
+    var attachDragToContent: Bool = true
     let makeDragItem: () -> NSItemProvider
     let onMove: (Target, Target, InsertPlacement) -> Void
     let onCommit: () -> Void
@@ -22,7 +23,7 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
     @State private var height: CGFloat = 44
 
     var body: some View {
-        content()
+        let base = content()
             .background(
                 GeometryReader { geo in
                     Color.clear
@@ -45,10 +46,6 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
                     }
                 }
             }
-            .onDrag {
-                draggingId = id
-                return makeDragItem()
-            }
             .onDrop(of: [.text], delegate: ReorderDropDelegate(
                 targetId: id,
                 draggingId: $draggingId,
@@ -58,6 +55,15 @@ struct ReorderRow<Target: Hashable, Content: View>: View {
                 onMove: onMove,
                 onCommit: onCommit
             ))
+
+        if attachDragToContent {
+            base.onDrag {
+                draggingId = id
+                return makeDragItem()
+            }
+        } else {
+            base
+        }
     }
 
     private var draggingSide: Alignment {
@@ -110,16 +116,23 @@ struct ReorderDropDelegate<Target: Hashable>: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
-        guard let draggingId = draggingId, draggingId != targetId else { return }
-        let coordinate = isHorizontal ? info.location.x : info.location.y
-        let placement: InsertPlacement = coordinate < height / 2 ? .before : .after
-        dropIndicator?.wrappedValue = DropIndicator(target: targetId, placement: placement)
-        withAnimation(.easeOut(duration: 0.15)) {
-            onMove(draggingId, targetId, placement)
-        }
+        updatePlacement(info: info)
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        updatePlacement(info: info)
+        return DropProposal(operation: .move)
+    }
+
+    private func updatePlacement(info: DropInfo) {
+        guard let draggingId = draggingId, draggingId != targetId else { return }
+        let coordinate = isHorizontal ? info.location.x : info.location.y
+        let placement: InsertPlacement = coordinate < height / 2 ? .before : .after
+        if dropIndicator?.wrappedValue?.target != targetId || dropIndicator?.wrappedValue?.placement != placement {
+            dropIndicator?.wrappedValue = DropIndicator(target: targetId, placement: placement)
+            withAnimation(.easeOut(duration: 0.15)) {
+                onMove(draggingId, targetId, placement)
+            }
+        }
     }
 }
