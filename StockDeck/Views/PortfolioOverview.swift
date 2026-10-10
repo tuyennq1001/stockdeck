@@ -1013,7 +1013,7 @@ struct PortfolioOverview: View {
                 ForEach(selectedColumns) { metric in
                     columnHeader(metric)
                 }
-                Color.clear.frame(width: PositionColumnWidth.chevron)
+                Color.clear.frame(width: PositionColumnWidth.chevron, height: 16)
             }
             .font(DS.label)
             .foregroundStyle(DS.inkTertiary)

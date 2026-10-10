@@ -118,7 +118,7 @@ struct PriceChartCard: View {
         return isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
     }
 
-    private var displayedPriceInfo: (price: Double, diff: Double, diffPct: Double, label: String) {
+    private func displayedPriceInfo(using history: [PricePoint]) -> (price: Double, diff: Double, diffPct: Double, label: String) {
         let basePrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
         guard history.count >= 2, let firstPrice = history.first?.close, firstPrice > 0 else {
             return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
@@ -172,7 +172,8 @@ struct PriceChartCard: View {
     }
 
     private func computeGroupedTrades() -> [GroupedInsiderTrade] {
-        guard let firstDate = history.first?.date, let lastDate = history.last?.date else { return [] }
+        let currentHistory = computeHistory()
+        guard let firstDate = currentHistory.first?.date, let lastDate = currentHistory.last?.date else { return [] }
         let minDate = min(firstDate, lastDate)
         let maxDate = max(firstDate, lastDate)
         let raw = insiderService.getTransactions(for: cleanSym, startDate: minDate, endDate: maxDate, openMarketOnly: true)
@@ -211,7 +212,7 @@ struct PriceChartCard: View {
             guard let first = groupTrades.first else { return nil }
             let totalShares = groupTrades.reduce(0.0) { $0 + $1.shares }
             let weightedPrice = totalShares > 0 ? (groupTrades.reduce(0.0) { $0 + $1.price * $1.shares } / totalShares) : first.price
-            let fallbackPrice = nearestClose(for: first.transactionDate) ?? (history.last?.close ?? 0)
+            let fallbackPrice = nearestClose(for: first.transactionDate, in: currentHistory) ?? (currentHistory.last?.close ?? 0)
             let finalPrice = weightedPrice > 0 ? weightedPrice : fallbackPrice
             guard finalPrice > 0 else { return nil }
             return GroupedInsiderTrade(
@@ -224,13 +225,13 @@ struct PriceChartCard: View {
         }.sorted { $0.date < $1.date }
     }
 
-    private func nearestClose(for date: Date) -> Double? {
+    private func nearestClose(for date: Date, in history: [PricePoint]) -> Double? {
         history.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })?.close
     }
 
     /// Smooth hover crosshair drawn as an overlay (not chart marks), so moving the
     /// mouse doesn't re-render the whole chart. Vertical rule + dot + tooltip.
-    @ViewBuilder private func chartCrosshair(_ proxy: ChartProxy, tint: Color) -> some View {
+    @ViewBuilder private func chartCrosshair(_ proxy: ChartProxy, tint: Color, currentHistory: [PricePoint]) -> some View {
         GeometryReader { geo in
             if let plotAnchor = proxy.plotFrame {
                 let plot = geo[plotAnchor]
@@ -241,7 +242,7 @@ struct PriceChartCard: View {
                             case .active(let loc):
                                 let localX = min(max(loc.x - plot.minX, 0), plot.width)
                                 if let d: Date = proxy.value(atX: localX) {
-                                    hoverPoint = history.min(by: { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) })
+                                    hoverPoint = currentHistory.min(by: { abs($0.date.timeIntervalSince(d)) < abs($1.date.timeIntervalSince(d)) })
                                 }
                             case .ended:
                                 hoverPoint = nil
@@ -283,7 +284,7 @@ struct PriceChartCard: View {
         }
     }
 
-    private var history: [PricePoint] {
+    private func computeHistory() -> [PricePoint] {
         if chartRange.isIntraday {
             return stockService.intradayHistory[symbol] ?? []
         }
@@ -369,10 +370,12 @@ struct PriceChartCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let currentHistory = computeHistory()
+        let info = displayedPriceInfo(using: currentHistory)
+        
+        return VStack(alignment: .leading, spacing: 10) {
             // Row 1: Last Price & Change Pill (left) + style picker (right), so
             // the chart below gets the full card width and a taller frame.
-            let info = displayedPriceInfo
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
@@ -442,7 +445,7 @@ struct PriceChartCard: View {
             }
 
             // Row 3: Chart.
-            chart
+            chart(using: currentHistory)
                 .frame(height: resolvedChartHeight)
         }
         .padding(.horizontal, 14)
@@ -484,7 +487,7 @@ struct PriceChartCard: View {
         .onChange(of: insiderService.transactions[cleanSym]) { _, _ in
             updateCachedInsiderTrades()
         }
-        .onChange(of: history.count) { _, _ in
+        .onChange(of: currentHistory.count) { _, _ in
             updateCachedInsiderTrades()
         }
     }
@@ -565,7 +568,7 @@ struct PriceChartCard: View {
         }
     }
 
-    @ViewBuilder private var chart: some View {
+    @ViewBuilder private func chart(using currentHistory: [PricePoint]) -> some View {
         if effectiveChartStyle == .tradingview, let tvSymbol = tradingViewSymbol {
             TradingViewChartView(tvSymbol: tvSymbol,
                                  theme: colorScheme == .dark ? "dark" : "light",
@@ -575,11 +578,11 @@ struct PriceChartCard: View {
                 .id(tvSymbol)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.bottom, 10)
-        } else if history.count >= 2 {
-            let periodUp = (history.last?.close ?? 0) >= (history.first?.close ?? 0)
+        } else if currentHistory.count >= 2 {
+            let periodUp = (currentHistory.last?.close ?? 0) >= (currentHistory.first?.close ?? 0)
             let tint = periodUp ? DS.up : DS.down
             Chart {
-                ForEach(history) { point in
+                ForEach(currentHistory) { point in
                     AreaMark(x: .value("Day", point.date), y: .value("Close", point.close))
                         .foregroundStyle(.linearGradient(colors: [tint.opacity(0.25), tint.opacity(0)],
                                                          startPoint: .top, endPoint: .bottom))
@@ -588,7 +591,7 @@ struct PriceChartCard: View {
                         .foregroundStyle(tint).lineStyle(.init(lineWidth: 2))
                         .interpolationMethod(.monotone)
                 }
-                if let last = history.last {
+                if let last = currentHistory.last {
                     PointMark(x: .value("Day", last.date), y: .value("Close", last.close))
                         .symbolSize(50)
                         .foregroundStyle(tint)
@@ -654,7 +657,7 @@ struct PriceChartCard: View {
                         }
                 }
             }
-            .chartYScale(domain: chartDomain)
+            .chartYScale(domain: chartDomain(using: currentHistory))
             .chartYAxis {
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
                     AxisGridLine().foregroundStyle(DS.hairline)
@@ -674,8 +677,8 @@ struct PriceChartCard: View {
                     }
                 }
             }
-            .chartOverlay { proxy in chartCrosshair(proxy, tint: tint) }
-            .id("\(chartRange.rawValue)-\(chartStyle.rawValue)")
+            .chartOverlay { proxy in chartCrosshair(proxy, tint: tint, currentHistory: currentHistory) }
+            .id("\(symbol)-\(chartRange.rawValue)-\(chartStyle.rawValue)")
             .transition(.opacity.animation(.easeInOut(duration: 0.28)))
             .padding(.bottom, 8)
         } else {
@@ -699,22 +702,26 @@ struct PriceChartCard: View {
         }
     }
 
-    private var chartDomain: ClosedRange<Double> {
-        var mins = history.map(\.effectiveLow)
-        var maxs = history.map(\.effectiveHigh)
+    private func chartDomain(using currentHistory: [PricePoint]) -> ClosedRange<Double> {
+        var minVal = Double.infinity
+        var maxVal = -Double.infinity
+        for point in currentHistory {
+            if point.effectiveLow < minVal { minVal = point.effectiveLow }
+            if point.effectiveHigh > maxVal { maxVal = point.effectiveHigh }
+        }
         if storageService.showInsiderMarkers && isEligibleForInsider {
             for trade in cachedGroupedTrades where trade.price > 0 {
-                mins.append(trade.price)
-                maxs.append(trade.price)
+                if trade.price < minVal { minVal = trade.price }
+                if trade.price > maxVal { maxVal = trade.price }
             }
         }
         if let target = storageService.buyTarget(for: symbol), target.targetPrice > 0 {
-            mins.append(target.targetPrice)
-            maxs.append(target.targetPrice)
+            if target.targetPrice < minVal { minVal = target.targetPrice }
+            if target.targetPrice > maxVal { maxVal = target.targetPrice }
         }
-        guard let min = mins.min(), let max = maxs.max(), max > min else { return 0...1 }
-        let pad = (max - min) * 0.08
-        return (min - pad)...(max + pad)
+        guard minVal != .infinity, maxVal != -Double.infinity, maxVal > minVal else { return 0...1 }
+        let pad = (maxVal - minVal) * 0.08
+        return (minVal - pad)...(maxVal + pad)
     }
 }
 
