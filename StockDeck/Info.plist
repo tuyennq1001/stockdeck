@@ -22,7 +22,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.1.3</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -35,7 +35,7 @@
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/tuyennq1001/stockdeck/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>YhqibkoYNFRlULx9zJDQXE7SuBTAO3csjAKD2Hjm9NE=</string>
+	<string>4ib8hHqlFJCBw90t3tl6/cvNhbSZNCPw9Dzhl4uCGfw=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>21600</integer>
 </dict>
