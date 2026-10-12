@@ -331,7 +331,7 @@ struct PortfolioOverview: View {
         case .totalPnl: return .pnl
         case .shares: return .shares
         case .lots: return .shares
-        case .weight: return .weight
+        case .weight, .volume50d, .volume50w: return .weight
         }
     }
 
@@ -344,7 +344,7 @@ struct PortfolioOverview: View {
     /// so columns keep a readable size and the table scrolls horizontally when
     /// the window is narrower instead of compressing the cells.
     private var positionsTableNaturalWidth: CGFloat {
-        let rowPadding: CGFloat = 16
+        let rowPadding: CGFloat = 28 // 8 leading + 20 trailing
         let symbolIdealWidth: CGFloat = 200
         let metricIdealWidth: (PortfolioColumnMetric) -> CGFloat = { metric in
             switch metric {
@@ -352,6 +352,7 @@ struct PortfolioOverview: View {
             case .cost, .value, .todayPnl, .totalPnl: return 120
             case .shares, .lots: return 100
             case .weight: return 115
+            case .volume50d, .volume50w: return 80
             }
         }
         return rowPadding
@@ -383,6 +384,11 @@ struct PortfolioOverview: View {
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
+        case .volume50d, .volume50w:
+            Text(metric.title)
+                .font(DS.label)
+                .foregroundStyle(DS.inkTertiary)
+                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
         }
     }
 
@@ -1036,6 +1042,7 @@ struct PortfolioOverview: View {
             .foregroundStyle(DS.inkTertiary)
             .tracking(0.8).textCase(.uppercase)
             .padding(.vertical, 8)
+            .padding(.leading, 8).padding(.trailing, 20)
             Divider().overlay(DS.hairline)
         }
         .background(DS.card)
@@ -2420,6 +2427,12 @@ private struct PositionSummaryRow: View {
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
+        case .volume50d:
+            VolumeSparkline(symbol: symbol, mode: .days50)
+                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
+        case .volume50w:
+            VolumeSparkline(symbol: symbol, mode: .weeks50)
+                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
         }
     }
 
@@ -2468,7 +2481,7 @@ private struct PositionSummaryRow: View {
                 .foregroundStyle(hovered ? DS.brand : DS.inkTertiary)
                 .frame(width: PositionColumnWidth.chevron)
         }
-        .padding(.vertical, 11).padding(.horizontal, 8)
+        .padding(.vertical, 11).padding(.leading, 8).padding(.trailing, 20)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? DS.cardAlt : .clear))
         .contentShape(Rectangle())
         .onHover { inside in

@@ -949,6 +949,7 @@ class StockService: ObservableObject {
             let rawOpen = parseDouble(item[1]) ?? rawClose
             let rawHigh = parseDouble(item[2]) ?? rawClose
             let rawLow = parseDouble(item[3]) ?? rawClose
+            let rawVol = item.count >= 6 ? parseDouble(item[5]) : nil
 
             let date = Date(timeIntervalSince1970: openTimeMs / 1000.0)
             if invert {
@@ -956,9 +957,9 @@ class StockService: ObservableObject {
                 let open = rawOpen > 0 ? (1.0 / rawOpen) : close
                 let high = rawLow > 0 ? (1.0 / rawLow) : close
                 let low = rawHigh > 0 ? (1.0 / rawHigh) : close
-                points.append(PricePoint(date: date, close: close, open: open, high: high, low: low))
+                points.append(PricePoint(date: date, close: close, open: open, high: high, low: low, volume: rawVol))
             } else {
-                points.append(PricePoint(date: date, close: rawClose, open: rawOpen, high: rawHigh, low: rawLow))
+                points.append(PricePoint(date: date, close: rawClose, open: rawOpen, high: rawHigh, low: rawLow, volume: rawVol))
             }
         }
         return points.sorted { $0.date < $1.date }
@@ -1586,14 +1587,19 @@ class StockService: ObservableObject {
         guard let decoded else { return }
         let now = Date()
         for (key, entry) in decoded where !entry.points.isEmpty && entry.fetchedAt <= now {
+            let hasVol = entry.points.contains(where: { ($0.volume ?? 0) > 0 })
             if key.hasPrefix("daily:"), priceHistoryFetchedAt[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
                 priceHistory[symbol] = entry.points
-                priceHistoryFetchedAt[symbol] = entry.fetchedAt
+                if hasVol || isJapaneseMutualFund(symbol) {
+                    priceHistoryFetchedAt[symbol] = entry.fetchedAt
+                }
             } else if key.hasPrefix("max:"), priceHistoryMaxAt[String(key.dropFirst(4))] == nil {
                 let symbol = String(key.dropFirst(4))
                 priceHistoryMax[symbol] = entry.points
-                priceHistoryMaxAt[symbol] = entry.fetchedAt
+                if hasVol || isJapaneseMutualFund(symbol) {
+                    priceHistoryMaxAt[symbol] = entry.fetchedAt
+                }
             } else if key.hasPrefix("spark:"), watchlistHistory[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
                 watchlistHistory[symbol] = entry.points
@@ -1606,7 +1612,9 @@ class StockService: ObservableObject {
             let spark = watchlistHistory[symbol] ?? []
             let dailyLast = daily.last?.date ?? .distantPast
             let sparkLast = spark.last?.date ?? .distantPast
-            if spark.isEmpty || dailyLast > sparkLast || (dailyLast == sparkLast && daily.count > spark.count) {
+            let dailyHasVol = daily.contains(where: { ($0.volume ?? 0) > 0 })
+            let sparkHasVol = spark.contains(where: { ($0.volume ?? 0) > 0 })
+            if spark.isEmpty || (dailyHasVol && !sparkHasVol) || dailyLast > sparkLast || (dailyLast == sparkLast && daily.count > spark.count) {
                 watchlistHistory[symbol] = daily
                 didHeal = true
             }
@@ -1614,7 +1622,10 @@ class StockService: ObservableObject {
         for (symbol, spark) in watchlistHistory where !spark.isEmpty {
             if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
                 priceHistory[symbol] = spark
-                priceHistoryFetchedAt[symbol] = sparkFetchedAt ?? Date()
+                let sparkHasVol = spark.contains(where: { ($0.volume ?? 0) > 0 })
+                if sparkHasVol || isJapaneseMutualFund(symbol) {
+                    priceHistoryFetchedAt[symbol] = sparkFetchedAt ?? Date()
+                }
                 didHeal = true
             }
         }
@@ -1682,6 +1693,8 @@ class StockService: ObservableObject {
             // bypass cache to upgrade to the full 10-year history
             if isVietnameseStock(symbol) && points.count <= 300 {
                 // proceed to re-fetch
+            } else if !isJapaneseMutualFund(symbol) && !points.contains(where: { ($0.volume ?? 0) > 0 }) {
+                // proceed to re-fetch to upgrade cached points with full OHLCV and volume
             } else {
                 return
             }
@@ -1751,7 +1764,7 @@ class StockService: ObservableObject {
                 let scaledOpens = response.o?.map { $0 * scale }
                 let scaledHighs = response.h?.map { $0 * scale }
                 let scaledLows = response.l?.map { $0 * scale }
-                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows, volumes: response.v)
                 guard !points.isEmpty else { return }
                 priceHistory[symbol] = points
                 priceHistory[symbol.uppercased()] = points
@@ -1813,7 +1826,8 @@ class StockService: ObservableObject {
                                              closes: q?.close ?? [],
                                              opens: q?.open,
                                              highs: q?.high,
-                                             lows: q?.low)
+                                             lows: q?.low,
+                                             volumes: q?.volume)
             guard !points.isEmpty else { return }
             priceHistory[symbol] = points
             watchlistHistory[symbol] = points
@@ -1828,7 +1842,13 @@ class StockService: ObservableObject {
     func ensurePriceHistoryMax(for symbol: String) async {
         if let at = priceHistoryMaxAt[symbol],
            Date().timeIntervalSince(at) < 21600,
-           priceHistoryMax[symbol]?.isEmpty == false { return }
+           let points = priceHistoryMax[symbol], !points.isEmpty {
+            if !isJapaneseMutualFund(symbol) && !points.contains(where: { ($0.volume ?? 0) > 0 }) {
+                // proceed to re-fetch max history with volume
+            } else {
+                return
+            }
+        }
 
         if isJapaneseMutualFund(symbol) {
             let points = await fetchJapaneseFundHistory(symbol: symbol)
@@ -1857,7 +1877,7 @@ class StockService: ObservableObject {
                 let scaledOpens = response.o?.map { $0 * scale }
                 let scaledHighs = response.h?.map { $0 * scale }
                 let scaledLows = response.l?.map { $0 * scale }
-                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows, volumes: response.v)
                 guard !points.isEmpty else { return }
                 priceHistoryMax[symbol] = points
                 priceHistoryMaxAt[symbol] = Date()
@@ -1896,7 +1916,8 @@ class StockService: ObservableObject {
                                              closes: q?.close ?? [],
                                              opens: q?.open,
                                              highs: q?.high,
-                                             lows: q?.low)
+                                             lows: q?.low,
+                                             volumes: q?.volume)
             guard !points.isEmpty else { return }
             priceHistoryMax[symbol] = points
             priceHistoryMaxAt[symbol] = Date()
@@ -1974,7 +1995,8 @@ class StockService: ObservableObject {
                                              closes: q?.close ?? [],
                                              opens: q?.open,
                                              highs: q?.high,
-                                             lows: q?.low)
+                                             lows: q?.low,
+                                             volumes: q?.volume)
             guard !points.isEmpty else {
                 scheduleHistoryCacheSave()
                 return
@@ -2005,7 +2027,8 @@ class StockService: ObservableObject {
                                              closes: q?.close ?? [],
                                              opens: q?.open,
                                              highs: q?.high,
-                                             lows: q?.low)
+                                             lows: q?.low,
+                                             volumes: q?.volume)
             guard !points.isEmpty else { return }
             intradayHistory[symbol] = points
             intradayFetchedAt[symbol] = Date()
@@ -2031,7 +2054,8 @@ class StockService: ObservableObject {
                                              closes: q?.close ?? [],
                                              opens: q?.open,
                                              highs: q?.high,
-                                             lows: q?.low)
+                                             lows: q?.low,
+                                             volumes: q?.volume)
             guard !points.isEmpty else { return }
             intradayWeek[symbol] = points
             intradayWeekAt[symbol] = Date()
@@ -2089,7 +2113,7 @@ class StockService: ObservableObject {
                             let scaledOpens = response.o?.map { $0 * scale }
                             let scaledHighs = response.h?.map { $0 * scale }
                             let scaledLows = response.l?.map { $0 * scale }
-                            let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows)
+                            let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows, volumes: response.v)
                             return (sym, points)
                         } catch {
                             return (sym, [])
@@ -2162,16 +2186,19 @@ class StockService: ObservableObject {
                     let (data, _) = try await session.data(from: url)
                     let parsed = try YahooSparkParser.parse(data)
                     for (symbol, points) in parsed where !points.isEmpty {
-                        watchlistHistory[symbol] = points
+                        let existingWatchlist = watchlistHistory[symbol] ?? []
+                        let existingHasVol = existingWatchlist.contains(where: { ($0.volume ?? 0) > 0 })
+                        if !existingHasVol || existingWatchlist.isEmpty {
+                            watchlistHistory[symbol] = points
+                        }
                         if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
                             priceHistory[symbol] = points
-                            priceHistoryFetchedAt[symbol] = Date()
+                            // Do not stamp priceHistoryFetchedAt from sparkline: spark data lacks OHLC and volume.
                         }
                         if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                             let monthly = PriceHistory.deriveMonthly(from: points)
                             if !monthly.isEmpty {
                                 priceHistoryMax[symbol] = monthly
-                                priceHistoryMaxAt[symbol] = Date()
                             }
                         }
                     }
@@ -3707,6 +3734,7 @@ private struct YahooChartResponse: Codable {
         let high: [Double?]?
         let low: [Double?]?
         let close: [Double?]?
+        let volume: [Double?]?
     }
 
     struct ChartMeta: Codable {

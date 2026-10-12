@@ -8,6 +8,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     case ath, fromAth, atl, fromAtl
     case marketCap, buyTarget
     case chart24h, chart7d, chart30d, chart60d, chart90d, chartYtd, chart1y
+    case volume50d, volume50w
 
     var id: String { rawValue }
 
@@ -37,6 +38,8 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .chart90d: return "90d chart"
         case .chartYtd: return "YTD chart"
         case .chart1y: return "1Y chart"
+        case .volume50d: return "50D Vol"
+        case .volume50w: return "50W Vol"
         }
     }
 
@@ -48,9 +51,26 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             return .change
         case .ath, .fromAth, .atl, .fromAtl, .marketCap, .buyTarget:
             return .price
-        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
+        case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y, .volume50d, .volume50w:
             return .chart
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if raw == "volume20w" {
+            self = .volume50w
+            return
+        }
+        if raw == "volume7d" || raw == "volume30d" {
+            self = .volume50d
+            return
+        }
+        guard let value = WatchlistMetric(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown metric: \(raw)")
+        }
+        self = value
     }
 
     var isChart: Bool {

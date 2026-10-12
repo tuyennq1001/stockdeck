@@ -7,6 +7,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
     case avgPrice, price, change
     case cost, value, todayPnl, totalPnl, shares, lots
     case weight
+    case volume50d, volume50w
 
     var id: String { rawValue }
 
@@ -22,6 +23,8 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
         case .shares: return "Shares"
         case .lots: return "Lots"
         case .weight: return "Weight"
+        case .volume50d: return "50D Vol"
+        case .volume50w: return "50W Vol"
         }
     }
 
@@ -33,7 +36,26 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
             return .position
         case .weight:
             return .weight
+        case .volume50d, .volume50w:
+            return .chart
         }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if raw == "volume20w" {
+            self = .volume50w
+            return
+        }
+        if raw == "volume7d" || raw == "volume30d" {
+            self = .volume50d
+            return
+        }
+        guard let value = PortfolioColumnMetric(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown metric: \(raw)")
+        }
+        self = value
     }
 
     static let defaultSelection: [PortfolioColumnMetric] = [
@@ -45,6 +67,7 @@ enum PortfolioColumnCategory: String, CaseIterable, Identifiable {
     case price = "Price"
     case position = "Position"
     case weight = "Weight"
+    case chart = "Chart"
 
     var id: String { rawValue }
 }
