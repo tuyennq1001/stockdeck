@@ -752,6 +752,8 @@ struct SegmentedRangePicker<T: Hashable>: View {
     let options: [T]
     let label: (T) -> String
     @Binding var selection: T
+    var isOptionEnabled: ((T) -> Bool)? = nil
+    var disabledHelp: ((T) -> String)? = nil
     @Namespace private var ns
 
     private func help(_ label: String) -> String {
@@ -772,14 +774,17 @@ struct SegmentedRangePicker<T: Hashable>: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.self) { option in
+                let enabled = isOptionEnabled?(option) ?? true
                 Button {
+                    guard enabled else { return }
                     withAnimation(.easeInOut(duration: 0.3)) { selection = option }
                 } label: {
                     Text(LocalizedStringKey(label(option)))
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .foregroundStyle(selection == option ? DS.ink : DS.inkTertiary)
+                        .foregroundStyle(selection == option ? DS.ink : (enabled ? DS.inkTertiary : DS.inkTertiary.opacity(0.35)))
+                        .opacity(enabled ? 1.0 : 0.38)
                         .padding(.horizontal, 7).padding(.vertical, 4)
                         .background {
                             if selection == option {
@@ -790,8 +795,9 @@ struct SegmentedRangePicker<T: Hashable>: View {
                         }
                 }
                 .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help(help(label(option)))
+                .disabled(!enabled)
+                .pointingHandCursor(enabled: enabled)
+                .help(!enabled ? (disabledHelp?(option) ?? "Portfolio history does not yet span this period") : help(label(option)))
             }
         }
         .padding(2)
@@ -1344,9 +1350,14 @@ enum CursorManager {
 
 extension View {
     /// Shows the pointing hand cursor when hovering over interactive elements.
-    func pointingHandCursor() -> some View {
-        self.onHover { inside in
-            CursorManager.update(inside: inside)
+    @ViewBuilder
+    func pointingHandCursor(enabled: Bool = true) -> some View {
+        if enabled {
+            self.onHover { inside in
+                CursorManager.update(inside: inside)
+            }
+        } else {
+            self
         }
     }
 
