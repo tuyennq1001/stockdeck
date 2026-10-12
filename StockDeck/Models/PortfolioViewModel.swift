@@ -355,8 +355,8 @@ final class PortfolioViewModel {
         let nativeValue: Double
         let nativePnl: Double
         let nativePnlPercent: Double
-        /// Weighted-average buy price in the asset's native currency (JPY funds
-        /// divided by the 10,000 scale so the number is a per-口 price).
+        /// Weighted-average buy price in the asset's native currency (per-share for
+        /// stocks, per-10,000 口 for Japanese mutual funds to match quoted NAV / 基準価額).
         let avgPrice: Double
         let totalQuantity: Double
         let todayPnl: Double
@@ -389,7 +389,7 @@ final class PortfolioViewModel {
         )
     }
 
-    private struct ValuationPosition: @unchecked Sendable {
+    struct ValuationPosition: @unchecked Sendable {
         let holding: Holding
         let portfolioId: UUID
         let quote: StockQuote
@@ -402,13 +402,13 @@ final class PortfolioViewModel {
         let hasLiveQuote: Bool
     }
 
-    private struct ValuationSnapshot: @unchecked Sendable {
+    struct ValuationSnapshot: @unchecked Sendable {
         let positions: [ValuationPosition]
         let secondaryCurrency: String
         let secondaryRate: Double?
     }
 
-    private struct ValuationResult: @unchecked Sendable {
+    struct ValuationResult: @unchecked Sendable {
         let totals: ValuationBundle
         let sortedHoldings: [ValuedHolding]
         let groupedHoldings: [String: [ValuedHolding]]
@@ -482,9 +482,10 @@ final class PortfolioViewModel {
         }
     }
 
-    private nonisolated static func computeValuation(_ snapshot: ValuationSnapshot) -> ValuationResult {
+    nonisolated static func computeValuation(_ snapshot: ValuationSnapshot) -> ValuationResult {
         typealias Aggregate = (value: Double, cost: Double, pnl: Double, nativeCost: Double,
-                               nativeValue: Double, nativePnl: Double, nativeQty: Double,
+                               nativeValue: Double, nativePnl: Double,
+                               weightedCostSum: Double, costShares: Double,
                                totalQty: Double, todayPnl: Double, changePercent: Double,
                                extendedChangePercent: Double?, lotsCount: Int,
                                isMarketActive: Bool, quote: StockQuote?, currency: String)
@@ -516,7 +517,7 @@ final class PortfolioViewModel {
 
             var aggregate = bySymbol[symbol] ?? Aggregate(
                 value: 0, cost: 0, pnl: 0, nativeCost: 0, nativeValue: 0, nativePnl: 0,
-                nativeQty: 0, totalQty: 0, todayPnl: 0,
+                weightedCostSum: 0, costShares: 0, totalQty: 0, todayPnl: 0,
                 changePercent: position.isMarketActive ? quote.changePercent : 0,
                 extendedChangePercent: position.isMarketActive ? quote.extendedChangePercent : nil,
                 lotsCount: 0, isMarketActive: position.isMarketActive, quote: quote,
@@ -528,7 +529,10 @@ final class PortfolioViewModel {
             aggregate.nativeCost += nativeCost
             aggregate.nativeValue += nativeValue
             aggregate.nativePnl += nativePnl
-            if hasCost { aggregate.nativeQty += abs(quantity * leverage) }
+            if hasCost {
+                aggregate.weightedCostSum += holding.avgPrice * abs(quantity)
+                aggregate.costShares += abs(quantity)
+            }
             aggregate.totalQty += quantity
             aggregate.todayPnl += position.isMarketActive ? (quote.change / scale) * quantity * leverage : 0
             aggregate.lotsCount += 1
@@ -554,7 +558,8 @@ final class PortfolioViewModel {
             aggregate.pnl = 0
             aggregate.nativeCost = 0
             aggregate.nativePnl = 0
-            aggregate.nativeQty = 0
+            aggregate.weightedCostSum = 0
+            aggregate.costShares = 0
             bySymbol[symbol] = aggregate
         }
         let totalCost = bySymbol.values.reduce(0) { $0 + $1.cost }
@@ -574,7 +579,7 @@ final class PortfolioViewModel {
         var aggregates: [String: SymbolAggregate] = [:]
         for (symbol, data) in bySymbol {
             let nativePnlPercent = abs(data.nativeCost) >= 0.01 ? data.nativePnl / abs(data.nativeCost) * 100 : 0
-            let average = data.nativeQty > 0 ? data.nativeCost / data.nativeQty : .nan
+            let average = data.costShares > 0 ? data.weightedCostSum / data.costShares : .nan
             aggregates[symbol] = SymbolAggregate(
                 id: symbol, value: data.value, cost: data.cost, pnl: data.pnl,
                 pnlPercent: nativePnlPercent, nativeCost: data.nativeCost,
