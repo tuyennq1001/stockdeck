@@ -6,23 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.4</title>
-            <pubDate>Mon, 12 Oct 2026 12:37:08 +0900</pubDate>
-            <sparkle:version>7</sparkle:version>
-            <sparkle:shortVersionString>1.1.4</sparkle:shortVersionString>
+            <title>Version 1.1.5</title>
+            <pubDate>Tue, 13 Oct 2026 05:51:56 +0900</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.1.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.4</h2>
+<h2>What's New in StockDeck 1.1.5</h2>
 <ul>
-    <li><strong>Portfolio Chart Inception Lock:</strong> Portfolio chart timeframes are now strictly anchored to your actual initial investment date, ensuring the "All" view accurately reflects true investment lifetime without arbitrary historical extensions.</li>
-    <li><strong>Adaptive Timeframe Range Picker:</strong> Range options exceeding your portfolio's investment age (such as 3Y or 5Y) are automatically dimmed and disabled with helpful tooltips, preventing misleading backfill calculations.</li>
-    <li><strong>Japanese Mutual Fund Pricing Standardization:</strong> Corrected average purchase price and valuation display for Japanese investment trusts to consistently reflect standard quotes per 10,000 units.</li>
+    <li><strong>Dedicated Volume Chart Card:</strong> Detailed trading volume analysis with discrete session-based 1D, 1W, and 1M views, eliminating weekend gaps and overlaying a consistent, pre-warmed MA20 volume trendline.</li>
+    <li><strong>50D and 50W Volume Table Sparklines:</strong> Added 50D Vol (50 trading sessions with MA50) and 50W Vol (50 weeks with MA50W) column options to both Portfolio and Watchlist tables, with smooth amber moving average curves overlaid directly on volume bars.</li>
+    <li><strong>Optimized Table Margins:</strong> Added dedicated right margin padding to portfolio and watchlist tables, perfectly aligning headers with row cells and ensuring full visibility without card border crowding.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.4/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.5/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="hWD4qw2X44db8mHqhp5rFu9QlZyr12Bylq2Mk65wxFyqIgh2h63ThougAMq2wKK/CE+AsWM8lx012VigTw1HAw=="
-                       length="8743171"/>
+                       sparkle:edSignature="BL+I70aqvWmiwBvs291+ocQH3dJ/ShzWWk/iMBJOF51lrLKIKAooCanuShX6VaE6io2w81R03J+3aVptaIjUCQ=="
+                       length="8844271"/>
         </item>
     </channel>
 </rss>
