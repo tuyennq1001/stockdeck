@@ -273,8 +273,19 @@ final class PortfolioViewModel {
     var symbols: [String] { Array(Set(portfolios.flatMap { $0.holdings.map(\.symbol) })).sorted() }
 
     var earliestPurchaseDate: Date? {
-        let dates = sortedValuedHoldings.compactMap(\.holding.purchaseDate)
+        let dates = portfolios.flatMap { $0.holdings }.compactMap(\.purchaseDate)
         return dates.min()
+    }
+
+    /// Returns true if the portfolio has enough historical depth for the specified chart range.
+    /// Dimmed and disabled when the portfolio's earliest purchase date is more recent than
+    /// the range's start date (with a 7-day grace window for weekend/holiday offsets).
+    func isRangeAvailable(_ range: ChartRange, now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        if range == .week || range == .all { return true }
+        guard let cutoff = range.startDate(from: now, calendar: calendar) else { return true }
+        guard let inception = earliestPurchaseDate else { return true }
+        let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
+        return inception <= graceCutoff
     }
 
     // MARK: - Invalidation & recomputation
@@ -1134,7 +1145,7 @@ final class PortfolioViewModel {
         } else {
             chartCutoff = range == .week ? nil : range.startDate(from: chartNow)
         }
-        if range != .week, !holdings.contains(where: { $0.purchaseDate == nil }),
+        if range != .week,
            let purchaseDate = earliestPurchaseDate {
             let purchaseCutoff = Calendar.current.startOfDay(for: purchaseDate)
             chartCutoff = chartCutoff.map { max($0, purchaseCutoff) } ?? purchaseCutoff

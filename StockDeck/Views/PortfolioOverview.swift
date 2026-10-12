@@ -552,8 +552,11 @@ struct PortfolioOverview: View {
         }
         .onAppear {
             if let savedRaw = storageService.chartRange(for: scopeKey),
-               let range = ChartRange(rawValue: savedRaw) {
+               let range = ChartRange(rawValue: savedRaw),
+               viewModel.isRangeAvailable(range) {
                 chartRange = range
+            } else {
+                chartRange = .all
             }
             loadPositionSort(for: scopeKey)
             loadPnlPreferences(for: scopeKey)
@@ -575,13 +578,19 @@ struct PortfolioOverview: View {
         }
         .onChange(of: scopeKey) { _, newKey in
             if let savedRaw = storageService.chartRange(for: newKey),
-               let range = ChartRange(rawValue: savedRaw) {
+               let range = ChartRange(rawValue: savedRaw),
+               viewModel.isRangeAvailable(range) {
                 chartRange = range
             } else {
                 chartRange = .all
             }
             loadPositionSort(for: newKey)
             loadPnlPreferences(for: newKey)
+        }
+        .onChange(of: viewModel.earliestPurchaseDate) { _, _ in
+            if !viewModel.isRangeAvailable(chartRange) {
+                chartRange = .all
+            }
         }
         .task(id: symbols) {
             // On window open: only the daily 10y series per symbol (the base the
@@ -713,7 +722,13 @@ struct PortfolioOverview: View {
     }
 
     private var rangePicker: some View {
-        SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
+        SegmentedRangePicker(
+            options: ChartRange.allCases,
+            label: \.rawValue,
+            selection: $chartRange,
+            isOptionEnabled: { viewModel.isRangeAvailable($0) },
+            disabledHelp: { _ in "Portfolio history does not yet span this period" }
+        )
     }
 
     @ViewBuilder private var portfolioMenu: some View {
