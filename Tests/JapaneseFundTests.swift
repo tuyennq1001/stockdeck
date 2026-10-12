@@ -182,5 +182,78 @@ final class JapaneseFundTests: XCTestCase {
         XCTAssertFalse(MarketCategory.isTradingDay(symbol: "9I31223A", at: sundayAfternoonJST, customTimeZone: jpTz))
         XCTAssertFalse(MarketCategory.isSessionOpen(symbol: "9I31223A", at: sundayAfternoonJST, customTimeZone: jpTz))
     }
+
+    func testJapaneseFundAggregateAveragePricePreservesStandardScale() {
+        let holding = Holding(symbol: "9I31223A", quantity: 1_036_239, avgPrice: 17886.68)
+        let quote = StockQuote(
+            symbol: "9I31223A",
+            name: "楽天・プラス・S&P500",
+            price: 20130.0,
+            change: -67.0,
+            changePercent: -0.33,
+            currency: "JPY"
+        )
+        let position = PortfolioViewModel.ValuationPosition(
+            holding: holding,
+            portfolioId: UUID(),
+            quote: quote,
+            currency: "JPY",
+            rate: 1.0,
+            costRate: 1.0,
+            isJapaneseFund: true,
+            isMarketActive: true,
+            type: "MUTUAL_FUND",
+            hasLiveQuote: true
+        )
+        let snapshot = PortfolioViewModel.ValuationSnapshot(
+            positions: [position],
+            secondaryCurrency: "",
+            secondaryRate: nil
+        )
+
+        let result = PortfolioViewModel.computeValuation(snapshot)
+        let aggregate = result.aggregates["9I31223A"]
+        XCTAssertNotNil(aggregate)
+        // Average price must be quoted per 10,000 口 (~17,886.68), NOT per 1 口 (1.7886)
+        XCTAssertEqual(aggregate?.avgPrice ?? 0, 17886.68, accuracy: 1e-2)
+        // Native cost must still be properly scaled down by 10,000 for total Yen:
+        // (17886.68 / 10000) * 1,036,239 ≈ 1,853,488.07 JPY
+        XCTAssertEqual(aggregate?.nativeCost ?? 0, (17886.68 / 10000.0) * 1_036_239, accuracy: 1.0)
+    }
+
+    func testJapaneseFundMultipleLotsWeightedAveragePrice() {
+        let lot1 = Holding(symbol: "9I31223A", quantity: 50_000, avgPrice: 16000.0)
+        let lot2 = Holding(symbol: "9I31223A", quantity: 50_000, avgPrice: 18000.0)
+        let quote = StockQuote(
+            symbol: "9I31223A",
+            name: "楽天・プラス・S&P500",
+            price: 20000.0,
+            change: 0,
+            changePercent: 0,
+            currency: "JPY"
+        )
+        let pid = UUID()
+        let pos1 = PortfolioViewModel.ValuationPosition(
+            holding: lot1, portfolioId: pid, quote: quote, currency: "JPY",
+            rate: 1.0, costRate: 1.0, isJapaneseFund: true, isMarketActive: true,
+            type: "MUTUAL_FUND", hasLiveQuote: true
+        )
+        let pos2 = PortfolioViewModel.ValuationPosition(
+            holding: lot2, portfolioId: pid, quote: quote, currency: "JPY",
+            rate: 1.0, costRate: 1.0, isJapaneseFund: true, isMarketActive: true,
+            type: "MUTUAL_FUND", hasLiveQuote: true
+        )
+        let snapshot = PortfolioViewModel.ValuationSnapshot(
+            positions: [pos1, pos2],
+            secondaryCurrency: "",
+            secondaryRate: nil
+        )
+
+        let result = PortfolioViewModel.computeValuation(snapshot)
+        let aggregate = result.aggregates["9I31223A"]
+        XCTAssertNotNil(aggregate)
+        // Weighted average of 16,000 and 18,000 for equal quantities is 17,000
+        XCTAssertEqual(aggregate?.avgPrice ?? 0, 17000.0, accuracy: 1e-4)
+    }
 }
 
