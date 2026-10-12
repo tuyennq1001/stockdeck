@@ -779,7 +779,7 @@ struct SegmentedRangePicker<T: Hashable>: View {
                     guard enabled else { return }
                     withAnimation(.easeInOut(duration: 0.3)) { selection = option }
                 } label: {
-                    Text(LocalizedStringKey(label(option)))
+                    Text(verbatim: label(option))
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)

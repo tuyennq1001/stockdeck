@@ -117,7 +117,7 @@ struct WatchlistWideView: View {
                 return fromAtlPercent
             case .buyTarget:
                 return toBuyTargetPercent
-            case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
+            case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y, .volume50d, .volume50w:
                 return nil
             }
         }
@@ -352,6 +352,8 @@ struct WatchlistWideView: View {
                 LazyVStack(spacing: DS.gap) {
                     PriceChartCard(symbol: symbol, quote: quote)
                         .id("price-\(symbol)")
+                    VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
+                        .id("volume-\(symbol)")
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
                     factsCard(quote)
                     InsiderTradingCard(symbol: symbol)
@@ -556,7 +558,7 @@ struct WatchlistWideView: View {
         let otherMetrics = selectedMetrics.filter { $0 != .price }
         let metricWidth = otherMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
         let columns = 4 + otherMetrics.count
-        return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28
+        return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28 + 20
     }
 
     private var tableToolbar: some View {
@@ -826,6 +828,7 @@ struct WatchlistWideView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
+        .padding(.trailing, 20)
         .textCase(.uppercase)
         .contextMenu {
             Button {
@@ -1284,6 +1287,10 @@ private struct WatchRowView<Menu: View>: View {
                 Sparkline(symbol: row.symbol, isYTD: true)
             case .chart1y:
                 Sparkline(symbol: row.symbol, days: 365)
+            case .volume50d:
+                VolumeSparkline(symbol: row.symbol, mode: .days50)
+            case .volume50w:
+                VolumeSparkline(symbol: row.symbol, mode: .weeks50)
             }
         }
         .frame(width: WCol.width(for: metric), alignment: .trailing)
@@ -1436,6 +1443,7 @@ private struct WatchRowView<Menu: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 9)
+        .padding(.trailing, 20)
         .background((hover || isActive) && !isReordering ? DS.cardAlt.opacity(isActive ? 1.0 : 0.6) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {

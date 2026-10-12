@@ -50,6 +50,8 @@ struct SymbolDetailView: View {
                     LazyVStack(alignment: .leading, spacing: DS.gap) {
                         PriceChartCard(symbol: symbol, quote: quote, chartHeight: 240)
                             .id("price-\(symbol)")
+                        VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
+                            .id("volume-\(symbol)")
                         if storageService.show52WeekBar {
                             fiftyTwoWeekCard(quote)
                         }

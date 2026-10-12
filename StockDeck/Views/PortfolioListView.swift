@@ -13,6 +13,7 @@ private enum PortfolioCol {
     static let shares: CGFloat = 68
     static let lots: CGFloat = 55
     static let weight: CGFloat = 66
+    static let volume: CGFloat = 72
 }
 
 struct PortfolioListView: View {
@@ -67,6 +68,10 @@ struct PortfolioListView: View {
             Text("Lots").frame(width: PortfolioCol.lots, alignment: .trailing)
         case .weight:
             Text("Weight").frame(width: PortfolioCol.weight, alignment: .trailing)
+        case .volume50d:
+            Text("50D Vol").frame(width: PortfolioCol.volume, alignment: .trailing)
+        case .volume50w:
+            Text("50W Vol").frame(width: PortfolioCol.volume, alignment: .trailing)
         }
     }
 
@@ -1572,6 +1577,14 @@ struct PortfolioQuoteRow: View {
                 .foregroundColor(.secondary)
                 .lineLimit(1)
                 .frame(width: PortfolioCol.weight, alignment: .trailing)
+
+        case .volume50d:
+            VolumeSparkline(symbol: globalPos.symbol, mode: .days50)
+                .frame(width: PortfolioCol.volume, alignment: .trailing)
+
+        case .volume50w:
+            VolumeSparkline(symbol: globalPos.symbol, mode: .weeks50)
+                .frame(width: PortfolioCol.volume, alignment: .trailing)
         }
     }
 }

@@ -92,4 +92,131 @@ final class PriceHistoryTests: XCTestCase {
     func testDeriveMonthlyEmptyForEmptyInput() {
         XCTAssertTrue(PriceHistory.deriveMonthly(from: [], calendar: makeCalendar()).isEmpty)
     }
+
+    func testPairsTimestampsWithVolumes() {
+        let points = PriceHistory.points(timestamps: [1000, 2000, 3000],
+                                         closes: [10.0, 11.5, 12.0],
+                                         volumes: [100.0, 250.0, nil])
+        XCTAssertEqual(points.count, 3)
+        XCTAssertEqual(points[0].volume, 100.0)
+        XCTAssertEqual(points[1].volume, 250.0)
+        XCTAssertNil(points[2].volume)
+    }
+
+    func testDeriveMonthlyAggregatesVolume() {
+        let cal = makeCalendar()
+        let points = [
+            PricePoint(date: date(2026, 1, 5, calendar: cal), close: 100, volume: 500),
+            PricePoint(date: date(2026, 1, 20, calendar: cal), close: 110, volume: 300),
+            PricePoint(date: date(2026, 2, 3, calendar: cal), close: 115, volume: 400),
+            PricePoint(date: date(2026, 2, 27, calendar: cal), close: 120, volume: 600),
+        ]
+        let monthly = PriceHistory.deriveMonthly(from: points, calendar: cal)
+
+        XCTAssertEqual(monthly.count, 2)
+        XCTAssertEqual(monthly[0].close, 110, accuracy: 0.001)
+        XCTAssertEqual(monthly[0].volume, 800)
+        XCTAssertEqual(monthly[1].close, 120, accuracy: 0.001)
+        XCTAssertEqual(monthly[1].volume, 1000)
+    }
+
+    func testVolumeMetricsCategoriesAndTitles() throws {
+        XCTAssertEqual(WatchlistMetric.volume50d.title, "50D Vol")
+        XCTAssertEqual(WatchlistMetric.volume50w.title, "50W Vol")
+        XCTAssertTrue(WatchlistMetric.volume50d.isChart)
+        XCTAssertTrue(WatchlistMetric.volume50w.isChart)
+
+        XCTAssertEqual(PortfolioColumnMetric.volume50d.title, "50D Vol")
+        XCTAssertEqual(PortfolioColumnMetric.volume50w.title, "50W Vol")
+        XCTAssertEqual(PortfolioColumnMetric.volume50d.category, .chart)
+        XCTAssertEqual(PortfolioColumnMetric.volume50w.category, .chart)
+
+        // Test backward-compatible JSON decoding
+        let legacyJson1 = "\"volume20w\"".data(using: .utf8)!
+        let legacyJson2 = "\"volume7d\"".data(using: .utf8)!
+        let legacyJson3 = "\"volume30d\"".data(using: .utf8)!
+        let newJsonW = "\"volume50w\"".data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder().decode(WatchlistMetric.self, from: legacyJson1), .volume50w)
+        XCTAssertEqual(try JSONDecoder().decode(WatchlistMetric.self, from: legacyJson2), .volume50d)
+        XCTAssertEqual(try JSONDecoder().decode(WatchlistMetric.self, from: legacyJson3), .volume50d)
+        XCTAssertEqual(try JSONDecoder().decode(WatchlistMetric.self, from: newJsonW), .volume50w)
+        XCTAssertEqual(try JSONDecoder().decode(PortfolioColumnMetric.self, from: legacyJson1), .volume50w)
+        XCTAssertEqual(try JSONDecoder().decode(PortfolioColumnMetric.self, from: legacyJson2), .volume50d)
+        XCTAssertEqual(try JSONDecoder().decode(PortfolioColumnMetric.self, from: legacyJson3), .volume50d)
+        XCTAssertEqual(try JSONDecoder().decode(PortfolioColumnMetric.self, from: newJsonW), .volume50w)
+    }
+
+    func testComputeHistoryPrefersSeriesWithVolume() {
+        let cal = makeCalendar()
+        let now = date(2026, 6, 1, calendar: cal)
+        let d1 = date(2026, 5, 20, calendar: cal)
+        let d2 = date(2026, 5, 25, calendar: cal)
+
+        // daily has volume
+        let dailyWithVol = [
+            PricePoint(date: d1, close: 100, volume: 5000),
+            PricePoint(date: d2, close: 102, volume: 6000)
+        ]
+        // watchlist lacks volume
+        let watchlistWithoutVol = [
+            PricePoint(date: d1, close: 100, volume: nil),
+            PricePoint(date: d2, close: 102, volume: nil)
+        ]
+
+        let input = PriceChartCard.HistoryInput(
+            symbol: "TEST",
+            range: .month,
+            daily: dailyWithVol,
+            watchlist: watchlistWithoutVol,
+            full: [],
+            intraday: []
+        )
+
+        let result = PriceChartCard.computeHistory(input, now: now)
+        XCTAssertTrue(result.contains(where: { ($0.volume ?? 0) > 0 }))
+        XCTAssertEqual(result.last?.volume, 6000)
+    }
+
+    func testVolumeCardWarmsUpMAAndAlignsPeriods() {
+        let cal = makeCalendar()
+        let now = date(2026, 6, 1, calendar: cal)
+
+        // Generate 400 days of daily points (~1.1 years)
+        var points: [PricePoint] = []
+        for i in (0..<400).reversed() {
+            guard let d = cal.date(byAdding: .day, value: -i, to: now) else { continue }
+            points.append(PricePoint(date: d, close: 100, open: 99, volume: 1000))
+        }
+
+        // Test Daily timeframe
+        let dailyInput = VolumeChartCard.HistoryInput(
+            symbol: "VOO",
+            timeframe: .daily,
+            daily: points,
+            watchlist: [],
+            full: []
+        )
+        let dailyResult = VolumeChartCard.processVolumeData(input: dailyInput)
+        XCTAssertEqual(dailyResult.points.count, 50)
+        XCTAssertEqual(dailyResult.latestVolume, 1000)
+        XCTAssertEqual(dailyResult.latestMA20, 1000)
+        XCTAssertEqual(dailyResult.points.first?.index, 0)
+        XCTAssertEqual(dailyResult.points.last?.index, 49)
+        XCTAssertEqual(dailyResult.points.first?.ma, 1000)
+
+        // Test Weekly timeframe
+        let weeklyInput = VolumeChartCard.HistoryInput(
+            symbol: "VOO",
+            timeframe: .weekly,
+            daily: points,
+            watchlist: [],
+            full: []
+        )
+        let weeklyResult = VolumeChartCard.processVolumeData(input: weeklyInput)
+        XCTAssertEqual(weeklyResult.points.count, 52)
+        XCTAssertEqual(weeklyResult.points.first?.index, 0)
+        XCTAssertEqual(weeklyResult.points.last?.index, 51)
+        XCTAssertNotNil(weeklyResult.points.first?.ma)
+        XCTAssertGreaterThan(weeklyResult.latestMA20, 0)
+    }
 }

@@ -1069,6 +1069,10 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
+    @Published var lastVolumeChartTimeframe: String = "1D" {
+        didSet { scheduleSave() }
+    }
+
     @Published var portfolioPositionSorts: [String: String] = [:] {
         didSet { scheduleSave() }
     }
@@ -1362,7 +1366,7 @@ class StorageService: ObservableObject {
                 case .buyTarget:
                     guard let target = stockTargets[symbol], target.targetPrice > 0, regularPrice > 0 else { return nil }
                     return target.percentDistance(from: regularPrice)
-                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y:
+                case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y, .volume50d, .volume50w:
                     return nil
                 }
             }
@@ -2407,6 +2411,7 @@ class StorageService: ObservableObject {
         var aiDeepseekThinking: Bool?
         var investorProfile: InvestorProfile?
         var lastStockChartRange: String?
+        var lastVolumeChartTimeframe: String?
         var portfolioPositionSorts: [String: String]?
         var lastSelectedTab: String?
         var menuBarShortcut: MenuBarShortcut?
@@ -2479,6 +2484,7 @@ class StorageService: ObservableObject {
             aiDeepseekThinking: aiDeepseekThinking,
             investorProfile: investorProfile,
             lastStockChartRange: lastStockChartRange,
+            lastVolumeChartTimeframe: lastVolumeChartTimeframe,
             portfolioPositionSorts: portfolioPositionSorts,
             lastSelectedTab: lastSelectedTab,
             menuBarShortcut: menuBarShortcut,
@@ -2604,6 +2610,7 @@ class StorageService: ObservableObject {
         aiDeepseekThinking = decoded.aiDeepseekThinking ?? false
         investorProfile = decoded.investorProfile
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
+        lastVolumeChartTimeframe = decoded.lastVolumeChartTimeframe ?? "1D"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
         if let tab = decoded.lastSelectedTab ?? UserDefaults.standard.string(forKey: "lastSelectedTab") {
             lastSelectedTab = (tab == "Watchlist") ? "Watchlists" : tab

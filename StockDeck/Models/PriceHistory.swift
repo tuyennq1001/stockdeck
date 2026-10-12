@@ -7,14 +7,16 @@ struct PricePoint: Identifiable, Equatable, Codable, Sendable {
     let open: Double?
     let high: Double?
     let low: Double?
+    let volume: Double?
     var id: Date { date }
 
-    init(date: Date, close: Double, open: Double? = nil, high: Double? = nil, low: Double? = nil) {
+    init(date: Date, close: Double, open: Double? = nil, high: Double? = nil, low: Double? = nil, volume: Double? = nil) {
         self.date = date
         self.close = close
         self.open = open
         self.high = high
         self.low = low
+        self.volume = volume
     }
 
     var effectiveOpen: Double { open ?? close }
@@ -44,7 +46,7 @@ enum PriceHistory {
 
     /// Pairs the v8 chart `timestamp` array with OHLC arrays into
     /// chronological price points, skipping nil holes.
-    static func points(timestamps: [Int], closes: [Double?], opens: [Double?]? = nil, highs: [Double?]? = nil, lows: [Double?]? = nil) -> [PricePoint] {
+    static func points(timestamps: [Int], closes: [Double?], opens: [Double?]? = nil, highs: [Double?]? = nil, lows: [Double?]? = nil, volumes: [Double?]? = nil) -> [PricePoint] {
         let count = timestamps.count
         var result: [PricePoint] = []
         result.reserveCapacity(count)
@@ -52,6 +54,7 @@ enum PriceHistory {
         let opensArr = opens ?? []
         let highsArr = highs ?? []
         let lowsArr = lows ?? []
+        let volsArr = volumes ?? []
 
         for i in 0..<count {
             guard i < closes.count, let close = closes[i] else { continue }
@@ -60,8 +63,9 @@ enum PriceHistory {
             let open = i < opensArr.count ? opensArr[i] : nil
             let high = i < highsArr.count ? highsArr[i] : nil
             let low = i < lowsArr.count ? lowsArr[i] : nil
+            let volume = i < volsArr.count ? volsArr[i] : nil
 
-            result.append(PricePoint(date: date, close: close, open: open, high: high, low: low))
+            result.append(PricePoint(date: date, close: close, open: open, high: high, low: low, volume: volume))
         }
 
         return result.sorted { $0.date < $1.date }
@@ -100,12 +104,16 @@ enum PriceHistory {
     static func deriveMonthly(from daily: [PricePoint], calendar: Calendar = .current) -> [PricePoint] {
         let sorted = daily.sorted { $0.date < $1.date }
         var lastCloseByMonth: [Date: Double] = [:]
+        var volumeByMonth: [Date: Double] = [:]
         for p in sorted where p.close.isFinite {
             let monthStart = calendar.dateInterval(of: .month, for: p.date)?.start
                 ?? calendar.startOfDay(for: p.date)
             lastCloseByMonth[monthStart] = p.close
+            if let v = p.volume, v > 0 {
+                volumeByMonth[monthStart, default: 0] += v
+            }
         }
         return lastCloseByMonth.sorted { $0.key < $1.key }
-            .map { PricePoint(date: $0.key, close: $0.value) }
+            .map { PricePoint(date: $0.key, close: $0.value, volume: volumeByMonth[$0.key]) }
     }
 }

@@ -225,14 +225,22 @@ struct PriceChartCard: View {
         } else if wHist.isEmpty {
             daily = pHist
         } else {
-            let pLast = pHist.last?.date ?? .distantPast
-            let wLast = wHist.last?.date ?? .distantPast
-            if pLast > wLast {
+            let pHasVol = pHist.contains(where: { ($0.volume ?? 0) > 0 })
+            let wHasVol = wHist.contains(where: { ($0.volume ?? 0) > 0 })
+            if pHasVol && !wHasVol {
                 daily = pHist
-            } else if wLast > pLast {
+            } else if wHasVol && !pHasVol {
                 daily = wHist
             } else {
-                daily = pHist.count >= wHist.count ? pHist : wHist
+                let pLast = pHist.last?.date ?? .distantPast
+                let wLast = wHist.last?.date ?? .distantPast
+                if pLast > wLast {
+                    daily = pHist
+                } else if wLast > pLast {
+                    daily = wHist
+                } else {
+                    daily = pHist.count >= wHist.count ? pHist : wHist
+                }
             }
         }
         let maxPoints = input.full
@@ -573,6 +581,252 @@ struct Sparkline: View {
             }
         }
         .frame(width: width, height: height)
+    }
+}
+
+/// A tiny volume bar chart for table rows — rendered using Canvas for near-zero CPU/GPU footprint.
+/// Supports both 30D daily mode and 20W weekly mode, overlaying a warmed-up MA line.
+struct VolumeSparkline: View {
+    let symbol: String
+    var mode: Mode = .days50
+    var width: CGFloat? = 64
+    var height: CGFloat? = 22
+
+    enum Mode: String, Hashable, Sendable {
+        case days50 = "50d"
+        case weeks50 = "50w"
+    }
+
+    init(symbol: String, mode: Mode = .days50, width: CGFloat? = 64, height: CGFloat? = 22) {
+        self.symbol = symbol
+        self.mode = mode
+        self.width = width
+        self.height = height
+    }
+
+    /// Convenience init for backwards compatibility
+    init(symbol: String, days: Int, width: CGFloat? = 64, height: CGFloat? = 22) {
+        self.symbol = symbol
+        self.mode = (days > 70) ? .weeks50 : .days50
+        self.width = width
+        self.height = height
+    }
+
+    struct VolumeBarItem: Equatable {
+        let volRatio: CGFloat
+        let maRatio: CGFloat?
+        let isUp: Bool
+        let volume: Double
+        let ma: Double?
+    }
+
+    private static var barsCache: [String: (revision: UInt64, bars: [VolumeBarItem])] = [:]
+    private static let cacheLock = NSLock()
+
+    private var bars: [VolumeBarItem] {
+        let stockService = StockService.shared
+        let all: [PricePoint]
+        if let p = stockService.priceHistory[symbol], p.contains(where: { ($0.volume ?? 0) > 0 }) {
+            all = p
+        } else if let w = stockService.watchlistHistory[symbol], w.contains(where: { ($0.volume ?? 0) > 0 }) {
+            all = w
+        } else if let m = stockService.priceHistoryMax[symbol], m.contains(where: { ($0.volume ?? 0) > 0 }) {
+            all = m
+        } else {
+            all = []
+        }
+        guard !all.isEmpty else { return [] }
+        let cacheKey = "\(symbol)-vol-\(mode.rawValue)"
+        let revision = stockService.historyRevision
+
+        Self.cacheLock.lock()
+        if let entry = Self.barsCache[cacheKey], entry.revision == revision {
+            Self.cacheLock.unlock()
+            return entry.bars
+        }
+        Self.cacheLock.unlock()
+
+        let sortedAll = all.sorted(by: { $0.date < $1.date })
+        let maPeriod = 50
+        let cal = Calendar.current
+
+        let fullPeriods: [(volume: Double, isUp: Bool, close: Double)]
+
+        switch mode {
+        case .days50:
+            fullPeriods = sortedAll.map { pt in
+                let v = pt.volume ?? 0
+                let up = pt.close >= pt.effectiveOpen
+                return (volume: v, isUp: up, close: pt.close)
+            }
+
+        case .weeks50:
+            var groups: [(date: Date, points: [PricePoint])] = []
+            var currentWeekStart: Date?
+            var currentPoints: [PricePoint] = []
+
+            for pt in sortedAll {
+                let weekStart = cal.dateInterval(of: .weekOfYear, for: pt.date)?.start ?? pt.date
+                if let cur = currentWeekStart, cal.isDate(cur, inSameDayAs: weekStart) {
+                    currentPoints.append(pt)
+                } else {
+                    if let cur = currentWeekStart, !currentPoints.isEmpty {
+                        groups.append((date: cur, points: currentPoints))
+                    }
+                    currentWeekStart = weekStart
+                    currentPoints = [pt]
+                }
+            }
+            if let cur = currentWeekStart, !currentPoints.isEmpty {
+                groups.append((date: cur, points: currentPoints))
+            }
+
+            fullPeriods = groups.compactMap { grp -> (volume: Double, isUp: Bool, close: Double)? in
+                guard let first = grp.points.first, let last = grp.points.last else { return nil }
+                let sumVol = grp.points.reduce(0.0) { $0 + ($1.volume ?? 0) }
+                let isUp = last.close >= first.effectiveOpen
+                return (volume: sumVol, isUp: isUp, close: last.close)
+            }
+        }
+
+        guard !fullPeriods.isEmpty else {
+            Self.cacheLock.lock()
+            Self.barsCache[cacheKey] = (revision: revision, bars: [])
+            Self.cacheLock.unlock()
+            return []
+        }
+
+        // Compute MA across the full series
+        var withMA: [(volume: Double, isUp: Bool, ma: Double?)] = []
+        withMA.reserveCapacity(fullPeriods.count)
+        for i in 0..<fullPeriods.count {
+            let start = max(0, i - maPeriod + 1)
+            var sum: Double = 0
+            var count = 0
+            for j in start...i {
+                if fullPeriods[j].volume > 0 {
+                    sum += fullPeriods[j].volume
+                    count += 1
+                }
+            }
+            let maVal: Double? = count > 0 ? (sum / Double(count)) : nil
+            let p = fullPeriods[i]
+            withMA.append((volume: p.volume, isUp: p.isUp, ma: maVal))
+        }
+
+        // Slice to visible count: 50 trading sessions or 50 weeks
+        let targetCount = 50
+        let sliced = withMA.count > targetCount ? Array(withMA.suffix(targetCount)) : withMA
+
+        var maxVal: Double = 0
+        for item in sliced {
+            if item.volume > maxVal { maxVal = item.volume }
+            if let ma = item.ma, ma > maxVal { maxVal = ma }
+        }
+
+        guard maxVal > 0 else {
+            Self.cacheLock.lock()
+            Self.barsCache[cacheKey] = (revision: revision, bars: [])
+            Self.cacheLock.unlock()
+            return []
+        }
+
+        var result: [VolumeBarItem] = []
+        result.reserveCapacity(sliced.count)
+        for item in sliced {
+            let vRatio = CGFloat(min(max(item.volume / maxVal, 0.0), 1.0))
+            let mRatio = item.ma.map { CGFloat(min(max($0 / maxVal, 0.0), 1.0)) }
+            result.append(VolumeBarItem(volRatio: vRatio, maRatio: mRatio, isUp: item.isUp, volume: item.volume, ma: item.ma))
+        }
+
+        Self.cacheLock.lock()
+        Self.barsCache[cacheKey] = (revision: revision, bars: result)
+        Self.cacheLock.unlock()
+
+        return result
+    }
+
+    private func formatVol(_ val: Double) -> String {
+        let absVal = abs(val)
+        if absVal >= 1_000_000_000 {
+            return String(format: "%.2fB", val / 1_000_000_000)
+        } else if absVal >= 1_000_000 {
+            return String(format: "%.1fM", val / 1_000_000)
+        } else if absVal >= 1_000 {
+            return String(format: "%.0fK", val / 1_000)
+        }
+        return String(format: "%.0f", val)
+    }
+
+    private var tooltipText: String {
+        guard let last = bars.last, last.volume > 0 else { return "" }
+        let volStr = formatVol(last.volume)
+        if let ma = last.ma, ma > 0 {
+            let diff = ((last.volume - ma) / ma) * 100.0
+            let sign = diff >= 0 ? "+" : ""
+            let maLabel = (mode == .weeks50) ? "MA50W" : "MA50"
+            return "Vol: \(volStr) • \(maLabel): \(formatVol(ma)) (\(sign)\(String(format: "%.1f%%", diff)))"
+        }
+        return "Vol: \(volStr)"
+    }
+
+    var body: some View {
+        let barData = bars
+        Group {
+            if !barData.isEmpty {
+                Canvas { context, size in
+                    guard size.width > 0, size.height > 0 else { return }
+                    let count = barData.count
+                    guard count > 0 else { return }
+
+                    let spacing: CGFloat = (count > 30) ? 0.5 : 1.0
+                    let totalSpacing = CGFloat(count - 1) * spacing
+                    let barWidth = max(0.8, (size.width - totalSpacing) / CGFloat(count))
+                    let minBarHeight: CGFloat = 2.0
+
+                    // 1. Draw volume bars with 50% opacity
+                    for (i, bar) in barData.enumerated() {
+                        let x = CGFloat(i) * (barWidth + spacing)
+                        let barHeight = max(minBarHeight, bar.volRatio * size.height)
+                        let y = size.height - barHeight
+                        let rect = CGRect(x: x, y: y, width: barWidth, height: barHeight)
+                        let tint = bar.isUp ? DS.up : DS.down
+                        context.fill(Path(roundedRect: rect, cornerRadius: min(1.0, barWidth / 2)), with: .color(tint.opacity(0.50)))
+                    }
+
+                    // 2. Draw smoothed MA line on top in amber
+                    var maPath = Path()
+                    var hasPoint = false
+                    for (i, bar) in barData.enumerated() {
+                        guard let maRatio = bar.maRatio else { continue }
+                        let xCenter = CGFloat(i) * (barWidth + spacing) + barWidth / 2.0
+                        let yMa = size.height - (maRatio * size.height)
+                        let pt = CGPoint(x: xCenter, y: min(max(yMa, 1.0), size.height - 1.0))
+                        if !hasPoint {
+                            maPath.move(to: pt)
+                            hasPoint = true
+                        } else {
+                            maPath.addLine(to: pt)
+                        }
+                    }
+
+                    if hasPoint {
+                        let amber = Color(red: 0.88, green: 0.50, blue: 0.05)
+                        context.stroke(maPath, with: .color(amber), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+                    }
+                }
+            } else {
+                Capsule().fill(DS.cardAlt).frame(height: 2)
+            }
+        }
+        .frame(width: width, height: height)
+        .help(tooltipText)
+        .task(id: symbol) {
+            let s = StockService.shared
+            if !s.isJapaneseMutualFund(symbol) && (s.priceHistory[symbol]?.contains(where: { ($0.volume ?? 0) > 0 }) != true) {
+                await s.ensurePriceHistory(for: symbol)
+            }
+        }
     }
 }
 
