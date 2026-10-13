@@ -4,8 +4,20 @@ private enum WatchlistCol {
     static let symbol: CGFloat = 124
     static let price: CGFloat = 82
     static let change: CGFloat = 82
-    static let oneYear: CGFloat = 75
-    static let threeYears: CGFloat = 75
+    static let period: CGFloat = 72
+    static let buyTarget: CGFloat = 96
+    static let marketCap: CGFloat = 88
+    static let chart: CGFloat = 76
+
+    static func width(for metric: WatchlistMetric) -> CGFloat {
+        switch metric {
+        case .price: return price
+        case .today, .todayChange: return change
+        case .buyTarget: return buyTarget
+        case .marketCap, .ath, .atl: return marketCap
+        default: return metric.isChart ? chart : period
+        }
+    }
 }
 
 
@@ -36,6 +48,17 @@ struct WatchlistView: View {
     @State private var alertTarget: TargetSheetItem? = nil
     @State private var confirmDeleteWatchlist: Watchlist? = nil
     @State private var confirmRemoveSymbol: String? = nil
+
+    private var selectedMetrics: [WatchlistMetric] {
+        storageService.watchlistMetrics
+    }
+
+    private var tableWidth: CGFloat {
+        let base = WatchlistCol.symbol + WatchlistCol.price
+        let otherMetrics = selectedMetrics.filter { $0 != .price }
+        let metricWidth = otherMetrics.reduce(CGFloat.zero) { $0 + WatchlistCol.width(for: $1) }
+        return max(462, base + metricWidth + 24)
+    }
 
     private var currentSortKey: WatchlistSortKey {
         WatchlistSortKey.from(rawString: storageService.currentWatchlist.sortKey)
@@ -98,6 +121,7 @@ struct WatchlistView: View {
                 }
             }
             .padding(.vertical, 4)
+            .frame(minWidth: tableWidth, alignment: .leading)
         }
         .refreshable {
             if storageService.iCloudSyncEnabled {
@@ -114,6 +138,8 @@ struct WatchlistView: View {
         if let row = viewModel.rowsBySymbol[symbol] {
             QuoteRow(
                 row: row,
+                metrics: selectedMetrics,
+                tableWidth: tableWidth,
                 showCompanyName: storageService.showCompanyName,
                 showExtendedHours: storageService.showExtendedHours,
                 percentDecimals: storageService.percentDecimals,
@@ -150,9 +176,9 @@ struct WatchlistView: View {
                     .scaleEffect(0.6)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 4.5)
+            .frame(minWidth: tableWidth, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture {
                 showSymbolDetail.perform(symbol)
@@ -166,16 +192,20 @@ struct WatchlistView: View {
 
     private var headerRow: some View {
         HStack(spacing: 0) {
-            sortHeader("Symbol", column: .symbol)
+            sortHeader("Symbol", column: .symbol, align: .leading, leadingIndent: 25)
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
-            sortHeader("Price", column: .price)
+            sortHeader("Price", column: .price, align: .trailing)
                 .frame(width: WatchlistCol.price, alignment: .trailing)
-            sortHeader("Today %", column: .changePercent)
-                .frame(width: WatchlistCol.change, alignment: .trailing)
-            sortHeader("1Y", column: .metric(.oneYear))
-                .frame(width: WatchlistCol.oneYear, alignment: .trailing)
-            sortHeader("3Y", column: .metric(.threeYears))
-                .frame(width: WatchlistCol.threeYears, alignment: .trailing)
+            ForEach(selectedMetrics.filter { $0 != .price }) { metric in
+                if metric.isChart {
+                    Text(LocalizedStringKey(metric.title))
+                        .frame(width: WatchlistCol.width(for: metric), alignment: .trailing)
+                } else {
+                    let sortK: WatchlistSortKey = (metric == .today || metric == .todayChange) ? .changePercent : .metric(metric)
+                    sortHeader(LocalizedStringKey(metric.title), column: sortK, align: .trailing)
+                        .frame(width: WatchlistCol.width(for: metric), alignment: .trailing)
+                }
+            }
         }
         .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
         .foregroundColor(.secondary)
@@ -183,6 +213,7 @@ struct WatchlistView: View {
         .textCase(.uppercase)
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+        .frame(minWidth: tableWidth, alignment: .leading)
     }
 
     var body: some View {
@@ -210,11 +241,17 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                headerRow
+                ScrollView(.horizontal, showsIndicators: true) {
+                    VStack(spacing: 0) {
+                        headerRow
 
-                Divider()
+                        Divider()
 
-                flatList
+                        flatList
+                    }
+                    .frame(minWidth: tableWidth, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
 
                 Divider()
 
@@ -350,6 +387,12 @@ struct WatchlistView: View {
             .onChange(of: storageService.watchlist) { _, newWatchlist in
                 Task {
                     await stockService.ensureSparklines(for: newWatchlist)
+                }
+            }
+            .task(id: selectedMetrics) {
+                guard selectedMetrics.contains(where: { $0.category == .price }) else { return }
+                for symbol in storageService.watchlist where stockService.priceHistoryMax[symbol] == nil {
+                    await stockService.ensurePriceHistoryMax(for: symbol)
                 }
             }
             .overlay {
@@ -494,17 +537,20 @@ struct WatchlistView: View {
     }
 
     @ViewBuilder
-    private func sortHeader(_ title: LocalizedStringKey, column: WatchlistSortKey) -> some View {
+    private func sortHeader(_ title: LocalizedStringKey, column: WatchlistSortKey, align: Alignment = .trailing, leadingIndent: CGFloat = 0) -> some View {
         Button(action: {
             toggleSort(column)
         }) {
             HStack(spacing: 2) {
+                if align == .trailing { Spacer(minLength: 0) }
                 Text(title)
                 if currentSortKey == column {
                     Image(systemName: currentSortAsc ? "chevron.up" : "chevron.down")
                         .font(.inter(8, relativeTo: .caption2))
                 }
+                if align == .leading { Spacer(minLength: 0) }
             }
+            .padding(.leading, leadingIndent)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -796,6 +842,8 @@ struct QuickAddHoldingView: View {
 
 struct QuoteRow<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
+    let metrics: [WatchlistMetric]
+    let tableWidth: CGFloat
     let showCompanyName: Bool
     let showExtendedHours: Bool
     let percentDecimals: Int
@@ -805,6 +853,10 @@ struct QuoteRow<Menu: View>: View {
     var onStartDrag: (() -> NSItemProvider)? = nil
     @ViewBuilder let menu: () -> Menu
     @State private var isHovered = false
+
+    private func priceDec(_ price: Double) -> Int {
+        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
+    }
 
     private var dragPreviewBadge: some View {
         HStack(spacing: 6) {
@@ -981,17 +1033,141 @@ struct QuoteRow<Menu: View>: View {
         .frame(width: width, alignment: .trailing)
     }
 
+    @ViewBuilder
+    private func macOSPriceMetricCell(value: Double?, width: CGFloat) -> some View {
+        Group {
+            if let value {
+                let dec = priceDec(value)
+                Text(StorageService.formatNumber(value, decimals: dec))
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+            } else {
+                Text("—")
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(width: width, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private var macOSBuyTargetCell: some View {
+        if let target = row.buyTarget {
+            let currSym = row.isIndex ? "" : (row.currency.isEmpty ? "" : StorageService.currencySymbol(for: row.currency))
+            let dec = priceDec(target.targetPrice)
+            let formattedPrice = StorageService.formatNumber(target.targetPrice, decimals: dec, stripTrailingZeros: true)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("\(currSym)\(formattedPrice)")
+                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                    .fontWeight(.medium)
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                if row.isInBuyZone {
+                    Text("🎯 MUA")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundStyle(DS.up)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 0.5)
+                        .background(DS.up.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                } else if let pct = row.toBuyTargetPercent {
+                    Text(String(format: "%+.\(percentDecimals)f%%", pct))
+                        .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        } else {
+            Text("—")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var macOSMarketCapCell: some View {
+        if let mc = row.quote?.marketCap, mc > 0 {
+            Text(StorageService.formatMarketCap(mc, currency: row.currency))
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+        } else {
+            Text("—")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func metricCell(_ metric: WatchlistMetric) -> some View {
+        Group {
+            switch metric {
+            case .price:
+                macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
+            case .today, .todayChange:
+                macOSChangeCell.frame(width: WatchlistCol.change, alignment: .trailing)
+            case .oneMonth, .threeMonths, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears, .ytd:
+                macOSPeriodCell(value: row.metricValue(for: metric), width: WatchlistCol.width(for: metric))
+            case .ath:
+                macOSPriceMetricCell(value: row.allTimeHigh, width: WatchlistCol.width(for: .ath))
+            case .atl:
+                macOSPriceMetricCell(value: row.allTimeLow, width: WatchlistCol.width(for: .atl))
+            case .fromAth:
+                macOSPeriodCell(value: row.fromAthPercent, width: WatchlistCol.width(for: .fromAth))
+            case .fromAtl:
+                macOSPeriodCell(value: row.fromAtlPercent, width: WatchlistCol.width(for: .fromAtl))
+            case .buyTarget:
+                macOSBuyTargetCell.frame(width: WatchlistCol.buyTarget, alignment: .trailing)
+            case .marketCap:
+                macOSMarketCapCell.frame(width: WatchlistCol.marketCap, alignment: .trailing)
+            case .chart24h:
+                Sparkline(symbol: row.symbol, days: 1)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chart7d:
+                Sparkline(symbol: row.symbol, days: 7)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chart30d:
+                Sparkline(symbol: row.symbol, days: 30)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chart60d:
+                Sparkline(symbol: row.symbol, days: 60)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chart90d:
+                Sparkline(symbol: row.symbol, days: 90)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chartYtd:
+                Sparkline(symbol: row.symbol, isYTD: true)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .chart1y:
+                Sparkline(symbol: row.symbol, days: 365)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .volume50d:
+                VolumeSparkline(symbol: row.symbol, mode: .days50)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .volume50w:
+                VolumeSparkline(symbol: row.symbol, mode: .weeks50)
+                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             macOSSymbolCell
             macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
-            macOSChangeCell.frame(width: WatchlistCol.change, alignment: .trailing)
-            macOSPeriodCell(value: row.oneYearChangePercent, width: WatchlistCol.oneYear)
-            macOSPeriodCell(value: row.threeYearChangePercent, width: WatchlistCol.threeYears)
+            ForEach(metrics.filter { $0 != .price }) { metric in
+                metricCell(metric)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 4.5)
+        .frame(minWidth: tableWidth, alignment: .leading)
         .background(isHovered && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
