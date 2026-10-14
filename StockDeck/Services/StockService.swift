@@ -251,9 +251,19 @@ class StockService: ObservableObject {
         let all = collectSymbols(storageService: storageService)
         return all.filter { s in
             let clean = s.hasSuffix("-USD") ? String(s.dropLast(4)) : s
-            return !StorageService.isStandardCryptoSymbol(clean)
-                && !StorageService.isBinanceNativePair(s)
-                && !StorageService.isStandardCryptoSymbol(s)
+            if StorageService.isStandardCryptoSymbol(clean)
+                || StorageService.isBinanceNativePair(s)
+                || StorageService.isStandardCryptoSymbol(s) {
+                return false
+            }
+            let exchange = storageService.exchange(for: s)
+            if isVietnameseStock(s, exchange: exchange) {
+                return false
+            }
+            if isJapaneseMutualFund(s) {
+                return false
+            }
+            return true
         }
     }
 
@@ -2264,6 +2274,12 @@ class StockService: ObservableObject {
             // Chặn Yahoo WebSocket ghi đè các mã Crypto (do Binance quản lý 100%)
             let clean = symbol.hasSuffix("-USD") ? String(symbol.dropLast(4)) : symbol
             if StorageService.isStandardCryptoSymbol(clean) || StorageService.isBinanceNativePair(symbol) || StorageService.isStandardCryptoSymbol(symbol) {
+                continue
+            }
+
+            // Chặn Yahoo WebSocket ghi đè các mã Việt Nam (do VNDirect quản lý) và Quỹ mở Nhật Bản
+            let exchange = StorageService.shared.exchange(for: symbol)
+            if Self.isVietnameseStock(symbol, exchange: exchange) || Self.isJapaneseMutualFund(symbol) {
                 continue
             }
 

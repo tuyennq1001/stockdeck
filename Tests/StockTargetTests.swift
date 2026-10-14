@@ -145,6 +145,11 @@ final class StockTargetTests: XCTestCase {
         monitor.check(quotes: ["AMD": lowQuote])
         XCTAssertTrue(storage.buyTarget(for: "AMD")?.isReached == true)
         XCTAssertNotNil(storage.buyTarget(for: "AMD")?.reachedAt)
+
+        // Case 3: Price recovers above target (> 1% buffer) -> Should reset isReached to false
+        let recoveredQuote = StockQuote(symbol: "AMD", name: "AMD", price: 155.0, change: 7, changePercent: 4.7, currency: "USD")
+        monitor.check(quotes: ["AMD": recoveredQuote])
+        XCTAssertFalse(storage.buyTarget(for: "AMD")?.isReached == true, "isReached must reset to false when price recovers above target")
     }
 
     func testTargetMetricInWatchlistMetric() {

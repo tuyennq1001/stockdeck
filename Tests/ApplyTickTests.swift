@@ -63,4 +63,59 @@ final class ApplyTickTests: XCTestCase {
         _ = StockService.shared.applyTick(makeTicker(id: "TSTX", price: 200, marketHours: .regularMarket))
         XCTAssertEqual(StockService.shared.quotes["TSTX"]?.price, 200)
     }
+
+    /// Ticks for Vietnamese stocks (e.g. ACB matching Aurora Cannabis on Yahoo) must be ignored.
+    func testVietnameseTickIsIgnoredAndDoesNotClobberQuote() {
+        StockService.shared.quotes["ACB"] = StockQuote(
+            symbol: "ACB",
+            name: "Ngân hàng Á Châu (ACB)",
+            price: 20450,
+            change: 0,
+            changePercent: 0,
+            currency: "VND",
+            marketState: "CLOSED"
+        )
+        defer { StockService.shared.quotes.removeValue(forKey: "ACB") }
+
+        let changed = StockService.shared.applyTick(makeTicker(id: "ACB", price: 4.25, marketHours: .regularMarket))
+        XCTAssertFalse(changed, "Tick for Vietnamese stock must be dropped")
+        XCTAssertEqual(StockService.shared.quotes["ACB"]?.price, 20450, "ACB price must not be clobbered by Yahoo 4.25 tick")
+    }
+
+    /// Ticks for Japanese mutual funds must be ignored.
+    func testJapaneseMutualFundTickIsIgnored() {
+        let fundCode = "0331418A"
+        StockService.shared.quotes[fundCode] = StockQuote(
+            symbol: fundCode,
+            name: "eMAXIS Slim",
+            price: 25000,
+            change: 0,
+            changePercent: 0,
+            currency: "JPY",
+            marketState: "CLOSED"
+        )
+        defer { StockService.shared.quotes.removeValue(forKey: fundCode) }
+
+        let changed = StockService.shared.applyTick(makeTicker(id: fundCode, price: 120, marketHours: .regularMarket))
+        XCTAssertFalse(changed, "Tick for Japanese mutual fund must be dropped")
+        XCTAssertEqual(StockService.shared.quotes[fundCode]?.price, 25000)
+    }
+
+    /// Verify collectWebSocketSymbols excludes Vietnamese stocks, Japanese mutual funds, and crypto.
+    func testCollectWebSocketSymbolsExcludesVietnameseStocksAndJapaneseFunds() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let storage = StorageService(fileURL: tempDir.appendingPathComponent("test_storage.json"))
+
+        storage.watchlists = [
+            Watchlist(name: "Test", symbols: ["AAPL", "ACB", "VIC", "0331418A", "BTC-USD"])
+        ]
+
+        let wsSymbols = StockService.collectWebSocketSymbols(storageService: storage)
+        XCTAssertTrue(wsSymbols.contains("AAPL"), "US stock AAPL should be included")
+        XCTAssertFalse(wsSymbols.contains("ACB"), "Vietnamese stock ACB must NOT be included in Yahoo WebSocket")
+        XCTAssertFalse(wsSymbols.contains("VIC"), "Vietnamese stock VIC must NOT be included in Yahoo WebSocket")
+        XCTAssertFalse(wsSymbols.contains("0331418A"), "Japanese mutual fund must NOT be included in Yahoo WebSocket")
+        XCTAssertFalse(wsSymbols.contains("BTC-USD"), "Crypto must NOT be included in Yahoo WebSocket")
+    }
 }
