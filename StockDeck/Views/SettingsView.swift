@@ -9,6 +9,8 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
+    @State private var showCloneProdAlert = false
+    @State private var showResetDevAlert = false
 
     // Collapsible category state — remembered across popover opens. General is
     // open by default (theme/language live there); the rest start collapsed so
@@ -21,6 +23,7 @@ struct SettingsView: View {
     @AppStorage("settings.group.ai") private var groupAI = false
     @AppStorage("settings.group.investor_profile") private var groupInvestorProfile = false
     @AppStorage("settings.group.about") private var groupAbout = false
+    @AppStorage("settings.group.dev") private var groupDev = true
     @AppStorage("settings.group.icloud") private var groupICloud = false
     @State private var showEditProfileSheet = false
     @ObservedObject private var syncService = iCloudSyncService.shared
@@ -787,6 +790,31 @@ struct SettingsView: View {
                     }
                 }
 
+                // MARK: - Developer Sandbox
+                if AppEnvironment.isDev {
+                    SettingsGroup(title: "Developer Sandbox", icon: "hammer", isExpanded: $groupDev) {
+                        subHeader("Environment")
+                        caption("Running in isolated folder: \(AppEnvironment.appSupportFolderName)")
+
+                        subHeader("Production Data")
+                        Button("Copy Production Data to Dev") {
+                            showCloneProdAlert = true
+                        }
+                        caption("Takes a fresh snapshot of Production data.json and replaces Dev data. Production data is NOT modified.")
+
+                        Button("Reveal Dev Folder in Finder") {
+                            AppEnvironment.openFolderInFinder(AppEnvironment.appSupportDirectoryURL)
+                        }
+
+                        subHeader("Reset")
+                        Button("Reset Dev Data to Default") {
+                            showResetDevAlert = true
+                        }
+                        .foregroundColor(.red)
+                        caption("Resets all dev portfolios and watchlists to default clean state.")
+                    }
+                }
+
                 // MARK: - About & Data (updates, sponsor, reset)
                 SettingsGroup(title: "About & Data", icon: "info.circle", isExpanded: $groupAbout) {
                     subHeader("Updates")
@@ -852,6 +880,29 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will delete all portfolio notifications across every portfolio. This cannot be undone.")
+        }
+        .alert("Copy Production Data to Dev", isPresented: $showCloneProdAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Copy Snapshot", role: .destructive) {
+                do {
+                    try storageService.reloadFromProdClone()
+                    Task {
+                        await stockService.refreshAll(storageService: storageService)
+                    }
+                } catch {
+                    NSLog("[Dev] Failed to clone prod data: %@", error.localizedDescription)
+                }
+            }
+        } message: {
+            Text("This will overwrite your Dev data with a fresh snapshot from Production. Production data will NOT be modified.")
+        }
+        .alert("Reset Dev Data", isPresented: $showResetDevAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset Dev", role: .destructive) {
+                storageService.resetDevDataToDefault()
+            }
+        } message: {
+            Text("This will reset all Dev portfolios and watchlists to default clean state. Production data is NOT affected.")
         }
         .sheet(isPresented: $showEditProfileSheet) {
             InvestorProfileEditorSheet(

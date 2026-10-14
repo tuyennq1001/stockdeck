@@ -2,7 +2,9 @@ import Foundation
 import Security
 
 struct KeychainService {
-    static let serviceName = "com.stockdeck.app.binance"
+    static var serviceName: String {
+        AppEnvironment.keychainServiceName
+    }
 
     /// Explicit ACL that always allows the current app bundle itself to read
     /// the item without a prompt, so credentials survive dev rebuilds that

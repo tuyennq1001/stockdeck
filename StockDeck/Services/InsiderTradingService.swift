@@ -40,7 +40,7 @@ public final class InsiderTradingService: ObservableObject {
     private var cacheDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let dir = appSupport.appendingPathComponent("StockDeck/InsiderCache", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/InsiderCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

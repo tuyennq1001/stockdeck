@@ -9,7 +9,7 @@ enum NoteImageStore {
 
     static func directory() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("StockDeck").appendingPathComponent(directoryName)
+        let dir = appSupport.appendingPathComponent(AppEnvironment.appSupportFolderName).appendingPathComponent(directoryName)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

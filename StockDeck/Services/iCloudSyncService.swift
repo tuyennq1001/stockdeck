@@ -89,7 +89,7 @@ final class iCloudSyncService: ObservableObject {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let cloudDocs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
         if FileManager.default.fileExists(atPath: cloudDocs.path) {
-            let folder = cloudDocs.appendingPathComponent("StockDeck", isDirectory: true)
+            let folder = cloudDocs.appendingPathComponent(AppEnvironment.iCloudFolderName, isDirectory: true)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             return folder.appendingPathComponent("stockdeck_sync.json")
         }

@@ -1530,10 +1530,11 @@ class StorageService: ObservableObject {
             finishInitialRestore()
         } else {
             if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                self.fileURL = appSupport.appendingPathComponent("StockDeck", isDirectory: true)
+                AppEnvironment.autoSeedDevDataIfNeeded()
+                self.fileURL = appSupport.appendingPathComponent(AppEnvironment.appSupportFolderName, isDirectory: true)
                     .appendingPathComponent("data.json")
             } else {
-                self.fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("StockDeck_data.json")
+                self.fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(AppEnvironment.appSupportFolderName)_data.json")
             }
             isLoading = true
             restoreTask = Task { await restoreSharedData() }
@@ -1581,7 +1582,7 @@ class StorageService: ObservableObject {
     private nonisolated static func readInitialData(at destination: URL) -> InitialDiskLoad {
         let manager = FileManager.default
         let dataDirectory = destination.deletingLastPathComponent()
-        if dataDirectory.lastPathComponent == "StockDeck" {
+        if dataDirectory.lastPathComponent == "StockDeck" || dataDirectory.lastPathComponent == AppEnvironment.appSupportFolderName {
             let oldDirectory = dataDirectory.deletingLastPathComponent().appendingPathComponent("StockBar", isDirectory: true)
             if manager.fileExists(atPath: oldDirectory.path), !manager.fileExists(atPath: dataDirectory.path) {
                 try? manager.moveItem(at: oldDirectory, to: dataDirectory)
@@ -2773,5 +2774,22 @@ class StorageService: ObservableObject {
             try? FileManager.default.moveItem(at: fileURL, to: corruptedURL)
             print("[StorageService] Corrupted data.json moved to \(corruptedURL.lastPathComponent). The app will start with defaults and will NOT auto-save until you make an explicit change.")
         }
+    }
+
+    /// Re-clones data from production and reloads in-memory state. Available only in Dev.
+    func reloadFromProdClone() throws {
+        guard AppEnvironment.isDev else { return }
+        try AppEnvironment.cloneProdDataToDev()
+        self.load()
+    }
+
+    /// Resets dev data to clean default state. Available only in Dev.
+    func resetDevDataToDefault() {
+        guard AppEnvironment.isDev else { return }
+        let def = Watchlist(id: UUID(), name: "Watchlist", symbols: [])
+        self.watchlists = [def]
+        self.selectedWatchlistId = def.id
+        self.portfolios = []
+        self.saveNow()
     }
 }
