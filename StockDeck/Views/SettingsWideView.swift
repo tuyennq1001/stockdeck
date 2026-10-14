@@ -24,6 +24,8 @@ private struct SettingsContentView: View {
     @EnvironmentObject var updaterViewModel: UpdaterViewModel
     @State private var showResetAlert = false
     @State private var showClearPortfolioNotifs = false
+    @State private var showCloneProdAlert = false
+    @State private var showResetDevAlert = false
     @State private var aiTestResult: String?
     @State private var aiTestIsLoading = false
     @State private var showAiKeyHelp = false
@@ -91,6 +93,9 @@ private struct SettingsContentView: View {
                         tradingCard
                         notificationsCard
                         appearanceCard
+                        if AppEnvironment.isDev {
+                            devEnvironmentCard
+                        }
                         aboutCard
                     }
                 }
@@ -105,6 +110,23 @@ private struct SettingsContentView: View {
         .dsAlert($showClearPortfolioNotifs, title: "Clear all portfolio notifications",
                  message: "This will delete all portfolio notifications across every portfolio. This cannot be undone.",
                  confirmTitle: "Clear all", destructive: true) { storageService.removeAllPortfolioNotifications() }
+        .dsAlert($showCloneProdAlert, title: "Copy Production Data to Dev",
+                 message: "This will overwrite your Dev data with a fresh snapshot from Production. Production data will NOT be modified.",
+                 confirmTitle: "Copy Snapshot") {
+            do {
+                try storageService.reloadFromProdClone()
+                Task {
+                    await stockService.refreshAll(storageService: storageService)
+                }
+            } catch {
+                NSLog("[Dev] Failed to clone prod data: %@", error.localizedDescription)
+            }
+        }
+        .dsAlert($showResetDevAlert, title: "Reset Dev Data",
+                 message: "This will reset all Dev portfolios and watchlists to default clean state. Production data is NOT affected.",
+                 confirmTitle: "Reset Dev", destructive: true) {
+            storageService.resetDevDataToDefault()
+        }
         .sheet(isPresented: $showEditProfileSheet) {
             InvestorProfileEditorSheet(
                 initialProfile: storageService.investorProfile ?? InvestorProfile(),
@@ -895,6 +917,50 @@ private struct SettingsContentView: View {
                         .font(DS.figure).foregroundStyle(DS.inkSecondary)
                         .frame(width: 18, alignment: .trailing)
                 }
+            }
+        }
+    }
+
+    private var devEnvironmentCard: some View {
+        SettingsCard(title: "Developer Environment") {
+            SettingRow("Data Sandbox", caption: "Running in isolated folder: \(AppEnvironment.appSupportFolderName)") {
+                HStack(spacing: 6) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 9))
+                    Text(verbatim: "DEV")
+                        .font(.inter(10, weight: .bold, relativeTo: .caption))
+                }
+                .foregroundStyle(DS.up)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(DS.up.opacity(0.12), in: Capsule())
+            }
+            SettingDivider()
+            SettingRow("Clone from Production", caption: "Copy current Production data to Dev for testing. Overwrites Dev data.") {
+                Button("Copy Prod Data") {
+                    showCloneProdAlert = true
+                }
+                .buttonStyle(.plain)
+                .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.brand)
+            }
+            SettingDivider()
+            SettingRow("Open Dev Data Folder", caption: "Reveal \(AppEnvironment.appSupportFolderName) in Finder") {
+                Button("Reveal in Finder") {
+                    AppEnvironment.openFolderInFinder(AppEnvironment.appSupportDirectoryURL)
+                }
+                .buttonStyle(.plain)
+                .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.ink)
+            }
+            SettingDivider()
+            SettingRow("Reset Dev Data", caption: "Clear all Dev portfolios and watchlists back to clean default") {
+                Button("Reset Dev Data…") {
+                    showResetDevAlert = true
+                }
+                .buttonStyle(.plain)
+                .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.down)
             }
         }
     }

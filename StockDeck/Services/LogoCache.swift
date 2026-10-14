@@ -21,7 +21,7 @@ final class LogoCache {
         decodedImages.countLimit = 256
         decodedImages.totalCostLimit = 16 * 1024 * 1024
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let dir = appSupport.appendingPathComponent("StockDeck/Logos", isDirectory: true)
+        let dir = appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/Logos", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         cacheDir = dir
     }

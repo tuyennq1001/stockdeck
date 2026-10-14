@@ -201,7 +201,7 @@ class StockService: ObservableObject {
     private var historyCacheURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        return appSupport.appendingPathComponent("StockDeck/\(Self.historyCacheFileName)")
+        return appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/\(Self.historyCacheFileName)")
     }
     private var historyCacheLoaded = false
     private var historyCacheSaveTask: Task<Void, Never>?
