@@ -354,3 +354,33 @@
 "Performance & Benchmark" = "Performance et référence";
 "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Backtest d'actifs : Simule la performance historique de votre panier d'actifs actuel sur chaque période par rapport au S&P 500, indépendamment des dates d'achat. Pour votre rendement pondéré par la monnaie, consultez votre Rendement Réel (XIRR) ci-dessous.";
 "Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Backtest d'actifs — simule la performance passée de votre panier d'actifs actuel par rapport au S&P 500.";
+
+/* Buy Target */
+"Buy Target" = "Objectif d'achat";
+"Set Buy Target" = "Définir un objectif d'achat";
+"Current Price" = "Cours actuel";
+"Target Price to Buy" = "Prix cible d'achat";
+"Quick Presets" = "Préréglages rapides";
+"Calculated from current price" = "Calculé à partir du cours actuel";
+"Market" = "Marché";
+"52W Low" = "Plus bas 52 sem.";
+"In Buy Zone" = "Dans la zone d'achat";
+"BUY ZONE" = "ZONE D'ACHAT";
+"Notify when price reaches target" = "Notifier lorsque le prix atteint l'objectif";
+"Send macOS Notification when market price drops to or below target" = "Envoyer une notification macOS lorsque le cours descend à l'objectif ou en dessous";
+"Purchase Plan / Reason (Optional)" = "Plan d'achat / Raison (facultatif)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "p. ex. Support, PER < 15, allouer 20 %...";
+"Save Target" = "Enregistrer l'objectif";
+"Delete Target" = "Supprimer l'objectif";
+"Delete Buy Target?" = "Supprimer l'objectif d'achat ?";
+"Choose another ticker" = "Choisir un autre symbole";
+"Select Ticker" = "Sélectionner un symbole";
+"From your watchlist" = "Depuis votre liste de suivi";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "Rechercher un symbole, un nom ou une crypto (p. ex. AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "Baisse de %.1f%% nécessaire pour atteindre l'objectif";
+"Current price is %@ below your target" = "Le cours actuel est inférieur de %@ à votre objectif";
+"Distance: %@" = "Écart : %@";
+"Are you sure you want to delete the buy target for %@?" = "Voulez-vous vraiment supprimer l'objectif d'achat pour %@ ?";
+"Set Buy Target…" = "Définir un objectif d'achat…";
+"Edit Buy Target…" = "Modifier l'objectif d'achat…";
+"Remove Buy Target" = "Supprimer l'objectif d'achat";

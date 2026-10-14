@@ -26,11 +26,11 @@ struct CloseHoldingSheet: View {
     }
 
     private var parsedQty: Double {
-        Double(sellQuantity.replacingOccurrences(of: ",", with: ".")) ?? 0
+        StorageService.parseNumber(sellQuantity) ?? 0
     }
 
     private var parsedPrice: Double {
-        Double(sellPrice.replacingOccurrences(of: ",", with: ".")) ?? 0
+        StorageService.parseNumber(sellPrice) ?? 0
     }
 
     private var estimatedCost: Double {

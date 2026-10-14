@@ -354,3 +354,33 @@
 "Performance & Benchmark" = "Performance & Benchmark";
 "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Asset-Backtest: Simuliert die historische Kursentwicklung Ihres aktuellen Anlagekorbs über verschiedene Zeiträume im Vergleich zum S&P 500, unabhängig vom Kaufdatum. Für die geldgewichtete Rendite siehe Tatsächliche Rendite (XIRR) unten.";
 "Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Asset-Backtest — simuliert die vergangene Wertentwicklung Ihres aktuellen Anlagekorbs im Vergleich zum S&P 500.";
+
+/* Buy Target */
+"Buy Target" = "Kaufziel";
+"Set Buy Target" = "Kaufziel festlegen";
+"Current Price" = "Aktueller Kurs";
+"Target Price to Buy" = "Zielkurs zum Kauf";
+"Quick Presets" = "Schnellauswahl";
+"Calculated from current price" = "Vom aktuellen Kurs berechnet";
+"Market" = "Marktpreis";
+"52W Low" = "52W-Tief";
+"In Buy Zone" = "In der Kaufzone";
+"BUY ZONE" = "KAUFZONE";
+"Notify when price reaches target" = "Benachrichtigen, wenn der Kurs das Ziel erreicht";
+"Send macOS Notification when market price drops to or below target" = "macOS-Benachrichtigung senden, wenn der Marktkurs auf oder unter das Ziel fällt";
+"Purchase Plan / Reason (Optional)" = "Kaufplan / Grund (optional)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "z. B. Unterstützung, KGV < 15, 20 % zuteilen...";
+"Save Target" = "Ziel speichern";
+"Delete Target" = "Ziel löschen";
+"Delete Buy Target?" = "Kaufziel löschen?";
+"Choose another ticker" = "Anderes Symbol wählen";
+"Select Ticker" = "Symbol auswählen";
+"From your watchlist" = "Aus deiner Watchlist";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "Symbol, Name oder Krypto suchen (z. B. AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "Benötigt %.1f%% Rückgang bis zum Ziel";
+"Current price is %@ below your target" = "Der aktuelle Kurs liegt %@ unter deinem Ziel";
+"Distance: %@" = "Abstand: %@";
+"Are you sure you want to delete the buy target for %@?" = "Möchtest du das Kaufziel für %@ wirklich löschen?";
+"Set Buy Target…" = "Kaufziel festlegen …";
+"Edit Buy Target…" = "Kaufziel bearbeiten …";
+"Remove Buy Target" = "Kaufziel entfernen";

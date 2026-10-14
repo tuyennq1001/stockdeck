@@ -354,3 +354,33 @@
 "Performance & Benchmark" = "Desempenho e benchmark";
 "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "Backtest de ativos: Simula o desempenho histórico de preço da sua cesta atual de ativos em cada período em relação ao S&P 500, independentemente das datas de compra. Para o retorno ponderado pelo dinheiro, veja seu Retorno Real (XIRR) abaixo.";
 "Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "Backtest de ativos — simula o desempenho passado da sua cesta atual de ativos em relação ao S&P 500.";
+
+/* Buy Target */
+"Buy Target" = "Meta de compra";
+"Set Buy Target" = "Definir meta de compra";
+"Current Price" = "Preço atual";
+"Target Price to Buy" = "Preço-alvo de compra";
+"Quick Presets" = "Predefinições rápidas";
+"Calculated from current price" = "Calculado a partir do preço atual";
+"Market" = "Mercado";
+"52W Low" = "Mín. 52 sem.";
+"In Buy Zone" = "Na zona de compra";
+"BUY ZONE" = "ZONA DE COMPRA";
+"Notify when price reaches target" = "Notificar quando o preço atingir a meta";
+"Send macOS Notification when market price drops to or below target" = "Enviar notificação do macOS quando o preço de mercado cair para a meta ou abaixo";
+"Purchase Plan / Reason (Optional)" = "Plano de compra / Motivo (opcional)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "ex.: Suporte, P/L < 15, alocar 20%...";
+"Save Target" = "Salvar meta";
+"Delete Target" = "Excluir meta";
+"Delete Buy Target?" = "Excluir meta de compra?";
+"Choose another ticker" = "Escolher outro símbolo";
+"Select Ticker" = "Selecionar símbolo";
+"From your watchlist" = "Da sua lista de acompanhamento";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "Pesquisar símbolo, nome ou cripto (ex.: AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "Precisa de uma queda de %.1f%% para atingir a meta";
+"Current price is %@ below your target" = "O preço atual está %@ abaixo da sua meta";
+"Distance: %@" = "Distância: %@";
+"Are you sure you want to delete the buy target for %@?" = "Tem certeza de que deseja excluir a meta de compra de %@?";
+"Set Buy Target…" = "Definir meta de compra…";
+"Edit Buy Target…" = "Editar meta de compra…";
+"Remove Buy Target" = "Remover meta de compra";

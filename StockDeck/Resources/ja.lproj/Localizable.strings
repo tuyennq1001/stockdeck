@@ -370,3 +370,33 @@
 "Performance & Benchmark" = "パフォーマンス＆ベンチマーク";
 "Asset backtest: Simulates price performance of your current asset basket over each timeframe vs S&P 500, regardless of personal purchase dates. For your money-weighted return based on actual buy dates, see Your Actual Return (XIRR) below." = "資産バックテスト：実際の購入日に関係なく、現在保有している銘柄群の過去の値動きを各期間ごとにS&P 500と比較します。実際の資金加重リターンは、下の「実際の利回り (XIRR)」をご覧ください。";
 "Asset backtest — simulates past performance of your current asset basket vs S&P 500." = "アセットバックテスト — 現在保有している資産群の過去の値動きをS&P 500と比較。";
+
+/* Buy Target */
+"Buy Target" = "購入目標";
+"Set Buy Target" = "購入目標を設定";
+"Current Price" = "現在価格";
+"Target Price to Buy" = "購入目標価格";
+"Quick Presets" = "クイック設定";
+"Calculated from current price" = "現在価格から計算";
+"Market" = "成行";
+"52W Low" = "52週安値";
+"In Buy Zone" = "購入ゾーン内";
+"BUY ZONE" = "購入ゾーン";
+"Notify when price reaches target" = "目標価格に到達したら通知";
+"Send macOS Notification when market price drops to or below target" = "市場価格が目標以下に下落したときに macOS 通知を送信";
+"Purchase Plan / Reason (Optional)" = "購入計画 / 理由(任意)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "例: サポートライン、PER < 15、資金の20%を配分...";
+"Save Target" = "目標を保存";
+"Delete Target" = "目標を削除";
+"Delete Buy Target?" = "購入目標を削除しますか?";
+"Choose another ticker" = "別の銘柄を選択";
+"Select Ticker" = "銘柄を選択";
+"From your watchlist" = "ウォッチリストから";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "銘柄コード、名称、暗号資産を検索(例: AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "目標到達まで %.1f%% の下落が必要";
+"Current price is %@ below your target" = "現在価格は目標より %@ 低い状態です";
+"Distance: %@" = "差額: %@";
+"Are you sure you want to delete the buy target for %@?" = "%@ の購入目標を削除してもよろしいですか?";
+"Set Buy Target…" = "購入目標を設定…";
+"Edit Buy Target…" = "購入目標を編集…";
+"Remove Buy Target" = "購入目標を削除";

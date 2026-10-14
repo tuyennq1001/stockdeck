@@ -415,3 +415,33 @@
 "Total value" = "Total value";
 "Total cost" = "Total cost";
 "Today" = "Today";
+
+/* Buy Target */
+"Buy Target" = "Buy Target";
+"Set Buy Target" = "Set Buy Target";
+"Current Price" = "Current Price";
+"Target Price to Buy" = "Target Price to Buy";
+"Quick Presets" = "Quick Presets";
+"Calculated from current price" = "Calculated from current price";
+"Market" = "Market";
+"52W Low" = "52W Low";
+"In Buy Zone" = "In Buy Zone";
+"BUY ZONE" = "BUY ZONE";
+"Notify when price reaches target" = "Notify when price reaches target";
+"Send macOS Notification when market price drops to or below target" = "Send macOS Notification when market price drops to or below target";
+"Purchase Plan / Reason (Optional)" = "Purchase Plan / Reason (Optional)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "e.g. Support level, P/E < 15, allocate 20%...";
+"Save Target" = "Save Target";
+"Delete Target" = "Delete Target";
+"Delete Buy Target?" = "Delete Buy Target?";
+"Choose another ticker" = "Choose another ticker";
+"Select Ticker" = "Select Ticker";
+"From your watchlist" = "From your watchlist";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "Search symbol, name or crypto (e.g. AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "Needs %.1f%% drop to reach target";
+"Current price is %@ below your target" = "Current price is %@ below your target";
+"Distance: %@" = "Distance: %@";
+"Are you sure you want to delete the buy target for %@?" = "Are you sure you want to delete the buy target for %@?";
+"Set Buy Target…" = "Set Buy Target…";
+"Edit Buy Target…" = "Edit Buy Target…";
+"Remove Buy Target" = "Remove Buy Target";
