@@ -172,14 +172,47 @@ final class AlertMonitor {
             let targetStr = "\(currSym)\(StorageService.formatNumber(target.targetPrice, decimals: dec))"
 
             let noteSuffix = (target.note?.isEmpty == false) ? " (\(target.note!))" : ""
-            let body = "\(symbol) has entered buy target zone at \(targetStr)\(noteSuffix)! Current price: \(currStr)"
+            let (title, body) = Self.buyTargetMessage(
+                lang: storage.appLanguage.lowercased(), symbol: symbol,
+                targetStr: targetStr, noteSuffix: noteSuffix, currStr: currStr)
 
             notifier.send(
-                title: "🎯 \(symbol) Buy Target Reached!",
+                title: title,
                 body: body,
                 identifier: "buy_target_\(symbol)_\(target.targetPrice)",
                 sentiment: .positive
             )
+        }
+    }
+
+    /// Localized (title, body) for a reached buy target, following the in-app language.
+    static func buyTargetMessage(lang: String, symbol: String, targetStr: String,
+                                 noteSuffix: String, currStr: String) -> (String, String) {
+        switch lang {
+        case "vi":
+            return ("🎯 \(symbol) đã chạm giá mua mục tiêu!",
+                    "\(symbol) đã vào vùng mua mục tiêu \(targetStr)\(noteSuffix)! Giá hiện tại: \(currStr)")
+        case "ja":
+            return ("🎯 \(symbol) が購入目標に到達しました!",
+                    "\(symbol) が購入目標ゾーン \(targetStr)\(noteSuffix) に入りました!現在価格: \(currStr)")
+        case "de":
+            return ("🎯 \(symbol): Kaufziel erreicht!",
+                    "\(symbol) hat die Kaufzone bei \(targetStr)\(noteSuffix) erreicht! Aktueller Kurs: \(currStr)")
+        case "fr":
+            return ("🎯 \(symbol) : objectif d'achat atteint !",
+                    "\(symbol) est entré dans la zone d'achat à \(targetStr)\(noteSuffix) ! Cours actuel : \(currStr)")
+        case "es":
+            return ("🎯 ¡\(symbol) alcanzó el objetivo de compra!",
+                    "¡\(symbol) entró en la zona de compra en \(targetStr)\(noteSuffix)! Precio actual: \(currStr)")
+        case "it":
+            return ("🎯 \(symbol): obiettivo di acquisto raggiunto!",
+                    "\(symbol) è entrato nella zona di acquisto a \(targetStr)\(noteSuffix)! Prezzo attuale: \(currStr)")
+        case "pt":
+            return ("🎯 \(symbol) atingiu a meta de compra!",
+                    "\(symbol) entrou na zona de compra em \(targetStr)\(noteSuffix)! Preço atual: \(currStr)")
+        default:
+            return ("🎯 \(symbol) Buy Target Reached!",
+                    "\(symbol) has entered buy target zone at \(targetStr)\(noteSuffix)! Current price: \(currStr)")
         }
     }
 

@@ -134,6 +134,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleBecameActive),
             name: NSApplication.didBecomeActiveNotification, object: nil)
+        // Close the menu-bar popover when the app loses focus (user switches app) so
+        // a form/sheet left half-open can't come back unresponsive.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleResignedActive),
+            name: NSApplication.didResignActiveNotification, object: nil)
 
         // Menu-bar-only by default; opening the desktop window temporarily
         // promotes the app to a regular application.
@@ -854,6 +859,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             _ = self
             NotificationCenter.default.post(name: .stockDeckAlertTapped, object: nil)
         }
+    }
+
+    @objc private func handleResignedActive() {
+        if popover?.isShown ?? false { closePopover() }
     }
 
     @objc private func handleBecameActive() {

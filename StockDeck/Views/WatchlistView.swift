@@ -310,10 +310,23 @@ struct WatchlistView: View {
                     .environmentObject(stockService)
                     .environmentObject(storageService)
             }
-            .sheet(item: $targetSymbol) { item in
-                StockTargetSheet(symbol: item.symbol) { targetSymbol = nil }
-                    .environmentObject(stockService)
-                    .environmentObject(storageService)
+            // In-popover overlay instead of `.sheet`: an attached sheet window on the
+            // transient NSPopover loses key status after an app switch, which left the
+            // popover unresponsive to clicks / right-clicks.
+            .overlay {
+                if let item = targetSymbol {
+                    ZStack {
+                        Color.black.opacity(0.25)
+                            .contentShape(Rectangle())
+                            .onTapGesture { targetSymbol = nil }
+                        ScrollView(.vertical, showsIndicators: false) {
+                            StockTargetSheet(symbol: item.symbol) { targetSymbol = nil }
+                                .environmentObject(stockService)
+                                .environmentObject(storageService)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+                }
             }
             .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
                 TextField("Watchlist name", text: $newWatchlistName)
@@ -604,7 +617,7 @@ struct WatchlistView: View {
         Button {
             targetSymbol = TargetSheetItem(symbol: symbol)
         } label: {
-            Label(storageService.buyTarget(for: symbol) != nil ? "Edit Buy Target…" : "Set Buy Target…", systemImage: "target")
+            Label(storageService.buyTarget(for: symbol) != nil ? LocalizedStringKey("Edit Buy Target…") : LocalizedStringKey("Set Buy Target…"), systemImage: "target")
         }
         if storageService.buyTarget(for: symbol) != nil {
             Button(role: .destructive) {

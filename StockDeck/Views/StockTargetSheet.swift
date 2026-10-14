@@ -50,9 +50,7 @@ struct StockTargetSheet: View {
     }
 
     private var parsedTargetPrice: Double? {
-        let clean = targetPriceText.replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let val = Double(clean), val > 0 else { return nil }
+        guard let val = StorageService.parseNumber(targetPriceText), val > 0 else { return nil }
         return val
     }
 
@@ -87,7 +85,7 @@ struct StockTargetSheet: View {
     }
 
     var body: some View {
-        let titleStr = effectiveSymbol.map { "Buy Target · \($0)" } ?? "Set Buy Target"
+        let titleStr = effectiveSymbol == nil ? "Set Buy Target" : "Buy Target"
         SheetShell(title: titleStr, onCancel: onDismiss, width: 440) {
             VStack(alignment: .leading, spacing: 16) {
                 if let sym = effectiveSymbol {
@@ -232,7 +230,7 @@ struct StockTargetSheet: View {
                                     .font(.system(size: 16))
                                     .foregroundStyle(DS.brand)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(String(format: "Needs %.1f%% drop to reach target", abs(dist)))
+                                    Text("Needs \(abs(dist), specifier: "%.1f")% drop to reach target")
                                         .font(DS.bodyStrong)
                                         .foregroundStyle(DS.ink)
                                     let diff = (parsedTargetPrice ?? currentPrice) - currentPrice
@@ -454,7 +452,7 @@ struct StockTargetSheet: View {
     }
 
     @ViewBuilder
-    private func presetButton(_ label: String, percent: Double) -> some View {
+    private func presetButton(_ label: LocalizedStringKey, percent: Double) -> some View {
         Button {
             applyPercent(percent)
         } label: {

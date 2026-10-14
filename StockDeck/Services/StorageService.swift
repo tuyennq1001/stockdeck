@@ -1160,6 +1160,51 @@ class StorageService: ObservableObject {
         return (value < 0 ? "-" : "") + result
     }
 
+    /// Parses a user-entered or `formatNumber`-produced string (e.g. "30,647.00",
+    /// "30.647,00", "30647", "0,5") into a Double. Returns nil if it is not a number.
+    /// Rules: when both "," and "." appear the last one is the decimal separator;
+    /// a repeated separator is grouping; a single separator is the locale's decimal
+    /// unless it is the other character followed by exactly 3 digits (grouping).
+    nonisolated static func parseNumber(_ text: String, locale: Locale = .autoupdatingCurrent) -> Double? {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for junk in [" ", "\u{00A0}", "\u{202F}", "'", "’"] {
+            s = s.replacingOccurrences(of: junk, with: "")
+        }
+        guard !s.isEmpty else { return nil }
+
+        let (_, localeDecimal) = NumberSeparatorsCache.separators(for: locale)
+        let hasComma = s.contains(",")
+        let hasDot = s.contains(".")
+        var decimalChar: Character? = nil
+
+        if hasComma && hasDot {
+            decimalChar = s.lastIndex(of: ",")! > s.lastIndex(of: ".")! ? "," : "."
+        } else if hasComma || hasDot {
+            let sep: Character = hasComma ? "," : "."
+            let pieces = s.split(separator: sep, omittingEmptySubsequences: false)
+            if pieces.count == 2 {
+                if String(sep) == localeDecimal {
+                    decimalChar = sep
+                } else {
+                    let leading = pieces[0].replacingOccurrences(of: "-", with: "")
+                    let isGrouping = pieces[1].count == 3 && leading != "0" && !leading.isEmpty
+                    decimalChar = isGrouping ? nil : sep
+                }
+            }
+        }
+
+        var normalized = ""
+        for ch in s {
+            if ch == "," || ch == "." {
+                if ch == decimalChar { normalized.append(".") }
+            } else {
+                normalized.append(ch)
+            }
+        }
+        guard let v = Double(normalized), v.isFinite else { return nil }
+        return v
+    }
+
     /// Formats an amount with the currency symbol *before* the figure, e.g.
     /// "€1,234.56", "+€820.00", "-€540.00". The sign (when shown) precedes the symbol.
     nonisolated static func formatAmount(_ value: Double, symbol: String, decimals: Int = 2, signed: Bool = false,

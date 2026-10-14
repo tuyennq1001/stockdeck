@@ -959,7 +959,7 @@ struct WatchlistWideView: View {
             Button {
                 targetSymbol = TargetTarget(symbol: row.symbol)
             } label: {
-                Label(storageService.buyTarget(for: row.symbol) != nil ? "Edit Buy Target…" : "Set Buy Target…", systemImage: "target")
+                Label(storageService.buyTarget(for: row.symbol) != nil ? LocalizedStringKey("Edit Buy Target…") : LocalizedStringKey("Set Buy Target…"), systemImage: "target")
             }
             if storageService.buyTarget(for: row.symbol) != nil {
                 Button(role: .destructive) {

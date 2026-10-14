@@ -434,3 +434,33 @@
 "Total value" = "Tổng giá trị";
 "Total cost" = "Tổng giá vốn";
 "Today" = "Hôm nay";
+
+/* Buy Target */
+"Buy Target" = "Giá mua mục tiêu";
+"Set Buy Target" = "Đặt giá mua mục tiêu";
+"Current Price" = "Giá hiện tại";
+"Target Price to Buy" = "Giá mục tiêu để mua";
+"Quick Presets" = "Chọn nhanh";
+"Calculated from current price" = "Tính từ giá hiện tại";
+"Market" = "Thị giá";
+"52W Low" = "Đáy 52 tuần";
+"In Buy Zone" = "Trong vùng mua";
+"BUY ZONE" = "VÙNG MUA";
+"Notify when price reaches target" = "Thông báo khi giá chạm mục tiêu";
+"Send macOS Notification when market price drops to or below target" = "Gửi thông báo macOS khi giá thị trường giảm xuống bằng hoặc thấp hơn mục tiêu";
+"Purchase Plan / Reason (Optional)" = "Kế hoạch mua / Lý do (Tùy chọn)";
+"e.g. Support level, P/E < 15, allocate 20%..." = "VD: Vùng hỗ trợ, P/E < 15, phân bổ 20%...";
+"Save Target" = "Lưu mục tiêu";
+"Delete Target" = "Xóa mục tiêu";
+"Delete Buy Target?" = "Xóa giá mua mục tiêu?";
+"Choose another ticker" = "Chọn mã khác";
+"Select Ticker" = "Chọn mã";
+"From your watchlist" = "Từ danh sách theo dõi của bạn";
+"Search symbol, name or crypto (e.g. AAPL, BTC-USD)" = "Tìm mã, tên hoặc crypto (VD: AAPL, BTC-USD)";
+"Needs %.1f%% drop to reach target" = "Cần giảm %.1f%% để chạm mục tiêu";
+"Current price is %@ below your target" = "Giá hiện tại thấp hơn mục tiêu %@";
+"Distance: %@" = "Chênh lệch: %@";
+"Are you sure you want to delete the buy target for %@?" = "Bạn có chắc muốn xóa giá mua mục tiêu của %@ không?";
+"Set Buy Target…" = "Đặt giá mua mục tiêu…";
+"Edit Buy Target…" = "Sửa giá mua mục tiêu…";
+"Remove Buy Target" = "Xóa giá mua mục tiêu";

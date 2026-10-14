@@ -20,10 +20,10 @@ struct DSTextField: View {
     var body: some View {
         Group {
             if let binding = isFocusedBinding {
-                TextField(placeholder, text: $text)
+                TextField(LocalizedStringKey(placeholder), text: $text)
                     .focused(binding)
             } else {
-                TextField(placeholder, text: $text)
+                TextField(LocalizedStringKey(placeholder), text: $text)
                     .focused($internalFocused)
             }
         }
