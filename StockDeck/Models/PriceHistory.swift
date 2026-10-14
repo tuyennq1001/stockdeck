@@ -72,8 +72,9 @@ enum PriceHistory {
     }
 
     /// Percentage move from the market close at (or immediately before) a
-    /// requested boundary to the current regular-session price. Falling back to
-    /// the first close after the boundary handles newly listed instruments.
+    /// requested boundary to the current regular-session price. Returns nil
+    /// if no close exists at or before the boundary (e.g. newly listed instruments
+    /// or insufficient historical data).
     static func percentChange(points: [PricePoint], currentPrice: Double, since boundary: Date) -> Double? {
         guard currentPrice.isFinite, currentPrice > 0, !points.isEmpty else { return nil }
         var low = 0
@@ -90,8 +91,9 @@ enum PriceHistory {
             }
         }
 
-        let baseline = baselineIdx.map { points[$0] } ?? points.first
-        guard let baseline, baseline.close.isFinite, baseline.close > 0 else { return nil }
+        guard let baselineIdx else { return nil }
+        let baseline = points[baselineIdx]
+        guard baseline.close.isFinite, baseline.close > 0 else { return nil }
         return (currentPrice - baseline.close) / baseline.close * 100
     }
 

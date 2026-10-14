@@ -55,17 +55,14 @@ final class PeriodChangeTests: XCTestCase {
         XCTAssertEqual(change, 25, accuracy: 0.0001)
     }
 
-    func testFallsBackToFirstCloseAfterBoundaryForNewListing() throws {
+    func testReturnsNilWhenBoundaryIsBeforeFirstAvailablePoint() {
         let boundary = Date(timeIntervalSince1970: 1_000)
         let points = [
             PricePoint(date: Date(timeIntervalSince1970: 1_100), close: 50),
             PricePoint(date: Date(timeIntervalSince1970: 1_200), close: 60),
         ]
 
-        let change = try XCTUnwrap(
-            PriceHistory.percentChange(points: points, currentPrice: 75, since: boundary)
-        )
-        XCTAssertEqual(change, 50, accuracy: 0.0001)
+        XCTAssertNil(PriceHistory.percentChange(points: points, currentPrice: 75, since: boundary))
     }
 
     func testInvalidOrMissingBaselineReturnsNil() {
