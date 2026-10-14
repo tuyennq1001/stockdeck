@@ -2590,7 +2590,8 @@ class StorageService: ObservableObject {
                         var newH = h
                         if newH.symbol.hasSuffix("-USD") {
                             let base = String(newH.symbol.dropLast(4))
-                            if !StorageService.isStandardCryptoSymbol(base) {
+                            let isCrypto = StorageService.isStandardCryptoSymbol(base) || (symbolType[newH.symbol] == "CRYPTOCURRENCY")
+                            if !isCrypto && (symbolType[newH.symbol] == "EQUITY" || symbolType[base] == "EQUITY" || newH.symbol.hasPrefix("EQ_")) {
                                 newH.symbol = base
                             }
                         }
