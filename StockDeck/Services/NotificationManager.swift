@@ -160,28 +160,34 @@ final class AlertMonitor {
 
     private func checkBuyTargets(quotes: [String: StockQuote]) {
         for (symbol, target) in storage.stockTargets {
-            guard target.notifyWhenReached, !target.isReached, let quote = quotes[symbol] else { continue }
+            guard target.notifyWhenReached, let quote = quotes[symbol] else { continue }
             let currentPrice = quote.effectivePrice
-            guard currentPrice > 0, currentPrice <= target.targetPrice else { continue }
+            guard currentPrice > 0 else { continue }
 
-            storage.markTargetReached(symbol: symbol)
+            if currentPrice <= target.targetPrice {
+                guard !target.isReached else { continue }
+                storage.markTargetReached(symbol: symbol)
 
-            let currSym = quote.currency.isEmpty ? "" : StorageService.currencySymbol(for: quote.currency)
-            let dec = storage.resolvedPriceDecimals(symbol: symbol, price: currentPrice)
-            let currStr = "\(currSym)\(StorageService.formatNumber(currentPrice, decimals: dec))"
-            let targetStr = "\(currSym)\(StorageService.formatNumber(target.targetPrice, decimals: dec))"
+                let currSym = quote.currency.isEmpty ? "" : StorageService.currencySymbol(for: quote.currency)
+                let dec = storage.resolvedPriceDecimals(symbol: symbol, price: currentPrice)
+                let currStr = "\(currSym)\(StorageService.formatNumber(currentPrice, decimals: dec))"
+                let targetStr = "\(currSym)\(StorageService.formatNumber(target.targetPrice, decimals: dec))"
 
-            let noteSuffix = (target.note?.isEmpty == false) ? " (\(target.note!))" : ""
-            let (title, body) = Self.buyTargetMessage(
-                lang: storage.appLanguage.lowercased(), symbol: symbol,
-                targetStr: targetStr, noteSuffix: noteSuffix, currStr: currStr)
+                let noteSuffix = (target.note?.isEmpty == false) ? " (\(target.note!))" : ""
+                let (title, body) = Self.buyTargetMessage(
+                    lang: storage.appLanguage.lowercased(), symbol: symbol,
+                    targetStr: targetStr, noteSuffix: noteSuffix, currStr: currStr)
 
-            notifier.send(
-                title: title,
-                body: body,
-                identifier: "buy_target_\(symbol)_\(target.targetPrice)",
-                sentiment: .positive
-            )
+                notifier.send(
+                    title: title,
+                    body: body,
+                    identifier: "buy_target_\(symbol)_\(target.targetPrice)",
+                    sentiment: .positive
+                )
+            } else if target.isReached && currentPrice > target.targetPrice * 1.01 {
+                // Tự động giải phóng trạng thái reached khi giá phục hồi vững chắc trên mốc mua
+                storage.markTargetReached(symbol: symbol, reached: false)
+            }
         }
     }
 
