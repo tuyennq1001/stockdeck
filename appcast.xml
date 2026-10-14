@@ -6,23 +6,22 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.7</title>
-            <pubDate>Wed, 14 Oct 2026 11:50:54 +0900</pubDate>
-            <sparkle:version>10</sparkle:version>
-            <sparkle:shortVersionString>1.1.7</sparkle:shortVersionString>
+            <title>Version 1.1.8</title>
+            <pubDate>Wed, 14 Oct 2026 13:26:53 +0900</pubDate>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>1.1.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.7</h2>
+<h2>What's New in StockDeck 1.1.8</h2>
 <ul>
-    <li><strong>Buy Target Parsing & Saving:</strong> Fixed an issue where prices with thousand separators could not be saved. Added robust locale-aware number parsing across sheets and forms.</li>
-    <li><strong>Popover Key Status & Responsiveness:</strong> Converted the buy target dialog to an in-popover overlay and automatically dismiss open popovers on app switch to prevent window unresponsiveness.</li>
-    <li><strong>Full Localization:</strong> Added complete translations for Buy Target forms, context menus, and notifications across 8 supported languages.</li>
+    <li><strong>Accurate Performance Periods:</strong> Fixed an issue where newly listed stocks with limited trading history duplicated initial IPO returns across longer periods (such as 6M, YTD, 1Y, 2Y, 3Y). The app now accurately displays placeholder dashes (<code>—</code>) when historical data is insufficient.</li>
+    <li><strong>Stock &amp; Crypto Search Collision Prevention:</strong> Prevented symbol key collisions and unexpected quote overrides between stocks and crypto assets sharing identical identifiers.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.7/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.8/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="Y/zrEOgrRT3V/xa/vXQR74u8I7CTDZQKnp6o9UOwx3QUW8KY+ypVWmApUd9/ssId1I/6rAmz7zE0AKZpMyu1Dw=="
-                       length="8890442"/>
+                       sparkle:edSignature="Nq4QDdgc6Puc79x8fT89ATSjNyxFDTc0ZiE3lZ3wOCqzpsyBB6uurkIK7/F8bVH7AiL+sFftj0QjwFC4DeO2AQ=="
+                       length="8891352"/>
         </item>
     </channel>
 </rss>
