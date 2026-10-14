@@ -496,6 +496,14 @@ class StockService: ObservableObject {
 
         let equitySymbols = regularSymbols.filter { Self.isBinanceEquitySymbol($0) }
         let cryptoSymbols = regularSymbols.filter { sym in
+            let storedType = StorageService.shared.symbolType[sym]?.uppercased()
+                ?? StorageService.shared.symbolType[sym.uppercased()]?.uppercased()
+            if let storedType, storedType == "EQUITY" || storedType == "ETF" || storedType == "INDEX" || storedType == "MUTUALFUND" {
+                return false
+            }
+            if storedType == "CRYPTOCURRENCY" || storedType == "CRYPTO" {
+                return true
+            }
             let clean = sym.hasSuffix("-USD") ? String(sym.dropLast(4)) : sym
             return !equitySymbols.contains(sym)
                 && (StorageService.isStandardCryptoSymbol(clean) || StorageService.isStandardCryptoSymbol(sym) || StorageService.isBinanceNativePair(sym) || BinanceStablecoin.isUSDPegged(clean))
@@ -1235,24 +1243,34 @@ class StockService: ObservableObject {
                 )
                 self.quotes[sym] = quote
                 self.quotes[sym.uppercased()] = quote
-                self.quotes[cleanBase] = quote
+                let cleanBaseType = StorageService.shared.symbolType[cleanBase]?.uppercased()
+                    ?? StorageService.shared.symbolType[cleanBase.uppercased()]?.uppercased()
+                let cleanBaseIsEquity = cleanBaseType == "EQUITY" || cleanBaseType == "ETF" || cleanBaseType == "INDEX" || cleanBaseType == "MUTUALFUND"
+                if !cleanBaseIsEquity {
+                    self.quotes[cleanBase] = quote
+                    self.quotes["\(cleanBase)USDT"] = quote
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: cleanBase)
+                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)USDT")
+                }
                 self.quotes["\(cleanBase)-USD"] = quote
-                self.quotes["\(cleanBase)USDT"] = quote
                 let quoteAssets = ["USDT", "USDC", "BUSD", "DAI", "TUSD", "FDUSD", "USD"]
                 for q in quoteAssets where cleanBase.hasSuffix(q) && cleanBase.count > q.count {
                     let base = String(cleanBase.dropLast(q.count))
-                    self.quotes[base] = quote
+                    let baseType = StorageService.shared.symbolType[base]?.uppercased()
+                        ?? StorageService.shared.symbolType[base.uppercased()]?.uppercased()
+                    let baseIsEquity = baseType == "EQUITY" || baseType == "ETF" || baseType == "INDEX" || baseType == "MUTUALFUND"
+                    if !baseIsEquity {
+                        self.quotes[base] = quote
+                        self.quotes["\(base)\(q)"] = quote
+                        StorageService.shared.setType("CRYPTOCURRENCY", for: base)
+                        StorageService.shared.setType("CRYPTOCURRENCY", for: "\(base)\(q)")
+                    }
                     self.quotes["\(base)-USD"] = quote
-                    self.quotes["\(base)\(q)"] = quote
-                    StorageService.shared.setType("CRYPTOCURRENCY", for: base)
                     StorageService.shared.setType("CRYPTOCURRENCY", for: "\(base)-USD")
-                    StorageService.shared.setType("CRYPTOCURRENCY", for: "\(base)\(q)")
                 }
                 StorageService.shared.setType("CRYPTOCURRENCY", for: sym)
                 StorageService.shared.setType("CRYPTOCURRENCY", for: sym.uppercased())
-                StorageService.shared.setType("CRYPTOCURRENCY", for: cleanBase)
                 StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)-USD")
-                StorageService.shared.setType("CRYPTOCURRENCY", for: "\(cleanBase)USDT")
             }
         }
     }
@@ -1718,11 +1736,18 @@ class StockService: ObservableObject {
         let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if upper.hasSuffix("-USD") {
             let base = String(upper.dropLast(4))
-            if StorageService.isStandardCryptoSymbol(base) || BinanceStablecoin.isUSDPegged(base) {
-                return upper
-            } else {
+            let storedType = StorageService.shared.symbolType[upper]?.uppercased()
+                ?? StorageService.shared.symbolType[symbol]?.uppercased()
+            if storedType == "EQUITY" || storedType == "ETF" || storedType == "INDEX" {
                 return base
             }
+            if storedType == "CRYPTOCURRENCY" || storedType == "CRYPTO" || StorageService.isStandardCryptoSymbol(base) || BinanceStablecoin.isUSDPegged(base) {
+                return upper
+            }
+            if StorageService.shared.symbolType[base]?.uppercased() == "EQUITY" {
+                return base
+            }
+            return upper
         }
         if StorageService.isStandardCryptoSymbol(upper) { return "\(upper)-USD" }
         if StorageService.isBinanceNativePair(upper) {
@@ -3127,14 +3152,18 @@ class StockService: ObservableObject {
     }
 
     /// Returns a canonical key for deduplication: "CRYPTO:BTC", "STOCK:AAPL", etc.
-    private static func canonicalKey(symbol: String, type: String) -> String {
+    nonisolated static func canonicalKey(symbol: String, type: String) -> String {
         let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let base = clean.hasSuffix("-USD") ? String(clean.dropLast(4)) : clean
-        if type.uppercased() == "CRYPTOCURRENCY" || base == clean && !clean.contains("-") {
+        let upperType = type.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let isCrypto = upperType == "CRYPTOCURRENCY" || upperType == "CRYPTO"
+            || (upperType.isEmpty && clean.hasSuffix("-USD"))
+        if isCrypto {
+            let base = clean.hasSuffix("-USD") ? String(clean.dropLast(4)) : clean
             return "CRYPTO:\(base)"
         }
         return "STOCK:\(clean)"
     }
+
 
     func search(query: String) async -> [SearchResult] {
         guard !query.isEmpty else { return [] }

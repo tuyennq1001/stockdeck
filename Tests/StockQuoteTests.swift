@@ -234,5 +234,47 @@ final class StockQuoteTests: XCTestCase {
         XCTAssertEqual(StockService.detectedCurrency(for: "CEO"), "VND")
         XCTAssertEqual(StockService.detectedCurrency(for: "BSR"), "VND")
     }
+
+    func testCanonicalKeyDistinguishesStocksFromCryptocurrencies() {
+        // Stock vs crypto derivative collision cases
+        XCTAssertEqual(StockService.canonicalKey(symbol: "CBRS", type: "EQUITY"), "STOCK:CBRS")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "CBRS-USD", type: "CRYPTOCURRENCY"), "CRYPTO:CBRS")
+        XCTAssertNotEqual(
+            StockService.canonicalKey(symbol: "CBRS", type: "EQUITY"),
+            StockService.canonicalKey(symbol: "CBRS-USD", type: "CRYPTOCURRENCY")
+        )
+
+        XCTAssertEqual(StockService.canonicalKey(symbol: "SEI", type: "EQUITY"), "STOCK:SEI")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "SEI-USD", type: "CRYPTOCURRENCY"), "CRYPTO:SEI")
+
+        XCTAssertEqual(StockService.canonicalKey(symbol: "STRK", type: "EQUITY"), "STOCK:STRK")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "STRK-USD", type: "CRYPTOCURRENCY"), "CRYPTO:STRK")
+
+        XCTAssertEqual(StockService.canonicalKey(symbol: "FET", type: "EQUITY"), "STOCK:FET")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "FET-USD", type: "CRYPTOCURRENCY"), "CRYPTO:FET")
+
+        XCTAssertEqual(StockService.canonicalKey(symbol: "AXS", type: "EQUITY"), "STOCK:AXS")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "AXS-USD", type: "CRYPTOCURRENCY"), "CRYPTO:AXS")
+
+        XCTAssertEqual(StockService.canonicalKey(symbol: "APT", type: "EQUITY"), "STOCK:APT")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "APT-USD", type: "CRYPTOCURRENCY"), "CRYPTO:APT")
+
+        // Crypto pairs deduplicate against each other
+        XCTAssertEqual(StockService.canonicalKey(symbol: "BTC-USD", type: "CRYPTOCURRENCY"), "CRYPTO:BTC")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "BTC", type: "CRYPTOCURRENCY"), "CRYPTO:BTC")
+
+        // Normal equities
+        XCTAssertEqual(StockService.canonicalKey(symbol: "AAPL", type: "EQUITY"), "STOCK:AAPL")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "BRK-B", type: "EQUITY"), "STOCK:BRK-B")
+        XCTAssertEqual(StockService.canonicalKey(symbol: "VOO", type: "ETF"), "STOCK:VOO")
+    }
+
+    func testCanonicalSymbolForEquitiesAndCrypto() {
+        XCTAssertEqual(StockService.canonicalSymbol(for: "CBRS"), "CBRS")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "BTC-USD"), "BTC-USD")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "EQ_META"), "META")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "ALPHABET"), "GOOGL")
+        XCTAssertEqual(StockService.canonicalSymbol(for: "AAPL-USD"), "AAPL")
+    }
 }
 
