@@ -8,6 +8,9 @@ private enum WatchlistCol {
     static let buyTarget: CGFloat = 96
     static let marketCap: CGFloat = 88
     static let chart: CGFloat = 76
+    static let pinnedWidth: CGFloat = 148
+    static let headerHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 38
 
     static func width(for metric: WatchlistMetric) -> CGFloat {
         switch metric {
@@ -27,6 +30,11 @@ struct WatchlistView: View {
     @Environment(\.showSymbolDetail) private var showSymbolDetail
     @State private var viewModel = WatchlistViewModel()
     @Binding var showSearch: Bool
+    @StateObject private var scrollCoordinator = ScrollSyncCoordinator()
+
+    private func hoverBox(for symbol: String) -> RowHoverBox {
+        scrollCoordinator.hoverBox(for: symbol)
+    }
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
@@ -51,6 +59,12 @@ struct WatchlistView: View {
 
     private var selectedMetrics: [WatchlistMetric] {
         storageService.watchlistMetrics
+    }
+
+    private var metricsTableWidth: CGFloat {
+        let otherMetrics = selectedMetrics.filter { $0 != .price }
+        let metricWidth = otherMetrics.reduce(CGFloat.zero) { $0 + WatchlistCol.width(for: $1) }
+        return WatchlistCol.price + metricWidth + 24
     }
 
     private var tableWidth: CGFloat {
@@ -89,111 +103,22 @@ struct WatchlistView: View {
         return viewModel.displaySymbols
     }
 
-    /// The flat list: drag/drop column sort, delete, move.
-    private var flatList: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(displaySymbols.enumerated()), id: \.element) { _, symbol in
-                    ReorderRow(
-                        id: symbol,
-                        draggingId: $draggingSymbol,
-                        isHorizontal: false,
-                        attachDragToContent: false,
-                        makeDragItem: {
-                            startDrag(for: symbol)
-                        },
-                        onMove: { src, tgt, placement in
-                            moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
-                        },
-                        onCommit: { commitSymbolPreview() },
-                        content: {
-                            if draggingSymbol == symbol {
-                                quoteOrPlaceholderRow(symbol).opacity(0.35)
-                            } else {
-                                quoteOrPlaceholderRow(symbol)
-                            }
-                        },
-                        dropIndicator: $dropIndicator
-                    )
-                    if symbol != displaySymbols.last {
-                        Divider().padding(.leading, 74)
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-            .frame(minWidth: tableWidth, alignment: .leading)
-        }
-        .refreshable {
-            if storageService.iCloudSyncEnabled {
-                iCloudSyncService.shared.pullAndMerge(force: false)
-            }
-            await stockService.refreshAll(storageService: storageService)
-        }
-    }
 
-    /// Assembles the row used by the flat list: a real QuoteRow when quotes are
-    /// loaded, else a column-aligned placeholder.
-    @ViewBuilder
-    private func quoteOrPlaceholderRow(_ symbol: String) -> some View {
-        if let row = viewModel.rowsBySymbol[symbol] {
-            QuoteRow(
-                row: row,
-                metrics: selectedMetrics,
-                tableWidth: tableWidth,
-                showCompanyName: storageService.showCompanyName,
-                showExtendedHours: storageService.showExtendedHours,
-                percentDecimals: storageService.percentDecimals,
-                valueDecimals: storageService.valueDecimals,
-                isReordering: draggingSymbol != nil,
-                onOpen: {
-                    showSymbolDetail.perform(row.symbol)
-                },
-                onStartDrag: {
-                    startDrag(for: symbol)
-                }
-            ) {
-                watchlistContextMenu(symbol: symbol)
-            }
-        } else {
-            HStack(spacing: 0) {
-                HStack(spacing: 5) {
-                    SymbolLogo(symbol: symbol, size: 20)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(StockService.beautifiedSymbol(symbol))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                            .lineLimit(1)
-                        if storageService.showCompanyName {
-                            Text(" ")
-                                .font(.inter(10, relativeTo: .caption2))
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(width: WatchlistCol.symbol, alignment: .leading)
-
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4.5)
-            .frame(minWidth: tableWidth, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                showSymbolDetail.perform(symbol)
-            }
-            .pointingHandCursor()
-            .contextMenu {
-                watchlistContextMenu(symbol: symbol)
-            }
-        }
-    }
-
-    private var headerRow: some View {
+    private var frozenHeaderRow: some View {
         HStack(spacing: 0) {
             sortHeader("Symbol", column: .symbol, align: .leading, leadingIndent: 25)
                 .frame(width: WatchlistCol.symbol, alignment: .leading)
+        }
+        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+        .foregroundColor(.secondary)
+        .tracking(0.8)
+        .textCase(.uppercase)
+        .padding(.horizontal, 12)
+        .frame(width: WatchlistCol.pinnedWidth, height: WatchlistCol.headerHeight, alignment: .leading)
+    }
+
+    private var metricsHeaderRow: some View {
+        HStack(spacing: 0) {
             sortHeader("Price", column: .price, align: .trailing)
                 .frame(width: WatchlistCol.price, alignment: .trailing)
             ForEach(selectedMetrics.filter { $0 != .price }) { metric in
@@ -212,15 +137,89 @@ struct WatchlistView: View {
         .tracking(0.8)
         .textCase(.uppercase)
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .frame(minWidth: tableWidth, alignment: .leading)
+        .frame(height: WatchlistCol.headerHeight, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func frozenRowContent(_ symbol: String, hoverBox: RowHoverBox) -> some View {
+        let isDraggingThis = draggingSymbol == symbol
+        if let row = viewModel.rowsBySymbol[symbol] {
+            QuoteFrozenRow(
+                row: row,
+                showCompanyName: storageService.showCompanyName,
+                valueDecimals: storageService.valueDecimals,
+                hoverBox: hoverBox,
+                isReordering: draggingSymbol != nil,
+                onOpen: { showSymbolDetail.perform(row.symbol) },
+                onStartDrag: { startDrag(for: symbol) },
+                menu: { watchlistContextMenu(symbol: symbol) }
+            )
+            .opacity(isDraggingThis ? 0.35 : 1.0)
+        } else {
+            HStack(spacing: 5) {
+                SymbolLogo(symbol: symbol, size: 20)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(StockService.beautifiedSymbol(symbol))
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    if storageService.showCompanyName {
+                        Text(" ")
+                            .font(.inter(10, relativeTo: .caption2))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(width: WatchlistCol.symbol, alignment: .leading)
+            .padding(.horizontal, 12)
+            .frame(width: WatchlistCol.pinnedWidth, height: WatchlistCol.rowHeight, alignment: .leading)
+            .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { showSymbolDetail.perform(symbol) }
+            .pointingHandCursor()
+            .onHover { hoverBox.isHovered = $0 }
+            .contextMenu { watchlistContextMenu(symbol: symbol) }
+            .opacity(isDraggingThis ? 0.35 : 1.0)
+        }
+    }
+
+    @ViewBuilder
+    private func metricsRowContent(_ symbol: String, hoverBox: RowHoverBox) -> some View {
+        let isDraggingThis = draggingSymbol == symbol
+        if let row = viewModel.rowsBySymbol[symbol] {
+            QuoteMetricsRow(
+                row: row,
+                metrics: selectedMetrics,
+                showExtendedHours: storageService.showExtendedHours,
+                percentDecimals: storageService.percentDecimals,
+                valueDecimals: storageService.valueDecimals,
+                hoverBox: hoverBox,
+                isReordering: draggingSymbol != nil,
+                dropIndicator: dropIndicator,
+                onOpen: { showSymbolDetail.perform(row.symbol) },
+                menu: { watchlistContextMenu(symbol: symbol) }
+            )
+            .opacity(isDraggingThis ? 0.35 : 1.0)
+        } else {
+            ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: WatchlistCol.price, height: WatchlistCol.rowHeight, alignment: .center)
+                .padding(.horizontal, 12)
+                .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+                .contentShape(Rectangle())
+                .onTapGesture { showSymbolDetail.perform(symbol) }
+                .pointingHandCursor()
+                .onHover { hoverBox.isHovered = $0 }
+                .contextMenu { watchlistContextMenu(symbol: symbol) }
+                .opacity(isDraggingThis ? 0.35 : 1.0)
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             watchlistPickerBar
 
-            Divider()
+            Divider().overlay(DS.hairline)
 
             if storageService.watchlist.isEmpty {
                 VStack(spacing: 12) {
@@ -241,19 +240,87 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                ScrollView(.horizontal, showsIndicators: true) {
+                HStack(spacing: 0) {
+                    // LEFT FROZEN PANE: Symbol
                     VStack(spacing: 0) {
-                        headerRow
-
-                        Divider()
-
-                        flatList
+                        frozenHeaderRow
+                        Divider().overlay(DS.hairline)
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { _, symbol in
+                                    let box = hoverBox(for: symbol)
+                                    ReorderRow(
+                                        id: symbol,
+                                        draggingId: $draggingSymbol,
+                                        isHorizontal: false,
+                                        attachDragToContent: false,
+                                        makeDragItem: {
+                                            startDrag(for: symbol)
+                                        },
+                                        onMove: { src, tgt, placement in
+                                            moveSymbolInPreview(src, beforeOrAfter: tgt, placement: placement)
+                                        },
+                                        onCommit: { commitSymbolPreview() },
+                                        content: {
+                                            frozenRowContent(symbol, hoverBox: box)
+                                        },
+                                        dropIndicator: $dropIndicator
+                                    )
+                                    if symbol != displaySymbols.last {
+                                        Divider().padding(.leading, 12)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .background(ScrollViewSyncAttachment { scrollCoordinator.registerVerticalFrozen($0) })
+                        }
+                        .frame(width: WatchlistCol.pinnedWidth)
                     }
-                    .frame(minWidth: tableWidth, maxHeight: .infinity, alignment: .topLeading)
-                }
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                    .frame(width: WatchlistCol.pinnedWidth)
+                    .overlay(alignment: .trailing) {
+                        HStack(spacing: 0) {
+                            Spacer()
+                            Divider()
+                        }
+                    }
+                    .background(DS.card)
 
-                Divider()
+                    // RIGHT METRICS PANE
+                    VStack(spacing: 0) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            metricsHeaderRow
+                                .frame(minWidth: metricsTableWidth, alignment: .leading)
+                                .background(ScrollViewSyncAttachment { scrollCoordinator.registerHorizontalHeader($0) })
+                        }
+                        .frame(height: WatchlistCol.headerHeight)
+                        Divider().overlay(DS.hairline)
+                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { _, symbol in
+                                    let box = hoverBox(for: symbol)
+                                    metricsRowContent(symbol, hoverBox: box)
+                                    if symbol != displaySymbols.last {
+                                        Divider().padding(.horizontal, 12)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .frame(minWidth: metricsTableWidth, alignment: .leading)
+                            .background(ScrollViewSyncAttachment { scrollCoordinator.register2DBody($0) })
+                        }
+                        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                    }
+                }
+                .background(DS.card)
+                .frame(maxHeight: .infinity)
+                .refreshable {
+                    if storageService.iCloudSyncEnabled {
+                        iCloudSyncService.shared.pullAndMerge(force: false)
+                    }
+                    await stockService.refreshAll(storageService: storageService)
+                }
+
+                Divider().overlay(DS.hairline)
 
                 HStack(spacing: 12) {
                     Button(action: {
@@ -853,23 +920,15 @@ struct QuickAddHoldingView: View {
     }
 }
 
-struct QuoteRow<Menu: View>: View {
+struct QuoteFrozenRow<Menu: View>: View {
     let row: WatchlistWideView.WatchRow
-    let metrics: [WatchlistMetric]
-    let tableWidth: CGFloat
     let showCompanyName: Bool
-    let showExtendedHours: Bool
-    let percentDecimals: Int
     let valueDecimals: Int
+    @ObservedObject var hoverBox: RowHoverBox
     var isReordering: Bool = false
     let onOpen: () -> Void
     var onStartDrag: (() -> NSItemProvider)? = nil
     @ViewBuilder let menu: () -> Menu
-    @State private var isHovered = false
-
-    private func priceDec(_ price: Double) -> Int {
-        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
-    }
 
     private var dragPreviewBadge: some View {
         HStack(spacing: 6) {
@@ -897,14 +956,14 @@ struct QuoteRow<Menu: View>: View {
     private var symbolLogoOrHandle: some View {
         ZStack {
             SymbolLogo(symbol: row.symbol, size: 20)
-                .opacity(isHovered ? 0 : 1)
+                .opacity(hoverBox.isHovered ? 0 : 1)
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(DS.inkSecondary)
-                .opacity(isHovered ? 1 : 0)
+                .opacity(hoverBox.isHovered ? 1 : 0)
         }
         .frame(width: 20, height: 20)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .animation(.easeInOut(duration: 0.15), value: hoverBox.isHovered)
         .contentShape(Rectangle())
         .onDrag({
             onStartDrag?() ?? NSItemProvider(object: row.symbol as NSString)
@@ -966,6 +1025,37 @@ struct QuoteRow<Menu: View>: View {
             }
         }
         .frame(width: WatchlistCol.symbol, alignment: .leading)
+    }
+
+    var body: some View {
+        macOSSymbolCell
+            .padding(.horizontal, 12)
+            .frame(width: WatchlistCol.pinnedWidth, height: WatchlistCol.rowHeight, alignment: .leading)
+            .background(hoverBox.isHovered && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onOpen()
+            }
+            .pointingHandCursor()
+            .onHover { hoverBox.isHovered = $0 }
+            .contextMenu { menu() }
+    }
+}
+
+struct QuoteMetricsRow<Menu: View>: View {
+    let row: WatchlistWideView.WatchRow
+    let metrics: [WatchlistMetric]
+    let showExtendedHours: Bool
+    let percentDecimals: Int
+    let valueDecimals: Int
+    @ObservedObject var hoverBox: RowHoverBox
+    var isReordering: Bool = false
+    let dropIndicator: DropIndicator<String>?
+    let onOpen: () -> Void
+    @ViewBuilder let menu: () -> Menu
+
+    private func priceDec(_ price: Double) -> Int {
+        valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: price)
     }
 
     private var macOSPriceCell: some View {
@@ -1170,24 +1260,34 @@ struct QuoteRow<Menu: View>: View {
         }
     }
 
+    private var dropAlignment: Alignment {
+        guard let ind = dropIndicator, ind.target == row.symbol else { return .top }
+        return ind.placement == .before ? .top : .bottom
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            macOSSymbolCell
             macOSPriceCell.frame(width: WatchlistCol.price, alignment: .trailing)
             ForEach(metrics.filter { $0 != .price }) { metric in
                 metricCell(metric)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 4.5)
-        .frame(minWidth: tableWidth, alignment: .leading)
-        .background(isHovered && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
+        .frame(height: WatchlistCol.rowHeight, alignment: .leading)
+        .background(hoverBox.isHovered && !isReordering ? DS.cardAlt.opacity(0.6) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onOpen()
         }
         .pointingHandCursor()
-        .onHover { isHovered = $0 }
+        .onHover { hoverBox.isHovered = $0 }
         .contextMenu { menu() }
+        .overlay(alignment: dropAlignment) {
+            if let ind = dropIndicator, ind.target == row.symbol {
+                Rectangle()
+                    .fill(ind.color)
+                    .frame(height: 2)
+            }
+        }
     }
 }
