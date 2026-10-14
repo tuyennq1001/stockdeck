@@ -6,22 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.8</title>
-            <pubDate>Wed, 14 Oct 2026 13:26:53 +0900</pubDate>
-            <sparkle:version>11</sparkle:version>
-            <sparkle:shortVersionString>1.1.8</sparkle:shortVersionString>
+            <title>Version 1.1.9</title>
+            <pubDate>Thu, 15 Oct 2026 05:04:44 +0900</pubDate>
+            <sparkle:version>12</sparkle:version>
+            <sparkle:shortVersionString>1.1.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.8</h2>
+<h2>What's New in StockDeck 1.1.9</h2>
 <ul>
-    <li><strong>Accurate Performance Periods:</strong> Fixed an issue where newly listed stocks with limited trading history duplicated initial IPO returns across longer periods (such as 6M, YTD, 1Y, 2Y, 3Y). The app now accurately displays placeholder dashes (<code>—</code>) when historical data is insufficient.</li>
-    <li><strong>Stock &amp; Crypto Search Collision Prevention:</strong> Prevented symbol key collisions and unexpected quote overrides between stocks and crypto assets sharing identical identifiers.</li>
+    <li><strong>Isolated Development Data:</strong> Development builds now store databases, caches, and Keychain items in an isolated sandbox, preventing test data or migrations from affecting production portfolios.</li>
+    <li><strong>Pinned Watchlist Symbol Column:</strong> The symbol and name column remains fixed while scrolling wide metrics horizontally.</li>
+    <li><strong>Market Quote Accuracy:</strong> Prevented Yahoo WebSocket ticks from overriding Vietnamese stock prices and Japanese mutual funds.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.8/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.9/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="Nq4QDdgc6Puc79x8fT89ATSjNyxFDTc0ZiE3lZ3wOCqzpsyBB6uurkIK7/F8bVH7AiL+sFftj0QjwFC4DeO2AQ=="
-                       length="8891352"/>
+                       sparkle:edSignature="leNVWNBr9FgGYn/96ueYlFJ3UxeZSs8bA8XTDHhDdeeaoQKFOpTdEw8PvmJM2Bs2Z+hpd3Wvn2vD1kIOwqpKDA=="
+                       length="8950924"/>
         </item>
     </channel>
 </rss>
