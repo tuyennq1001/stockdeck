@@ -156,30 +156,32 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack {
             if storageService.isRestoringData {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let symbol = selectedDetailSymbol {
-                SymbolDetailView(
-                    symbol: symbol,
-                    onAddToPortfolio: { portfolioId in
-                        addHoldingPortfolioId = portfolioId
-                    },
-                    onDismiss: {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            selectedDetailSymbol = nil
-                        }
-                    }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .trailing).combined(with: .opacity)
-                ))
-            } else if let portfolioId = addHoldingPortfolioId {
-                AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
             } else {
                 mainContent
+
+                if let symbol = selectedDetailSymbol {
+                    SymbolDetailView(
+                        symbol: symbol,
+                        onAddToPortfolio: { portfolioId in
+                            addHoldingPortfolioId = portfolioId
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedDetailSymbol = nil
+                            }
+                        }
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
+                } else if let portfolioId = addHoldingPortfolioId {
+                    AddHoldingView(portfolioId: portfolioId, isPresented: $addHoldingPortfolioId)
+                }
             }
         }
         .environment(\.showSymbolDetail, ShowSymbolDetailAction { symbol in
@@ -309,6 +311,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DS.ground)
         }
+        .background(DS.ground)
         .tint(DS.brand)
         .environment(\.addHoldingAction, AddHoldingAction { portfolioId in
             addHoldingPortfolioId = portfolioId

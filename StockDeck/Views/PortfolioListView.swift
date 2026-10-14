@@ -172,7 +172,7 @@ struct PortfolioListView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
 
-                    Divider()
+                    Divider().overlay(DS.hairline)
                 }
 
                 let globals = globalPositions
@@ -193,7 +193,7 @@ struct PortfolioListView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
 
-                        Divider()
+                        Divider().overlay(DS.hairline)
 
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVStack(spacing: 0) {
@@ -207,6 +207,7 @@ struct PortfolioListView: View {
                             .padding(.vertical, 2)
                         }
                     }
+                    .background(DS.card)
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 0) {
@@ -214,7 +215,7 @@ struct PortfolioListView: View {
                     }
                 }
 
-                Divider()
+                Divider().overlay(DS.hairline)
 
                 HStack(spacing: 12) {
                     Button(action: {

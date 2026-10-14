@@ -170,8 +170,8 @@ struct WatchlistWideView: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     table
-                        .frame(width: activeDetailSymbol != nil ? 350 : nil)
-                        .frame(maxWidth: activeDetailSymbol != nil ? 350 : .infinity, maxHeight: .infinity)
+                        .frame(width: activeDetailSymbol != nil ? WCol.frozenWidth : nil)
+                        .frame(maxWidth: activeDetailSymbol != nil ? WCol.frozenWidth : .infinity, maxHeight: .infinity)
 
                     if activeDetailSymbol != nil {
                         HStack(spacing: 0) {
@@ -546,7 +546,7 @@ struct WatchlistWideView: View {
             Divider().overlay(DS.hairline)
             ScrollView(.horizontal, showsIndicators: !isCompact) {
                 tableContents
-                    .frame(minWidth: isCompact ? 350 : tableWidth, alignment: .leading)
+                    .frame(minWidth: isCompact ? WCol.frozenWidth : tableWidth, alignment: .leading)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
@@ -554,11 +554,10 @@ struct WatchlistWideView: View {
     }
 
     private var tableWidth: CGFloat {
-        let base = 22 + 24 + WCol.symbol + WCol.price
         let otherMetrics = selectedMetrics.filter { $0 != .price }
         let metricWidth = otherMetrics.reduce(CGFloat.zero) { $0 + WCol.width(for: $1) }
-        let columns = 4 + otherMetrics.count
-        return base + metricWidth + CGFloat(columns - 1) * WCol.spacing + 28 + 20
+        let spacingCount = otherMetrics.isEmpty ? 0 : otherMetrics.count
+        return WCol.frozenWidth + metricWidth + CGFloat(spacingCount) * WCol.spacing + 20
     }
 
     private var tableToolbar: some View {
@@ -808,15 +807,9 @@ struct WatchlistWideView: View {
                 selectAllButton
                 Color.clear.frame(width: 16, height: 24)
                 Text("#").font(DS.label).foregroundStyle(DS.inkTertiary).frame(width: 24, alignment: .leading)
-                if isCompact {
-                    headerCell("Symbol", .symbol, width: nil, align: .leading, help: "Sort by symbol")
-                    headerCell("Price", .price, width: 96, align: .trailing, help: "Sort by price")
-                } else {
-                    headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
-                    headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
-                }
+                headerCell("Symbol", .symbol, width: WCol.symbol, align: .leading, help: "Sort by symbol")
+                headerCell("Price", .price, width: WCol.price, align: .trailing, help: "Sort by price")
             }
-            .frame(maxWidth: isCompact ? .infinity : nil, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
@@ -828,7 +821,7 @@ struct WatchlistWideView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
-        .padding(.trailing, 20)
+        .padding(.trailing, isCompact ? 0 : 20)
         .textCase(.uppercase)
         .contextMenu {
             Button {
@@ -1113,6 +1106,7 @@ private enum WCol {
     static let trend: CGFloat = 56
     static let range: CGFloat = 100
     static let spacing: CGFloat = 12
+    static let frozenWidth: CGFloat = 22 + 16 + 24 + symbol + price + 4 * spacing + 28
 
     static func width(for metric: WatchlistMetric) -> CGFloat {
         switch metric {
@@ -1416,22 +1410,10 @@ private struct WatchRowView<Menu: View>: View {
                         }
                     }
                 }
-                .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
-                .frame(width: compact ? nil : WCol.symbol, alignment: .leading)
+                .frame(width: WCol.symbol, alignment: .leading)
 
-                if compact {
-                    if row.loaded {
-                        priceCell
-                            .frame(width: 96, alignment: .trailing)
-                    } else {
-                        DSSpinner(size: 12)
-                            .frame(width: 96, alignment: .center)
-                    }
-                } else {
-                    metricCell(.price)
-                }
+                metricCell(.price)
             }
-            .frame(maxWidth: compact ? .infinity : nil, alignment: .leading)
             .padding(.horizontal, 14).padding(.vertical, 9)
             .frame(minHeight: 44)
 
@@ -1443,7 +1425,7 @@ private struct WatchRowView<Menu: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 9)
-        .padding(.trailing, 20)
+        .padding(.trailing, compact ? 0 : 20)
         .background((hover || isActive) && !isReordering ? DS.cardAlt.opacity(isActive ? 1.0 : 0.6) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
