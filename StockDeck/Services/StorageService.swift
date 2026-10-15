@@ -1522,6 +1522,7 @@ class StorageService: ObservableObject {
         }
     }
 
+
     private let fileURL: URL
     private let isCustomStorage: Bool
     private var isLoading = false
@@ -2714,6 +2715,7 @@ class StorageService: ObservableObject {
     }
 
     func saveNow() {
+        guard !isLoading, !isRestoringData, !decodeFailure else { return }
         saveTask?.cancel()
         saveTask = nil
         let snapshot = exportAppData()
@@ -2791,6 +2793,10 @@ class StorageService: ObservableObject {
         guard AppEnvironment.isDev else { return }
         try AppEnvironment.cloneProdDataToDev()
         self.load()
+        self.saveNow()
+        Task {
+            await StockService.shared.reloadHistoryCache()
+        }
     }
 
     /// Resets dev data to clean default state. Available only in Dev.

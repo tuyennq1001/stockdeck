@@ -137,8 +137,17 @@ final class PortfolioPeriodChangeTests: XCTestCase {
     }
 
     @MainActor
+    private func createTestStorage() -> (StorageService, URL) {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("StockDeckTest-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let fileURL = tempDir.appendingPathComponent("data.json")
+        return (StorageService(fileURL: fileURL), tempDir)
+    }
+
+    @MainActor
     func testIsRangeAvailableWhenPortfolioIsYoungerThan3YAnd5Y() {
-        let storage = StorageService.shared
+        let (storage, tempDir) = createTestStorage()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
         let pId = UUID()
         let portfolio = Portfolio(id: pId, name: "Test Young Portfolio", holdings: [])
         storage.portfolios = [portfolio]
@@ -169,7 +178,8 @@ final class PortfolioPeriodChangeTests: XCTestCase {
 
     @MainActor
     func testIsRangeAvailableWhenPortfolioIsOlderThan5Y() {
-        let storage = StorageService.shared
+        let (storage, tempDir) = createTestStorage()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
         let pId = UUID()
         let portfolio = Portfolio(id: pId, name: "Test Old Portfolio", holdings: [])
         storage.portfolios = [portfolio]
