@@ -6,24 +6,25 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.10</title>
-            <pubDate>Thu, 15 Oct 2026 11:47:43 +0900</pubDate>
-            <sparkle:version>13</sparkle:version>
-            <sparkle:shortVersionString>1.1.10</sparkle:shortVersionString>
+            <title>Version 1.1.11</title>
+            <pubDate>Thu, 15 Oct 2026 18:56:25 +0900</pubDate>
+            <sparkle:version>14</sparkle:version>
+            <sparkle:shortVersionString>1.1.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.10</h2>
+<h2>What's New in StockDeck 1.1.11</h2>
 <ul>
-    <li><strong>Valuation & Profitability Metrics:</strong> Added Key Statistics including P/E, Forward P/E, P/B, Dividend Yield, EPS, Market Cap, ROE, ROA, ROIC, Profit Margin, PEG, and Debt/Equity in symbol and holding details.</li>
-    <li><strong>Customizable Valuation Columns:</strong> Added Valuation metrics to Watchlist and Portfolio tables with full sorting and column selection.</li>
-    <li><strong>Vietnamese Stock Valuation:</strong> Integrated Yahoo Finance valuation fundamentals for Vietnamese (.VN) equities with zero additional network requests.</li>
-    <li><strong>Streamlined Symbol Details:</strong> Cleaned up redundant range cards for a focused, responsive layout.</li>
+    <li><strong>Trading Value & MA20 in Volume Chart:</strong> Converted volume bars and stats to monetary trading value with moving average (MA20) across all assets.</li>
+    <li><strong>Compact Currency Display:</strong> Added concise K tỷ, B, and T currency formatting for domestic (VN-Index) and global (S&P 500, Nikkei 225) markets.</li>
+    <li><strong>Streamlined Volume Card Header:</strong> Replaced the percentage badge with the session date for a clean, stable layout without layout shift.</li>
+    <li><strong>Index Precision:</strong> Removed unnecessary currency and PTS prefixes from index prices and 52-week ranges.</li>
+    <li><strong>Holding Detail Parity:</strong> Added the Volume Chart Card to holding details for a consistent experience across Watchlist and Portfolio.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.10/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.11/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="e42cltRGdb3cBb+lQsDMEUZxAYuU5hROOlZphbU6nAL27ZQeX3B1qOEYWeBTzjqp9Q9F4ys/qfWOnaHQljPPBA=="
-                       length="9042414"/>
+                       sparkle:edSignature="ZsgTEdkp6OUcFV0QDa0bGhqgz+T/cPGLfRpJ0vIzNeY1+tTv0wRAQ35z1p6cVffC8Mwyh6k9ZJr3D+sIt8IDDg=="
+                       length="9113620"/>
         </item>
     </channel>
 </rss>
