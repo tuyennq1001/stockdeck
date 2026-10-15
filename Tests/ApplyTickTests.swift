@@ -118,4 +118,34 @@ final class ApplyTickTests: XCTestCase {
         XCTAssertFalse(wsSymbols.contains("0331418A"), "Japanese mutual fund must NOT be included in Yahoo WebSocket")
         XCTAssertFalse(wsSymbols.contains("BTC-USD"), "Crypto must NOT be included in Yahoo WebSocket")
     }
+
+    /// Regression test: WebSocket ticks must preserve valuation metrics (P/E, P/B, EPS, Div Yield, etc.)
+    func testApplyTickPreservesValuationMetrics() {
+        StockService.shared.quotes["TSTX"] = StockQuote(
+            symbol: "TSTX", name: "Test Corp", price: 100, change: 1, changePercent: 1,
+            currency: "USD", marketState: "REGULAR",
+            marketCap: 50_000_000_000,
+            trailingPE: 25.5,
+            forwardPE: 22.0,
+            priceToBook: 4.5,
+            bookValue: 22.2,
+            epsTrailingTwelveMonths: 3.92,
+            epsForward: 4.55,
+            dividendYield: 1.8
+        )
+
+        _ = StockService.shared.applyTick(makeTicker(id: "TSTX", price: 102, marketHours: .regularMarket))
+
+        let q = StockService.shared.quotes["TSTX"]!
+        XCTAssertEqual(q.price, 102)
+        XCTAssertEqual(q.marketCap, 50_000_000_000)
+        XCTAssertEqual(q.trailingPE, 25.5)
+        XCTAssertEqual(q.forwardPE, 22.0)
+        XCTAssertEqual(q.priceToBook, 4.5)
+        XCTAssertEqual(q.bookValue, 22.2)
+        XCTAssertEqual(q.epsTrailingTwelveMonths, 3.92)
+        XCTAssertEqual(q.epsForward, 4.55)
+        XCTAssertEqual(q.dividendYield, 1.8)
+        XCTAssertTrue(q.hasValuationData)
+    }
 }

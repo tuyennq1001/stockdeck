@@ -28,6 +28,10 @@ struct HoldingDetailView: View {
     @State private var expandedClosedTradeIds: Set<String> = []
     @State private var expandedTxIds: Set<String> = []
 
+    private var liveQuote: StockQuote {
+        stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? quote
+    }
+
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
@@ -106,6 +110,10 @@ struct HoldingDetailView: View {
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
+                    if liveQuote.hasValuationData {
+                        ValuationCard(quote: liveQuote)
+                            .frame(maxWidth: .infinity)
+                    }
                     InsiderTradingCard(symbol: holding.symbol)
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
@@ -124,6 +132,11 @@ struct HoldingDetailView: View {
             }
         }
         .navigationTitle(mainTitle)
+        .task(id: holding.symbol) {
+            if liveQuote.hasValuationData != true {
+                await stockService.ensureQuoteValuation(for: holding.symbol)
+            }
+        }
         .sheet(item: $targetCloseLot) { target in
             CloseHoldingSheet(
                 portfolioId: target.portfolioId,

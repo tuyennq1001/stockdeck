@@ -674,6 +674,14 @@ class StockService: ObservableObject {
                     dayLow: regularQuote?.dayLow,
                     fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,
                     fiftyTwoWeekLow: regularQuote?.fiftyTwoWeekLow,
+                    marketCap: regularQuote?.marketCap,
+                    trailingPE: regularQuote?.trailingPE,
+                    forwardPE: regularQuote?.forwardPE,
+                    priceToBook: regularQuote?.priceToBook,
+                    bookValue: regularQuote?.bookValue,
+                    epsTrailingTwelveMonths: regularQuote?.epsTrailingTwelveMonths,
+                    epsForward: regularQuote?.epsForward,
+                    dividendYield: regularQuote?.dividendYield,
                     preMarketPrice: regularQuote?.preMarketPrice,
                     preMarketChange: regularQuote?.preMarketChange,
                     preMarketChangePercent: regularQuote?.preMarketChangePercent,
@@ -899,7 +907,14 @@ class StockService: ObservableObject {
                         dayLow: quote.dayLow,
                         fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
                         fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
-                        marketCap: quote.marketCap
+                        marketCap: quote.marketCap,
+                        trailingPE: quote.trailingPE,
+                        forwardPE: quote.forwardPE,
+                        priceToBook: quote.priceToBook,
+                        bookValue: quote.bookValue,
+                        epsTrailingTwelveMonths: quote.epsTrailingTwelveMonths,
+                        epsForward: quote.epsForward,
+                        dividendYield: quote.dividendYield
                     )
                 }
                 let upperOriginal = originalSymbol.uppercased()
@@ -1326,6 +1341,14 @@ class StockService: ObservableObject {
             let postChg: Double? = if let pm = q.postMarketPrice { pm - price } else { nil }
             let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
 
+            let divYield: Double? = if let dy = q.dividendYield {
+                dy
+            } else if let tady = q.trailingAnnualDividendYield {
+                tady * 100.0
+            } else {
+                nil
+            }
+
             let quote = StockQuote(
                 symbol: q.symbol,
                 name: q.longName ?? q.shortName ?? q.symbol,
@@ -1341,6 +1364,13 @@ class StockService: ObservableObject {
                 fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: q.fiftyTwoWeekLow,
                 marketCap: q.marketCap,
+                trailingPE: q.trailingPE,
+                forwardPE: q.forwardPE,
+                priceToBook: q.priceToBook,
+                bookValue: q.bookValue,
+                epsTrailingTwelveMonths: q.epsTrailingTwelveMonths,
+                epsForward: q.epsForward,
+                dividendYield: divYield,
                 preMarketPrice: q.preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1435,6 +1465,7 @@ class StockService: ObservableObject {
             let postChg: Double? = if let pm = postMarketPrice { pm - price } else { nil }
             let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
 
+            let existingQuote = quotes[meta.symbol] ?? quotes[symbol]
             let quote = StockQuote(
                 symbol: meta.symbol,
                 name: meta.longName ?? meta.shortName ?? meta.symbol,
@@ -1449,6 +1480,14 @@ class StockService: ObservableObject {
                 dayLow: nil,
                 fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+                marketCap: existingQuote?.marketCap,
+                trailingPE: existingQuote?.trailingPE,
+                forwardPE: existingQuote?.forwardPE,
+                priceToBook: existingQuote?.priceToBook,
+                bookValue: existingQuote?.bookValue,
+                epsTrailingTwelveMonths: existingQuote?.epsTrailingTwelveMonths,
+                epsForward: existingQuote?.epsForward,
+                dividendYield: existingQuote?.dividendYield,
                 preMarketPrice: preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1707,6 +1746,13 @@ class StockService: ObservableObject {
 
     private struct HistoryCacheSnapshot: @unchecked Sendable {
         let entries: [String: HistoryCacheEntry]
+    }
+
+    /// Ensures that fundamental valuation metrics (P/E, P/B, EPS, Div Yield, Market Cap)
+    /// are fetched and populated for a single symbol when viewed on detail screens.
+    func ensureQuoteValuation(for symbol: String) async {
+        guard !isJapaneseMutualFund(symbol), !Self.isVietnameseStock(symbol) else { return }
+        _ = await fetchQuotesV7(symbols: [symbol])
     }
 
     /// Loads (or refreshes after ~6h) ten years of daily closes for the detail
@@ -2329,6 +2375,13 @@ class StockService: ObservableObject {
                 fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
                 marketCap: marketCap,
+                trailingPE: existing?.trailingPE,
+                forwardPE: existing?.forwardPE,
+                priceToBook: existing?.priceToBook,
+                bookValue: existing?.bookValue,
+                epsTrailingTwelveMonths: existing?.epsTrailingTwelveMonths,
+                epsForward: existing?.epsForward,
+                dividendYield: existing?.dividendYield,
                 preMarketPrice: prePrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -3842,6 +3895,14 @@ private struct YahooV7Response: Codable {
         let postMarketPrice: Double?
         let marketCap: Double?
         let quoteType: String?
+        let trailingPE: Double?
+        let forwardPE: Double?
+        let priceToBook: Double?
+        let bookValue: Double?
+        let epsTrailingTwelveMonths: Double?
+        let epsForward: Double?
+        let dividendYield: Double?
+        let trailingAnnualDividendYield: Double?
     }
 
     struct V7Error: Codable {

@@ -37,6 +37,9 @@ struct SymbolDetailView: View {
         .background(DS.ground)
         .task(id: symbol) {
             await stockService.ensurePriceHistory(for: symbol)
+            if quote?.hasValuationData != true {
+                await stockService.ensureQuoteValuation(for: symbol)
+            }
         }
     }
 
@@ -54,6 +57,9 @@ struct SymbolDetailView: View {
                             .id("volume-\(symbol)")
                         if storageService.show52WeekBar {
                             fiftyTwoWeekCard(quote)
+                        }
+                        if quote.hasValuationData {
+                            ValuationCard(quote: quote)
                         }
                         factsCard(quote)
                         InsiderTradingCard(symbol: symbol)
@@ -148,6 +154,7 @@ struct SymbolDetailView: View {
                 Task {
                     await stockService.refreshAll(storageService: storageService)
                     await stockService.ensurePriceHistory(for: symbol)
+                    await stockService.ensureQuoteValuation(for: symbol)
                 }
             }) {
                 Image(systemName: "arrow.clockwise")
