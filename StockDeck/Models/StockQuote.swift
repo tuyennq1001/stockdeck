@@ -23,6 +23,15 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
     // Market capitalization
     let marketCap: Double?
 
+    // Valuation metrics
+    let trailingPE: Double?
+    let forwardPE: Double?
+    let priceToBook: Double?
+    let bookValue: Double?
+    let epsTrailingTwelveMonths: Double?
+    let epsForward: Double?
+    let dividendYield: Double?
+
     let preMarketPrice: Double?
     let preMarketChange: Double?
     let preMarketChangePercent: Double?
@@ -47,6 +56,13 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
         fiftyTwoWeekHigh: Double? = nil,
         fiftyTwoWeekLow: Double? = nil,
         marketCap: Double? = nil,
+        trailingPE: Double? = nil,
+        forwardPE: Double? = nil,
+        priceToBook: Double? = nil,
+        bookValue: Double? = nil,
+        epsTrailingTwelveMonths: Double? = nil,
+        epsForward: Double? = nil,
+        dividendYield: Double? = nil,
         preMarketPrice: Double? = nil,
         preMarketChange: Double? = nil,
         preMarketChangePercent: Double? = nil,
@@ -68,12 +84,31 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
         self.fiftyTwoWeekHigh = fiftyTwoWeekHigh
         self.fiftyTwoWeekLow = fiftyTwoWeekLow
         self.marketCap = marketCap
+        self.trailingPE = trailingPE
+        self.forwardPE = forwardPE
+        self.priceToBook = priceToBook
+        self.bookValue = bookValue
+        self.epsTrailingTwelveMonths = epsTrailingTwelveMonths
+        self.epsForward = epsForward
+        self.dividendYield = dividendYield
         self.preMarketPrice = preMarketPrice
         self.preMarketChange = preMarketChange
         self.preMarketChangePercent = preMarketChangePercent
         self.postMarketPrice = postMarketPrice
         self.postMarketChange = postMarketChange
         self.postMarketChangePercent = postMarketChangePercent
+    }
+
+    /// True if the quote has at least one valid core valuation metric.
+    /// Used to conditionally show the Valuation card for equities while cleanly hiding it for Crypto, Indices, and non-equity assets.
+    var hasValuationData: Bool {
+        trailingPE != nil ||
+        forwardPE != nil ||
+        priceToBook != nil ||
+        bookValue != nil ||
+        epsTrailingTwelveMonths != nil ||
+        epsForward != nil ||
+        dividendYield != nil
     }
 
     var isPositive: Bool { change >= 0 }

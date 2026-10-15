@@ -28,6 +28,10 @@ struct HoldingDetailView: View {
     @State private var expandedClosedTradeIds: Set<String> = []
     @State private var expandedTxIds: Set<String> = []
 
+    private var liveQuote: StockQuote {
+        stockService.quotes[holding.symbol] ?? stockService.quotes[holding.symbol.uppercased()] ?? quote
+    }
+
     private var currencySymbol: String {
         StorageService.currencySymbol(for: storageService.preferredCurrency)
     }
@@ -93,7 +97,11 @@ struct HoldingDetailView: View {
                 .buttonStyle(.plain)
                 .help("Set a price alert")
                 RefreshButton(isLoading: stockService.isLoading) {
-                    Task { await stockService.refreshAll(storageService: storageService) }
+                    Task {
+                        await stockService.refreshAll(storageService: storageService)
+                        await stockService.ensureQuoteValuation(for: holding.symbol)
+                        await stockService.ensureKeyStatistics(for: holding.symbol, force: true)
+                    }
                 }
             }
         } content: {
@@ -106,6 +114,14 @@ struct HoldingDetailView: View {
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
+                    if liveQuote.hasValuationData {
+                        let keyStats = stockService.keyStatistics[holding.symbol]
+                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(holding.symbol)
+                        ValuationCard(quote: liveQuote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            .frame(maxWidth: .infinity)
+                        ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            .frame(maxWidth: .infinity)
+                    }
                     InsiderTradingCard(symbol: holding.symbol)
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
@@ -124,6 +140,12 @@ struct HoldingDetailView: View {
             }
         }
         .navigationTitle(mainTitle)
+        .task(id: holding.symbol) {
+            if liveQuote.hasValuationData != true {
+                await stockService.ensureQuoteValuation(for: holding.symbol)
+            }
+            await stockService.ensureKeyStatistics(for: holding.symbol)
+        }
         .sheet(item: $targetCloseLot) { target in
             CloseHoldingSheet(
                 portfolioId: target.portfolioId,

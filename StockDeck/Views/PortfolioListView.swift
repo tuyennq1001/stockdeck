@@ -13,6 +13,8 @@ private enum PortfolioCol {
     static let shares: CGFloat = 68
     static let lots: CGFloat = 55
     static let weight: CGFloat = 66
+    static let marketCap: CGFloat = 84
+    static let valuation: CGFloat = 72
     static let volume: CGFloat = 72
 }
 
@@ -68,6 +70,10 @@ struct PortfolioListView: View {
             Text("Lots").frame(width: PortfolioCol.lots, alignment: .trailing)
         case .weight:
             Text("Weight").frame(width: PortfolioCol.weight, alignment: .trailing)
+        case .marketCap:
+            Text(col.title).frame(width: PortfolioCol.marketCap, alignment: .trailing)
+        case .pe, .forwardPe, .pb, .divYield, .eps:
+            Text(col.title).frame(width: PortfolioCol.valuation, alignment: .trailing)
         case .volume50d:
             Text("50D Vol").frame(width: PortfolioCol.volume, alignment: .trailing)
         case .volume50w:
@@ -1579,6 +1585,54 @@ struct PortfolioQuoteRow: View {
                 .lineLimit(1)
                 .frame(width: PortfolioCol.weight, alignment: .trailing)
 
+        case .marketCap:
+            if let mc = quote?.marketCap, mc > 0 {
+                Text(StorageService.formatMarketCap(mc, currency: quote?.currency ?? ""))
+                    .font(metricFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(width: PortfolioCol.marketCap, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(metricFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .frame(width: PortfolioCol.marketCap, alignment: .trailing)
+            }
+
+        case .pe:
+            valuationText(quote?.trailingPE, isPercent: false)
+
+        case .forwardPe:
+            valuationText(quote?.forwardPE, isPercent: false)
+
+        case .pb:
+            valuationText(quote?.priceToBook, isPercent: false)
+
+        case .divYield:
+            valuationText(quote?.dividendYield, isPercent: true)
+
+        case .eps:
+            if let eps = quote?.epsTrailingTwelveMonths, eps.isFinite {
+                let sym = StorageService.currencySymbol(for: quote?.currency ?? "")
+                let dec = (quote?.currency == "VND" || quote?.currency == "JPY") ? 0 : 2
+                Text(StorageService.formatCompactAmount(eps, symbol: sym, signed: false, decimals: dec))
+                    .font(metricFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(width: PortfolioCol.valuation, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(metricFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .frame(width: PortfolioCol.valuation, alignment: .trailing)
+            }
+
         case .volume50d:
             VolumeSparkline(symbol: globalPos.symbol, mode: .days50)
                 .frame(width: PortfolioCol.volume, alignment: .trailing)
@@ -1586,6 +1640,26 @@ struct PortfolioQuoteRow: View {
         case .volume50w:
             VolumeSparkline(symbol: globalPos.symbol, mode: .weeks50)
                 .frame(width: PortfolioCol.volume, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private func valuationText(_ value: Double?, isPercent: Bool) -> some View {
+        if let value, value.isFinite {
+            let str = isPercent ? "\(StorageService.formatNumber(value, decimals: 2))%" : StorageService.formatNumber(value, decimals: 2)
+            Text(str)
+                .font(metricFont)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(width: PortfolioCol.valuation, alignment: .trailing)
+        } else {
+            Text("—")
+                .font(metricFont)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .frame(width: PortfolioCol.valuation, alignment: .trailing)
         }
     }
 }

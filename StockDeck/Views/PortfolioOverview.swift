@@ -200,6 +200,12 @@ struct PortfolioOverview: View {
         case pnl
         case shares
         case weight
+        case marketCap
+        case pe
+        case forwardPe
+        case pb
+        case divYield
+        case eps
     }
 
     enum PositionViewTab: String, CaseIterable {
@@ -332,6 +338,12 @@ struct PortfolioOverview: View {
         case .shares: return .shares
         case .lots: return .shares
         case .weight, .volume50d, .volume50w: return .weight
+        case .marketCap: return .marketCap
+        case .pe: return .pe
+        case .forwardPe: return .forwardPe
+        case .pb: return .pb
+        case .divYield: return .divYield
+        case .eps: return .eps
         }
     }
 
@@ -352,6 +364,8 @@ struct PortfolioOverview: View {
             case .cost, .value, .todayPnl, .totalPnl: return 120
             case .shares, .lots: return 100
             case .weight: return 115
+            case .marketCap: return 100
+            case .pe, .forwardPe, .pb, .divYield, .eps: return 85
             case .volume50d, .volume50w: return 80
             }
         }
@@ -384,6 +398,12 @@ struct PortfolioOverview: View {
         case .weight:
             sortHeader(metric.title, column: column)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
+        case .marketCap:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: 80, idealWidth: 100, maxWidth: 120, alignment: .trailing)
+        case .pe, .forwardPe, .pb, .divYield, .eps:
+            sortHeader(metric.title, column: column)
+                .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
         case .volume50d, .volume50w:
             Text(metric.title)
                 .font(DS.label)
@@ -2427,12 +2447,65 @@ private struct PositionSummaryRow: View {
                 .font(DS.figure)
                 .foregroundStyle(DS.ink)
                 .frame(minWidth: PositionColumnWidth.weightMin, idealWidth: 80, maxWidth: 110, alignment: .trailing)
+        case .marketCap:
+            if let mc = liveQuote?.marketCap, mc > 0 {
+                Text(StorageService.formatMarketCap(mc, currency: liveQuote?.currency ?? ""))
+                    .font(DS.figure.monospacedDigit())
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                    .frame(minWidth: 80, idealWidth: 100, maxWidth: 120, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(DS.figure)
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(minWidth: 80, idealWidth: 100, maxWidth: 120, alignment: .trailing)
+            }
+        case .pe:
+            valuationCell(liveQuote?.trailingPE, isPercent: false)
+        case .forwardPe:
+            valuationCell(liveQuote?.forwardPE, isPercent: false)
+        case .pb:
+            valuationCell(liveQuote?.priceToBook, isPercent: false)
+        case .divYield:
+            valuationCell(liveQuote?.dividendYield, isPercent: true)
+        case .eps:
+            if let eps = liveQuote?.epsTrailingTwelveMonths, eps.isFinite {
+                let sym = StorageService.currencySymbol(for: liveQuote?.currency ?? "")
+                let dec = (liveQuote?.currency == "VND" || liveQuote?.currency == "JPY") ? 0 : 2
+                Text(StorageService.formatAmount(eps, symbol: sym, decimals: dec))
+                    .font(DS.figure.monospacedDigit())
+                    .foregroundStyle(DS.ink)
+                    .lineLimit(1)
+                    .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(DS.figure)
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
+            }
         case .volume50d:
             VolumeSparkline(symbol: symbol, mode: .days50)
                 .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
         case .volume50w:
             VolumeSparkline(symbol: symbol, mode: .weeks50)
                 .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private func valuationCell(_ value: Double?, isPercent: Bool) -> some View {
+        if let value, value.isFinite {
+            let str = isPercent ? "\(StorageService.formatNumber(value, decimals: 2))%" : StorageService.formatNumber(value, decimals: 2)
+            Text(str)
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+                .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
+        } else {
+            Text("—")
+                .font(DS.figure)
+                .foregroundStyle(DS.inkTertiary)
+                .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
         }
     }
 

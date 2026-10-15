@@ -56,4 +56,73 @@ final class V7QuoteParsingTests: XCTestCase {
         let data = json(#"{"quoteResponse": {"result": [], "error": null}}"#)
         XCTAssertTrue(try StockService.parseV7Response(data).quotes.isEmpty)
     }
+
+    func testParsesValuationMetricsWhenPresent() throws {
+        let data = json("""
+        {"quoteResponse": {"result": [
+          {
+            "symbol": "AAPL",
+            "regularMarketPrice": 220.0,
+            "currency": "USD",
+            "marketState": "REGULAR",
+            "trailingPE": 33.5,
+            "forwardPE": 28.2,
+            "priceToBook": 45.1,
+            "bookValue": 4.88,
+            "epsTrailingTwelveMonths": 6.57,
+            "epsForward": 7.80,
+            "dividendYield": 0.55,
+            "marketCap": 3400000000000.0
+          }
+        ], "error": null}}
+        """)
+        let result = try StockService.parseV7Response(data)
+        let q = try XCTUnwrap(result.quotes.first)
+        XCTAssertEqual(q.trailingPE, 33.5)
+        XCTAssertEqual(q.forwardPE, 28.2)
+        XCTAssertEqual(q.priceToBook, 45.1)
+        XCTAssertEqual(q.bookValue, 4.88)
+        XCTAssertEqual(q.epsTrailingTwelveMonths, 6.57)
+        XCTAssertEqual(q.epsForward, 7.80)
+        XCTAssertEqual(q.dividendYield, 0.55)
+        XCTAssertEqual(q.marketCap, 3400000000000.0)
+        XCTAssertTrue(q.hasValuationData)
+    }
+
+    func testParsesTrailingAnnualDividendYieldFallback() throws {
+        let data = json("""
+        {"quoteResponse": {"result": [
+          {
+            "symbol": "MSFT",
+            "regularMarketPrice": 420.0,
+            "currency": "USD",
+            "marketState": "REGULAR",
+            "trailingAnnualDividendYield": 0.0075
+          }
+        ], "error": null}}
+        """)
+        let result = try StockService.parseV7Response(data)
+        let q = try XCTUnwrap(result.quotes.first)
+        let dy = try XCTUnwrap(q.dividendYield)
+        XCTAssertEqual(dy, 0.75, accuracy: 0.0001)
+        XCTAssertTrue(q.hasValuationData)
+    }
+
+    func testMissingValuationMetricsDefaultToNilAndHasValuationDataIsFalse() throws {
+        let data = json("""
+        {"quoteResponse": {"result": [
+          {"symbol": "^GSPC", "regularMarketPrice": 5800.0, "currency": "USD", "marketState": "REGULAR"}
+        ], "error": null}}
+        """)
+        let result = try StockService.parseV7Response(data)
+        let q = try XCTUnwrap(result.quotes.first)
+        XCTAssertNil(q.trailingPE)
+        XCTAssertNil(q.forwardPE)
+        XCTAssertNil(q.priceToBook)
+        XCTAssertNil(q.bookValue)
+        XCTAssertNil(q.epsTrailingTwelveMonths)
+        XCTAssertNil(q.epsForward)
+        XCTAssertNil(q.dividendYield)
+        XCTAssertFalse(q.hasValuationData)
+    }
 }

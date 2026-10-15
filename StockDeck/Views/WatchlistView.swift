@@ -8,6 +8,7 @@ private enum WatchlistCol {
     static let buyTarget: CGFloat = 96
     static let marketCap: CGFloat = 88
     static let chart: CGFloat = 76
+    static let valuation: CGFloat = 72
     static let pinnedWidth: CGFloat = 148
     static let headerHeight: CGFloat = 28
     static let rowHeight: CGFloat = 38
@@ -18,6 +19,7 @@ private enum WatchlistCol {
         case .today, .todayChange: return change
         case .buyTarget: return buyTarget
         case .marketCap, .ath, .atl: return marketCap
+        case .pe, .forwardPe, .pb, .divYield, .eps: return valuation
         default: return metric.isChart ? chart : period
         }
     }
@@ -1208,6 +1210,62 @@ struct QuoteMetricsRow<Menu: View>: View {
     }
 
     @ViewBuilder
+    private func macOSValuationRatioCell(value: Double?) -> some View {
+        if let value, value.isFinite, value > 0 {
+            Text(StorageService.formatNumber(value, decimals: 2))
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        } else {
+            Text("—")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private func macOSValuationYieldCell(value: Double?) -> some View {
+        if let value, value.isFinite, value >= 0 {
+            Text("\(StorageService.formatNumber(value, decimals: 2))%")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        } else {
+            Text("—")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
+    private func macOSEpsCell(value: Double?) -> some View {
+        if let value, value.isFinite {
+            let sym = row.isIndex ? "" : StorageService.currencySymbol(for: row.currency)
+            let dec = (row.currency == "VND" || row.currency == "JPY") ? 0 : 2
+            Text(StorageService.formatAmount(value, symbol: sym, decimals: dec))
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        } else {
+            Text("—")
+                .font(.inter(11.5, relativeTo: .body).monospacedDigit())
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .frame(width: WatchlistCol.valuation, alignment: .trailing)
+        }
+    }
+
+    @ViewBuilder
     private func metricCell(_ metric: WatchlistMetric) -> some View {
         Group {
             switch metric {
@@ -1229,6 +1287,16 @@ struct QuoteMetricsRow<Menu: View>: View {
                 macOSBuyTargetCell.frame(width: WatchlistCol.buyTarget, alignment: .trailing)
             case .marketCap:
                 macOSMarketCapCell.frame(width: WatchlistCol.marketCap, alignment: .trailing)
+            case .pe:
+                macOSValuationRatioCell(value: row.quote?.trailingPE)
+            case .forwardPe:
+                macOSValuationRatioCell(value: row.quote?.forwardPE)
+            case .pb:
+                macOSValuationRatioCell(value: row.quote?.priceToBook)
+            case .divYield:
+                macOSValuationYieldCell(value: row.quote?.dividendYield)
+            case .eps:
+                macOSEpsCell(value: row.quote?.epsTrailingTwelveMonths)
             case .chart24h:
                 Sparkline(symbol: row.symbol, days: 1)
                     .frame(width: WatchlistCol.chart, alignment: .trailing)

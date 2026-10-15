@@ -41,6 +41,11 @@ class StockService: ObservableObject {
     /// canonical (uppercased) symbol; throttled separately from the Home feed.
     @Published var newsBySymbol: [String: [NewsArticle]] = [:]
     var isLoadingSymbolNews: Set<String> = []
+    /// Fundamental key statistics (PEG, EV/EBITDA, Beta, ROE, ROA, Profit Margin)
+    /// fetched from Yahoo quoteSummary and cached on disk for 24 hours.
+    @Published var keyStatistics: [String: KeyStatistics] = [:]
+    @Published var loadingKeyStatsSymbols: Set<String> = []
+    private var keyStatsTasks: [String: Task<KeyStatistics?, Never>] = [:]
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:] {
@@ -208,6 +213,17 @@ class StockService: ObservableObject {
     private let historyCacheWriter = PersistenceWriter()
     private var historyCacheRevision: UInt64 = 0
 
+    private static let keyStatsCacheFileName = "keyStatsCache.json"
+    private var keyStatsCacheURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/\(Self.keyStatsCacheFileName)")
+    }
+    private var keyStatsCacheLoaded = false
+    private var keyStatsCacheSaveTask: Task<Void, Never>?
+    private let keyStatsCacheWriter = PersistenceWriter()
+    private var keyStatsCacheRevision: UInt64 = 0
+
     /// Shared NAV history for Japanese mutual funds, keyed by fund code, so the
     /// daily and max-history paths never fetch the Yahoo Japan pages twice.
     private static var jpFundHistoryCache: [String: (points: [PricePoint], fetchedAt: Date)] = [:]
@@ -225,6 +241,7 @@ class StockService: ObservableObject {
         session = URLSession(configuration: config)
 
         Task { await loadHistoryCache() }
+        Task { await loadKeyStatsCache() }
         Task {
             _ = await self.fetchCrumb()
         }
@@ -535,10 +552,16 @@ class StockService: ObservableObject {
             await fetchVietnameseQuotes(symbols: vnSymbols)
         }
 
-        guard !remainingStockSymbols.isEmpty else { return }
+        let vnYahooSymbols = vnSymbols.compactMap { Self.yahooSymbolForVietnameseStock($0) }
+        let yahooBatchSymbols = remainingStockSymbols + vnYahooSymbols
 
-        // Try v7 batch quote first for regular stock/ETF symbols
-        if await fetchQuotesV7(symbols: remainingStockSymbols) {
+        guard !yahooBatchSymbols.isEmpty else { return }
+
+        // Try v7 batch quote first for regular stock/ETF symbols and VN valuation
+        if await fetchQuotesV7(symbols: yahooBatchSymbols) {
+            if !vnSymbols.isEmpty {
+                mergeVietnameseValuationQuotes(for: vnSymbols)
+            }
             return
         }
 
@@ -674,6 +697,14 @@ class StockService: ObservableObject {
                     dayLow: regularQuote?.dayLow,
                     fiftyTwoWeekHigh: regularQuote?.fiftyTwoWeekHigh,
                     fiftyTwoWeekLow: regularQuote?.fiftyTwoWeekLow,
+                    marketCap: regularQuote?.marketCap,
+                    trailingPE: regularQuote?.trailingPE,
+                    forwardPE: regularQuote?.forwardPE,
+                    priceToBook: regularQuote?.priceToBook,
+                    bookValue: regularQuote?.bookValue,
+                    epsTrailingTwelveMonths: regularQuote?.epsTrailingTwelveMonths,
+                    epsForward: regularQuote?.epsForward,
+                    dividendYield: regularQuote?.dividendYield,
                     preMarketPrice: regularQuote?.preMarketPrice,
                     preMarketChange: regularQuote?.preMarketChange,
                     preMarketChangePercent: regularQuote?.preMarketChangePercent,
@@ -883,33 +914,103 @@ class StockService: ObservableObject {
             let isMarketWideOpen = isWeekday && isWithinTradingHours && (anySymbolTradedToday || self.quotes["^VNINDEX.VN"]?.marketState == "REGULAR" || self.quotes["^VNINDEX"]?.marketState == "REGULAR")
 
             for (originalSymbol, quote) in collectedQuotes {
-                var finalQuote = quote
+                let upperOriginal = originalSymbol.uppercased()
+                let upperQuoteSym = quote.symbol.uppercased()
+                let existing = self.quotes[upperOriginal] ?? self.quotes[upperQuoteSym]
+
+                var finalQuote = StockQuote(
+                    symbol: quote.symbol,
+                    name: quote.name,
+                    price: quote.price,
+                    change: quote.change,
+                    changePercent: quote.changePercent,
+                    regularMarketPreviousClose: quote.regularMarketPreviousClose,
+                    currency: quote.currency,
+                    marketState: quote.marketState,
+                    regularMarketTime: quote.regularMarketTime,
+                    dayHigh: quote.dayHigh ?? existing?.dayHigh,
+                    dayLow: quote.dayLow ?? existing?.dayLow,
+                    fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh ?? existing?.fiftyTwoWeekHigh,
+                    fiftyTwoWeekLow: quote.fiftyTwoWeekLow ?? existing?.fiftyTwoWeekLow,
+                    marketCap: existing?.marketCap,
+                    trailingPE: existing?.trailingPE,
+                    forwardPE: existing?.forwardPE,
+                    priceToBook: existing?.priceToBook,
+                    bookValue: existing?.bookValue,
+                    epsTrailingTwelveMonths: existing?.epsTrailingTwelveMonths,
+                    epsForward: existing?.epsForward,
+                    dividendYield: existing?.dividendYield
+                )
+
                 if isMarketWideOpen && finalQuote.marketState != "REGULAR" {
                     finalQuote = StockQuote(
-                        symbol: quote.symbol,
-                        name: quote.name,
-                        price: quote.price,
-                        change: quote.change,
-                        changePercent: quote.changePercent,
-                        regularMarketPreviousClose: quote.regularMarketPreviousClose,
-                        currency: quote.currency,
+                        symbol: finalQuote.symbol,
+                        name: finalQuote.name,
+                        price: finalQuote.price,
+                        change: finalQuote.change,
+                        changePercent: finalQuote.changePercent,
+                        regularMarketPreviousClose: finalQuote.regularMarketPreviousClose,
+                        currency: finalQuote.currency,
                         marketState: "REGULAR",
-                        regularMarketTime: quote.regularMarketTime ?? now,
-                        dayHigh: quote.dayHigh,
-                        dayLow: quote.dayLow,
-                        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh,
-                        fiftyTwoWeekLow: quote.fiftyTwoWeekLow,
-                        marketCap: quote.marketCap
+                        regularMarketTime: finalQuote.regularMarketTime ?? now,
+                        dayHigh: finalQuote.dayHigh,
+                        dayLow: finalQuote.dayLow,
+                        fiftyTwoWeekHigh: finalQuote.fiftyTwoWeekHigh,
+                        fiftyTwoWeekLow: finalQuote.fiftyTwoWeekLow,
+                        marketCap: finalQuote.marketCap,
+                        trailingPE: finalQuote.trailingPE,
+                        forwardPE: finalQuote.forwardPE,
+                        priceToBook: finalQuote.priceToBook,
+                        bookValue: finalQuote.bookValue,
+                        epsTrailingTwelveMonths: finalQuote.epsTrailingTwelveMonths,
+                        epsForward: finalQuote.epsForward,
+                        dividendYield: finalQuote.dividendYield
                     )
                 }
-                let upperOriginal = originalSymbol.uppercased()
-                let upperQuoteSym = finalQuote.symbol.uppercased()
                 self.quotes[upperOriginal] = finalQuote
                 self.quotes[upperQuoteSym] = finalQuote
                 if upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") {
                     self.quotes["^VNINDEX"] = finalQuote
                     self.quotes["^VNINDEX.VN"] = finalQuote
                     self.quotes["VNINDEX"] = finalQuote
+                }
+            }
+        }
+    }
+
+    /// Merges Yahoo Finance valuation metrics (P/E, P/B, EPS, Div Yield, Market Cap)
+    /// from Yahoo's ".VN" quote into Vietnamese stock quotes fetched from VNDirect.
+    func mergeVietnameseValuationQuotes(for vnSymbols: [String]) {
+        for symbol in vnSymbols {
+            guard let yahooSym = Self.yahooSymbolForVietnameseStock(symbol) else { continue }
+            guard let yq = quotes[yahooSym] ?? quotes[yahooSym.uppercased()] else { continue }
+            let canonical = Self.canonicalSymbol(for: symbol)
+            let targets = Set([symbol, symbol.uppercased(), canonical, canonical.uppercased()].filter { !$0.isEmpty })
+            for target in targets {
+                if let current = quotes[target] {
+                    quotes[target] = StockQuote(
+                        symbol: current.symbol,
+                        name: current.name,
+                        price: current.price,
+                        change: current.change,
+                        changePercent: current.changePercent,
+                        regularMarketPreviousClose: current.regularMarketPreviousClose,
+                        currency: current.currency,
+                        marketState: current.marketState,
+                        regularMarketTime: current.regularMarketTime,
+                        dayHigh: current.dayHigh ?? yq.dayHigh,
+                        dayLow: current.dayLow ?? yq.dayLow,
+                        fiftyTwoWeekHigh: current.fiftyTwoWeekHigh ?? yq.fiftyTwoWeekHigh,
+                        fiftyTwoWeekLow: current.fiftyTwoWeekLow ?? yq.fiftyTwoWeekLow,
+                        marketCap: yq.marketCap ?? current.marketCap,
+                        trailingPE: yq.trailingPE ?? current.trailingPE,
+                        forwardPE: yq.forwardPE ?? current.forwardPE,
+                        priceToBook: yq.priceToBook ?? current.priceToBook,
+                        bookValue: yq.bookValue ?? current.bookValue,
+                        epsTrailingTwelveMonths: yq.epsTrailingTwelveMonths ?? current.epsTrailingTwelveMonths,
+                        epsForward: yq.epsForward ?? current.epsForward,
+                        dividendYield: yq.dividendYield ?? current.dividendYield
+                    )
                 }
             }
         }
@@ -1326,6 +1427,14 @@ class StockService: ObservableObject {
             let postChg: Double? = if let pm = q.postMarketPrice { pm - price } else { nil }
             let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
 
+            let divYield: Double? = if let dy = q.dividendYield {
+                dy
+            } else if let tady = q.trailingAnnualDividendYield {
+                tady * 100.0
+            } else {
+                nil
+            }
+
             let quote = StockQuote(
                 symbol: q.symbol,
                 name: q.longName ?? q.shortName ?? q.symbol,
@@ -1341,6 +1450,13 @@ class StockService: ObservableObject {
                 fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: q.fiftyTwoWeekLow,
                 marketCap: q.marketCap,
+                trailingPE: q.trailingPE,
+                forwardPE: q.forwardPE,
+                priceToBook: q.priceToBook,
+                bookValue: q.bookValue,
+                epsTrailingTwelveMonths: q.epsTrailingTwelveMonths,
+                epsForward: q.epsForward,
+                dividendYield: divYield,
                 preMarketPrice: q.preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1435,6 +1551,7 @@ class StockService: ObservableObject {
             let postChg: Double? = if let pm = postMarketPrice { pm - price } else { nil }
             let postPct: Double? = if let ch = postChg, price > 0 { (ch / price) * 100 } else { nil }
 
+            let existingQuote = quotes[meta.symbol] ?? quotes[symbol]
             let quote = StockQuote(
                 symbol: meta.symbol,
                 name: meta.longName ?? meta.shortName ?? meta.symbol,
@@ -1449,6 +1566,14 @@ class StockService: ObservableObject {
                 dayLow: nil,
                 fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: meta.fiftyTwoWeekLow,
+                marketCap: existingQuote?.marketCap,
+                trailingPE: existingQuote?.trailingPE,
+                forwardPE: existingQuote?.forwardPE,
+                priceToBook: existingQuote?.priceToBook,
+                bookValue: existingQuote?.bookValue,
+                epsTrailingTwelveMonths: existingQuote?.epsTrailingTwelveMonths,
+                epsForward: existingQuote?.epsForward,
+                dividendYield: existingQuote?.dividendYield,
                 preMarketPrice: preMarketPrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -1707,6 +1832,215 @@ class StockService: ObservableObject {
 
     private struct HistoryCacheSnapshot: @unchecked Sendable {
         let entries: [String: HistoryCacheEntry]
+    }
+
+    /// Ensures that fundamental valuation metrics (P/E, P/B, EPS, Div Yield, Market Cap)
+    /// are fetched and populated for a single symbol when viewed on detail screens.
+    func ensureQuoteValuation(for symbol: String) async {
+        guard !isJapaneseMutualFund(symbol) else { return }
+        if Self.isVietnameseStock(symbol) {
+            guard let yahooSym = Self.yahooSymbolForVietnameseStock(symbol) else { return }
+            _ = await fetchQuotesV7(symbols: [yahooSym])
+            mergeVietnameseValuationQuotes(for: [symbol])
+            return
+        }
+        _ = await fetchQuotesV7(symbols: [symbol])
+    }
+
+    /// Ensures fundamental key statistics (PEG, EV/EBITDA, Beta, ROE, ROA, Profit Margin)
+    /// are loaded for an equity symbol. Backed by in-memory cache and 24h disk persistence.
+    func ensureKeyStatistics(for symbol: String, force: Bool = false) async {
+        let canonical = Self.canonicalSymbol(for: symbol)
+        guard !canonical.isEmpty else { return }
+        let isCrypto = StorageService.isBinanceNativePair(canonical)
+            || StorageService.isStandardCryptoSymbol(canonical)
+            || (canonical.hasSuffix("-USD") && StorageService.isStandardCryptoSymbol(String(canonical.dropLast(4))))
+        guard !isJapaneseMutualFund(canonical),
+              !isCrypto,
+              !canonical.hasPrefix("^") else { return }
+
+        let querySymbol: String
+        if Self.isVietnameseStock(canonical) {
+            guard let vnYahoo = Self.yahooSymbolForVietnameseStock(canonical) else { return }
+            querySymbol = vnYahoo
+        } else {
+            querySymbol = canonical
+        }
+
+        if !force, let cached = keyStatistics[canonical] ?? keyStatistics[querySymbol], !cached.isExpired {
+            if keyStatistics[canonical] == nil { keyStatistics[canonical] = cached }
+            return
+        }
+
+        if let existingTask = keyStatsTasks[canonical] ?? keyStatsTasks[querySymbol] {
+            _ = await existingTask.value
+            return
+        }
+
+        loadingKeyStatsSymbols.insert(canonical)
+        let task = Task<KeyStatistics?, Never> { [weak self] () -> KeyStatistics? in
+            guard let self else { return nil }
+            return await self.fetchKeyStatistics(for: querySymbol)
+        }
+        keyStatsTasks[canonical] = task
+        let result = await task.value
+        loadingKeyStatsSymbols.remove(canonical)
+        keyStatsTasks.removeValue(forKey: canonical)
+
+        if let result {
+            self.keyStatistics[canonical] = result
+            self.keyStatistics[querySymbol] = result
+            self.keyStatistics[symbol] = result
+            self.scheduleKeyStatsCacheSave()
+        }
+    }
+
+    private func fetchKeyStatistics(for symbol: String, retried: Bool = false) async -> KeyStatistics? {
+        if crumb == nil {
+            guard await fetchCrumb() else { return nil }
+        }
+
+        guard let crumb = crumb else { return nil }
+
+        let symbolEncoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let crumbEncoded = crumb.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? crumb
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/\(symbolEncoded)?modules=defaultKeyStatistics,financialData&crumb=\(crumbEncoded)") else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let httpResp = response as? HTTPURLResponse else { return nil }
+
+            if httpResp.statusCode == 401 {
+                guard !retried else { return nil }
+                self.crumb = nil
+                guard await fetchCrumb() else { return nil }
+                return await fetchKeyStatistics(for: symbol, retried: true)
+            }
+
+            guard httpResp.statusCode == 200 else { return nil }
+            return try Self.parseQuoteSummaryResponse(data)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Pure, unit-testable parser mapping Yahoo quoteSummary modules (defaultKeyStatistics, financialData) to KeyStatistics.
+    nonisolated static func parseQuoteSummaryResponse(_ data: Data, fetchedAt: Date = Date()) throws -> KeyStatistics {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(YahooQuoteSummaryResponse.self, from: data)
+        guard let item = response.quoteSummary.result?.first else {
+            return KeyStatistics(fetchedAt: fetchedAt)
+        }
+        let stats = item.defaultKeyStatistics
+        let fin = item.financialData
+
+        let peg = stats?.pegRatio?.raw
+        let ev = stats?.enterpriseToEbitda?.raw
+        let beta = stats?.beta?.raw
+
+        let roe = fin?.returnOnEquity?.raw.map { $0 * 100.0 }
+        let roa = fin?.returnOnAssets?.raw.map { $0 * 100.0 }
+        let pm = (fin?.profitMargins?.raw ?? stats?.profitMargins?.raw).map { $0 * 100.0 }
+        let dToE = fin?.debtToEquity?.raw
+
+        // ROIC Estimation:
+        // Total Equity = bookValue * sharesOutstanding
+        // Invested Capital = Total Equity + totalDebt - totalCash
+        // EBIT = totalRevenue * operatingMargins
+        // Effective Tax Rate = clamp(0.0, 0.35, 1.0 - (netIncomeToCommon / EBIT))
+        // NOPAT = EBIT * (1.0 - Effective Tax Rate)
+        // ROIC = (NOPAT / Invested Capital) * 100.0
+        var computedROIC: Double? = nil
+        let bookVal = stats?.bookValue?.raw
+        let shares = stats?.sharesOutstanding?.raw
+        let debt = fin?.totalDebt?.raw ?? 0
+        let cash = fin?.totalCash?.raw ?? 0
+        let revenue = fin?.totalRevenue?.raw
+        let opMargin = fin?.operatingMargins?.raw
+        let netIncome = stats?.netIncomeToCommon?.raw
+
+        if let bookVal, let shares, let revenue, let opMargin, revenue > 0, opMargin.isFinite {
+            let equity = bookVal * shares
+            let investedCapital = equity + debt - cash
+            let ebit = revenue * opMargin
+            if investedCapital > 0 && ebit.isFinite {
+                let taxRate: Double
+                if let netIncome, ebit > 0 {
+                    let impliedRate = 1.0 - (netIncome / ebit)
+                    taxRate = min(max(impliedRate, 0.0), 0.35)
+                } else {
+                    taxRate = 0.21
+                }
+                let nopat = ebit * (1.0 - taxRate)
+                let roicVal = (nopat / investedCapital) * 100.0
+                if roicVal.isFinite {
+                    computedROIC = roicVal
+                }
+            }
+        }
+
+        return KeyStatistics(
+            pegRatio: peg,
+            enterpriseToEbitda: ev,
+            beta: beta,
+            returnOnEquity: roe,
+            returnOnAssets: roa,
+            roic: computedROIC,
+            profitMargins: pm,
+            debtToEquity: dToE,
+            fetchedAt: fetchedAt
+        )
+    }
+
+    // MARK: - Key Statistics Cache (Disk persistence, 24h TTL)
+
+    private func loadKeyStatsCache() async {
+        guard !keyStatsCacheLoaded else { return }
+        keyStatsCacheLoaded = true
+        let cacheURL = keyStatsCacheURL
+        let decoded: [String: KeyStatistics]? = await Task.detached(priority: .utility) { () -> [String: KeyStatistics]? in
+            guard let data = try? Data(contentsOf: cacheURL) else { return nil }
+            return try? JSONDecoder().decode([String: KeyStatistics].self, from: data)
+        }.value
+        guard let decoded else { return }
+        let now = Date()
+        for (symbol, stats) in decoded {
+            if !stats.isExpired && stats.fetchedAt <= now {
+                keyStatistics[symbol] = stats
+            }
+        }
+    }
+
+    private func scheduleKeyStatsCacheSave() {
+        keyStatsCacheSaveTask?.cancel()
+        keyStatsCacheSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.saveKeyStatsCache()
+        }
+    }
+
+    private func saveKeyStatsCache() {
+        var entries: [String: KeyStatistics] = [:]
+        for (symbol, stats) in keyStatistics where !stats.isExpired {
+            entries[symbol] = stats
+        }
+        guard !entries.isEmpty else { return }
+        keyStatsCacheRevision &+= 1
+        let revision = keyStatsCacheRevision
+        let destination = keyStatsCacheURL
+        Task { @MainActor in
+            do {
+                let encoded = try await Task.detached(priority: .utility) {
+                    try JSONEncoder().encode(entries)
+                }.value
+                try await keyStatsCacheWriter.write(encoded, to: destination, revision: revision)
+            } catch {
+                NSLog("[StockService] KeyStatistics cache save failed: %@", error.localizedDescription)
+            }
+        }
     }
 
     /// Loads (or refreshes after ~6h) ten years of daily closes for the detail
@@ -2329,6 +2663,13 @@ class StockService: ObservableObject {
                 fiftyTwoWeekHigh: existing?.fiftyTwoWeekHigh,
                 fiftyTwoWeekLow: existing?.fiftyTwoWeekLow,
                 marketCap: marketCap,
+                trailingPE: existing?.trailingPE,
+                forwardPE: existing?.forwardPE,
+                priceToBook: existing?.priceToBook,
+                bookValue: existing?.bookValue,
+                epsTrailingTwelveMonths: existing?.epsTrailingTwelveMonths,
+                epsForward: existing?.epsForward,
+                dividendYield: existing?.dividendYield,
                 preMarketPrice: prePrice,
                 preMarketChange: preChg,
                 preMarketChangePercent: prePct,
@@ -2635,6 +2976,21 @@ class StockService: ObservableObject {
         }
         let clean = upper.replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
         return popularVietnameseStocks.contains(where: { $0.symbol.uppercased() == clean })
+    }
+
+    /// Converts a Vietnamese stock ticker (e.g. "FPT", "VCB", "HPG.HM") to its corresponding
+    /// Yahoo Finance symbol format ("FPT.VN", "VCB.VN", "HPG.VN"). Excludes market indices.
+    nonisolated static func yahooSymbolForVietnameseStock(_ symbol: String) -> String? {
+        let upper = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if upper.contains("VNINDEX") || upper.contains("HNXINDEX") || upper.contains("UPINDEX") || upper.hasPrefix("^") {
+            return nil
+        }
+        let clean = upper
+            .replacingOccurrences(of: ".HM", with: "")
+            .replacingOccurrences(of: ".HN", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+        guard !clean.isEmpty, clean.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        return "\(clean).VN"
     }
 
     nonisolated static func isJapaneseStock(_ symbol: String) -> Bool {
@@ -3842,6 +4198,14 @@ private struct YahooV7Response: Codable {
         let postMarketPrice: Double?
         let marketCap: Double?
         let quoteType: String?
+        let trailingPE: Double?
+        let forwardPE: Double?
+        let priceToBook: Double?
+        let bookValue: Double?
+        let epsTrailingTwelveMonths: Double?
+        let epsForward: Double?
+        let dividendYield: Double?
+        let trailingAnnualDividendYield: Double?
     }
 
     struct V7Error: Codable {
@@ -3870,3 +4234,50 @@ private struct VNDirectSearchItem: Decodable {
     let exchange: String?
     let type: String?
 }
+
+// MARK: - Yahoo Finance quoteSummary API Models
+
+struct YahooQuoteSummaryResponse: Decodable {
+    let quoteSummary: QuoteSummaryResult
+
+    struct QuoteSummaryResult: Decodable {
+        let result: [SummaryResultItem]?
+        let error: YahooQuoteSummaryError?
+    }
+
+    struct SummaryResultItem: Decodable {
+        let defaultKeyStatistics: DefaultKeyStatistics?
+        let financialData: FinancialData?
+    }
+
+    struct YahooQuoteSummaryError: Decodable {
+        let code: String?
+        let description: String?
+    }
+
+    struct YahooRawNumber: Decodable {
+        let raw: Double?
+    }
+
+    struct DefaultKeyStatistics: Decodable {
+        let pegRatio: YahooRawNumber?
+        let enterpriseToEbitda: YahooRawNumber?
+        let beta: YahooRawNumber?
+        let profitMargins: YahooRawNumber?
+        let bookValue: YahooRawNumber?
+        let sharesOutstanding: YahooRawNumber?
+        let netIncomeToCommon: YahooRawNumber?
+    }
+
+    struct FinancialData: Decodable {
+        let returnOnEquity: YahooRawNumber?
+        let returnOnAssets: YahooRawNumber?
+        let profitMargins: YahooRawNumber?
+        let debtToEquity: YahooRawNumber?
+        let totalDebt: YahooRawNumber?
+        let totalCash: YahooRawNumber?
+        let totalRevenue: YahooRawNumber?
+        let operatingMargins: YahooRawNumber?
+    }
+}
+

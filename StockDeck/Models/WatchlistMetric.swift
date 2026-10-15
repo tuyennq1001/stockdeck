@@ -7,6 +7,7 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
     case today, todayChange, oneMonth, threeMonths, ytd, sixMonths, oneYear, twoYears, threeYears, fiveYears, tenYears
     case ath, fromAth, atl, fromAtl
     case marketCap, buyTarget
+    case pe, forwardPe, pb, divYield, eps
     case chart24h, chart7d, chart30d, chart60d, chart90d, chartYtd, chart1y
     case volume50d, volume50w
 
@@ -31,6 +32,11 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
         case .fromAtl: return "From ATL"
         case .marketCap: return "Mkt Cap"
         case .buyTarget: return "Buy Target"
+        case .pe: return "P/E"
+        case .forwardPe: return "Fwd P/E"
+        case .pb: return "P/B"
+        case .divYield: return "Div Yield"
+        case .eps: return "EPS"
         case .chart24h: return "24h chart"
         case .chart7d: return "7d chart"
         case .chart30d: return "30d chart"
@@ -49,8 +55,10 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
             return .core
         case .today, .todayChange, .oneMonth, .threeMonths, .ytd, .sixMonths, .oneYear, .twoYears, .threeYears, .fiveYears, .tenYears:
             return .change
-        case .ath, .fromAth, .atl, .fromAtl, .marketCap, .buyTarget:
+        case .ath, .fromAth, .atl, .fromAtl, .buyTarget:
             return .price
+        case .marketCap, .pe, .forwardPe, .pb, .divYield, .eps:
+            return .valuation
         case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y, .volume50d, .volume50w:
             return .chart
         }
@@ -84,6 +92,7 @@ enum WatchlistMetricCategory: String, CaseIterable, Identifiable {
     case core = "Core"
     case change = "Change"
     case price = "Price"
+    case valuation = "Valuation"
     case chart = "Chart"
 
     var id: String { rawValue }
