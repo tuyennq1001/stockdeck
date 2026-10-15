@@ -152,22 +152,21 @@ struct VolumeChartCard: View {
                         let tr = val / 1_000_000.0
                         return String(format: "%.0f tr", tr)
                     }
-                    return "\(Int(val)) ₫"
+                    return "\(Int(val))"
                 } else {
                     return StorageService.formatIndexTurnover(val, isVietnamese: true)
                 }
             } else {
                 if isCompact {
-                    let currSymbol = "₫"
                     if val >= 1_000_000_000_000.0 {
                         let t = val / 1_000_000_000_000.0
-                        return t == round(t) ? "\(currSymbol)\(Int(round(t)))T" : "\(currSymbol)\(String(format: "%.1fT", t))"
+                        return t == round(t) ? "\(Int(round(t)))T" : String(format: "%.1fT", t)
                     } else if val >= 1_000_000_000.0 {
                         let b = val / 1_000_000_000.0
-                        return b == round(b) ? "\(currSymbol)\(Int(round(b)))B" : "\(currSymbol)\(String(format: "%.1fB", b))"
+                        return b == round(b) ? "\(Int(round(b)))B" : String(format: "%.1fB", b)
                     } else {
                         let m = val / 1_000_000.0
-                        return m == round(m) ? "\(currSymbol)\(Int(round(m)))M" : "\(currSymbol)\(String(format: "%.1fM", m))"
+                        return m == round(m) ? "\(Int(round(m)))M" : String(format: "%.1fM", m)
                     }
                 } else {
                     return StorageService.formatIndexTurnover(val, currency: "VND", isVietnamese: false)
@@ -179,18 +178,18 @@ struct VolumeChartCard: View {
             if isCompact {
                 if absVal >= 1_000_000_000_000.0 {
                     let t = absVal / 1_000_000_000_000.0
-                    return t == round(t) ? "\(symbol)\(Int(round(t)))T" : "\(symbol)\(String(format: "%.1fT", t))"
+                    return t == round(t) ? "\(Int(round(t)))T" : String(format: "%.1fT", t)
                 } else if absVal >= 1_000_000_000.0 {
                     let b = absVal / 1_000_000_000.0
-                    return b == round(b) ? "\(symbol)\(Int(round(b)))B" : "\(symbol)\(String(format: "%.1fB", b))"
+                    return b == round(b) ? "\(Int(round(b)))B" : String(format: "%.1fB", b)
                 } else if absVal >= 1_000_000.0 {
                     let m = absVal / 1_000_000.0
-                    return m == round(m) ? "\(symbol)\(Int(round(m)))M" : "\(symbol)\(String(format: "%.1fM", m))"
+                    return m == round(m) ? "\(Int(round(m)))M" : String(format: "%.1fM", m)
                 } else if absVal >= 1_000.0 {
                     let k = absVal / 1_000.0
-                    return k == round(k) ? "\(symbol)\(Int(round(k)))K" : "\(symbol)\(String(format: "%.1fK", k))"
+                    return k == round(k) ? "\(Int(round(k)))K" : String(format: "%.1fK", k)
                 }
-                return "\(symbol)\(Int(round(val)))"
+                return "\(Int(round(val)))"
             } else {
                 return StorageService.formatCompactAmount(val, symbol: symbol)
             }
