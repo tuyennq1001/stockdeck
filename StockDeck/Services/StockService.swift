@@ -1726,6 +1726,14 @@ class StockService: ObservableObject {
         var fetchedAt: Date
     }
 
+    /// Reloads the on-disk history cache into memory (used when switching environment or restoring cloned data).
+    func reloadHistoryCache() async {
+        historyCacheLoaded = false
+        priceHistoryFetchedAt.removeAll()
+        priceHistoryMaxAt.removeAll()
+        await loadHistoryCache()
+    }
+
     /// Loads the on-disk history cache into memory. Entries are reused for as
     /// long as their fetch timestamp is still inside the corresponding TTL, so
     /// relaunching the app shortly after a fetch issues no network requests.
