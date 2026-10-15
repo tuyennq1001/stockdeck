@@ -59,7 +59,7 @@ struct SymbolDetailView: View {
                         if storageService.show52WeekBar {
                             fiftyTwoWeekCard(quote)
                         }
-                        if quote.hasValuationData {
+                        if quote.hasValuationData && !StockService.isIndexSymbol(symbol) {
                             let keyStats = stockService.keyStatistics[symbol]
                             let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
                             ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)

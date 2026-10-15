@@ -349,4 +349,102 @@ final class KeyStatisticsTests: XCTestCase {
         XCTAssertEqual(row.metricValue(for: .eps), 6.57)
         XCTAssertEqual(row.metricValue(for: .marketCap), 3400000000000)
     }
+
+    func testSimplizeCompanyResponseDecoding() throws {
+        let sample = """
+        {
+          "status": 200,
+          "message": "success",
+          "data": {
+            "ticker": "SHS",
+            "peRatio": 12.45,
+            "pbRatio": 1.12,
+            "epsRatio": 1180.5,
+            "marketCap": 9500000000000,
+            "dividendYieldCurrent": 4.5,
+            "bookValue": 13200.0,
+            "roe": 10.8,
+            "roa": 6.2,
+            "beta5y": 1.35,
+            "outstandingSharesValue": 813000000
+          }
+        }
+        """
+        let decoded = try JSONDecoder().decode(SimplizeCompanyResponse.self, from: json(sample))
+        XCTAssertEqual(decoded.status, 200)
+        let data = try XCTUnwrap(decoded.data)
+        XCTAssertEqual(data.ticker, "SHS")
+        XCTAssertEqual(data.peRatio, 12.45)
+        XCTAssertEqual(data.pbRatio, 1.12)
+        XCTAssertEqual(data.epsRatio, 1180.5)
+        XCTAssertEqual(data.marketCap, 9500000000000)
+        XCTAssertEqual(data.dividendYieldCurrent, 4.5)
+        XCTAssertEqual(data.bookValue, 13200.0)
+        XCTAssertEqual(data.roe, 10.8)
+        XCTAssertEqual(data.roa, 6.2)
+        XCTAssertEqual(data.beta5y, 1.35)
+        XCTAssertEqual(data.outstandingSharesValue, 813000000)
+    }
+
+    func testFormatIndexTurnoverVietnameseAndEnglish() {
+        let turnover = 13_547_688_000_000.0 // 13.548 nghìn tỷ VND
+        let vnFormatted = StorageService.formatIndexTurnover(turnover, isVietnamese: true)
+        XCTAssertEqual(vnFormatted, "13.548 tỷ ₫")
+
+        let enFormatted = StorageService.formatIndexTurnover(turnover, isVietnamese: false)
+        XCTAssertEqual(enFormatted, "₫13.55T")
+
+        // Zero / negative / non-finite
+        XCTAssertEqual(StorageService.formatIndexTurnover(0, isVietnamese: true), "—")
+        XCTAssertEqual(StorageService.formatIndexTurnover(-100, isVietnamese: false), "—")
+        XCTAssertEqual(StorageService.formatIndexTurnover(Double.nan, isVietnamese: true), "—")
+    }
+
+    func testVietnameseValuationCacheEntryExpiration() {
+        let fresh = VietnameseValuationCacheEntry(
+            trailingPE: 12.5,
+            priceToBook: 1.2,
+            eps: 1500,
+            marketCap: 10_000_000_000,
+            dividendYield: 3.5,
+            bookValue: 12000,
+            roe: 12.0,
+            roa: 7.0,
+            beta: 1.1,
+            sharesOutstanding: 800_000_000,
+            totalValue: nil,
+            fetchedAt: Date()
+        )
+        XCTAssertFalse(fresh.isExpired)
+
+        let stale = VietnameseValuationCacheEntry(
+            trailingPE: 12.5,
+            priceToBook: 1.2,
+            eps: 1500,
+            marketCap: 10_000_000_000,
+            dividendYield: 3.5,
+            bookValue: 12000,
+            roe: 12.0,
+            roa: 7.0,
+            beta: 1.1,
+            sharesOutstanding: 800_000_000,
+            totalValue: nil,
+            fetchedAt: Date().addingTimeInterval(-90000) // 25 hours ago
+        )
+        XCTAssertTrue(stale.isExpired)
+    }
+
+    func testVietnameseIndexSymbolsRecognition() {
+        XCTAssertTrue(StockService.isIndexSymbol("VNINDEX"))
+        XCTAssertTrue(StockService.isIndexSymbol("HNXINDEX"))
+        XCTAssertTrue(StockService.isIndexSymbol("UPINDEX"))
+        XCTAssertFalse(StockService.isIndexSymbol("SHS"))
+        XCTAssertFalse(StockService.isIndexSymbol("HPG"))
+
+        XCTAssertTrue(StockService.isVietnameseStock("VNINDEX"))
+        XCTAssertTrue(StockService.isVietnameseStock("HNXINDEX"))
+        XCTAssertTrue(StockService.isVietnameseStock("UPINDEX"))
+        XCTAssertTrue(StockService.isVietnameseStock("SHS"))
+    }
 }
+

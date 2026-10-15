@@ -96,6 +96,13 @@ struct VolumeChartCard: View {
         preparedData.points.contains(where: { $0.volume > 0 })
     }
 
+    private var isVNIndex: Bool {
+        let clean = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+            .replacingOccurrences(of: "^", with: "")
+        return clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
+    }
+
     private var isLoadingCurrent: Bool {
         switch timeframe {
         case .monthly:
@@ -227,7 +234,7 @@ struct VolumeChartCard: View {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        SectionLabel("Trading Volume")
+                        SectionLabel(isVNIndex ? (storageService.appLanguage == "vi" ? "Giá trị giao dịch" : "Trading Value") : "Trading Volume")
 
                         if let diff = displayedRatio {
                             Text(String(format: "%+.1f%% vs MA20", diff))
@@ -244,7 +251,20 @@ struct VolumeChartCard: View {
 
                     // Stats: Vol & MA20
                     HStack(spacing: 10) {
-                        if displayedVolume > 0 {
+                        if isVNIndex {
+                            let isVi = storageService.appLanguage == "vi"
+                            let currentTurnover = (hoverPoint == nil ? quote.regularMarketVolume : nil) ?? (displayedVolume * (hoverPoint?.close ?? quote.price) * 1000.0)
+                            if currentTurnover > 0 {
+                                HStack(spacing: 3) {
+                                    Text(isVi ? "Giá trị:" : "Turnover:")
+                                        .font(DS.micro)
+                                        .foregroundStyle(DS.inkTertiary)
+                                    Text(StorageService.formatIndexTurnover(currentTurnover, isVietnamese: isVi))
+                                        .font(.inter(13, weight: .bold, relativeTo: .body).monospacedDigit())
+                                        .foregroundStyle(displayedIsUp ? DS.up : DS.down)
+                                }
+                            }
+                        } else if displayedVolume > 0 {
                             HStack(spacing: 3) {
                                 Text("Vol:")
                                     .font(DS.micro)
@@ -261,9 +281,17 @@ struct VolumeChartCard: View {
                                 Text("MA20:")
                                     .font(DS.micro)
                                     .foregroundStyle(DS.inkTertiary)
-                                Text(formatVol(displayedMA))
-                                    .font(.inter(13, weight: .semibold, relativeTo: .body).monospacedDigit())
-                                    .foregroundStyle(amber)
+                                if isVNIndex {
+                                    let isVi = storageService.appLanguage == "vi"
+                                    let maTurnover = displayedMA * (hoverPoint?.close ?? quote.price) * 1000.0
+                                    Text(StorageService.formatIndexTurnover(maTurnover, isVietnamese: isVi))
+                                        .font(.inter(13, weight: .semibold, relativeTo: .body).monospacedDigit())
+                                        .foregroundStyle(amber)
+                                } else {
+                                    Text(formatVol(displayedMA))
+                                        .font(.inter(13, weight: .semibold, relativeTo: .body).monospacedDigit())
+                                        .foregroundStyle(amber)
+                                }
                             }
                         }
 

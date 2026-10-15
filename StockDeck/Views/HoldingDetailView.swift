@@ -114,7 +114,7 @@ struct HoldingDetailView: View {
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
-                    if liveQuote.hasValuationData {
+                    if liveQuote.hasValuationData && !StockService.isIndexSymbol(holding.symbol) {
                         let keyStats = stockService.keyStatistics[holding.symbol]
                         let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(holding.symbol)
                         ValuationCard(quote: liveQuote, keyStats: keyStats, isLoadingStats: isLoadingStats)

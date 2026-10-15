@@ -83,7 +83,46 @@ struct ValuationCard: View {
         return "—"
     }
 
+    private var isIndex: Bool {
+        StockService.isIndexSymbol(quote.symbol)
+    }
+
+    private var tradingValueText: String {
+        if let val = quote.regularMarketVolume, val.isFinite, val > 0 {
+            let isVi = StorageService.shared.appLanguage == "vi"
+            return StorageService.formatIndexTurnover(val, isVietnamese: isVi)
+        }
+        return "—"
+    }
+
     var body: some View {
+        if isIndex {
+            indexCardContent
+        } else {
+            equityCardContent
+        }
+    }
+
+    private var indexCardContent: some View {
+        let isVi = StorageService.shared.appLanguage == "vi"
+        return Card(title: isVi ? "Định giá thị trường" : "Market Valuation") {
+            VStack(spacing: 0) {
+                metricRow(
+                    leftLabel: isVi ? "P/E Toàn sàn" : "Market P/E", leftValue: trailingPEText,
+                    rightLabel: isVi ? "Giá trị giao dịch" : "Trading Value", rightValue: tradingValueText
+                )
+                if quote.priceToBook != nil || quote.marketCap != nil {
+                    rowDivider
+                    metricRow(
+                        leftLabel: isVi ? "P/B Thị trường" : "Market P/B", leftValue: priceToBookText,
+                        rightLabel: isVi ? "Vốn hóa thị trường" : "Market Cap", rightValue: marketCapText
+                    )
+                }
+            }
+        }
+    }
+
+    private var equityCardContent: some View {
         Card(title: "Valuation") {
             VStack(spacing: 0) {
                 metricRow(

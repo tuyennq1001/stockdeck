@@ -1522,6 +1522,39 @@ class StorageService: ObservableObject {
         }
     }
 
+    /// Formats traded volume / turnover for index symbols (e.g. VN-Index).
+    /// For Vietnamese language: "13.548 tỷ ₫"
+    /// For English language: "₫13.55T"
+    nonisolated static func formatIndexTurnover(_ value: Double, isVietnamese: Bool = false) -> String {
+        guard value.isFinite && value > 0 else { return "—" }
+        if isVietnamese {
+            let ty = value / 1_000_000_000.0
+            if ty >= 1.0 {
+                let formatter = NumberFormatter()
+                formatter.numberStyle = .decimal
+                formatter.groupingSeparator = "."
+                formatter.maximumFractionDigits = 0
+                let formatted = formatter.string(from: NSNumber(value: Int(round(ty)))) ?? "\(Int(round(ty)))"
+                return "\(formatted) tỷ ₫"
+            } else if value >= 1_000_000.0 {
+                let tr = value / 1_000_000.0
+                return String(format: "%.0f tr ₫", tr)
+            }
+            return "\(Int(value)) ₫"
+        } else {
+            let currSymbol = "₫"
+            if value >= 1_000_000_000_000.0 {
+                let t = value / 1_000_000_000_000.0
+                return "\(currSymbol)\(String(format: t >= 100 ? "%.1fT" : "%.2fT", t))"
+            } else if value >= 1_000_000_000.0 {
+                let b = value / 1_000_000_000.0
+                return "\(currSymbol)\(String(format: b >= 100 ? "%.1fB" : "%.2fB", b))"
+            } else {
+                let m = value / 1_000_000.0
+                return "\(currSymbol)\(String(format: "%.1fM", m))"
+            }
+        }
+    }
 
     private let fileURL: URL
     private let isCustomStorage: Bool
