@@ -6,23 +6,24 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.9</title>
-            <pubDate>Thu, 15 Oct 2026 05:04:44 +0900</pubDate>
-            <sparkle:version>12</sparkle:version>
-            <sparkle:shortVersionString>1.1.9</sparkle:shortVersionString>
+            <title>Version 1.1.10</title>
+            <pubDate>Thu, 15 Oct 2026 11:47:43 +0900</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>1.1.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.9</h2>
+<h2>What's New in StockDeck 1.1.10</h2>
 <ul>
-    <li><strong>Isolated Development Data:</strong> Development builds now store databases, caches, and Keychain items in an isolated sandbox, preventing test data or migrations from affecting production portfolios.</li>
-    <li><strong>Pinned Watchlist Symbol Column:</strong> The symbol and name column remains fixed while scrolling wide metrics horizontally.</li>
-    <li><strong>Market Quote Accuracy:</strong> Prevented Yahoo WebSocket ticks from overriding Vietnamese stock prices and Japanese mutual funds.</li>
+    <li><strong>Valuation & Profitability Metrics:</strong> Added Key Statistics including P/E, Forward P/E, P/B, Dividend Yield, EPS, Market Cap, ROE, ROA, ROIC, Profit Margin, PEG, and Debt/Equity in symbol and holding details.</li>
+    <li><strong>Customizable Valuation Columns:</strong> Added Valuation metrics to Watchlist and Portfolio tables with full sorting and column selection.</li>
+    <li><strong>Vietnamese Stock Valuation:</strong> Integrated Yahoo Finance valuation fundamentals for Vietnamese (.VN) equities with zero additional network requests.</li>
+    <li><strong>Streamlined Symbol Details:</strong> Cleaned up redundant range cards for a focused, responsive layout.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.9/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.10/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="leNVWNBr9FgGYn/96ueYlFJ3UxeZSs8bA8XTDHhDdeeaoQKFOpTdEw8PvmJM2Bs2Z+hpd3Wvn2vD1kIOwqpKDA=="
-                       length="8950924"/>
+                       sparkle:edSignature="e42cltRGdb3cBb+lQsDMEUZxAYuU5hROOlZphbU6nAL27ZQeX3B1qOEYWeBTzjqp9Q9F4ys/qfWOnaHQljPPBA=="
+                       length="9042414"/>
         </item>
     </channel>
 </rss>
