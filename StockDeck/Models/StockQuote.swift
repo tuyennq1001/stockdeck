@@ -38,6 +38,7 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
     let postMarketPrice: Double?
     let postMarketChange: Double?
     let postMarketChangePercent: Double?
+    var regularMarketVolume: Double? = nil
 
     var id: String { symbol }
 
@@ -68,7 +69,8 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
         preMarketChangePercent: Double? = nil,
         postMarketPrice: Double? = nil,
         postMarketChange: Double? = nil,
-        postMarketChangePercent: Double? = nil
+        postMarketChangePercent: Double? = nil,
+        regularMarketVolume: Double? = nil
     ) {
         self.symbol = symbol
         self.name = name
@@ -97,6 +99,7 @@ struct StockQuote: Identifiable, Codable, Sendable, Equatable {
         self.postMarketPrice = postMarketPrice
         self.postMarketChange = postMarketChange
         self.postMarketChangePercent = postMarketChangePercent
+        self.regularMarketVolume = regularMarketVolume
     }
 
     /// True if the quote has at least one valid core valuation metric.

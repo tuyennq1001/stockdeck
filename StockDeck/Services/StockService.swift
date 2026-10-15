@@ -46,6 +46,14 @@ class StockService: ObservableObject {
     @Published var keyStatistics: [String: KeyStatistics] = [:]
     @Published var loadingKeyStatsSymbols: Set<String> = []
     private var keyStatsTasks: [String: Task<KeyStatistics?, Never>] = [:]
+    /// Vietnamese fundamentals cache (Simplize fallback for HNX/UPCoM stocks and VN-Index).
+    /// Cached on disk for 24 hours.
+    @Published var vnValuationCache: [String: VietnameseValuationCacheEntry] = [:]
+    private var vnValuationCacheLoaded = false
+    private var vnValuationCacheSaveTask: Task<Void, Never>?
+    private var vnValuationCacheRevision: UInt64 = 0
+    private let vnValuationCacheWriter = PersistenceWriter()
+    private var vnValuationTasks: [String: Task<VietnameseValuationCacheEntry?, Never>] = [:]
     /// Daily close history per symbol (~2 years, full daily resolution) for the
     /// 7D/1M/1Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:] {
@@ -242,6 +250,7 @@ class StockService: ObservableObject {
 
         Task { await loadHistoryCache() }
         Task { await loadKeyStatsCache() }
+        Task { await loadVNValuationCache() }
         Task {
             _ = await self.fetchCrumb()
         }
@@ -555,23 +564,29 @@ class StockService: ObservableObject {
         let vnYahooSymbols = vnSymbols.compactMap { Self.yahooSymbolForVietnameseStock($0) }
         let yahooBatchSymbols = remainingStockSymbols + vnYahooSymbols
 
-        guard !yahooBatchSymbols.isEmpty else { return }
-
-        // Try v7 batch quote first for regular stock/ETF symbols and VN valuation
-        if await fetchQuotesV7(symbols: yahooBatchSymbols) {
-            if !vnSymbols.isEmpty {
-                mergeVietnameseValuationQuotes(for: vnSymbols)
+        if !yahooBatchSymbols.isEmpty {
+            // Try v7 batch quote first for regular stock/ETF symbols and VN valuation
+            if await fetchQuotesV7(symbols: yahooBatchSymbols) {
+                if !vnSymbols.isEmpty {
+                    mergeVietnameseValuationQuotes(for: vnSymbols)
+                    await fetchSimplizeFallbackValuation(for: vnSymbols)
+                }
+                return
             }
-            return
-        }
 
-        // Fallback: fetch each stock symbol via v8 chart API
-        await withTaskGroup(of: Void.self) { group in
-            for symbol in remainingStockSymbols {
-                group.addTask { [weak self] in
-                    await self?.fetchSingleQuote(symbol: symbol)
+            // Fallback: fetch each stock symbol via v8 chart API
+            await withTaskGroup(of: Void.self) { group in
+                for symbol in remainingStockSymbols {
+                    group.addTask { [weak self] in
+                        await self?.fetchSingleQuote(symbol: symbol)
+                    }
                 }
             }
+        }
+
+        if !vnSymbols.isEmpty {
+            mergeVietnameseValuationQuotes(for: vnSymbols)
+            await fetchSimplizeFallbackValuation(for: vnSymbols)
         }
 
         // Ensure stablecoins always have valid $1.00 USD quotes if Yahoo Finance returns nil/0
@@ -917,6 +932,7 @@ class StockService: ObservableObject {
                 let upperOriginal = originalSymbol.uppercased()
                 let upperQuoteSym = quote.symbol.uppercased()
                 let existing = self.quotes[upperOriginal] ?? self.quotes[upperQuoteSym]
+                let isIndex = upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") || Self.isIndexSymbol(quote.symbol)
 
                 var finalQuote = StockQuote(
                     symbol: quote.symbol,
@@ -933,13 +949,14 @@ class StockService: ObservableObject {
                     fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh ?? existing?.fiftyTwoWeekHigh,
                     fiftyTwoWeekLow: quote.fiftyTwoWeekLow ?? existing?.fiftyTwoWeekLow,
                     marketCap: existing?.marketCap,
-                    trailingPE: existing?.trailingPE,
+                    trailingPE: existing?.trailingPE ?? (isIndex ? vnValuationCache["VNINDEX"]?.trailingPE : nil),
                     forwardPE: existing?.forwardPE,
                     priceToBook: existing?.priceToBook,
                     bookValue: existing?.bookValue,
                     epsTrailingTwelveMonths: existing?.epsTrailingTwelveMonths,
                     epsForward: existing?.epsForward,
-                    dividendYield: existing?.dividendYield
+                    dividendYield: existing?.dividendYield,
+                    regularMarketVolume: existing?.regularMarketVolume ?? (isIndex ? vnValuationCache["VNINDEX"]?.totalValue : nil)
                 )
 
                 if isMarketWideOpen && finalQuote.marketState != "REGULAR" {
@@ -964,7 +981,8 @@ class StockService: ObservableObject {
                         bookValue: finalQuote.bookValue,
                         epsTrailingTwelveMonths: finalQuote.epsTrailingTwelveMonths,
                         epsForward: finalQuote.epsForward,
-                        dividendYield: finalQuote.dividendYield
+                        dividendYield: finalQuote.dividendYield,
+                        regularMarketVolume: finalQuote.regularMarketVolume
                     )
                 }
                 self.quotes[upperOriginal] = finalQuote
@@ -1847,9 +1865,11 @@ class StockService: ObservableObject {
     func ensureQuoteValuation(for symbol: String) async {
         guard !isJapaneseMutualFund(symbol) else { return }
         if Self.isVietnameseStock(symbol) {
-            guard let yahooSym = Self.yahooSymbolForVietnameseStock(symbol) else { return }
-            _ = await fetchQuotesV7(symbols: [yahooSym])
-            mergeVietnameseValuationQuotes(for: [symbol])
+            if let yahooSym = Self.yahooSymbolForVietnameseStock(symbol) {
+                _ = await fetchQuotesV7(symbols: [yahooSym])
+                mergeVietnameseValuationQuotes(for: [symbol])
+            }
+            await fetchSimplizeFallbackValuation(for: [symbol])
             return
         }
         _ = await fetchQuotesV7(symbols: [symbol])
@@ -1900,6 +1920,8 @@ class StockService: ObservableObject {
             self.keyStatistics[querySymbol] = result
             self.keyStatistics[symbol] = result
             self.scheduleKeyStatsCacheSave()
+        } else if Self.isVietnameseStock(canonical) {
+            await self.fetchSimplizeFallbackValuation(for: [canonical])
         }
     }
 
@@ -2048,6 +2070,318 @@ class StockService: ObservableObject {
             } catch {
                 NSLog("[StockService] KeyStatistics cache save failed: %@", error.localizedDescription)
             }
+        }
+    }
+
+    // MARK: - Vietnamese Valuation Cache (Simplize fallback, 24h TTL)
+
+    private static let vnValuationCacheFileName = "vn_valuation_cache.json"
+    private var vnValuationCacheURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/\(Self.vnValuationCacheFileName)")
+    }
+
+    private func loadVNValuationCache() async {
+        guard !vnValuationCacheLoaded else { return }
+        vnValuationCacheLoaded = true
+        let cacheURL = vnValuationCacheURL
+        let decoded: [String: VietnameseValuationCacheEntry]? = await Task.detached(priority: .utility) { () -> [String: VietnameseValuationCacheEntry]? in
+            guard let data = try? Data(contentsOf: cacheURL) else { return nil }
+            return try? JSONDecoder().decode([String: VietnameseValuationCacheEntry].self, from: data)
+        }.value
+        guard let decoded else { return }
+        let now = Date()
+        for (symbol, entry) in decoded {
+            if !entry.isExpired && entry.fetchedAt <= now {
+                vnValuationCache[symbol] = entry
+            }
+        }
+    }
+
+    private func scheduleVNValuationCacheSave() {
+        vnValuationCacheSaveTask?.cancel()
+        vnValuationCacheSaveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.saveVNValuationCache()
+        }
+    }
+
+    private func saveVNValuationCache() {
+        var entries: [String: VietnameseValuationCacheEntry] = [:]
+        for (symbol, entry) in vnValuationCache where !entry.isExpired {
+            entries[symbol] = entry
+        }
+        guard !entries.isEmpty else { return }
+        vnValuationCacheRevision &+= 1
+        let revision = vnValuationCacheRevision
+        let destination = vnValuationCacheURL
+        Task { @MainActor in
+            do {
+                let encoded = try await Task.detached(priority: .utility) {
+                    try JSONEncoder().encode(entries)
+                }.value
+                try await vnValuationCacheWriter.write(encoded, to: destination, revision: revision)
+            } catch {
+                NSLog("[StockService] VN Valuation cache save failed: %@", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Fetches valuation metrics from Simplize API for Vietnamese stocks that lack data on Yahoo Finance
+    /// (e.g. HNX stocks like SHS, CEO, MBS, and UPCoM stocks), and market P/E & turnover for VN-Index.
+    /// Results are cached in RAM and persisted to disk with a 24-hour TTL.
+    func fetchSimplizeFallbackValuation(for symbols: [String]) async {
+        await loadVNValuationCache()
+
+        // 1. Check if VN-Index is among symbols
+        let hasVNIndex = symbols.contains { sym in
+            let clean = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+                .replacingOccurrences(of: "^", with: "")
+            return clean == "VNINDEX"
+        }
+
+        if hasVNIndex {
+            await fetchVNIndexSimplizeValuation()
+        }
+
+        // 2. Identify individual equity tickers that need valuation
+        var tickersToFetch: [String] = []
+        for sym in symbols {
+            let clean = sym.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                .replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
+                .replacingOccurrences(of: "^", with: "")
+            guard clean != "VNINDEX" && clean != "HNXINDEX" && clean != "UPINDEX" else { continue }
+            guard !clean.isEmpty, clean.allSatisfy({ $0.isLetter || $0.isNumber }) else { continue }
+
+            // If we have valid unexpired cache, apply it immediately
+            if let cached = vnValuationCache[clean], !cached.isExpired {
+                applyCachedVNValuation(cached, for: sym, cleanTicker: clean)
+                continue
+            }
+
+            // Check if existing quote already has valuation from Yahoo
+            if let q = quotes[sym] ?? quotes[clean] ?? quotes["\(clean).VN"], q.trailingPE != nil || q.marketCap != nil {
+                continue
+            }
+
+            if !tickersToFetch.contains(clean) {
+                tickersToFetch.append(clean)
+            }
+        }
+
+        guard !tickersToFetch.isEmpty else { return }
+
+        // Fetch concurrently in background TaskGroup
+        await withTaskGroup(of: (String, VietnameseValuationCacheEntry?).self) { group in
+            for ticker in tickersToFetch {
+                group.addTask { [weak self] in
+                    guard let self else { return (ticker, nil) }
+                    let entry = await self.fetchSingleSimplizeCompany(ticker: ticker)
+                    return (ticker, entry)
+                }
+            }
+
+            for await (ticker, entry) in group {
+                if let entry {
+                    self.vnValuationCache[ticker] = entry
+                    self.applyCachedVNValuation(entry, for: ticker, cleanTicker: ticker)
+                }
+            }
+        }
+
+        scheduleVNValuationCacheSave()
+    }
+
+    private func fetchSingleSimplizeCompany(ticker: String) async -> VietnameseValuationCacheEntry? {
+        guard let url = URL(string: "\(VNMarketConfig.simplizeCompanyBaseURL)/\(ticker)") else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 6
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else { return nil }
+            let res = try JSONDecoder().decode(SimplizeCompanyResponse.self, from: data)
+            guard let d = res.data else { return nil }
+
+            let dividendYield: Double? = d.dividendYieldCurrent.map { $0 / 100.0 }
+            let roe: Double? = d.roe.map { $0 / 100.0 }
+            let roa: Double? = d.roa.map { $0 / 100.0 }
+
+            return VietnameseValuationCacheEntry(
+                trailingPE: d.peRatio,
+                priceToBook: d.pbRatio,
+                eps: d.epsRatio,
+                marketCap: d.marketCap,
+                dividendYield: dividendYield,
+                bookValue: d.bookValue,
+                roe: roe,
+                roa: roa,
+                beta: d.beta5y,
+                sharesOutstanding: d.outstandingSharesValue,
+                totalValue: nil,
+                fetchedAt: Date()
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func fetchVNIndexSimplizeValuation() async {
+        if let cached = vnValuationCache["VNINDEX"], !cached.isExpired, cached.trailingPE != nil || cached.totalValue != nil {
+            applyVNIndexValuation(pe: cached.trailingPE, totalValue: cached.totalValue)
+            return
+        }
+
+        var indexPe: Double? = nil
+        var totalValue: Double? = nil
+
+        // 1. Fetch Sector Performance for indexPe
+        if let peURL = URL(string: VNMarketConfig.simplizeSectorBaseURL) {
+            var req = URLRequest(url: peURL)
+            req.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            req.timeoutInterval = 8
+            if let (data, resp) = try? await session.data(for: req),
+               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(SimplizeSectorPerformanceResponse.self, from: data) {
+                indexPe = decoded.data?.indexPe
+            }
+        }
+
+        // 2. Fetch Index Quote for totalValue
+        if let quoteURL = URL(string: "\(VNMarketConfig.simplizeQuoteBaseURL)/VNINDEX?type=index") {
+            var req = URLRequest(url: quoteURL)
+            req.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            req.timeoutInterval = 8
+            if let (data, resp) = try? await session.data(for: req),
+               let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200,
+               let decoded = try? JSONDecoder().decode(SimplizeIndexQuoteResponse.self, from: data) {
+                totalValue = decoded.data?.totalValue
+            }
+        }
+
+        if indexPe != nil || totalValue != nil {
+            let entry = VietnameseValuationCacheEntry(
+                trailingPE: indexPe,
+                priceToBook: nil,
+                eps: nil,
+                marketCap: nil,
+                dividendYield: nil,
+                bookValue: nil,
+                roe: nil,
+                roa: nil,
+                beta: nil,
+                sharesOutstanding: nil,
+                totalValue: totalValue,
+                fetchedAt: Date()
+            )
+            vnValuationCache["VNINDEX"] = entry
+            scheduleVNValuationCacheSave()
+        }
+        applyVNIndexValuation(pe: indexPe, totalValue: totalValue)
+    }
+
+    private func applyVNIndexValuation(pe: Double?, totalValue: Double?) {
+        let targets = ["VNINDEX", "^VNINDEX", "^VNINDEX.VN"]
+        let template = targets.compactMap { quotes[$0] }.first
+        for target in targets {
+            let base = quotes[target] ?? template
+            if let current = base {
+                quotes[target] = StockQuote(
+                    symbol: target,
+                    name: current.name.isEmpty ? "VN-Index" : current.name,
+                    price: current.price,
+                    change: current.change,
+                    changePercent: current.changePercent,
+                    regularMarketPreviousClose: current.regularMarketPreviousClose,
+                    currency: current.currency,
+                    marketState: current.marketState,
+                    regularMarketTime: current.regularMarketTime,
+                    dayHigh: current.dayHigh,
+                    dayLow: current.dayLow,
+                    fiftyTwoWeekHigh: current.fiftyTwoWeekHigh,
+                    fiftyTwoWeekLow: current.fiftyTwoWeekLow,
+                    marketCap: current.marketCap,
+                    trailingPE: pe ?? current.trailingPE,
+                    forwardPE: current.forwardPE,
+                    priceToBook: current.priceToBook,
+                    bookValue: current.bookValue,
+                    epsTrailingTwelveMonths: current.epsTrailingTwelveMonths,
+                    epsForward: current.epsForward,
+                    dividendYield: current.dividendYield,
+                    preMarketPrice: current.preMarketPrice,
+                    preMarketChange: current.preMarketChange,
+                    preMarketChangePercent: current.preMarketChangePercent,
+                    postMarketPrice: current.postMarketPrice,
+                    postMarketChange: current.postMarketChange,
+                    postMarketChangePercent: current.postMarketChangePercent,
+                    regularMarketVolume: totalValue ?? current.regularMarketVolume
+                )
+            }
+        }
+    }
+
+    private func applyCachedVNValuation(_ entry: VietnameseValuationCacheEntry, for symbol: String, cleanTicker: String) {
+        let canonical = Self.canonicalSymbol(for: symbol)
+        let targets = Set([symbol, symbol.uppercased(), canonical, canonical.uppercased(), cleanTicker, "\(cleanTicker).VN"].filter { !$0.isEmpty })
+
+        for target in targets {
+            if let current = quotes[target] {
+                quotes[target] = StockQuote(
+                    symbol: current.symbol,
+                    name: current.name,
+                    price: current.price,
+                    change: current.change,
+                    changePercent: current.changePercent,
+                    regularMarketPreviousClose: current.regularMarketPreviousClose,
+                    currency: current.currency,
+                    marketState: current.marketState,
+                    regularMarketTime: current.regularMarketTime,
+                    dayHigh: current.dayHigh,
+                    dayLow: current.dayLow,
+                    fiftyTwoWeekHigh: current.fiftyTwoWeekHigh,
+                    fiftyTwoWeekLow: current.fiftyTwoWeekLow,
+                    marketCap: entry.marketCap ?? current.marketCap,
+                    trailingPE: entry.trailingPE ?? current.trailingPE,
+                    forwardPE: current.forwardPE,
+                    priceToBook: entry.priceToBook ?? current.priceToBook,
+                    bookValue: entry.bookValue ?? current.bookValue,
+                    epsTrailingTwelveMonths: entry.eps ?? current.epsTrailingTwelveMonths,
+                    epsForward: current.epsForward,
+                    dividendYield: entry.dividendYield ?? current.dividendYield,
+                    preMarketPrice: current.preMarketPrice,
+                    preMarketChange: current.preMarketChange,
+                    preMarketChangePercent: current.preMarketChangePercent,
+                    postMarketPrice: current.postMarketPrice,
+                    postMarketChange: current.postMarketChange,
+                    postMarketChangePercent: current.postMarketChangePercent,
+                    regularMarketVolume: current.regularMarketVolume
+                )
+            }
+        }
+
+        if keyStatistics[cleanTicker] == nil {
+            let stats = KeyStatistics(
+                pegRatio: nil,
+                enterpriseToEbitda: nil,
+                beta: entry.beta,
+                returnOnEquity: entry.roe,
+                returnOnAssets: entry.roa,
+                roic: nil,
+                profitMargins: nil,
+                debtToEquity: nil,
+                fetchedAt: entry.fetchedAt
+            )
+            keyStatistics[cleanTicker] = stats
+            keyStatistics[symbol] = stats
+            keyStatistics[canonical] = stats
+            scheduleKeyStatsCacheSave()
         }
     }
 
@@ -2899,9 +3233,15 @@ class StockService: ObservableObject {
         return map
     }
 
-    /// True when the symbol is a Yahoo market index ticker (prefix "^").
+    /// True when the symbol is a market index ticker (prefix "^" or VN indices like VNINDEX).
     nonisolated static func isIndexSymbol(_ symbol: String) -> Bool {
-        symbol.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("^")
+        let trimmed = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("^") { return true }
+        let clean = trimmed.uppercased()
+            .replacingOccurrences(of: ".HM", with: "")
+            .replacingOccurrences(of: ".HN", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+        return clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX"
     }
 
     /// True when the symbol should use the "beautified" display-name path
@@ -2978,11 +3318,18 @@ class StockService: ObservableObject {
         if upper.hasSuffix(".VN") || upper.hasSuffix(".HM") || upper.hasSuffix(".HN") {
             return true
         }
+        let clean = upper
+            .replacingOccurrences(of: ".HM", with: "")
+            .replacingOccurrences(of: ".HN", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+            .replacingOccurrences(of: "^", with: "")
+        if clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX" {
+            return true
+        }
         let upperExchange = exchange.uppercased()
         if upperExchange == "HOSE" || upperExchange == "HNX" || upperExchange == "UPCOM" {
             return true
         }
-        let clean = upper.replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "").replacingOccurrences(of: ".VN", with: "")
         return popularVietnameseStocks.contains(where: { $0.symbol.uppercased() == clean })
     }
 
@@ -4286,6 +4633,69 @@ struct YahooQuoteSummaryResponse: Decodable {
         let totalCash: YahooRawNumber?
         let totalRevenue: YahooRawNumber?
         let operatingMargins: YahooRawNumber?
+    }
+}
+
+// MARK: - Simplize API Models & VN Valuation Cache
+
+struct SimplizeCompanyResponse: Decodable {
+    let status: Int?
+    let message: String?
+    let data: SimplizeCompanyData?
+}
+
+struct SimplizeCompanyData: Decodable {
+    let ticker: String?
+    let peRatio: Double?
+    let pbRatio: Double?
+    let epsRatio: Double?
+    let marketCap: Double?
+    let dividendYieldCurrent: Double?
+    let bookValue: Double?
+    let roe: Double?
+    let roa: Double?
+    let beta5y: Double?
+    let outstandingSharesValue: Double?
+}
+
+struct SimplizeSectorPerformanceResponse: Decodable {
+    let status: Int?
+    let message: String?
+    let data: SimplizeSectorPerformanceData?
+}
+
+struct SimplizeSectorPerformanceData: Decodable {
+    let indexPe: Double?
+}
+
+struct SimplizeIndexQuoteResponse: Decodable {
+    let status: Int?
+    let message: String?
+    let data: SimplizeIndexQuoteData?
+}
+
+struct SimplizeIndexQuoteData: Decodable {
+    let ticker: String?
+    let totalValue: Double?
+    let totalVolume: Double?
+}
+
+struct VietnameseValuationCacheEntry: Codable, Sendable {
+    let trailingPE: Double?
+    let priceToBook: Double?
+    let eps: Double?
+    let marketCap: Double?
+    let dividendYield: Double?
+    let bookValue: Double?
+    let roe: Double?
+    let roa: Double?
+    let beta: Double?
+    let sharesOutstanding: Double?
+    let totalValue: Double?
+    let fetchedAt: Date
+
+    var isExpired: Bool {
+        Date().timeIntervalSince(fetchedAt) > 86400 // 24 hours
     }
 }
 
