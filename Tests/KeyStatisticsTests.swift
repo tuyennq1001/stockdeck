@@ -387,12 +387,33 @@ final class KeyStatisticsTests: XCTestCase {
     }
 
     func testFormatIndexTurnoverVietnameseAndEnglish() {
-        let turnover = 13_547_688_000_000.0 // 13.548 nghìn tỷ VND
+        let turnover = 13_547_688_000_000.0 // 13.5 nghìn tỷ VND
         let vnFormatted = StorageService.formatIndexTurnover(turnover, isVietnamese: true)
-        XCTAssertEqual(vnFormatted, "13.548 tỷ ₫")
+        XCTAssertEqual(vnFormatted, "13.5K tỷ ₫")
+
+        let largeTurnover = 61_480_000_000_000.0 // 61.5 nghìn tỷ VND
+        XCTAssertEqual(StorageService.formatIndexTurnover(largeTurnover, isVietnamese: true), "61.5K tỷ ₫")
+
+        let stockTurnover = 250_000_000_000.0 // 250 tỷ VND
+        XCTAssertEqual(StorageService.formatIndexTurnover(stockTurnover, isVietnamese: true), "250 tỷ ₫")
 
         let enFormatted = StorageService.formatIndexTurnover(turnover, isVietnamese: false)
         XCTAssertEqual(enFormatted, "₫13.55T")
+
+        // Foreign currencies: USD (e.g. S&P 500), JPY (e.g. Nikkei 225)
+        let sp500Turnover = 459_707_600_000.0 // $459.7B
+        XCTAssertEqual(StorageService.formatIndexTurnover(sp500Turnover, currency: "USD", isVietnamese: true), "$459.7B")
+        XCTAssertEqual(StorageService.formatIndexTurnover(sp500Turnover, currency: "USD", isVietnamese: false), "$459.7B")
+
+        let nikkeiTurnover = 3_850_000_000_000.0 // ¥3.85T
+        XCTAssertEqual(StorageService.formatIndexTurnover(nikkeiTurnover, currency: "JPY", isVietnamese: true), "¥3.85T")
+        XCTAssertEqual(StorageService.formatIndexTurnover(nikkeiTurnover, currency: "JPY", isVietnamese: false), "¥3.85T")
+
+        // When currency is passed as PTS or empty, it still resolves to VND for turnover
+        let ptsTurnover = 15_040_000_000_000.0
+        XCTAssertEqual(StorageService.formatIndexTurnover(ptsTurnover, currency: "PTS", isVietnamese: true), "15.0K tỷ ₫")
+        XCTAssertEqual(StorageService.currencySymbol(for: "PTS"), "")
+        XCTAssertEqual(StorageService.currencySymbol(for: "POINTS"), "")
 
         // Zero / negative / non-finite
         XCTAssertEqual(StorageService.formatIndexTurnover(0, isVietnamese: true), "—")

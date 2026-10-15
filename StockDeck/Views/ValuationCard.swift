@@ -10,7 +10,8 @@ struct ValuationCard: View {
     var isLoadingStats: Bool = false
 
     private var currencySymbol: String {
-        StorageService.currencySymbol(for: quote.currency)
+        let isIndex = StockService.isIndexSymbol(quote.symbol)
+        return isIndex ? "" : StorageService.currencySymbol(for: quote.currency)
     }
 
     private var trailingPEText: String {
@@ -90,7 +91,14 @@ struct ValuationCard: View {
     private var tradingValueText: String {
         if let val = quote.regularMarketVolume, val.isFinite, val > 0 {
             let isVi = StorageService.shared.appLanguage == "vi"
-            return StorageService.formatIndexTurnover(val, isVietnamese: isVi)
+            let sym = quote.symbol.uppercased()
+            let curr: String
+            if sym.contains("VNINDEX") || sym.contains("HNX") || sym.contains("UPINDEX") || sym.contains("UPCOM") || quote.currency.uppercased() == "PTS" || quote.currency.uppercased() == "VND" {
+                curr = "VND"
+            } else {
+                curr = quote.currency
+            }
+            return StorageService.formatIndexTurnover(val, currency: curr, isVietnamese: isVi)
         }
         return "—"
     }

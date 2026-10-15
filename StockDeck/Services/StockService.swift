@@ -861,7 +861,7 @@ class StockService: ObservableObject {
                         let low = response.l?.min().map { $0 * scale }
 
                         let companyName = isIndex ? "VN-Index" : (Self.popularVietnameseStocks.first(where: { $0.symbol.uppercased() == ticker })?.name ?? ticker)
-                        let currency = isIndex ? "PTS" : "VND"
+                        let currency = "VND"
 
                         let lastTimestamp = response.t?.last
                         let lastTradeDate = lastTimestamp.map { Date(timeIntervalSince1970: TimeInterval($0)) }
@@ -932,7 +932,8 @@ class StockService: ObservableObject {
                 let upperOriginal = originalSymbol.uppercased()
                 let upperQuoteSym = quote.symbol.uppercased()
                 let existing = self.quotes[upperOriginal] ?? self.quotes[upperQuoteSym]
-                let isIndex = upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX") || Self.isIndexSymbol(quote.symbol)
+                let isVNIndex = upperOriginal.contains("VNINDEX") || upperQuoteSym.contains("VNINDEX")
+                let isIndex = isVNIndex || Self.isIndexSymbol(quote.symbol)
 
                 var finalQuote = StockQuote(
                     symbol: quote.symbol,
@@ -949,14 +950,14 @@ class StockService: ObservableObject {
                     fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh ?? existing?.fiftyTwoWeekHigh,
                     fiftyTwoWeekLow: quote.fiftyTwoWeekLow ?? existing?.fiftyTwoWeekLow,
                     marketCap: existing?.marketCap,
-                    trailingPE: existing?.trailingPE ?? (isIndex ? vnValuationCache["VNINDEX"]?.trailingPE : nil),
+                    trailingPE: existing?.trailingPE ?? (isVNIndex ? vnValuationCache["VNINDEX"]?.trailingPE : nil),
                     forwardPE: existing?.forwardPE,
                     priceToBook: existing?.priceToBook,
                     bookValue: existing?.bookValue,
                     epsTrailingTwelveMonths: existing?.epsTrailingTwelveMonths,
                     epsForward: existing?.epsForward,
                     dividendYield: existing?.dividendYield,
-                    regularMarketVolume: existing?.regularMarketVolume ?? (isIndex ? vnValuationCache["VNINDEX"]?.totalValue : nil)
+                    regularMarketVolume: existing?.regularMarketVolume ?? (isVNIndex ? vnValuationCache["VNINDEX"]?.totalValue : nil)
                 )
 
                 if isMarketWideOpen && finalQuote.marketState != "REGULAR" {

@@ -1222,7 +1222,7 @@ class StorageService: ObservableObject {
     /// Yahoo type when known, falling back to the "^" convention (e.g. ^GSPC).
     nonisolated static func isIndex(symbol: String, type: String?) -> Bool {
         if let t = type, !t.isEmpty { return t.uppercased() == "INDEX" }
-        return symbol.hasPrefix("^")
+        return StockService.isIndexSymbol(symbol)
     }
 
     /// Issue #8.1: orders watchlist symbols for the menu bar ticker cycle.
@@ -1447,7 +1447,7 @@ class StorageService: ObservableObject {
     }
 
     nonisolated static func currencySymbol(for code: String) -> String {
-        switch code {
+        switch code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
         case "EUR": return "€"
         case "USD": return "$"
         case "GBP": return "£"
@@ -1456,6 +1456,7 @@ class StorageService: ObservableObject {
         case "VND": return "₫"
         case "CAD": return "C$"
         case "AUD": return "A$"
+        case "PTS", "POINTS", "": return ""
         default: return code
         }
     }
@@ -1474,7 +1475,13 @@ class StorageService: ObservableObject {
     nonisolated static func formatCompactNumber(_ value: Double, decimals: Int? = nil, stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : ""
-        if absVal >= 1_000_000 {
+        if absVal >= 1_000_000_000_000 {
+            let t = absVal / 1_000_000_000_000
+            return "\(sign)\(String(format: t >= 100 ? "%.1fT" : "%.2fT", t))"
+        } else if absVal >= 1_000_000_000 {
+            let b = absVal / 1_000_000_000
+            return "\(sign)\(String(format: b >= 100 ? "%.1fB" : "%.2fB", b))"
+        } else if absVal >= 1_000_000 {
             let m = absVal / 1_000_000
             return "\(sign)\(String(format: m >= 10 ? "%.1fM" : "%.2fM", m))"
         } else if absVal >= 10_000 {
@@ -1485,14 +1492,22 @@ class StorageService: ObservableObject {
         }
     }
 
-    /// Formats an amount compactly with K/M suffixes when ≥ 10,000.
+    /// Formats an amount compactly with K/M/B/T suffixes when ≥ 10,000.
     /// When the value is below the compact threshold and `decimals` is provided,
     /// that decimal count is used so small numbers still respect the user's setting.
     nonisolated static func formatCompactAmount(_ value: Double, symbol: String, signed: Bool = false, decimals: Int? = nil,
                                                 stripTrailingZeros: Bool = false) -> String {
         let absVal = abs(value)
         let sign = value < 0 ? "-" : (signed && value > 0 ? "+" : "")
-        if absVal >= 1_000_000 {
+        if absVal >= 1_000_000_000_000 {
+            let t = absVal / 1_000_000_000_000
+            let formatted = String(format: t >= 100 ? "%.1fT" : "%.2fT", t)
+            return "\(sign)\(symbol)\(formatted)"
+        } else if absVal >= 1_000_000_000 {
+            let b = absVal / 1_000_000_000
+            let formatted = String(format: b >= 100 ? "%.1fB" : "%.2fB", b)
+            return "\(sign)\(symbol)\(formatted)"
+        } else if absVal >= 1_000_000 {
             let m = absVal / 1_000_000
             let formatted = String(format: m >= 10 ? "%.1fM" : "%.2fM", m)
             return "\(sign)\(symbol)\(formatted)"
@@ -1522,14 +1537,24 @@ class StorageService: ObservableObject {
         }
     }
 
-    /// Formats traded volume / turnover for index symbols (e.g. VN-Index).
-    /// For Vietnamese language: "13.548 tỷ ₫"
-    /// For English language: "₫13.55T"
-    nonisolated static func formatIndexTurnover(_ value: Double, isVietnamese: Bool = false) -> String {
+    /// Formats traded volume / turnover for index symbols and equities (e.g. VN-Index).
+    /// For Vietnamese language: "61.5K tỷ ₫", "250 tỷ ₫", "500 tr ₫"
+    /// For English language: "₫61.21T", "₫13.55T", "₫250B"
+    /// For foreign currencies (USD, JPY...): uses compact currency formatting like "$459.7B", "¥3.85T".
+    nonisolated static func formatIndexTurnover(_ value: Double, currency: String = "VND", isVietnamese: Bool = false) -> String {
         guard value.isFinite && value > 0 else { return "—" }
+        let normCurrency = currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let isVND = normCurrency == "VND" || normCurrency == "PTS" || normCurrency == "POINTS" || normCurrency == ""
+        if !isVND {
+            let sym = currencySymbol(for: normCurrency)
+            return formatCompactAmount(value, symbol: sym)
+        }
         if isVietnamese {
             let ty = value / 1_000_000_000.0
-            if ty >= 1.0 {
+            if ty >= 1000.0 {
+                let kTy = ty / 1000.0
+                return String(format: "%.1fK tỷ ₫", kTy)
+            } else if ty >= 1.0 {
                 let formatter = NumberFormatter()
                 formatter.numberStyle = .decimal
                 formatter.groupingSeparator = "."

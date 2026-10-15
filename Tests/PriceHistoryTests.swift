@@ -199,10 +199,11 @@ final class PriceHistoryTests: XCTestCase {
         let dailyResult = VolumeChartCard.processVolumeData(input: dailyInput)
         XCTAssertEqual(dailyResult.points.count, 50)
         XCTAssertEqual(dailyResult.latestVolume, 1000)
-        XCTAssertEqual(dailyResult.latestMA20, 1000)
+        XCTAssertEqual(dailyResult.latestValue, 100_000)
+        XCTAssertEqual(dailyResult.latestMA20, 100_000)
         XCTAssertEqual(dailyResult.points.first?.index, 0)
         XCTAssertEqual(dailyResult.points.last?.index, 49)
-        XCTAssertEqual(dailyResult.points.first?.ma, 1000)
+        XCTAssertEqual(dailyResult.points.first?.ma, 100_000)
 
         // Test Weekly timeframe
         let weeklyInput = VolumeChartCard.HistoryInput(
