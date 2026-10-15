@@ -5,6 +5,7 @@ enum PortfolioColumnPreset: String, CaseIterable, Identifiable {
     case custom = "Custom"
     case defaultPreset = "Default"
     case overview = "Overview"
+    case valuation = "Valuation"
     case minimal = "Minimal"
 
     var id: String { rawValue }
@@ -17,6 +18,8 @@ enum PortfolioColumnPreset: String, CaseIterable, Identifiable {
             return PortfolioColumnMetric.defaultSelection
         case .overview:
             return [.price, .change, .todayPnl, .totalPnl, .weight]
+        case .valuation:
+            return [.price, .change, .marketCap, .pe, .forwardPe, .pb, .divYield, .eps]
         case .minimal:
             return [.price, .totalPnl]
         }

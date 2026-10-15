@@ -7,6 +7,7 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
     case avgPrice, price, change
     case cost, value, todayPnl, totalPnl, shares, lots
     case weight
+    case marketCap, pe, forwardPe, pb, divYield, eps
     case volume50d, volume50w
 
     var id: String { rawValue }
@@ -23,6 +24,12 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
         case .shares: return "Shares"
         case .lots: return "Lots"
         case .weight: return "Weight"
+        case .marketCap: return "Mkt Cap"
+        case .pe: return "P/E"
+        case .forwardPe: return "Fwd P/E"
+        case .pb: return "P/B"
+        case .divYield: return "Div Yield"
+        case .eps: return "EPS"
         case .volume50d: return "50D Vol"
         case .volume50w: return "50W Vol"
         }
@@ -36,23 +43,23 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
             return .position
         case .weight:
             return .weight
+        case .marketCap, .pe, .forwardPe, .pb, .divYield, .eps:
+            return .valuation
         case .volume50d, .volume50w:
             return .chart
         }
     }
 
+    static func from(raw: String) -> PortfolioColumnMetric? {
+        if raw == "volume20w" { return .volume50w }
+        if raw == "volume7d" || raw == "volume30d" { return .volume50d }
+        return PortfolioColumnMetric(rawValue: raw)
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
-        if raw == "volume20w" {
-            self = .volume50w
-            return
-        }
-        if raw == "volume7d" || raw == "volume30d" {
-            self = .volume50d
-            return
-        }
-        guard let value = PortfolioColumnMetric(rawValue: raw) else {
+        guard let value = PortfolioColumnMetric.from(raw: raw) else {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown metric: \(raw)")
         }
         self = value
@@ -67,6 +74,7 @@ enum PortfolioColumnCategory: String, CaseIterable, Identifiable {
     case price = "Price"
     case position = "Position"
     case weight = "Weight"
+    case valuation = "Valuation"
     case chart = "Chart"
 
     var id: String { rawValue }

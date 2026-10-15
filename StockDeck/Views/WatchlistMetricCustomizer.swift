@@ -5,6 +5,7 @@ enum MetricPreset: String, CaseIterable, Identifiable {
     case custom = "Custom"
     case defaultPreset = "Default"
     case overview = "Overview"
+    case valuation = "Valuation"
     case technical = "Technical"
 
     var id: String { rawValue }
@@ -17,6 +18,8 @@ enum MetricPreset: String, CaseIterable, Identifiable {
             return [.todayChange, .oneMonth, .threeMonths, .chart7d]
         case .overview:
             return [.todayChange, .oneMonth, .oneYear, .ath, .chart7d]
+        case .valuation:
+            return [.todayChange, .marketCap, .pe, .forwardPe, .pb, .divYield, .eps]
         case .technical:
             return [.todayChange, .ytd, .ath, .fromAth, .atl, .fromAtl, .chart30d]
         }

@@ -111,6 +111,16 @@ struct WatchlistWideView: View {
                 return allTimeLow
             case .marketCap:
                 return marketCap
+            case .pe:
+                return quote?.trailingPE
+            case .forwardPe:
+                return quote?.forwardPE
+            case .pb:
+                return quote?.priceToBook
+            case .divYield:
+                return quote?.dividendYield
+            case .eps:
+                return quote?.epsTrailingTwelveMonths
             case .fromAth:
                 return fromAthPercent
             case .fromAtl:
@@ -355,7 +365,12 @@ struct WatchlistWideView: View {
                     VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
                         .id("volume-\(symbol)")
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
-                    factsCard(quote)
+                    if quote.hasValuationData {
+                        let keyStats = stockService.keyStatistics[symbol]
+                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
+                        ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                        ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                    }
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
                         .id("notes-\(symbol)")
@@ -363,6 +378,10 @@ struct WatchlistWideView: View {
                         .id("news-\(symbol)")
                 }
                 .padding(16)
+            }
+            .task(id: symbol) {
+                await stockService.ensureQuoteValuation(for: symbol)
+                await stockService.ensureKeyStatistics(for: symbol)
             }
         }
         .background(DS.ground)
@@ -404,31 +423,6 @@ struct WatchlistWideView: View {
                 }
             }
         }
-    }
-
-    private func factsCard(_ quote: StockQuote) -> some View {
-        Card(title: "Today") {
-            VStack(spacing: 0) {
-                if let low = quote.dayLow, let high = quote.dayHigh {
-                    factRow("Day range", "\(StorageService.formatNumber(low, decimals: 2)) – \(StorageService.formatNumber(high, decimals: 2))")
-                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-                }
-                factRow("Currency", quote.currency)
-                if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                    Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-                    factRow("Session", quote.marketStateLabel)
-                }
-            }
-        }
-    }
-
-    private func factRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(LocalizedStringKey(label)).font(DS.caption).foregroundStyle(DS.inkSecondary)
-            Spacer()
-            Text(value).font(DS.figure).foregroundStyle(DS.ink)
-        }
-        .padding(.vertical, 8)
     }
 
     // MARK: - Header controls
@@ -1113,6 +1107,7 @@ private enum WCol {
         case .price: return price
         case .today, .todayChange: return 82
         case .buyTarget: return 110
+        case .pe, .forwardPe, .pb, .divYield, .eps: return 75
         default: return metric.isChart ? 76 : (metric.category == .price ? 92 : period)
         }
     }
@@ -1267,6 +1262,16 @@ private struct WatchRowView<Menu: View>: View {
                 buyTargetCell
             case .marketCap:
                 marketCapCell
+            case .pe:
+                ratioCell(row.quote?.trailingPE)
+            case .forwardPe:
+                ratioCell(row.quote?.forwardPE)
+            case .pb:
+                ratioCell(row.quote?.priceToBook)
+            case .divYield:
+                divYieldCell(row.quote?.dividendYield)
+            case .eps:
+                epsCell(row.quote?.epsTrailingTwelveMonths)
             case .chart24h:
                 Sparkline(symbol: row.symbol, days: 1)
             case .chart7d:
@@ -1324,6 +1329,41 @@ private struct WatchRowView<Menu: View>: View {
     private var marketCapCell: some View {
         if let mc = row.quote?.marketCap, mc > 0 {
             Text(StorageService.formatMarketCap(mc, currency: row.currency))
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.ink)
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func ratioCell(_ value: Double?) -> some View {
+        if let value, value.isFinite, value > 0 {
+            Text(StorageService.formatNumber(value, decimals: 2))
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.ink)
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func divYieldCell(_ value: Double?) -> some View {
+        if let value, value.isFinite, value >= 0 {
+            Text("\(StorageService.formatNumber(value, decimals: 2))%")
+                .font(DS.figure.monospacedDigit())
+                .foregroundStyle(DS.ink)
+        } else {
+            Text("—").font(DS.figure).foregroundStyle(DS.inkTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func epsCell(_ value: Double?) -> some View {
+        if let value, value.isFinite {
+            let sym = row.isIndex ? "" : StorageService.currencySymbol(for: row.currency)
+            let dec = (row.currency == "VND" || row.currency == "JPY") ? 0 : 2
+            Text(StorageService.formatAmount(value, symbol: sym, decimals: dec))
                 .font(DS.figure.monospacedDigit())
                 .foregroundStyle(DS.ink)
         } else {

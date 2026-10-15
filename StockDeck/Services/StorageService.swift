@@ -1411,6 +1411,16 @@ class StorageService: ObservableObject {
                 case .buyTarget:
                     guard let target = stockTargets[symbol], target.targetPrice > 0, regularPrice > 0 else { return nil }
                     return target.percentDistance(from: regularPrice)
+                case .pe:
+                    return q?.trailingPE
+                case .forwardPe:
+                    return q?.forwardPE
+                case .pb:
+                    return q?.priceToBook
+                case .divYield:
+                    return q?.dividendYield
+                case .eps:
+                    return q?.epsTrailingTwelveMonths.map { $0 * pRate }
                 case .chart24h, .chart7d, .chart30d, .chart60d, .chart90d, .chartYtd, .chart1y, .volume50d, .volume50w:
                     return nil
                 }
@@ -2664,7 +2674,7 @@ class StorageService: ObservableObject {
         }
         menuBarShortcut = decoded.menuBarShortcut
         desktopAppShortcut = decoded.desktopAppShortcut
-        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.init(rawValue:))
+        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.from(raw:))
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
         if let syncEnabled = decoded.iCloudSyncEnabled {
             iCloudSyncEnabled = syncEnabled

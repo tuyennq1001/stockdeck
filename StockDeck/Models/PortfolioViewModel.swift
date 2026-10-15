@@ -750,6 +750,60 @@ final class PortfolioViewModel {
                 let w1 = abs(totalValue) >= 0.01 ? (abs(symbolAggregates[sym1]?.value ?? 0) / abs(totalValue) * 100) : 0
                 let w2 = abs(totalValue) >= 0.01 ? (abs(symbolAggregates[sym2]?.value ?? 0) / abs(totalValue) * 100) : 0
                 return isAsc ? w1 < w2 : w1 > w2
+            case .marketCap:
+                let mc1 = symbolAggregates[sym1]?.quote?.marketCap
+                let mc2 = symbolAggregates[sym2]?.quote?.marketCap
+                switch (mc1, mc2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .pe:
+                let v1 = symbolAggregates[sym1]?.quote?.trailingPE
+                let v2 = symbolAggregates[sym2]?.quote?.trailingPE
+                switch (v1, v2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .forwardPe:
+                let v1 = symbolAggregates[sym1]?.quote?.forwardPE
+                let v2 = symbolAggregates[sym2]?.quote?.forwardPE
+                switch (v1, v2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .pb:
+                let v1 = symbolAggregates[sym1]?.quote?.priceToBook
+                let v2 = symbolAggregates[sym2]?.quote?.priceToBook
+                switch (v1, v2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .divYield:
+                let v1 = symbolAggregates[sym1]?.quote?.dividendYield
+                let v2 = symbolAggregates[sym2]?.quote?.dividendYield
+                switch (v1, v2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
+            case .eps:
+                let v1 = symbolAggregates[sym1]?.quote?.epsTrailingTwelveMonths
+                let v2 = symbolAggregates[sym2]?.quote?.epsTrailingTwelveMonths
+                switch (v1, v2) {
+                case let (l?, r?): return isAsc ? l < r : l > r
+                case (_?, nil): return true
+                case (nil, _?): return false
+                case (nil, nil): return isAsc ? sym1 < sym2 : sym1 > sym2
+                }
             }
         }
         sortedSymbolsCache = (cacheKey, result)

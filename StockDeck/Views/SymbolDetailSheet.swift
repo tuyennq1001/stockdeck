@@ -40,6 +40,7 @@ struct SymbolDetailView: View {
             if quote?.hasValuationData != true {
                 await stockService.ensureQuoteValuation(for: symbol)
             }
+            await stockService.ensureKeyStatistics(for: symbol)
         }
     }
 
@@ -59,9 +60,11 @@ struct SymbolDetailView: View {
                             fiftyTwoWeekCard(quote)
                         }
                         if quote.hasValuationData {
-                            ValuationCard(quote: quote)
+                            let keyStats = stockService.keyStatistics[symbol]
+                            let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
+                            ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
                         }
-                        factsCard(quote)
                         InsiderTradingCard(symbol: symbol)
                         SymbolNotesCard(storageService: storageService, symbol: symbol)
                         SymbolNewsCard(
@@ -155,6 +158,7 @@ struct SymbolDetailView: View {
                     await stockService.refreshAll(storageService: storageService)
                     await stockService.ensurePriceHistory(for: symbol)
                     await stockService.ensureQuoteValuation(for: symbol)
+                    await stockService.ensureKeyStatistics(for: symbol, force: true)
                 }
             }) {
                 Image(systemName: "arrow.clockwise")
@@ -205,35 +209,6 @@ struct SymbolDetailView: View {
                 }
             }
         }
-    }
-
-    private func factsCard(_ quote: StockQuote) -> some View {
-        Card(title: "Today") {
-            VStack(spacing: 0) {
-                if let low = quote.dayLow, let high = quote.dayHigh {
-                    factRow("Day range", "\(StorageService.formatNumber(low, decimals: 2)) – \(StorageService.formatNumber(high, decimals: 2))")
-                    divider
-                }
-                factRow("Currency", quote.currency)
-                if quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                    divider
-                    factRow("Session", quote.marketStateLabel)
-                }
-            }
-        }
-    }
-
-    private var divider: some View {
-        Divider().overlay(DS.hairline.opacity(0.6)).padding(.horizontal, 8)
-    }
-
-    private func factRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(LocalizedStringKey(label)).font(DS.caption).foregroundStyle(DS.inkSecondary)
-            Spacer()
-            Text(value).font(DS.figure).foregroundStyle(DS.ink)
-        }
-        .padding(.vertical, 8)
     }
 }
 
