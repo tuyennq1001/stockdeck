@@ -109,18 +109,22 @@ struct HoldingDetailView: View {
                 LazyVStack(alignment: .leading, spacing: DS.gap) {
                     PriceChartCard(symbol: holding.symbol, quote: quote)
                         .id("price-\(holding.symbol)")
+                    VolumeChartCard(symbol: holding.symbol, quote: quote, chartHeight: 140)
+                        .id("volume-\(holding.symbol)")
                     statStrip
                     purchaseLotsCard
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
-                    if liveQuote.hasValuationData && !StockService.isIndexSymbol(holding.symbol) {
+                    if liveQuote.hasValuationData {
                         let keyStats = stockService.keyStatistics[holding.symbol]
                         let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(holding.symbol)
                         ValuationCard(quote: liveQuote, keyStats: keyStats, isLoadingStats: isLoadingStats)
                             .frame(maxWidth: .infinity)
-                        ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
-                            .frame(maxWidth: .infinity)
+                        if !StockService.isIndexSymbol(holding.symbol) {
+                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                     InsiderTradingCard(symbol: holding.symbol)
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
@@ -794,6 +798,7 @@ struct HoldingDetailView: View {
     @ViewBuilder private var fiftyTwoWeekCard: some View {
         if let pos = quote.fiftyTwoWeekPosition,
            let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
+            let isIndex = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
             Card(title: "52-week range") {
                 VStack(spacing: 10) {
                     GeometryReader { geo in
@@ -819,15 +824,16 @@ struct HoldingDetailView: View {
                     }
                     .frame(height: 16)
                     HStack {
+                        let dec = storageService.resolvedPriceDecimals(symbol: holding.symbol, price: low)
                         VStack(alignment: .leading, spacing: 2) {
                             SectionLabel("Low")
-                            Text(StorageService.formatAmount(low, symbol: priceSymbol))
+                            Text(isIndex ? StorageService.formatNumber(low, decimals: dec) : StorageService.formatAmount(low, symbol: priceSymbol, decimals: dec))
                                 .font(DS.figure).foregroundStyle(DS.ink)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             SectionLabel("High")
-                            Text(StorageService.formatAmount(high, symbol: priceSymbol))
+                            Text(isIndex ? StorageService.formatNumber(high, decimals: dec) : StorageService.formatAmount(high, symbol: priceSymbol, decimals: dec))
                                 .font(DS.figure).foregroundStyle(DS.ink)
                         }
                     }

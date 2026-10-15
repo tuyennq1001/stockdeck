@@ -369,7 +369,9 @@ struct WatchlistWideView: View {
                         let keyStats = stockService.keyStatistics[symbol]
                         let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
                         ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
-                        ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                        if !StockService.isIndexSymbol(symbol) {
+                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                        }
                     }
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
@@ -392,6 +394,7 @@ struct WatchlistWideView: View {
            let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
             let idxFlag = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
             let priceSymbol = idxFlag ? "" : StorageService.currencySymbol(for: quote.currency)
+            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low)
             Card(title: "52-week range") {
                 VStack(spacing: 10) {
                     GeometryReader { geo in
@@ -410,13 +413,13 @@ struct WatchlistWideView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             SectionLabel("Low")
-                            Text(StorageService.formatAmount(low, symbol: priceSymbol))
+                            Text(idxFlag ? StorageService.formatNumber(low, decimals: dec) : StorageService.formatAmount(low, symbol: priceSymbol, decimals: dec))
                                 .font(DS.figure).foregroundStyle(DS.ink)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             SectionLabel("High")
-                            Text(StorageService.formatAmount(high, symbol: priceSymbol))
+                            Text(idxFlag ? StorageService.formatNumber(high, decimals: dec) : StorageService.formatAmount(high, symbol: priceSymbol, decimals: dec))
                                 .font(DS.figure).foregroundStyle(DS.ink)
                         }
                     }
