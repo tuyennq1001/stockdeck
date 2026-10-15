@@ -80,6 +80,24 @@ final class ScrollSyncCoordinator: ObservableObject {
         }
     }
 
+    func reset() {
+        if let h = horizontalHeaderScrollView {
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: h.contentView)
+        }
+        if let b = bodyScrollView {
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: b.contentView)
+        }
+        if let v = verticalFrozenScrollView {
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: v.contentView)
+        }
+        horizontalHeaderScrollView = nil
+        bodyScrollView = nil
+        verticalFrozenScrollView = nil
+        hoverBoxes.removeAll()
+        isSyncingHorizontal = false
+        isSyncingVertical = false
+    }
+
     private func syncVerticalInitial() {
         guard !isSyncingVertical,
               let body = bodyScrollView,
@@ -87,15 +105,14 @@ final class ScrollSyncCoordinator: ObservableObject {
         let bodyY = body.contentView.bounds.origin.y
         let frozenY = frozen.contentView.bounds.origin.y
         if abs(bodyY - frozenY) > 0.5 {
-            let targetY = max(bodyY, frozenY)
+            let targetY = bodyY
             isSyncingVertical = true
-            if abs(bodyY - targetY) > 0.5 {
-                body.contentView.scroll(to: NSPoint(x: body.contentView.bounds.origin.x, y: targetY))
+            frozen.contentView.scroll(to: NSPoint(x: frozen.contentView.bounds.origin.x, y: targetY))
+            frozen.reflectScrolledClipView(frozen.contentView)
+            let actualFrozenY = frozen.contentView.bounds.origin.y
+            if abs(actualFrozenY - targetY) > 0.5 {
+                body.contentView.scroll(to: NSPoint(x: body.contentView.bounds.origin.x, y: actualFrozenY))
                 body.reflectScrolledClipView(body.contentView)
-            }
-            if abs(frozenY - targetY) > 0.5 {
-                frozen.contentView.scroll(to: NSPoint(x: frozen.contentView.bounds.origin.x, y: targetY))
-                frozen.reflectScrolledClipView(frozen.contentView)
             }
             isSyncingVertical = false
         }
@@ -108,14 +125,13 @@ final class ScrollSyncCoordinator: ObservableObject {
         let bodyX = body.contentView.bounds.origin.x
         let headerX = header.contentView.bounds.origin.x
         if abs(bodyX - headerX) > 0.5 {
-            let targetX = max(bodyX, headerX)
+            let targetX = bodyX
             isSyncingHorizontal = true
-            if abs(headerX - targetX) > 0.5 {
-                header.contentView.scroll(to: NSPoint(x: targetX, y: header.contentView.bounds.origin.y))
-                header.reflectScrolledClipView(header.contentView)
-            }
-            if abs(bodyX - targetX) > 0.5 {
-                body.contentView.scroll(to: NSPoint(x: targetX, y: body.contentView.bounds.origin.y))
+            header.contentView.scroll(to: NSPoint(x: targetX, y: header.contentView.bounds.origin.y))
+            header.reflectScrolledClipView(header.contentView)
+            let actualHeaderX = header.contentView.bounds.origin.x
+            if abs(actualHeaderX - targetX) > 0.5 {
+                body.contentView.scroll(to: NSPoint(x: actualHeaderX, y: body.contentView.bounds.origin.y))
                 body.reflectScrolledClipView(body.contentView)
             }
             isSyncingHorizontal = false
@@ -133,6 +149,11 @@ final class ScrollSyncCoordinator: ObservableObject {
             if abs(origin.x - curHeaderX) > 0.5 {
                 header.contentView.scroll(to: NSPoint(x: origin.x, y: header.contentView.bounds.origin.y))
                 header.reflectScrolledClipView(header.contentView)
+                let actualHeaderX = header.contentView.bounds.origin.x
+                if abs(actualHeaderX - origin.x) > 0.5 {
+                    bodyClip.scroll(to: NSPoint(x: actualHeaderX, y: origin.y))
+                    bodyScrollView?.reflectScrolledClipView(bodyClip)
+                }
             }
             isSyncingHorizontal = false
         }
@@ -144,6 +165,11 @@ final class ScrollSyncCoordinator: ObservableObject {
             if abs(origin.y - curFrozenY) > 0.5 {
                 frozen.contentView.scroll(to: NSPoint(x: frozen.contentView.bounds.origin.x, y: origin.y))
                 frozen.reflectScrolledClipView(frozen.contentView)
+                let actualFrozenY = frozen.contentView.bounds.origin.y
+                if abs(actualFrozenY - origin.y) > 0.5 {
+                    bodyClip.scroll(to: NSPoint(x: origin.x, y: actualFrozenY))
+                    bodyScrollView?.reflectScrolledClipView(bodyClip)
+                }
             }
             isSyncingVertical = false
         }
@@ -160,6 +186,11 @@ final class ScrollSyncCoordinator: ObservableObject {
         if abs(originX - curBodyX) > 0.5 {
             body.contentView.scroll(to: NSPoint(x: originX, y: body.contentView.bounds.origin.y))
             body.reflectScrolledClipView(body.contentView)
+            let actualBodyX = body.contentView.bounds.origin.x
+            if abs(actualBodyX - originX) > 0.5 {
+                headerClip.scroll(to: NSPoint(x: actualBodyX, y: headerClip.bounds.origin.y))
+                horizontalHeaderScrollView?.reflectScrolledClipView(headerClip)
+            }
         }
         isSyncingHorizontal = false
     }
@@ -175,6 +206,11 @@ final class ScrollSyncCoordinator: ObservableObject {
         if abs(originY - curBodyY) > 0.5 {
             body.contentView.scroll(to: NSPoint(x: body.contentView.bounds.origin.x, y: originY))
             body.reflectScrolledClipView(body.contentView)
+            let actualBodyY = body.contentView.bounds.origin.y
+            if abs(actualBodyY - originY) > 0.5 {
+                frozenClip.scroll(to: NSPoint(x: frozenClip.bounds.origin.x, y: actualBodyY))
+                verticalFrozenScrollView?.reflectScrolledClipView(frozenClip)
+            }
         }
         isSyncingVertical = false
     }

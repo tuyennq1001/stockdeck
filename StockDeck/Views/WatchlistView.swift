@@ -313,6 +313,7 @@ struct WatchlistView: View {
                         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                     }
                 }
+                .id(storageService.selectedWatchlistId)
                 .background(DS.card)
                 .frame(maxHeight: .infinity)
                 .refreshable {
@@ -462,6 +463,7 @@ struct WatchlistView: View {
                 }
             }
             .onChange(of: storageService.selectedWatchlistId) { _, _ in
+                scrollCoordinator.reset()
                 Task {
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
