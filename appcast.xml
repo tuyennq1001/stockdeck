@@ -6,25 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.11</title>
-            <pubDate>Thu, 15 Oct 2026 18:56:25 +0900</pubDate>
-            <sparkle:version>14</sparkle:version>
-            <sparkle:shortVersionString>1.1.11</sparkle:shortVersionString>
+            <title>Version 1.1.12</title>
+            <pubDate>Fri, 16 Oct 2026 09:52:11 +0900</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>1.1.12</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.11</h2>
+<h2>What's New in StockDeck 1.1.12</h2>
 <ul>
-    <li><strong>Trading Value & MA20 in Volume Chart:</strong> Converted volume bars and stats to monetary trading value with moving average (MA20) across all assets.</li>
-    <li><strong>Compact Currency Display:</strong> Added concise K tỷ, B, and T currency formatting for domestic (VN-Index) and global (S&P 500, Nikkei 225) markets.</li>
-    <li><strong>Streamlined Volume Card Header:</strong> Replaced the percentage badge with the session date for a clean, stable layout without layout shift.</li>
-    <li><strong>Index Precision:</strong> Removed unnecessary currency and PTS prefixes from index prices and 52-week ranges.</li>
-    <li><strong>Holding Detail Parity:</strong> Added the Volume Chart Card to holding details for a consistent experience across Watchlist and Portfolio.</li>
+    <li><strong>Text Editing & Select All Shortcuts:</strong> Configured standard macOS Main Menu (Edit menu) enabling Command + A (⌘A), Copy (⌘C), Paste (⌘V), Cut (⌘X), and Undo (⌘Z) across all text inputs.</li>
+    <li><strong>PC / Windows Keyboard Support:</strong> Added fallback support for Control + A (Ctrl+A) so users on external PC keyboards or with muscle memory can Select All text seamlessly.</li>
+    <li><strong>Search Sheet Auto-Focus:</strong> Improved focus handling and text navigation in Watchlist and Symbol search sheets.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.11/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.12/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="ZsgTEdkp6OUcFV0QDa0bGhqgz+T/cPGLfRpJ0vIzNeY1+tTv0wRAQ35z1p6cVffC8Mwyh6k9ZJr3D+sIt8IDDg=="
-                       length="9113620"/>
+                       sparkle:edSignature="soImgBMC7a4QW6ckLp92g9QNOYX39FwZ/9HFsIb8Ee4LK9WK155PE0m1Fgv48ItO8eqhMAKQJ3cujKKyHRDRDg=="
+                       length="9116388"/>
         </item>
     </channel>
 </rss>
