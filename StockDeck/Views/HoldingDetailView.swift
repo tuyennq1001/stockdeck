@@ -8,6 +8,7 @@ import Charts
 struct HoldingDetailView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @ObservedObject private var insiderService = InsiderTradingService.shared
     @Environment(\.addHoldingAction) private var addHoldingAction
     @Environment(\.editHoldingAction) private var editHoldingAction
     let portfolioId: UUID
@@ -101,6 +102,7 @@ struct HoldingDetailView: View {
                         await stockService.refreshAll(storageService: storageService)
                         await stockService.ensureQuoteValuation(for: holding.symbol)
                         await stockService.ensureKeyStatistics(for: holding.symbol, force: true)
+                        await insiderService.ensureTransactions(for: holding.symbol, force: true)
                     }
                 }
             }
@@ -126,7 +128,9 @@ struct HoldingDetailView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    InsiderTradingCard(symbol: holding.symbol)
+                    if insiderService.shouldShowCard(for: holding.symbol) {
+                        InsiderTradingCard(symbol: holding.symbol)
+                    }
                     SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
                         stockService: stockService,
@@ -145,10 +149,12 @@ struct HoldingDetailView: View {
         }
         .navigationTitle(mainTitle)
         .task(id: holding.symbol) {
+            async let insiderTask: Void = insiderService.ensureTransactions(for: holding.symbol)
             if liveQuote.hasValuationData != true {
                 await stockService.ensureQuoteValuation(for: holding.symbol)
             }
             await stockService.ensureKeyStatistics(for: holding.symbol)
+            await insiderTask
         }
         .sheet(item: $targetCloseLot) { target in
             CloseHoldingSheet(

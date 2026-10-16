@@ -13,4 +13,6 @@ struct VNMarketConfig {
     static var simplizeSectorBaseURL: String = "https://api2.simplize.vn/api/company/se/sector-performance"
     /// Base URL for Simplize historical quote API (for VN-Index total traded value)
     static var simplizeQuoteBaseURL: String = "https://api.simplize.vn/api/historical/quote"
+    /// Base URL for Vietnam insider transactions (shareholders & insiders trading history)
+    static var insiderTransactionsBaseURL: String = "https://cafef.vn/du-lieu/Ajax/PageNew/DataHistory/GDCoDong.ashx"
 }

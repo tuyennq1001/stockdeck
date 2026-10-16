@@ -6,6 +6,7 @@ import SwiftUI
 struct SymbolDetailView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @ObservedObject private var insiderService = InsiderTradingService.shared
     let symbol: String
     var onAddToPortfolio: (UUID) -> Void = { _ in }
     let onDismiss: () -> Void
@@ -36,11 +37,13 @@ struct SymbolDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DS.ground)
         .task(id: symbol) {
+            async let insiderTask: Void = insiderService.ensureTransactions(for: symbol)
             await stockService.ensurePriceHistory(for: symbol)
             if quote?.hasValuationData != true {
                 await stockService.ensureQuoteValuation(for: symbol)
             }
             await stockService.ensureKeyStatistics(for: symbol)
+            await insiderTask
         }
     }
 
@@ -67,7 +70,9 @@ struct SymbolDetailView: View {
                                 ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
                             }
                         }
-                        InsiderTradingCard(symbol: symbol)
+                        if insiderService.shouldShowCard(for: symbol) {
+                            InsiderTradingCard(symbol: symbol)
+                        }
                         SymbolNotesCard(storageService: storageService, symbol: symbol)
                         SymbolNewsCard(
                             stockService: stockService,
@@ -161,6 +166,7 @@ struct SymbolDetailView: View {
                     await stockService.ensurePriceHistory(for: symbol)
                     await stockService.ensureQuoteValuation(for: symbol)
                     await stockService.ensureKeyStatistics(for: symbol, force: true)
+                    await insiderService.ensureTransactions(for: symbol, force: true)
                 }
             }) {
                 Image(systemName: "arrow.clockwise")

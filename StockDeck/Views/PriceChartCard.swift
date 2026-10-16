@@ -103,13 +103,15 @@ struct PriceChartCard: View {
     @ObservedObject private var insiderService = InsiderTradingService.shared
 
     private var isEligibleForInsider: Bool {
-        insiderService.isEligibleUSSymbol(symbol)
+        insiderService.isEligibleSymbol(symbol)
+    }
+
+    private var hasInsiderChartTrades: Bool {
+        insiderService.hasExecutedChartTrades(for: symbol)
     }
 
     private var cleanSym: String {
-        symbol.uppercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ".US", with: "")
+        insiderService.cleanSymbol(symbol)
     }
 
     private var priceSymbol: String {
@@ -139,7 +141,15 @@ struct PriceChartCard: View {
         let trades: [InsiderTransaction]
 
         var totalShares: Double { trades.reduce(0) { $0 + $1.shares } }
-        var totalValue: Double { trades.reduce(0) { $0 + $1.totalValue } }
+        var totalValue: Double {
+            trades.reduce(0) { sum, tx in
+                if tx.price > 0 {
+                    return sum + tx.totalValue
+                } else {
+                    return sum + (tx.shares * price)
+                }
+            }
+        }
         var count: Int { trades.count }
         var primaryOwner: String { trades.first?.ownerName ?? "Insider" }
         var primaryRole: String { trades.first?.displayRole ?? "Insider" }
@@ -158,8 +168,8 @@ struct PriceChartCard: View {
         guard let firstDate = currentHistory.first?.date, let lastDate = currentHistory.last?.date else { return [] }
         let minDate = min(firstDate, lastDate)
         let maxDate = max(firstDate, lastDate)
-        let raw = insiderService.getTransactions(for: cleanSym, startDate: minDate, endDate: maxDate, openMarketOnly: true)
-        let trades = raw.filter { $0.price > 0 && $0.shares > 0 }
+        let raw = insiderService.getTransactions(for: symbol, startDate: minDate, endDate: maxDate, openMarketOnly: true)
+        let trades = raw.filter { $0.shares > 0 && !$0.isPendingPlan && ($0.price > 0 || $0.isVNDisclosure) }
         guard !trades.isEmpty else { return [] }
 
         var groups: [String: [InsiderTransaction]] = [:]
@@ -192,8 +202,9 @@ struct PriceChartCard: View {
 
         return groups.compactMap { (key, groupTrades) -> GroupedInsiderTrade? in
             guard let first = groupTrades.first else { return nil }
-            let totalShares = groupTrades.reduce(0.0) { $0 + $1.shares }
-            let weightedPrice = totalShares > 0 ? (groupTrades.reduce(0.0) { $0 + $1.price * $1.shares } / totalShares) : first.price
+            let pricedTrades = groupTrades.filter { $0.price > 0 }
+            let pricedShares = pricedTrades.reduce(0.0) { $0 + $1.shares }
+            let weightedPrice = pricedShares > 0 ? (pricedTrades.reduce(0.0) { $0 + $1.price * $1.shares } / pricedShares) : 0
             let fallbackPrice = nearestClose(for: first.transactionDate, in: currentHistory) ?? (currentHistory.last?.close ?? 0)
             let finalPrice = weightedPrice > 0 ? weightedPrice : fallbackPrice
             guard finalPrice > 0 else { return nil }
@@ -367,7 +378,7 @@ struct PriceChartCard: View {
             HStack(spacing: 8) {
                 rangePicker
 
-                if isEligibleForInsider {
+                if hasInsiderChartTrades {
                     Spacer()
                     insiderToggleButton
                 }
@@ -378,7 +389,7 @@ struct PriceChartCard: View {
             PriceChartPlot(currentHistory: currentHistory,
                            chartRange: chartRange,
                            cachedGroupedTrades: cachedGroupedTrades,
-                           showInsiderMarkers: storageService.showInsiderMarkers && isEligibleForInsider,
+                           showInsiderMarkers: storageService.showInsiderMarkers && hasInsiderChartTrades,
                            buyTarget: storageService.buyTarget(for: symbol),
                            symbol: symbol, priceSymbol: priceSymbol,
                            valueDecimals: storageService.valueDecimals,
@@ -836,6 +847,7 @@ struct ChartTooltipWithInsider: View {
     let value: String
     let tint: Color
     var insiderTrade: PriceChartCard.GroupedInsiderTrade? = nil
+    var symbol: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -852,15 +864,14 @@ struct ChartTooltipWithInsider: View {
                         .font(.inter(9, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(trade.isBuy ? DS.up : DS.down)
 
-                    let sharesStr = formatShares(trade.totalShares)
-                    let valStr = formatCurrency(trade.totalValue)
+                    let valStr = formatTradeValue(trade.totalValue)
                     if trade.count > 1 {
-                        Text("\(trade.count) Trades: \(sharesStr) shs (\(valStr))")
+                        Text("\(trade.count) Trades: \(valStr)")
                             .font(.inter(10, weight: .medium, relativeTo: .caption2))
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
                     } else {
-                        Text("\(trade.primaryOwner): \(sharesStr) shs (\(valStr))")
+                        Text("\(trade.primaryOwner): \(valStr)")
                             .font(.inter(10, weight: .medium, relativeTo: .caption2))
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
@@ -875,23 +886,36 @@ struct ChartTooltipWithInsider: View {
         .fixedSize()
     }
 
-    private func formatShares(_ shares: Double) -> String {
-        if shares >= 1_000_000 {
-            return String(format: "%.1fM", shares / 1_000_000)
-        } else if shares >= 1_000 {
-            return String(format: "%.1fK", shares / 1_000)
+    private func formatTradeValue(_ val: Double) -> String {
+        guard val > 0 else { return "—" }
+        let isVN = InsiderTradingService.shared.market(for: symbol) == .vn
+        if isVN {
+            let ty = val / 1_000_000_000.0
+            if ty >= 1000.0 {
+                return String(format: "%.1fK tỷ ₫", ty / 1000.0)
+            } else if ty >= 1.0 {
+                let formatter = NumberFormatter()
+                formatter.numberStyle = .decimal
+                formatter.groupingSeparator = "."
+                formatter.maximumFractionDigits = ty >= 100 ? 0 : 1
+                let formatted = formatter.string(from: NSNumber(value: ty)) ?? String(format: "%.1f", ty)
+                return "\(formatted) tỷ ₫"
+            } else if val >= 1_000_000.0 {
+                let tr = val / 1_000_000.0
+                return String(format: "%.0f tr ₫", tr)
+            }
+            return "\(Int(val)) ₫"
+        } else {
+            let absVal = abs(val)
+            if absVal >= 1_000_000_000 {
+                return "$\(String(format: "%.2fB", absVal / 1_000_000_000))"
+            } else if absVal >= 1_000_000 {
+                return "$\(String(format: "%.1fM", absVal / 1_000_000))"
+            } else if absVal >= 1_000 {
+                return "$\(String(format: "%.0fK", absVal / 1_000))"
+            }
+            return "$\(String(format: "%.0f", absVal))"
         }
-        return String(format: "%.0f", shares)
-    }
-
-    private func formatCurrency(_ value: Double) -> String {
-        let absVal = abs(value)
-        if absVal >= 1_000_000 {
-            return "$\(String(format: "%.1fM", absVal / 1_000_000))"
-        } else if absVal >= 1_000 {
-            return "$\(String(format: "%.0fK", absVal / 1_000))"
-        }
-        return "$\(String(format: "%.0f", absVal))"
     }
 }
 
@@ -957,7 +981,8 @@ private struct PriceChartCrosshair: View {
                             ChartTooltipWithInsider(title: hoverLabel(h.date),
                                                     value: "\(priceSymbol)\(StorageService.formatNumber(h.close, decimals: dec))",
                                                     tint: tint,
-                                                    insiderTrade: matchedInsider)
+                                                    insiderTrade: matchedInsider,
+                                                    symbol: symbol)
                                 .position(x: min(max(cx, plot.minX + 60), plot.maxX - 60), y: plot.minY + (matchedInsider != nil ? 20 : 12))
                         }
                         .allowsHitTesting(false)
