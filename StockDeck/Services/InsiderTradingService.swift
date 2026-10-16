@@ -59,18 +59,21 @@ public final class InsiderTradingService: ObservableObject {
     // MARK: - Public API
 
     /// Ensures insider transactions are fetched and cached for the given symbol.
-    public func ensureTransactions(for symbol: String) async {
+    public func ensureTransactions(for symbol: String, force: Bool = false) async {
+        let detectedMarket = market(for: symbol)
+        guard detectedMarket != .unsupported else { return }
         let clean = cleanSymbol(symbol)
-        guard isEligibleUSSymbol(clean) else { return }
 
-        // Return if fresh cache exists
-        if let lastFetch = lastFetchDates[clean], Date().timeIntervalSince(lastFetch) < cacheTTL,
+        // Return if fresh cache exists and not forced
+        if !force,
+           let lastFetch = lastFetchDates[clean],
+           Date().timeIntervalSince(lastFetch) < cacheTTL,
            transactions[clean] != nil {
             return
         }
 
-        // Try reading disk cache first
-        if loadDiskCache(for: clean) {
+        // Try reading disk cache first when not forced
+        if !force && loadDiskCache(for: clean) {
             return
         }
 
@@ -82,7 +85,14 @@ public final class InsiderTradingService: ObservableObject {
 
         let task = Task { [weak self] () -> Void in
             guard let self = self else { return }
-            await self.fetchFromSec(symbol: clean)
+            switch detectedMarket {
+            case .us:
+                await self.fetchFromSec(symbol: clean)
+            case .vn:
+                await self.fetchFromVN(symbol: clean)
+            case .unsupported:
+                break
+            }
         }
         inFlightTasks[clean] = task
         await task.value
@@ -101,23 +111,144 @@ public final class InsiderTradingService: ObservableObject {
         }
     }
 
-    // MARK: - Symbol Eligibility
-
-    public func isEligibleUSSymbol(_ symbol: String) -> Bool {
-        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        // Exclude Vietnamese, Tokyo, London, Hong Kong, crypto and indices
-        if upper.contains(".VN") || upper.contains(".HM") || upper.contains(".HN") ||
-           upper.contains(".T") || upper.contains(".L") || upper.contains(".HK") ||
-           upper.hasSuffix("-USD") || upper.hasSuffix("USDT") || upper.hasPrefix("^") {
-            return false
-        }
-        return !upper.isEmpty
+    /// Whether the Insider Trading card should be displayed in Symbol Details / Holding Details.
+    /// Returns true only for supported markets (US & VN equities) that have recorded transactions in the lookback period.
+    public func shouldShowCard(for symbol: String) -> Bool {
+        guard isEligibleSymbol(symbol) else { return false }
+        let clean = cleanSymbol(symbol)
+        guard let list = transactions[clean], !list.isEmpty else { return false }
+        return true
     }
 
-    private func cleanSymbol(_ symbol: String) -> String {
-        symbol.uppercased()
+    /// Whether the chart Insider marker toggle should be shown (requires at least one executed trade).
+    public func hasExecutedChartTrades(for symbol: String) -> Bool {
+        guard isEligibleSymbol(symbol) else { return false }
+        let clean = cleanSymbol(symbol)
+        guard let list = transactions[clean] else { return false }
+        return list.contains { !$0.isPendingPlan && $0.isOpenMarket && $0.shares > 0 }
+    }
+
+    // MARK: - Symbol Eligibility & Market Detection
+
+    private static let knownETFs: Set<String> = [
+        "SPY", "VOO", "IVV", "QQQ", "QQQM", "VTI", "SCHD", "VUG", "VTV", "IWM", "DIA",
+        "ARKK", "ARKG", "ARKW", "ARKF", "SMH", "SOXX", "XLK", "XLF", "XLV", "XLE",
+        "XLY", "XLP", "XLI", "XLU", "XLB", "XLRE", "XLC", "GLD", "SLV", "IAU",
+        "TLT", "IEF", "SHY", "BND", "AGG", "VNQ", "VXUS", "VEA", "VWO", "IEFA",
+        "IEMG", "EFA", "EEM", "JEPI", "JEPQ", "TQQQ", "SQQQ", "SOXL", "SOXS",
+        "IBIT", "FBTC", "BITO", "ETHA", "GBTC", "ETHE", "E1VFVN30", "FUEVFVND",
+        "FUESSVFL", "FUEKIV30", "FUEMAV30", "FUESSV50", "FUESSV30", "FUEIP100"
+    ]
+
+    private static let supportedUSShareClassSuffixes: Set<String> = ["US", "A", "B", "C"]
+
+    /// Determines the regulatory insider trading market (.us, .vn, or .unsupported) for a symbol.
+    public func market(for symbol: String) -> InsiderMarket {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !upper.isEmpty else { return .unsupported }
+
+        // 1. Exclude indices, futures, commodities, and forex immediately
+        if upper.hasPrefix("^") || upper.contains("=F") || upper.contains("=X") || StockService.isIndexSymbol(upper) {
+            return .unsupported
+        }
+
+        let storedType = StorageService.shared.type(for: symbol).uppercased()
+        if storedType == "INDEX" || storedType == "ETF" || storedType == "MUTUALFUND" ||
+           storedType == "CRYPTOCURRENCY" || storedType == "FUTURE" || storedType == "CURRENCY" {
+            return .unsupported
+        }
+
+        // 2. Exclude Japanese stocks and Japanese mutual funds
+        if StockService.isJapaneseStock(upper) || StockService.isJapaneseMutualFund(upper) {
+            return .unsupported
+        }
+
+        // 3. Handle Binance US Equity holdings (e.g. EQ_META, EQ_META-USD, EQ_GOOGL, EQ_ALPHABET)
+        let baseNoUSD = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
+        if baseNoUSD.hasPrefix("EQ_") && baseNoUSD.count > 3 {
+            let clean = cleanSymbol(upper)
+            if Self.knownETFs.contains(clean) { return .unsupported }
+            return .us
+        }
+
+        // 4. Detect Vietnamese equities (HOSE / HNX / UPCoM)
+        let storedExchange = StorageService.shared.exchange(for: symbol)
+        if StockService.isVietnameseStock(upper, exchange: storedExchange) {
+            let clean = cleanSymbol(upper)
+            if clean == "VNINDEX" || clean == "HNXINDEX" || clean == "UPINDEX" ||
+               clean.hasPrefix("FUE") || Self.knownETFs.contains(clean) {
+                return .unsupported
+            }
+            return .vn
+        }
+
+        // 5. Exclude cryptocurrencies and stablecoin pairs (BTC-USD, ETH-USD, BTCUSDT, SOLUSDC, BTCETH...)
+        if upper.hasSuffix("-USD") {
+            if StorageService.isStandardCryptoSymbol(baseNoUSD) || storedType != "EQUITY" {
+                return .unsupported
+            }
+        }
+        if StorageService.isStandardCryptoSymbol(upper) {
+            return .unsupported
+        }
+        let cryptoQuoteSuffixes = ["USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"]
+        for suffix in cryptoQuoteSuffixes where upper.hasSuffix(suffix) && upper.count > suffix.count {
+            return .unsupported
+        }
+        let cryptoBaseQuoteSuffixes = ["BTC", "ETH", "BNB"]
+        for suffix in cryptoBaseQuoteSuffixes where upper.hasSuffix(suffix) && upper.count > suffix.count {
+            let prefix = String(upper.dropLast(suffix.count))
+            if StorageService.isStandardCryptoSymbol(prefix) {
+                return .unsupported
+            }
+        }
+
+        // 6. Exclude non-US international stock exchanges (.KS, .KQ, .T, .HK, .L, .DE, .PA, .TW, .SS, .SZ, .TO, .AX, .SI...)
+        if upper.contains(".") {
+            let parts = upper.split(separator: ".")
+            if parts.count >= 2, let suffix = parts.last.map(String.init) {
+                if !Self.supportedUSShareClassSuffixes.contains(suffix) {
+                    return .unsupported
+                }
+            }
+        }
+
+        let clean = cleanSymbol(upper)
+        guard !clean.isEmpty, !Self.knownETFs.contains(clean) else {
+            return .unsupported
+        }
+
+        // 7. If SEC CIK map is already loaded in memory, verify the US ticker exists in SEC EDGAR
+        if isCikMapLoaded && !tickerToCik.isEmpty {
+            let cikKey = clean.replacingOccurrences(of: ".", with: "-")
+            if tickerToCik[clean] == nil && tickerToCik[cikKey] == nil {
+                return .unsupported
+            }
+        }
+
+        return .us
+    }
+
+    public func isEligibleSymbol(_ symbol: String) -> Bool {
+        market(for: symbol) != .unsupported
+    }
+
+    public func isEligibleUSSymbol(_ symbol: String) -> Bool {
+        market(for: symbol) == .us
+    }
+
+    public func isEligibleVNSymbol(_ symbol: String) -> Bool {
+        market(for: symbol) == .vn
+    }
+
+    public func cleanSymbol(_ symbol: String) -> String {
+        let canonical = StockService.canonicalSymbol(for: symbol)
+        return canonical.uppercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ".US", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+            .replacingOccurrences(of: ".HM", with: "")
+            .replacingOccurrences(of: ".HN", with: "")
     }
 
     // MARK: - CIK Mapping
@@ -189,7 +320,8 @@ public final class InsiderTradingService: ObservableObject {
 
         await ensureCikMap()
 
-        guard let cik10 = tickerToCik[symbol] else {
+        let cikKey = symbol.replacingOccurrences(of: ".", with: "-")
+        guard let cik10 = tickerToCik[symbol] ?? tickerToCik[cikKey] else {
             errorSymbols[symbol] = "CIK not found for \(symbol)"
             return
         }
@@ -307,6 +439,120 @@ public final class InsiderTradingService: ObservableObject {
         }
     }
 
+    // MARK: - Vietnam Insider Fetching
+
+    private func fetchFromVN(symbol: String) async {
+        loadingSymbols.insert(symbol)
+        defer { loadingSymbols.remove(symbol) }
+
+        var components = URLComponents(string: VNMarketConfig.insiderTransactionsBaseURL)
+        components?.queryItems = [
+            URLQueryItem(name: "Symbol", value: symbol),
+            URLQueryItem(name: "StartDate", value: ""),
+            URLQueryItem(name: "EndDate", value: ""),
+            URLQueryItem(name: "PageIndex", value: "1"),
+            URLQueryItem(name: "PageSize", value: "50")
+        ]
+        guard let url = components?.url else { return }
+
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 10
+
+        do {
+            await requestGate.wait()
+            let (data, response) = try await session.data(for: request)
+            requestGate.signal()
+
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                errorSymbols[symbol] = "VN insider endpoint returned error"
+                return
+            }
+
+            let parsed = await Task.detached(priority: .utility) {
+                VNInsiderParser.parse(data: data, symbol: symbol)
+            }.value
+
+            self.transactions[symbol] = parsed
+            self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: parsed)
+            self.lastFetchDates[symbol] = Date()
+            self.errorSymbols.removeValue(forKey: symbol)
+
+            saveDiskCache(for: symbol, txs: parsed)
+        } catch {
+            self.errorSymbols[symbol] = error.localizedDescription
+        }
+    }
+
+    // MARK: - Price Resolution for Disclosures (Historical & Fallback)
+
+    /// Resolves the effective execution price for a transaction.
+    /// For US Form 4, returns `tx.price`.
+    /// For VN disclosures (where price is not in the disclosure list), looks up the historical closing
+    /// price from StockService for the transaction date. If date is not covered or PLAN, falls back to current quote.
+    public func resolvedPrice(for tx: InsiderTransaction, rawSymbol: String? = nil) -> Double {
+        if tx.price > 0 { return tx.price }
+        guard tx.isVNDisclosure else { return 0 }
+
+        let sym = rawSymbol ?? tx.symbol
+        let candidates = [
+            sym,
+            "\(sym).VN",
+            "\(sym).HM",
+            "\(sym).HN",
+            sym.replacingOccurrences(of: ".VN", with: "").replacingOccurrences(of: ".HM", with: "").replacingOccurrences(of: ".HN", with: "")
+        ]
+
+        let stockService = StockService.shared
+        let calendar = Calendar.current
+        let txDay = calendar.startOfDay(for: tx.transactionDate)
+
+        // 1. Check historical price points
+        for candidate in candidates {
+            let history = (stockService.priceHistory[candidate] ?? stockService.priceHistoryMax[candidate]) ?? []
+            if !history.isEmpty {
+                var bestPoint: PricePoint?
+                var minDiff: TimeInterval = .infinity
+                for pt in history {
+                    let ptDay = calendar.startOfDay(for: pt.date)
+                    let diff = abs(ptDay.timeIntervalSince(txDay))
+                    if diff < minDiff {
+                        minDiff = diff
+                        bestPoint = pt
+                    }
+                }
+                if let best = bestPoint, minDiff <= 7 * 86400, best.close > 0 {
+                    let close = best.close
+                    return close < 500 ? close * 1000.0 : close
+                }
+            }
+        }
+
+        // 2. Fallback to current quote
+        for candidate in candidates {
+            if let quote = stockService.quotes[candidate], quote.price > 0 {
+                let p = quote.price
+                return p < 500 ? p * 1000.0 : p
+            }
+        }
+
+        return 0
+    }
+
+    /// Resolves total monetary value of an insider trade.
+    public func resolvedTotalValue(for tx: InsiderTransaction, rawSymbol: String? = nil) -> Double {
+        let p = resolvedPrice(for: tx, rawSymbol: rawSymbol)
+        return tx.shares * p
+    }
+
+    /// Synchronous accessor for sentiment summary using latest available price quotes/history
+    public func sentimentSummary(for symbol: String) -> InsiderSentimentSummary? {
+        let clean = cleanSymbol(symbol)
+        guard let list = transactions[clean] else { return nil }
+        return computeSentiment(symbol: symbol, transactions: list)
+    }
+
     // MARK: - Sentiment Calculation
 
     public func computeSentiment(symbol: String, transactions: [InsiderTransaction], lookbackMonths: Int = 24) -> InsiderSentimentSummary {
@@ -314,6 +560,9 @@ public final class InsiderTradingService: ObservableObject {
         let cutoff = calendar.date(byAdding: .month, value: -lookbackMonths, to: Date()) ?? Date.distantPast
 
         let recent = transactions.filter { $0.transactionDate >= cutoff }
+        // Exclude pending unexecuted registrations from completed volume totals when executed trades exist
+        let hasExecuted = recent.contains { !$0.isPendingPlan }
+        let pool = hasExecuted ? recent.filter { !$0.isPendingPlan } : recent
 
         var buyShares = 0.0
         var sellShares = 0.0
@@ -324,15 +573,17 @@ public final class InsiderTradingService: ObservableObject {
         var openMarketBuyCount = 0
         var openMarketSellCount = 0
 
-        for tx in recent {
+        for tx in pool {
+            let val = resolvedTotalValue(for: tx, rawSymbol: symbol)
+            let effectiveVal = val > 0 ? val : tx.totalValue
             if tx.isBuy {
                 buyShares += tx.shares
-                buyValue += tx.totalValue
+                buyValue += effectiveVal
                 buyCount += 1
                 if tx.isOpenMarket { openMarketBuyCount += 1 }
             } else {
                 sellShares += tx.shares
-                sellValue += tx.totalValue
+                sellValue += effectiveVal
                 sellCount += 1
                 if tx.isOpenMarket { openMarketSellCount += 1 }
             }
@@ -354,20 +605,18 @@ public final class InsiderTradingService: ObservableObject {
 
     // MARK: - Background Sync for Watchlist & Portfolios
 
-    /// Periodically syncs Form 4 filings for all US symbols in user portfolios and watchlists.
+    /// Periodically syncs insider filings for all eligible US & VN symbols in user portfolios and watchlists.
     /// Runs as a polite, throttled background queue.
     func syncAllUserSymbols(storageService: StorageService) async {
         var symbols = Set<String>()
         for p in storageService.portfolios {
             for h in p.holdings {
-                let clean = cleanSymbol(h.symbol)
-                if isEligibleUSSymbol(clean) { symbols.insert(clean) }
+                if isEligibleSymbol(h.symbol) { symbols.insert(h.symbol) }
             }
         }
         for w in storageService.watchlists {
             for s in w.symbols {
-                let clean = cleanSymbol(s)
-                if isEligibleUSSymbol(clean) { symbols.insert(clean) }
+                if isEligibleSymbol(s) { symbols.insert(s) }
             }
         }
 
@@ -375,7 +624,7 @@ public final class InsiderTradingService: ObservableObject {
 
         for sym in symbols {
             await ensureTransactions(for: sym)
-            // Polite pause between symbols to maintain SEC compliance and zero UI impact
+            // Polite pause between symbols to maintain compliance and zero UI impact
             try? await Task.sleep(nanoseconds: 350_000_000)
         }
     }
@@ -404,7 +653,7 @@ public final class InsiderTradingService: ObservableObject {
               let decoded = try? JSONDecoder().decode([InsiderTransaction].self, from: data) else {
             return false
         }
-        let validTxs = decoded.filter { $0.price > 0 && $0.shares > 0 }
+        let validTxs = decoded.filter { $0.shares > 0 && ($0.price > 0 || $0.isVNDisclosure) }
         self.transactions[symbol] = validTxs
         self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: validTxs)
         self.lastFetchDates[symbol] = modDate
@@ -544,6 +793,223 @@ public final class Form4XMLParser: NSObject, XMLParserDelegate {
                 break
             }
         }
+    }
+}
+
+// MARK: - Vietnam Insider Disclosure Parser
+
+public enum VNInsiderParser {
+    private struct ResponseRoot: Decodable {
+        let Data: Payload?
+    }
+
+    private struct Payload: Decodable {
+        let TotalCount: Int?
+        let Data: [RawItem]?
+    }
+
+    private struct RawItem: Decodable {
+        let Stock: String?
+        let TransactionMan: String?
+        let TransactionManPosition: String?
+        let RelatedMan: String?
+        let RelatedManPosition: String?
+        let VolumeBeforeTransaction: Double?
+        let PlanBuyVolume: Double?
+        let PlanSellVolume: Double?
+        let PlanBeginDate: String?
+        let PlanEndDate: String?
+        let RealBuyVolume: Double?
+        let RealSellVolume: Double?
+        let RealEndDate: String?
+        let PublishedDate: String?
+        let VolumeAfterTransaction: Double?
+        let TransactionNote: String?
+        let TyLeSoHuu: Double?
+        let ShareHolderCode: String?
+        let OrderDate: String?
+    }
+
+    private static let shortDayMonthFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "dd/MM"
+        df.timeZone = TimeZone(secondsFromGMT: 7 * 3600)
+        return df
+    }()
+
+    /// Parses ASP.NET AJAX `/Date(1775667600000)/` strings into `Date`.
+    public static func parseDotNetDate(_ raw: String?) -> Date? {
+        guard let raw = raw,
+              let openIdx = raw.firstIndex(of: "("),
+              let closeIdx = raw.firstIndex(of: ")"),
+              openIdx < closeIdx else {
+            return nil
+        }
+        let inner = raw[raw.index(after: openIdx)..<closeIdx]
+        var numSlice = inner
+        if let plusIdx = inner.firstIndex(of: "+") {
+            numSlice = inner[..<plusIdx]
+        } else if let minusIdx = inner.dropFirst().firstIndex(of: "-") {
+            numSlice = inner[..<minusIdx]
+        }
+        guard let ms = Double(numSlice), ms > 0 else { return nil }
+        return Date(timeIntervalSince1970: ms / 1000.0)
+    }
+
+    private static func formatCompactShares(_ shares: Double) -> String {
+        if shares >= 1_000_000 {
+            let m = shares / 1_000_000
+            return m.truncatingRemainder(dividingBy: 1) == 0
+                ? String(format: "%.0fM", m)
+                : String(format: "%.2fM", m)
+        } else if shares >= 1_000 {
+            let k = shares / 1_000
+            return k.truncatingRemainder(dividingBy: 1) == 0
+                ? String(format: "%.0fK", k)
+                : String(format: "%.1fK", k)
+        }
+        return String(format: "%.0f", shares)
+    }
+
+    /// Parses Vietnam shareholder & insider transaction disclosures into `[InsiderTransaction]`.
+    public static func parse(
+        data: Data,
+        symbol: String,
+        now: Date = Date(),
+        lookbackMonths: Int = 24
+    ) -> [InsiderTransaction] {
+        guard let root = try? JSONDecoder().decode(ResponseRoot.self, from: data),
+              let items = root.Data?.Data else {
+            return []
+        }
+
+        let cleanSym = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .month, value: -lookbackMonths, to: now) ?? Date.distantPast
+        let pendingExpiryCutoff = cal.date(byAdding: .day, value: -7, to: now) ?? now
+        let pendingStartCutoff = cal.date(byAdding: .day, value: -45, to: now) ?? now
+
+        var result: [InsiderTransaction] = []
+        var seenKeys = Set<String>()
+
+        for (idx, item) in items.enumerated() {
+            let owner = (item.TransactionMan ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !owner.isEmpty else { continue }
+
+            let realBuy = item.RealBuyVolume ?? 0
+            let realSell = item.RealSellVolume ?? 0
+            let planBuy = item.PlanBuyVolume ?? 0
+            let planSell = item.PlanSellVolume ?? 0
+
+            let realEnd = parseDotNetDate(item.RealEndDate)
+            let planBegin = parseDotNetDate(item.PlanBeginDate)
+            let planEnd = parseDotNetDate(item.PlanEndDate)
+            let orderDate = parseDotNetDate(item.OrderDate)
+            let pubDate = parseDotNetDate(item.PublishedDate)
+
+            let rawNote = (item.TransactionNote ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let isESOP = rawNote.localizedCaseInsensitiveContains("ESOP")
+
+            let isExecuted = realBuy > 0 || realSell > 0
+            let isBuy: Bool
+            let shares: Double
+            let plannedShares: Double?
+            let txDate: Date
+            let txCode: String
+            let noteText: String?
+
+            if isExecuted {
+                isBuy = realBuy >= realSell
+                shares = isBuy ? realBuy : realSell
+                let planned = isBuy ? planBuy : planSell
+                plannedShares = planned > 0 ? planned : nil
+                txDate = realEnd ?? orderDate ?? planEnd ?? planBegin ?? pubDate ?? now
+                guard txDate >= cutoff else { continue }
+
+                txCode = isESOP ? "ESOP" : (isBuy ? "P" : "S")
+
+                if !rawNote.isEmpty {
+                    noteText = rawNote
+                } else if planned > 0 && abs(planned - shares) >= 1 {
+                    let pct = Int(round((shares / planned) * 100))
+                    noteText = "Đạt \(pct)% ĐK"
+                } else {
+                    noteText = nil
+                }
+            } else if planBuy > 0 || planSell > 0 {
+                // If RealEndDate is already present with 0 executed volume, the registration failed/expired with 0 trades
+                if realEnd != nil { continue }
+                if let pe = planEnd, pe < pendingExpiryCutoff { continue }
+                let candidateDate = planBegin ?? orderDate ?? pubDate ?? now
+                if planEnd == nil && candidateDate < pendingStartCutoff { continue }
+                guard candidateDate >= cutoff else { continue }
+
+                isBuy = planBuy >= planSell
+                shares = isBuy ? planBuy : planSell
+                plannedShares = shares
+                txDate = candidateDate
+                txCode = isESOP ? "ESOP" : "PLAN"
+
+                var parts: [String] = []
+                if let pb = planBegin, let pe = planEnd {
+                    parts.append("ĐK: \(shortDayMonthFormatter.string(from: pb)) - \(shortDayMonthFormatter.string(from: pe))")
+                }
+                if !rawNote.isEmpty {
+                    parts.append(rawNote)
+                }
+                noteText = parts.isEmpty ? nil : parts.joined(separator: " • ")
+            } else {
+                continue
+            }
+
+            guard shares > 0 else { continue }
+
+            let volBefore = item.VolumeBeforeTransaction ?? 0
+            let volAfter = item.VolumeAfterTransaction ?? 0
+            let postShares: Double
+            if isExecuted {
+                postShares = volAfter > 0 ? volAfter : (volBefore > 0 ? max(0, volBefore + (isBuy ? shares : -shares)) : 0)
+            } else {
+                postShares = volBefore > 0 ? volBefore : volAfter
+            }
+
+            let title = (item.TransactionManPosition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let relName = (item.RelatedMan ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let relTitle = (item.RelatedManPosition ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let holderCode = (item.ShareHolderCode ?? owner).trimmingCharacters(in: .whitespacesAndNewlines)
+            let dayBucket = Int(txDate.timeIntervalSince1970 / 86400)
+            let dedupKey = "\(holderCode)_\(txCode)_\(isBuy)_\(Int(shares))_\(dayBucket)"
+            guard seenKeys.insert(dedupKey).inserted else { continue }
+
+            let ratio = (item.TyLeSoHuu ?? 0) > 0 ? item.TyLeSoHuu : nil
+
+            let tx = InsiderTransaction(
+                id: "VN_\(cleanSym)_\(dedupKey)_\(idx)",
+                symbol: cleanSym,
+                ownerName: owner,
+                officerTitle: title.isEmpty ? nil : title,
+                isDirector: title.localizedCaseInsensitiveContains("HĐQT"),
+                isOfficer: title.localizedCaseInsensitiveContains("GĐ") || title.localizedCaseInsensitiveContains("Giám đốc") || title.localizedCaseInsensitiveContains("Kế toán"),
+                isTenPercentOwner: (ratio ?? 0) >= 5.0,
+                transactionDate: txDate,
+                filingDate: pubDate,
+                transactionCode: txCode,
+                acquiredDisposed: isBuy ? "A" : "D",
+                shares: shares,
+                price: 0,
+                sharesOwnedFollowing: postShares,
+                relatedPersonName: relName.isEmpty ? nil : relName,
+                relatedPersonTitle: relTitle.isEmpty ? nil : relTitle,
+                transactionNote: noteText,
+                ownershipRatioAfter: ratio,
+                plannedShares: plannedShares,
+                isVNDisclosure: true
+            )
+            result.append(tx)
+        }
+
+        result.sort { $0.transactionDate > $1.transactionDate }
+        return result
     }
 }
 
