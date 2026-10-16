@@ -122,6 +122,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Ask for notification permission (no-op in dev without a bundle)
         NotificationManager.shared.requestAuthorization()
+        setupMainMenu()
         Task { @MainActor in
             await storageService.waitUntilRestored()
             iCloudSyncService.shared.start()
@@ -841,6 +842,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePopover() {
         popover?.performClose(nil)
+    }
+
+    // MARK: - Main Menu
+
+    /// Builds the standard macOS Main Menu with Edit commands (Select All, Copy, Paste, etc.).
+    /// In macOS, keyboard shortcuts like Cmd+A, Cmd+C, Cmd+V and Ctrl+A rely on NSApp.mainMenu
+    /// to route actions down the responder chain to the active text field.
+    static func buildMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+
+        // Application Menu
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About StockDeck", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Quit StockDeck", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // Edit Menu
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(redoItem)
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let selectAllItem = NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(selectAllItem)
+
+        // Alternate / fallback Ctrl shortcuts for users with Windows keyboards or muscle memory
+        let ctrlShortcuts: [(Selector, String)] = [
+            (#selector(NSText.selectAll(_:)), "a"),
+            (#selector(NSText.copy(_:)), "c"),
+            (#selector(NSText.paste(_:)), "v"),
+            (#selector(NSText.cut(_:)), "x"),
+            (Selector(("undo:")), "z")
+        ]
+        for (action, key) in ctrlShortcuts {
+            let item = NSMenuItem(title: "", action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = [.control]
+            item.isHidden = true
+            editMenu.addItem(item)
+        }
+
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        return mainMenu
+    }
+
+    private func setupMainMenu() {
+        NSApp.mainMenu = Self.buildMainMenu()
     }
 
     // MARK: - Portfolio Window

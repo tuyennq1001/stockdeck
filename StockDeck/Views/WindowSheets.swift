@@ -35,6 +35,14 @@ struct DSTextField: View {
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
             .strokeBorder(activeFocused ? DS.brand : DS.hairline, lineWidth: activeFocused ? 1.5 : 1))
         .animation(.easeOut(duration: 0.15), value: activeFocused)
+        .onKeyPress(phases: .down) { press in
+            if (press.key == KeyEquivalent("a") || press.characters.lowercased() == "a") &&
+               (press.modifiers.contains(.command) || press.modifiers.contains(.control)) {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                return .handled
+            }
+            return .ignored
+        }
     }
 }
 
@@ -687,6 +695,7 @@ struct WatchlistSearchSheet: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var filter: AssetFilter = .all
     @State private var hoveredSymbol: String? = nil
+    @FocusState private var isFieldFocused: Bool
 
     enum AssetFilter: String, CaseIterable {
         case all, stocks, funds, crypto
@@ -731,7 +740,11 @@ struct WatchlistSearchSheet: View {
                     .font(.inter(12, weight: .medium, relativeTo: .body)).foregroundStyle(DS.brand)
                     .keyboardShortcut(.cancelAction)
             }
-            DSTextField(placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)", text: $query)
+            DSTextField(
+                placeholder: "Symbol, name or ISIN (e.g. AAPL, Tesla)",
+                text: $query,
+                isFocusedBinding: $isFieldFocused
+            )
                 .onChange(of: query) { _, new in runSearch(new) }
 
             // Filter tabs
@@ -780,6 +793,9 @@ struct WatchlistSearchSheet: View {
         .frame(width: 480)
         .frame(minHeight: 300)
         .background(DS.ground)
+        .onAppear {
+            isFieldFocused = true
+        }
     }
 
     private func resultRow(_ r: SearchResult) -> some View {
