@@ -2,82 +2,277 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private enum PortfolioCol {
-    static let symbol: CGFloat = 104
-    static let avgPrice: CGFloat = 75
-    static let cost: CGFloat = 82
-    static let price: CGFloat = 80
-    static let change: CGFloat = 78
-    static let value: CGFloat = 84
+    static let symbol: CGFloat = 124
+    static let pinnedWidth: CGFloat = 148
+    static let headerHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 38
+    static let avgPrice: CGFloat = 78
+    static let cost: CGFloat = 84
+    static let price: CGFloat = 82
+    static let change: CGFloat = 80
+    static let value: CGFloat = 86
     static let todayPnl: CGFloat = 92
     static let totalPnl: CGFloat = 92
-    static let shares: CGFloat = 68
-    static let lots: CGFloat = 55
-    static let weight: CGFloat = 66
-    static let marketCap: CGFloat = 84
+    static let shares: CGFloat = 70
+    static let lots: CGFloat = 56
+    static let weight: CGFloat = 68
+    static let marketCap: CGFloat = 88
     static let valuation: CGFloat = 72
-    static let volume: CGFloat = 72
+    static let volume: CGFloat = 76
+
+    static func width(for metric: PortfolioColumnMetric) -> CGFloat {
+        switch metric {
+        case .avgPrice: return avgPrice
+        case .cost: return cost
+        case .price: return price
+        case .change: return change
+        case .value: return value
+        case .todayPnl: return todayPnl
+        case .totalPnl: return totalPnl
+        case .shares: return shares
+        case .lots: return lots
+        case .weight: return weight
+        case .marketCap: return marketCap
+        case .pe, .forwardPe, .pb, .divYield, .eps: return valuation
+        case .volume50d, .volume50w: return volume
+        }
+    }
+}
+
+private struct PortfolioAddItem: Identifiable {
+    let symbol: String
+    let portfolioId: UUID
+    var id: String { "\(symbol)-\(portfolioId)" }
 }
 
 struct PortfolioListView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
+    @Environment(\.showSymbolDetail) private var showSymbolDetail
+    @Environment(\.addHoldingAction) private var addHoldingAction
     @State private var viewModel = PortfolioViewModel(scope: .all)
+    @StateObject private var scrollCoordinator = ScrollSyncCoordinator()
+
+    @State private var sortColumn: PortfolioOverview.PositionSortColumn = .weight
+    @State private var sortAscending: Bool = false
+
     @State private var showNewPortfolio = false
     @State private var showBinanceSheet = false
     @State private var newPortfolioName = ""
-    @State private var searchText = ""
     @State private var importAlert: String?
     @State private var pendingImportResult: PortfolioIO.ImportResult? = nil
     @State private var confirmDeletePortfolio: Portfolio? = nil
     @State private var renamingPortfolio: Portfolio? = nil
     @State private var renamePortfolioName = ""
-    @State private var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)? = nil
     @State private var selectedPortfolioId: UUID? = nil
     @State private var draggingPortfolioId: UUID? = nil
     @State private var previewPortfolioIds: [UUID] = []
 
+    @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
+    struct TargetSheetItem: Identifiable { let symbol: String; var id: String { symbol } }
+    @State private var targetSymbol: TargetSheetItem? = nil
+    @State private var alertTarget: TargetSheetItem? = nil
+    @State private var targetCloseHolding: PortfolioOverview.TargetCloseHolding? = nil
+    @State private var isSyncingBinance = false
+    @State private var syncError: String? = nil
+
     static let defaultPopoverColumns: [PortfolioColumnMetric] = [.price, .change, .value, .totalPnl]
 
-    var filteredPortfolios: [Portfolio] {
-        guard !searchText.isEmpty else { return storageService.portfolios }
-        let query = searchText.lowercased()
-        return storageService.portfolios.filter { portfolio in
-            portfolio.name.lowercased().contains(query) ||
-            portfolio.holdings.contains { $0.symbol.lowercased().contains(query) }
+    private var activeColumns: [PortfolioColumnMetric] {
+        storageService.resolvedPortfolioColumns
+    }
+
+    private var metricsTableWidth: CGFloat {
+        let colsWidth = activeColumns.reduce(CGFloat.zero) { $0 + PortfolioCol.width(for: $1) }
+        return max(462 - PortfolioCol.pinnedWidth, colsWidth + 24)
+    }
+
+    private func hoverBox(for symbol: String) -> RowHoverBox {
+        scrollCoordinator.hoverBox(for: symbol)
+    }
+
+    private var insertionOrderedSymbols: [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for p in viewModel.portfolios {
+            for h in p.holdings {
+                let sym = h.symbol.uppercased()
+                if !seen.contains(sym) {
+                    seen.insert(sym)
+                    result.append(sym)
+                }
+            }
+        }
+        return result
+    }
+
+    private var displaySymbols: [String] {
+        viewModel.sortedSymbols(
+            column: sortColumn,
+            ascending: sortAscending,
+            manualOrder: insertionOrderedSymbols
+        )
+    }
+
+    private func loadPositionSort(for key: String) {
+        if let saved = storageService.positionSort(for: key),
+           let col = PortfolioOverview.PositionSortColumn(rawValue: saved.column) {
+            sortColumn = col
+            sortAscending = saved.ascending
+        } else {
+            sortColumn = .weight
+            sortAscending = false
+        }
+    }
+
+    private func setPositionSort(_ column: PortfolioOverview.PositionSortColumn, ascending: Bool) {
+        sortColumn = column
+        sortAscending = ascending
+        storageService.setPositionSort(column: column.rawValue, ascending: ascending, for: viewModel.scopeKey)
+    }
+
+    private func toggleSort(_ column: PortfolioOverview.PositionSortColumn) {
+        if sortColumn == column {
+            setPositionSort(column, ascending: !sortAscending)
+        } else {
+            setPositionSort(column, ascending: (column == .symbol))
+        }
+    }
+
+    private func sortColumn(for metric: PortfolioColumnMetric) -> PortfolioOverview.PositionSortColumn {
+        switch metric {
+        case .avgPrice: return .avgPrice
+        case .price, .change: return .price
+        case .cost: return .cost
+        case .value: return .value
+        case .todayPnl: return .todayPnl
+        case .totalPnl: return .pnl
+        case .shares, .lots: return .shares
+        case .weight, .volume50d, .volume50w: return .weight
+        case .marketCap: return .marketCap
+        case .pe: return .pe
+        case .forwardPe: return .forwardPe
+        case .pb: return .pb
+        case .divYield: return .divYield
+        case .eps: return .eps
         }
     }
 
     @ViewBuilder
+    private func sortHeader(
+        _ title: LocalizedStringKey,
+        column: PortfolioOverview.PositionSortColumn,
+        align: Alignment = .trailing,
+        leadingIndent: CGFloat = 0
+    ) -> some View {
+        Button(action: {
+            toggleSort(column)
+        }) {
+            HStack(spacing: 2) {
+                if align == .trailing { Spacer(minLength: 0) }
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.inter(8, relativeTo: .caption2))
+                }
+                if align == .leading { Spacer(minLength: 0) }
+            }
+            .padding(.leading, leadingIndent)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+    }
+
+    @ViewBuilder
     private func columnHeader(_ col: PortfolioColumnMetric) -> some View {
+        let width = PortfolioCol.width(for: col)
         switch col {
-        case .avgPrice:
-            Text("Avg Price").frame(width: PortfolioCol.avgPrice, alignment: .trailing)
-        case .cost:
-            Text("Cost").frame(width: PortfolioCol.cost, alignment: .trailing)
-        case .price:
-            Text("Price").frame(width: PortfolioCol.price, alignment: .trailing)
-        case .change:
-            Text("Today %").frame(width: PortfolioCol.change, alignment: .trailing)
-        case .value:
-            Text("Value").frame(width: PortfolioCol.value, alignment: .trailing)
-        case .todayPnl:
-            Text("Today PnL").frame(width: PortfolioCol.todayPnl, alignment: .trailing)
-        case .totalPnl:
-            Text("Total PnL").frame(width: PortfolioCol.totalPnl, alignment: .trailing)
-        case .shares:
-            Text("Shares").frame(width: PortfolioCol.shares, alignment: .trailing)
-        case .lots:
-            Text("Lots").frame(width: PortfolioCol.lots, alignment: .trailing)
-        case .weight:
-            Text("Weight").frame(width: PortfolioCol.weight, alignment: .trailing)
-        case .marketCap:
-            Text(col.title).frame(width: PortfolioCol.marketCap, alignment: .trailing)
-        case .pe, .forwardPe, .pb, .divYield, .eps:
-            Text(col.title).frame(width: PortfolioCol.valuation, alignment: .trailing)
         case .volume50d:
-            Text("50D Vol").frame(width: PortfolioCol.volume, alignment: .trailing)
+            Text("50D Vol")
+                .frame(width: width, alignment: .trailing)
         case .volume50w:
-            Text("50W Vol").frame(width: PortfolioCol.volume, alignment: .trailing)
+            Text("50W Vol")
+                .frame(width: width, alignment: .trailing)
+        case .cost:
+            sortHeader("Cost", column: sortColumn(for: col), align: .trailing)
+                .frame(width: width, alignment: .trailing)
+        case .value:
+            sortHeader("Value", column: sortColumn(for: col), align: .trailing)
+                .frame(width: width, alignment: .trailing)
+        default:
+            sortHeader(LocalizedStringKey(col.title), column: sortColumn(for: col), align: .trailing)
+                .frame(width: width, alignment: .trailing)
+        }
+    }
+
+    private var frozenHeaderRow: some View {
+        HStack(spacing: 0) {
+            sortHeader("Symbol", column: .symbol, align: .leading, leadingIndent: 25)
+                .frame(width: PortfolioCol.symbol, alignment: .leading)
+        }
+        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+        .foregroundColor(.secondary)
+        .tracking(0.8)
+        .textCase(.uppercase)
+        .padding(.horizontal, 12)
+        .frame(width: PortfolioCol.pinnedWidth, height: PortfolioCol.headerHeight, alignment: .leading)
+    }
+
+    private var metricsHeaderRow: some View {
+        HStack(spacing: 0) {
+            ForEach(activeColumns, id: \.self) { col in
+                columnHeader(col)
+            }
+        }
+        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+        .foregroundColor(.secondary)
+        .tracking(0.8)
+        .textCase(.uppercase)
+        .padding(.horizontal, 12)
+        .frame(height: PortfolioCol.headerHeight, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func frozenRowContent(_ symbol: String, hoverBox: RowHoverBox) -> some View {
+        PortfolioFrozenRow(
+            symbol: symbol,
+            aggregate: viewModel.symbolAggregates[symbol],
+            buyTarget: storageService.buyTarget(for: symbol),
+            showCompanyName: storageService.showCompanyName,
+            valueDecimals: storageService.valueDecimals,
+            hoverBox: hoverBox,
+            onOpen: { showSymbolDetail.perform(symbol) },
+            menu: { portfolioContextMenu(symbol: symbol) }
+        )
+    }
+
+    @ViewBuilder
+    private func metricsRowContent(_ symbol: String, hoverBox: RowHoverBox) -> some View {
+        if let agg = viewModel.symbolAggregates[symbol] {
+            let totalVal = viewModel.valuationCache.totalValue
+            let weight = abs(totalVal) >= 0.01 ? (abs(agg.value) / abs(totalVal) * 100) : 0
+            PortfolioMetricsRow(
+                stockService: stockService,
+                symbol: symbol,
+                aggregate: agg,
+                weight: weight,
+                columns: activeColumns,
+                hoverBox: hoverBox,
+                onOpen: { showSymbolDetail.perform(symbol) },
+                menu: { portfolioContextMenu(symbol: symbol) }
+            )
+        } else {
+            ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: PortfolioCol.price, height: PortfolioCol.rowHeight, alignment: .center)
+                .padding(.horizontal, 12)
+                .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+                .contentShape(Rectangle())
+                .onTapGesture { showSymbolDetail.perform(symbol) }
+                .pointingHandCursor()
+                .onHover { hoverBox.isHovered = $0 }
+                .contextMenu { portfolioContextMenu(symbol: symbol) }
         }
     }
 
@@ -88,189 +283,215 @@ struct PortfolioListView: View {
         )
     }
 
-    private var deleteHoldingAlertBinding: Binding<Bool> {
-        Binding(
-            get: { confirmDeleteHolding != nil },
-            set: { if !$0 { confirmDeleteHolding = nil } }
-        )
+    private var selectedPortfolio: Portfolio? {
+        guard let id = selectedPortfolioId else { return nil }
+        return storageService.portfolios.first(where: { $0.id == id })
+    }
+
+    private var editablePortfolios: [Portfolio] {
+        storageService.portfolios.filter { !$0.isReadOnly }
+    }
+
+    private func syncBinance(portfolioId: UUID) {
+        isSyncingBinance = true
+        Task {
+            do {
+                try await storageService.syncBinancePortfolio(id: portfolioId)
+            } catch {
+                await MainActor.run {
+                    syncError = error.localizedDescription
+                }
+            }
+            await MainActor.run {
+                isSyncingBinance = false
+            }
+        }
     }
 
     var body: some View {
         Group {
-        if storageService.portfolios.isEmpty {
-            VStack(spacing: 12) {
-                Spacer()
-                Image(systemName: "briefcase")
-                    .font(.inter(32, relativeTo: .largeTitle))
-                    .foregroundColor(.secondary)
-                Text("No portfolios")
-                    .foregroundColor(.secondary)
-                Button("Create portfolio") {
-                    newPortfolioName = ""
-                    showNewPortfolio = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .pointingHandCursor()
-                Spacer()
-            }
-        } else {
-            VStack(spacing: 0) {
-                // Horizontal Portfolio Picker Bar (All Portfolios - Portfolio 1 - Portfolio 2...)
-                portfolioPickerBar
-
-                Divider()
-
-                // Total summary for selected tab
-                if storageService.portfolios.count > 0 {
-                    let currSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
-                    let totalVal = viewModel.valuationCache.totalValue
-                    let pnl = viewModel.valuationCache.totalPnl
-                    let pnlPct = viewModel.valuationCache.totalPnlPercent
-                    let todayGain = viewModel.valuationCache.dayChangeValue
-                    let todayPct = viewModel.valuationCache.dayChangePercent
-
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Total value")
-                                .font(.inter(10, relativeTo: .caption))
-                                .foregroundColor(.secondary)
-                            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                                Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
-                                    .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                                    .fontWeight(.bold)
-                                if let secVal = viewModel.secondaryTotalValue, let secSym = viewModel.secondaryCurrencySymbol {
-                                    Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: viewModel.secondaryDecimals))")
-                                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text("Today PnL")
-                                    .font(.inter(10, relativeTo: .caption))
-                                    .foregroundColor(.secondary)
-                                HStack(spacing: 2) {
-                                    Text(StorageService.formatAmount(todayGain, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
-                                    Text(String(format: "(%.\(storageService.percentDecimals)f%%)", todayPct))
-                                }
-                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                .fontWeight(.semibold)
-                                .foregroundColor(todayGain >= 0 ? DS.up : DS.down)
-                            }
-
-                            HStack(spacing: 6) {
-                                Text("Total PnL")
-                                    .font(.inter(10, relativeTo: .caption))
-                                    .foregroundColor(.secondary)
-                                HStack(spacing: 2) {
-                                    Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
-                                    Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
-                                }
-                                .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                .fontWeight(.bold)
-                                .foregroundColor(pnl >= 0 ? DS.up : DS.down)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-
-                    Divider().overlay(DS.hairline)
-                }
-
-                let globals = globalPositions
-                if !globals.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        let activeCols = PortfolioListView.defaultPopoverColumns
-                        HStack(spacing: 0) {
-                            Text("Symbol")
-                                .frame(width: PortfolioCol.symbol, alignment: .leading)
-                            ForEach(activeCols, id: \.self) { col in
-                                columnHeader(col)
-                            }
-                        }
-                        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+            if storageService.portfolios.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "briefcase")
+                        .font(.inter(32, relativeTo: .largeTitle))
                         .foregroundColor(.secondary)
-                        .tracking(0.8)
-                        .textCase(.uppercase)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-
-                        Divider().overlay(DS.hairline)
-
-                        ScrollView(.vertical, showsIndicators: true) {
-                            LazyVStack(spacing: 0) {
-                                ForEach(globals) { p in
-                                    PortfolioQuoteRow(stockService: stockService, globalPos: p)
-                                    if p.id != globals.last?.id {
-                                        Divider().padding(.leading, PortfolioCol.symbol)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                    .background(DS.card)
-                } else {
-                    ScrollView(.vertical, showsIndicators: true) {
-                        LazyVStack(spacing: 0) {
-                        }
-                    }
-                }
-
-                Divider().overlay(DS.hairline)
-
-                HStack(spacing: 12) {
-                    Button(action: {
+                    Text("No portfolios")
+                        .foregroundColor(.secondary)
+                    Button("Create portfolio") {
                         newPortfolioName = ""
                         showNewPortfolio = true
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("Add Portfolio")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
                     .pointingHandCursor()
-
-                    Button(action: { showBinanceSheet = true }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "circle.hexagongrid.fill")
-                                .foregroundColor(.yellow)
-                            Text("Connect Binance")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                    }
-                    .buttonStyle(.borderless)
-                    .pointingHandCursor()
-
                     Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 0) {
+                    portfolioPickerBar
+
+                    Divider().overlay(DS.hairline)
+
+                    summaryHeaderBar
+
+                    Divider().overlay(DS.hairline)
+
+                    let symbols = displaySymbols
+                    if symbols.isEmpty {
+                        emptyHoldingsView
+                    } else {
+                        HStack(spacing: 0) {
+                            // LEFT FROZEN PANE: Symbol
+                            VStack(spacing: 0) {
+                                frozenHeaderRow
+                                Divider().overlay(DS.hairline)
+                                ScrollView(.vertical, showsIndicators: false) {
+                                    LazyVStack(spacing: 0) {
+                                        ForEach(symbols, id: \.self) { symbol in
+                                            let box = hoverBox(for: symbol)
+                                            frozenRowContent(symbol, hoverBox: box)
+                                            if symbol != symbols.last {
+                                                Divider().padding(.leading, 12)
+                                            }
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                    .background(ScrollViewSyncAttachment { scrollCoordinator.registerVerticalFrozen($0) })
+                                }
+                                .frame(width: PortfolioCol.pinnedWidth)
+                            }
+                            .frame(width: PortfolioCol.pinnedWidth)
+                            .overlay(alignment: .trailing) {
+                                HStack(spacing: 0) {
+                                    Spacer()
+                                    Divider()
+                                }
+                            }
+                            .background(DS.card)
+
+                            // RIGHT METRICS PANE
+                            VStack(spacing: 0) {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    metricsHeaderRow
+                                        .frame(minWidth: metricsTableWidth, alignment: .leading)
+                                        .background(ScrollViewSyncAttachment { scrollCoordinator.registerHorizontalHeader($0) })
+                                }
+                                .frame(height: PortfolioCol.headerHeight)
+                                Divider().overlay(DS.hairline)
+                                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                                    LazyVStack(spacing: 0) {
+                                        ForEach(symbols, id: \.self) { symbol in
+                                            let box = hoverBox(for: symbol)
+                                            metricsRowContent(symbol, hoverBox: box)
+                                            if symbol != symbols.last {
+                                                Divider().padding(.horizontal, 12)
+                                            }
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                    .frame(minWidth: metricsTableWidth, alignment: .leading)
+                                    .background(ScrollViewSyncAttachment { scrollCoordinator.register2DBody($0) })
+                                }
+                                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                            }
+                        }
+                        .id(viewModel.scopeKey)
+                        .background(DS.card)
+                        .frame(maxHeight: .infinity)
+                        .refreshable {
+                            if storageService.iCloudSyncEnabled {
+                                iCloudSyncService.shared.pullAndMerge(force: false)
+                            }
+                            await stockService.refreshAll(storageService: storageService)
+                        }
+                    }
+
+                    Divider().overlay(DS.hairline)
+
+                    bottomActionBar
+                }
             }
         }
-        }
-        
         .onChange(of: selectedPortfolioId) { _, newValue in
+            scrollCoordinator.reset()
             if let id = newValue {
                 viewModel.scope = .portfolio(id)
             } else {
                 viewModel.scope = .all
             }
+            loadPositionSort(for: viewModel.scopeKey)
         }
-        .task {
+        .onAppear {
             viewModel.setup(stockService: stockService, storageService: storageService)
+            loadPositionSort(for: viewModel.scopeKey)
+        }
+        .task(id: "\(viewModel.symbols.joined())-\(activeColumns.map(\.rawValue).joined())") {
+            let needsSparklines = activeColumns.contains(.volume50d) || activeColumns.contains(.volume50w)
+            if needsSparklines {
+                await stockService.ensureSparklines(for: viewModel.symbols)
+            }
+            let needsValuation = activeColumns.contains { $0.category == .valuation }
+            if needsValuation {
+                for sym in viewModel.symbols where stockService.quotes[sym]?.hasValuationData != true {
+                    await stockService.ensureQuoteValuation(for: sym)
+                }
+            }
         }
         .onChange(of: draggingPortfolioId) { _, newValue in
             if newValue == nil { previewPortfolioIds = [] }
         }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService)
+        }
+        .sheet(item: Binding<PortfolioAddItem?>(
+            get: {
+                if let atp = addToPortfolio {
+                    return PortfolioAddItem(symbol: atp.symbol, portfolioId: atp.portfolioId)
+                }
+                return nil
+            },
+            set: { addToPortfolio = $0.map { ($0.symbol, $0.portfolioId) } }
+        )) { item in
+            QuickAddHoldingView(symbol: item.symbol, portfolioId: item.portfolioId) {
+                addToPortfolio = nil
+            }
+            .environmentObject(stockService)
+            .environmentObject(storageService)
+            .frame(width: 300, height: storageService.advancedPositions ? 290 : 220)
+        }
+        .sheet(item: $alertTarget) { item in
+            PriceAlertSheet(symbol: item.symbol) { alertTarget = nil }
+                .environmentObject(stockService)
+                .environmentObject(storageService)
+        }
+        .sheet(item: $targetCloseHolding) { target in
+            CloseHoldingSheet(
+                portfolioId: target.portfolioId,
+                holding: target.holding,
+                quote: target.quote,
+                onDismiss: {
+                    targetCloseHolding = nil
+                    viewModel.recomputeAll()
+                }
+            )
+            .environmentObject(storageService)
+            .environmentObject(stockService)
+        }
+        .overlay {
+            if let item = targetSymbol {
+                ZStack {
+                    Color.black.opacity(0.25)
+                        .contentShape(Rectangle())
+                        .onTapGesture { targetSymbol = nil }
+                    ScrollView(.vertical, showsIndicators: false) {
+                        StockTargetSheet(symbol: item.symbol) { targetSymbol = nil }
+                            .environmentObject(stockService)
+                            .environmentObject(storageService)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            }
         }
         .sheet(item: $pendingImportResult) { res in
             ImportPreviewSheet(
@@ -287,10 +508,18 @@ struct PortfolioListView: View {
         }
         .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
                  title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
+        .alert("Binance Sync Error", isPresented: Binding(get: { syncError != nil }, set: { if !$0 { syncError = nil } })) {
+            Button("OK", role: .cancel) { syncError = nil }
+        } message: {
+            Text(syncError ?? "")
+        }
         .alert("Delete Portfolio", isPresented: deletePortfolioAlertBinding) {
             Button("Cancel", role: .cancel) { confirmDeletePortfolio = nil }
             Button("Delete", role: .destructive) {
                 if let p = confirmDeletePortfolio {
+                    if selectedPortfolioId == p.id {
+                        selectedPortfolioId = nil
+                    }
                     storageService.deletePortfolio(id: p.id)
                 }
                 confirmDeletePortfolio = nil
@@ -322,24 +551,273 @@ struct PortfolioListView: View {
         } message: {
             Text("Enter a new name for this portfolio:")
         }
-        .alert("Delete Holding", isPresented: deleteHoldingAlertBinding) {
-            Button("Cancel", role: .cancel) { confirmDeleteHolding = nil }
-            Button("Delete", role: .destructive) {
-                if let target = confirmDeleteHolding {
-                    storageService.removeHolding(from: target.portfolioId, holdingId: target.holding.id)
-                }
-                confirmDeleteHolding = nil
-            }
-        } message: {
-            Text("Are you sure you want to delete \(confirmDeleteHolding?.holding.symbol ?? "")? This action cannot be undone.")
-        }
     }
 
-    private var activePortfoliosForSummary: [Portfolio] {
-        if let pId = selectedPortfolioId {
-            return storageService.portfolios.filter { $0.id == pId }
+    // MARK: - Subviews
+
+    private var summaryHeaderBar: some View {
+        let currSym = StorageService.currencySymbol(for: storageService.preferredCurrency)
+        let totalVal = viewModel.valuationCache.totalValue
+        let pnl = viewModel.valuationCache.totalPnl
+        let pnlPct = viewModel.valuationCache.totalPnlPercent
+        let todayGain = viewModel.valuationCache.dayChangeValue
+        let todayPct = viewModel.valuationCache.dayChangePercent
+
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Total value")
+                    .font(.inter(10, relativeTo: .caption))
+                    .foregroundColor(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(StorageService.formatAmount(totalVal, symbol: currSym, decimals: storageService.amountDecimals))
+                        .font(.inter(13.5, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                    if let secVal = viewModel.secondaryTotalValue, let secSym = viewModel.secondaryCurrencySymbol {
+                        Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: viewModel.secondaryDecimals))")
+                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("Today PnL")
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 2) {
+                        Text(StorageService.formatAmount(todayGain, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
+                        Text(String(format: "(%.\(storageService.percentDecimals)f%%)", todayPct))
+                    }
+                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.semibold)
+                    .foregroundColor(todayGain >= 0 ? DS.up : DS.down)
+                }
+
+                HStack(spacing: 6) {
+                    Text("Total PnL")
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 2) {
+                        Text(StorageService.formatAmount(pnl, symbol: currSym, decimals: storageService.amountDecimals, signed: true))
+                        Text(String(format: "(%.\(storageService.percentDecimals)f%%)", pnlPct))
+                    }
+                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
+                    .fontWeight(.bold)
+                    .foregroundColor(pnl >= 0 ? DS.up : DS.down)
+                }
+            }
         }
-        return storageService.portfolios
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var emptyHoldingsView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "briefcase")
+                .font(.inter(32, relativeTo: .largeTitle))
+                .foregroundColor(.secondary)
+            if let p = selectedPortfolio {
+                Text("No symbols in \(p.name)")
+                    .foregroundColor(.secondary)
+                if p.isReadOnly {
+                    Button(action: { syncBinance(portfolioId: p.id) }) {
+                        HStack(spacing: 4) {
+                            if isSyncingBinance {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Sync Binance Now")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .pointingHandCursor()
+                    .disabled(isSyncingBinance)
+                } else {
+                    Button("Add holding") {
+                        addHoldingAction.perform(p.id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .pointingHandCursor()
+                }
+            } else {
+                Text("No holdings yet")
+                    .foregroundColor(.secondary)
+                if editablePortfolios.count == 1, let first = editablePortfolios.first {
+                    Button("Add holding") {
+                        addHoldingAction.perform(first.id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .pointingHandCursor()
+                } else if editablePortfolios.count > 1 {
+                    Menu {
+                        ForEach(editablePortfolios) { p in
+                            Button(p.name) {
+                                addHoldingAction.perform(p.id)
+                            }
+                        }
+                    } label: {
+                        Text("Add holding")
+                    }
+                    .menuStyle(.borderedButton)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .pointingHandCursor()
+                }
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var bottomActionBar: some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                newPortfolioName = ""
+                showNewPortfolio = true
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add Portfolio")
+                }
+                .font(.inter(10, relativeTo: .caption))
+            }
+            .buttonStyle(.borderless)
+            .pointingHandCursor()
+
+            Button(action: { showBinanceSheet = true }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .foregroundColor(.yellow)
+                    Text("Connect Binance")
+                }
+                .font(.inter(10, relativeTo: .caption))
+            }
+            .buttonStyle(.borderless)
+            .pointingHandCursor()
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func portfolioContextMenu(symbol: String) -> some View {
+        Button {
+            showSymbolDetail.perform(symbol)
+        } label: {
+            Label("View Details", systemImage: "chart.xyaxis.line")
+        }
+        Divider()
+
+        Menu {
+            ForEach(storageService.watchlists) { wl in
+                Button {
+                    storageService.addToWatchlist(symbol, targetWatchlistId: wl.id)
+                } label: {
+                    if wl.symbols.contains(symbol) {
+                        Label(wl.name, systemImage: "checkmark")
+                    } else {
+                        Text(wl.name)
+                    }
+                }
+            }
+        } label: {
+            Label("Add to Watchlist", systemImage: "star.bubble")
+        }
+
+        if !editablePortfolios.isEmpty {
+            Menu {
+                ForEach(editablePortfolios) { portfolio in
+                    Button(portfolio.name) {
+                        addToPortfolio = (symbol, portfolio.id)
+                    }
+                }
+            } label: {
+                Label("Add to Portfolio", systemImage: "plus.rectangle.on.folder")
+            }
+        }
+        Divider()
+
+        Button {
+            alertTarget = TargetSheetItem(symbol: symbol)
+        } label: {
+            Label("Set Price Alert…", systemImage: "bell")
+        }
+
+        Button {
+            targetSymbol = TargetSheetItem(symbol: symbol)
+        } label: {
+            Label(
+                storageService.buyTarget(for: symbol) != nil
+                    ? LocalizedStringKey("Edit Buy Target…")
+                    : LocalizedStringKey("Set Buy Target…"),
+                systemImage: "target"
+            )
+        }
+        if storageService.buyTarget(for: symbol) != nil {
+            Button(role: .destructive) {
+                storageService.removeBuyTarget(for: symbol)
+            } label: {
+                Label("Remove Buy Target", systemImage: "trash")
+            }
+        }
+
+        let modifiableHoldings = (viewModel.groupedHoldings[symbol] ?? []).filter { vh in
+            !(storageService.portfolios.first(where: { $0.id == vh.portfolioId })?.isReadOnly ?? false)
+        }
+        if !modifiableHoldings.isEmpty {
+            Divider()
+            if modifiableHoldings.count == 1, let first = modifiableHoldings.first {
+                Button {
+                    targetCloseHolding = PortfolioOverview.TargetCloseHolding(
+                        portfolioId: first.portfolioId,
+                        holding: first.holding,
+                        quote: first.quote
+                    )
+                } label: {
+                    Label("Sell / Close Position…", systemImage: "arrow.down.right.circle")
+                }
+
+                Button(role: .destructive) {
+                    storageService.removeHolding(from: first.portfolioId, holdingId: first.holding.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            } else {
+                Menu {
+                    ForEach(modifiableHoldings) { vh in
+                        let dec = storageService.resolvedPriceDecimals(symbol: vh.symbol, price: vh.holding.avgPrice)
+                        let qtyStr = StorageService.formatNumber(vh.holding.quantity, decimals: vh.holding.quantity.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 2)
+                        let priceStr = StorageService.formatNumber(vh.holding.avgPrice, decimals: dec)
+                        Button("\(qtyStr) @ \(priceStr)") {
+                            targetCloseHolding = PortfolioOverview.TargetCloseHolding(
+                                portfolioId: vh.portfolioId,
+                                holding: vh.holding,
+                                quote: vh.quote
+                            )
+                        }
+                    }
+                } label: {
+                    Label("Sell / Close Position…", systemImage: "arrow.down.right.circle")
+                }
+
+                Button(role: .destructive) {
+                    for vh in modifiableHoldings {
+                        storageService.removeHolding(from: vh.portfolioId, holdingId: vh.holding.id)
+                    }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
     }
 
     private var portfolioPickerBar: some View {
@@ -403,6 +881,12 @@ struct PortfolioListView: View {
                             .buttonStyle(.plain)
                             .pointingHandCursor()
                             .contextMenu {
+                                if !p.isReadOnly {
+                                    Button("Add Holding…") {
+                                        addHoldingAction.perform(p.id)
+                                    }
+                                    Divider()
+                                }
                                 Button("Rename…") {
                                     renamingPortfolio = p
                                     renamePortfolioName = p.name
@@ -473,8 +957,6 @@ struct PortfolioListView: View {
         }
     }
 
-    /// The portfolio tabs in order: the local drag preview while dragging, else the
-    /// persisted order.
     private var displayedPortfolios: [Portfolio] {
         if draggingPortfolioId != nil, !previewPortfolioIds.isEmpty {
             let byId = Dictionary(uniqueKeysWithValues: storageService.portfolios.map { ($0.id, $0) })
@@ -483,7 +965,6 @@ struct PortfolioListView: View {
         return storageService.portfolios
     }
 
-    /// Live, local-only reorder of the portfolio tab preview while dragging.
     private func movePortfolioInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
         if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
         guard sourceId != targetId,
@@ -496,8 +977,6 @@ struct PortfolioListView: View {
         previewPortfolioIds.insert(item, at: insertIndex)
     }
 
-    /// Persists the previewed portfolio order exactly once, when the tab drop
-    /// lands (or the drag ends outside the picker bar).
     private func commitPortfolioPreview() {
         guard !previewPortfolioIds.isEmpty else {
             draggingPortfolioId = nil
@@ -509,121 +988,6 @@ struct PortfolioListView: View {
         storageService.commitPortfolioOrder(final)
     }
 
-    private func portfolioTotals(for portfolios: [Portfolio]) -> (value: Double, cost: Double, pnl: Double) {
-        let inputs = PortfolioValuation.resolveInputs(for: portfolios, stockService: stockService, storageService: storageService)
-        return PortfolioValuation.totals(inputs)
-    }
-
-    private func portfolioValue(for portfolios: [Portfolio]) -> Double {
-        portfolioTotals(for: portfolios).value
-    }
-
-    private func portfolioCost(for portfolios: [Portfolio]) -> Double {
-        portfolioTotals(for: portfolios).cost
-    }
-
-    private func portfolioPnl(for portfolios: [Portfolio]) -> Double {
-        portfolioTotals(for: portfolios).pnl
-    }
-
-    private var grandTotalValue: Double {
-        portfolioValue(for: storageService.portfolios)
-    }
-
-    private var grandTotalCost: Double {
-        portfolioCost(for: storageService.portfolios)
-    }
-
-    struct GlobalPosition: Identifiable {
-        let id: String            // symbol
-        let avgPrice: Double      // weighted avg buy price, in the price currency
-        let cost: Double          // total cost in native currency
-        let valueLocal: Double    // total market value in native currency
-        let todayPnl: Double      // today's P&L in native currency
-        let priceSymbol: String
-        let hasCostBasis: Bool    // whether any holding for this symbol has a known cost basis
-        let pct: Double           // price return vs. avg (position-direction aware)
-        let pnl: Double           // total P&L in native currency
-        let currentPrice: Double
-        let priceChangePercent: Double
-        let extPrice: Double?
-        let extChangePercent: Double?
-        let value: Double         // market value (preferred currency), for sorting
-        let shares: Double
-        let lotsCount: Int
-        var weight: Double
-        let quote: StockQuote?
-        var symbol: String { id }
-    }
-
-    /// Per-symbol weighted-average buy price across ALL portfolios, with the
-    /// current price return vs. that average. Sorted by market value.
-    private var globalPositions: [GlobalPosition] {
-        let aggDict = viewModel.symbolAggregates
-        let totalVal = viewModel.valuationCache.totalValue
-        
-        return aggDict.values.compactMap { agg -> GlobalPosition? in
-            guard abs(agg.totalQuantity) >= 1e-9 || agg.value > 0 else { return nil }
-            let weight = abs(totalVal) >= 0.01 ? (abs(agg.value) / abs(totalVal) * 100) : 0
-            let extPrice: Double? = (agg.quote?.isExtendedHours == true) ? agg.quote?.alertPrice : nil
-            let extChangePercent: Double? = (agg.quote?.isExtendedHours == true) ? agg.extendedChangePercent : nil
-            
-            return GlobalPosition(
-                id: agg.symbol,
-                avgPrice: agg.avgPrice,
-                cost: agg.nativeCost,
-                valueLocal: agg.nativeValue,
-                todayPnl: agg.todayPnl,
-                priceSymbol: agg.nativeCurrencySymbol,
-                hasCostBasis: agg.hasCostBasis,
-                pct: agg.nativePnlPercent,
-                pnl: agg.nativePnl,
-                currentPrice: agg.quote?.price ?? agg.avgPrice,
-                priceChangePercent: agg.changePercent,
-                extPrice: extPrice,
-                extChangePercent: extChangePercent,
-                value: agg.value,
-                shares: agg.totalQuantity,
-                lotsCount: agg.lotsCount,
-                weight: weight,
-                quote: agg.quote
-            )
-        }
-        .sorted { $0.value > $1.value }
-    }
-
-    private func exportPortfolios(_ portfolios: [Portfolio]) {
-        PortfolioIO.exportAll(portfolios, storageService: storageService, restoreActivationPolicy: true)
-    }
-
-    private func importStandard() {
-        PortfolioIO.pickAndParseStandard(storageService: storageService, restoreActivationPolicy: true, onParsed: { result in
-            self.pendingImportResult = result
-        }, onAlert: { message in
-            self.importAlert = message
-        })
-    }
-
-    private func importJapaneseFunds() {
-        PortfolioIO.pickAndParseJapaneseFunds(restoreActivationPolicy: true, onParsed: { result in
-            self.pendingImportResult = result
-        }, onAlert: { message in
-            self.importAlert = message
-        })
-    }
-
-    private func downloadSampleFile() {
-        PortfolioIO.downloadSample(storageService: storageService, restoreActivationPolicy: true) { message in
-            self.importAlert = message
-        }
-    }
-
-    private func downloadJapaneseFundSampleFile() {
-        PortfolioIO.downloadJapaneseFundSample(restoreActivationPolicy: true) { message in
-            self.importAlert = message
-        }
-    }
-
     private func createPortfolio() {
         guard !newPortfolioName.isEmpty else { return }
         storageService.addPortfolio(name: newPortfolioName)
@@ -632,738 +996,135 @@ struct PortfolioListView: View {
     }
 }
 
-struct PortfolioSection: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-    @Environment(\.addHoldingAction) var addHoldingAction
-    let portfolio: Portfolio
-    @Binding var confirmDeletePortfolio: Portfolio?
-    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
-    var onBatchImport: ((UUID) -> Void)? = nil
-    @State private var isRenaming = false
-    @State private var renameText = ""
-    @State private var showNotifications = false
-    @State private var isSyncingBinance = false
-    @State private var syncError: String? = nil
+// MARK: - Split Row Views (Frozen Symbol + Scrollable Metrics)
 
-    private func syncBinance() {
-        isSyncingBinance = true
-        Task {
-            do {
-                try await storageService.syncBinancePortfolio(id: portfolio.id)
-            } catch {
-                await MainActor.run {
-                    syncError = error.localizedDescription
-                }
-            }
-            await MainActor.run {
-                isSyncingBinance = false
-            }
-        }
-    }
-
-    private func exportSingle() {
-        PortfolioIO.exportAll([portfolio], storageService: storageService, restoreActivationPolicy: true)
-    }
-
-    private func exportSingleMD() {
-        PortfolioIO.exportAllMarkdown([portfolio], restoreActivationPolicy: true)
-    }
-
-    private var currSymbol: String {
-        StorageService.currencySymbol(for: storageService.preferredCurrency)
-    }
-
-    private var valuationTotals: (value: Double, cost: Double, pnl: Double, pnlPercent: Double) {
-        let inputs = PortfolioValuation.resolveInputs(for: [portfolio], stockService: stockService, storageService: storageService)
-        let totals = PortfolioValuation.totals(inputs)
-        let pct = abs(totals.cost) >= 0.01 ? (totals.pnl / abs(totals.cost)) * 100 : 0
-        return (totals.value, totals.cost, totals.pnl, pct)
-    }
-
-    var body: some View {
-        let totals = valuationTotals
-        let totalValue = totals.value
-        let totalPnl = totals.pnl
-        let totalPnlPercent = totals.pnlPercent
-
-        Section {
-            // Summary row
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Total value")
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text(StorageService.formatAmount(totalValue, symbol: currSymbol, decimals: storageService.amountDecimals))
-                            .font(.inter(13.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.bold)
-                        if !storageService.secondaryCurrency.isEmpty, storageService.secondaryCurrency != storageService.preferredCurrency {
-                            let secRate = stockService.rate(from: storageService.preferredCurrency, to: storageService.secondaryCurrency)
-                            if secRate > 0 {
-                                let secVal = totalValue * secRate
-                                let secSym = StorageService.currencySymbol(for: storageService.secondaryCurrency)
-                                let secDec = StorageService.defaultDecimals(for: storageService.secondaryCurrency)
-                                Text("≈ \(StorageService.formatAmount(secVal, symbol: secSym, decimals: secDec))")
-                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Total PnL")
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    HStack(spacing: 2) {
-                        Text(StorageService.formatAmount(totalPnl, symbol: currSymbol, decimals: storageService.amountDecimals, signed: true))
-                        Text(String(format: "(%.\(storageService.percentDecimals)f%%)", totalPnlPercent))
-                    }
-                    .font(.inter(11.5, relativeTo: .body).monospacedDigit())
-                    .fontWeight(.bold)
-                    .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
-                }
-            }
-            .padding(.vertical, 2)
-
-            // Column headers
-            if !portfolio.holdings.isEmpty {
-                HStack(spacing: 0) {
-                    Text("Symbol")
-                        .frame(width: 120, alignment: .leading)
-                    Text("Price")
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    Text("Value / PnL")
-                        .frame(width: 120, alignment: .trailing)
-                }
-                .font(.inter(10, weight: .medium, relativeTo: .caption2))
-                .foregroundColor(.secondary)
-                .tracking(0.8)
-                .textCase(.uppercase)
-                .padding(.vertical, 4)
-            }
-
-            // Holdings (Grouped by symbol)
-            let groupedHoldings = Dictionary(grouping: portfolio.holdings) { $0.symbol.uppercased() }
-            let sortedSymbols = portfolio.holdings.map { $0.symbol.uppercased() }.reduce(into: [String]()) { res, sym in
-                if !res.contains(sym) { res.append(sym) }
-            }
-
-            ForEach(sortedSymbols, id: \.self) { sym in
-                if let group = groupedHoldings[sym] {
-                    if group.count == 1, let singleHolding = group.first {
-                        HoldingRow(holding: singleHolding, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
-                    } else {
-                        GroupedHoldingRow(symbol: sym, holdings: group, portfolioId: portfolio.id, confirmDeleteHolding: $confirmDeleteHolding)
-                    }
-                }
-            }
-
-            // Add holding / Batch import / Binance Sync buttons
-            if portfolio.isReadOnly {
-                HStack(spacing: 12) {
-                    Button(action: syncBinance) {
-                        HStack(spacing: 4) {
-                            if isSyncingBinance {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            Text("Sync Binance Now")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.borderless)
-                    .pointingHandCursor()
-                    .disabled(isSyncingBinance)
-
-                    if let lastSync = portfolio.lastSyncedAt {
-                        Text("Last synced: \(lastSync.formatted(.dateTime.hour().minute().second()))")
-                            .font(.inter(9, relativeTo: .caption))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } else {
-                HStack(spacing: 12) {
-                    Button(action: { addHoldingAction.perform(portfolio.id) }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "plus")
-                            Text("Add holding")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.borderless)
-                    .pointingHandCursor()
-
-                    Button(action: { onBatchImport?(portfolio.id) }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "square.and.arrow.down")
-                            Text("Batch import…")
-                        }
-                        .font(.inter(10, relativeTo: .caption))
-                        .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .pointingHandCursor()
-                }
-            }
-        } header: {
-            if isRenaming {
-                HStack {
-                    TextField("Name", text: $renameText)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.inter(13, weight: .bold, relativeTo: .headline))
-                        .onSubmit { commitRename() }
-                    Button("OK") { commitRename() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(renameText.isEmpty)
-                }
-            } else {
-                HStack(spacing: 6) {
-                    Text(portfolio.name)
-                        .font(.inter(13, weight: .bold, relativeTo: .headline))
-
-                    if portfolio.isReadOnly {
-                        HStack(spacing: 4) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 9))
-                            Text("Binance")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.yellow.opacity(0.2))
-                        .foregroundColor(.orange)
-                        .cornerRadius(4)
-                    }
-
-                    Spacer()
-                    Menu {
-                        if portfolio.isReadOnly {
-                            Button(action: syncBinance) {
-                                Label("Sync Binance Now", systemImage: "arrow.clockwise")
-                            }
-                            Divider()
-                        }
-                        Button {
-                            renameText = portfolio.name
-                            isRenaming = true
-                        } label: {
-                            Label("Rename Portfolio", systemImage: "pencil")
-                        }
-                        if !portfolio.isReadOnly {
-                            Button {
-                                onBatchImport?(portfolio.id)
-                            } label: {
-                                Label("Batch Import…", systemImage: "square.and.arrow.down")
-                            }
-                        }
-                        Button {
-                            showNotifications = true
-                        } label: {
-                            Label("Notifications…", systemImage: "bell")
-                        }
-                        Button(action: exportSingle) {
-                            Label("Export (XLSX)", systemImage: "square.and.arrow.up")
-                        }
-                        Button(action: exportSingleMD) {
-                            Label("Export (Markdown)", systemImage: "doc.text")
-                        }
-                        Divider()
-                        Button(role: .destructive) {
-                            confirmDeletePortfolio = portfolio
-                        } label: {
-                            Label("Delete Portfolio", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(width: 20, height: 20)
-                    .pointingHandCursor()
-                }
-                .popover(isPresented: $showNotifications, arrowEdge: .trailing) {
-                    PortfolioNotificationsView(
-                        portfolioId: portfolio.id,
-                        portfolioName: portfolio.name,
-                        onDismiss: { showNotifications = false }
-                    )
-                    .environmentObject(storageService)
-                    .frame(width: 340)
-                }
-                .alert("Binance Sync Error", isPresented: Binding(get: { syncError != nil }, set: { if !$0 { syncError = nil } })) {
-                    Button("OK", role: .cancel) { syncError = nil }
-                } message: {
-                    Text(syncError ?? "")
-                }
-            }
-        }
-    }
-
-    private func commitRename() {
-        guard !renameText.isEmpty else { return }
-        storageService.renamePortfolio(id: portfolio.id, name: renameText)
-        isRenaming = false
-    }
-}
-
-struct HoldingRow: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-    @Environment(\.showSymbolDetail) private var showSymbolDetail
-    let holding: Holding
-    let portfolioId: UUID
-    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
-
-    var quote: StockQuote? {
-        stockService.quotes[holding.symbol]
-    }
-
-    private func formatQty(_ qty: Double) -> String {
-        qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
-    }
-
-    private var isReadOnly: Bool {
-        storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
-    }
-
-    var body: some View {
-        Button(action: {
-            showSymbolDetail.perform(holding.symbol)
-        }) {
-            HStack(spacing: 0) {
-                // Col 1: Ticker + Qty@Avg
-                HStack(spacing: 6) {
-                    SymbolLogo(symbol: holding.symbol, size: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 3) {
-                            Text(StockService.beautifiedSymbol(holding.symbol))
-                                .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                                .fontWeight(.bold)
-                            if holding.isShort {
-                                Text("SHORT")
-                                    .font(.inter(9, weight: .bold, relativeTo: .caption2))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 3)
-                                    .padding(.vertical, 1)
-                                    .background(RoundedRectangle(cornerRadius: 2).fill(DS.down))
-                            }
-                            if holding.effectiveLeverage != 1 {
-                                Text("\(StorageService.formatNumber(holding.effectiveLeverage, decimals: holding.effectiveLeverage == holding.effectiveLeverage.rounded() ? 0 : 1))\u{00D7}")
-                                    .font(.inter(9, weight: .bold, relativeTo: .caption2))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 3)
-                                    .padding(.vertical, 1)
-                                    .background(RoundedRectangle(cornerRadius: 2).fill(DS.brand))
-                            }
-                        }
-                        Text("\(formatQty(holding.quantity))\u{00D7}\(StorageService.formatNumber(holding.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: holding.symbol, price: holding.avgPrice)))")
-                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                }
-                .frame(width: 125, alignment: .leading)
-
-                if let quote {
-                    let assetCurr = stockService.detectedCurrency(for: holding.symbol)
-                    let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                    let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-
-                    // Col 2: Price + badge
-                    HStack(spacing: 3) {
-                        Text("\(StorageService.formatNumber(displayPrice, decimals: storageService.resolvedPriceDecimals(symbol: quote.symbol, price: displayPrice)))")
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.medium)
-                        if storageService.showExtendedHours, quote.isExtendedHours, !quote.marketStateLabel.isEmpty {
-                            Text(quote.marketStateLabel)
-                                .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 3)
-                                .padding(.vertical, 1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(quote.marketState.hasPrefix("PRE") ? DS.gold : DS.palette[3])
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-
-                    // Col 3: Value + P&L in native currency
-                    let nativeVal = holding.marketValue(currentPrice: displayPrice)
-                    let nativeCost = holding.costBasisLocal
-                    let pnl = nativeVal - nativeCost
-                    let pnlPct = abs(nativeCost) >= 0.01 ? (pnl / abs(nativeCost)) * 100 : 0
-                    let nativeSym = StorageService.currencySymbol(for: quoteCurr)
-
-                    let dec = storageService.amountDecimals
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                            .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                            .fontWeight(.medium)
-                        Text("\(StorageService.formatAmount(pnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", pnlPct)))")
-                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                            .foregroundColor(pnl >= 0 ? DS.up : DS.down)
-                    }
-                    .frame(width: 125, alignment: .trailing)
-                } else {
-                    Spacer()
-                    VStack(alignment: .center, spacing: 1) {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                        Text(" ")
-                            .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                            .lineLimit(1)
-                    }
-                    .frame(width: 125, alignment: .center)
-                }
-            }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .contextMenu {
-            Button {
-                showSymbolDetail.perform(holding.symbol)
-            } label: {
-                Label("View Details", systemImage: "chart.xyaxis.line")
-            }
-            if !isReadOnly {
-                Divider()
-                Button(role: .destructive) {
-                    confirmDeleteHolding = (holding, portfolioId)
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        }
-    }
-}
-
-struct GroupedHoldingRow: View {
-    @EnvironmentObject var stockService: StockService
-    @EnvironmentObject var storageService: StorageService
-    @Environment(\.addHoldingAction) var addHoldingAction
-    @Environment(\.showSymbolDetail) private var showSymbolDetail
-
+private struct PortfolioFrozenRow<Menu: View>: View {
     let symbol: String
-    let holdings: [Holding]
-    let portfolioId: UUID
-    @Binding var confirmDeleteHolding: (holding: Holding, portfolioId: UUID)?
+    let aggregate: PortfolioViewModel.SymbolAggregate?
+    let buyTarget: StockTarget?
+    let showCompanyName: Bool
+    let valueDecimals: Int
+    @ObservedObject var hoverBox: RowHoverBox
+    let onOpen: () -> Void
+    @ViewBuilder let menu: () -> Menu
 
-    @State private var isExpanded: Bool = false
+    private var quote: StockQuote? { aggregate?.quote }
 
-    var quote: StockQuote? {
-        stockService.quotes[symbol]
-    }
+    private var symbolCell: some View {
+        let isJpFund = StockService.isJapaneseMutualFund(symbol) || (quote?.isJapaneseFund ?? false)
+        let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+        let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(symbol)) : symbol
+        let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : (quote?.name ?? ""))
+        let regularPrice = quote?.price ?? aggregate?.avgPrice ?? 0
+        let isBuyZone = buyTarget?.isInBuyZone(currentPrice: regularPrice) ?? false
+        let toBuyTargetPercent = buyTarget?.percentDistance(from: regularPrice)
+        let currSym = aggregate?.nativeCurrencySymbol ?? (quote.map { StorageService.currencySymbol(for: $0.currency) } ?? "")
 
-    private var totalQty: Double {
-        holdings.reduce(0) { $0 + $1.quantity }
-    }
-
-    private var weightedAvgPrice: Double {
-        let totalAbsQty = holdings.reduce(0) { $0 + abs($1.quantity) }
-        guard totalAbsQty > 0 else { return 0 }
-        let totalCostInLocal = holdings.reduce(0) { $0 + (abs($1.quantity) * $1.avgPrice) }
-        return totalCostInLocal / totalAbsQty
-    }
-
-    private func formatQty(_ qty: Double) -> String {
-        qty == qty.rounded(.down) ? String(format: "%.0f", qty) : String(format: "%.2f", qty)
-    }
-
-    /// Purchase lots for this symbol, newest purchase date first. Lots without a
-    /// date sort last so they never obscure dated history.
-    private var sortedLots: [Holding] {
-        holdings.sorted { lhs, rhs in
-            switch (lhs.purchaseDate, rhs.purchaseDate) {
-            case let (l?, r?): return l > r
-            case (nil, _?): return false
-            case (_?, nil): return true
-            case (nil, nil): return false
+        return HStack(spacing: 5) {
+            SymbolLogo(symbol: symbol, size: 20)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 3) {
+                    Text(titleText)
+                        .font(.inter(12.5, relativeTo: .body).monospacedDigit())
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    if isBuyZone {
+                        Text("🎯 MUA")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(DS.up)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 0.5)
+                            .background(DS.up.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
+                    }
+                }
+                if let target = buyTarget {
+                    let dec = valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: symbol, price: target.targetPrice)
+                    let priceStr = StorageService.formatCompactNumber(target.targetPrice, decimals: dec, stripTrailingZeros: true)
+                    if isBuyZone {
+                        Text("🎯 \(currSym)\(priceStr)")
+                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                            .fontWeight(.medium)
+                            .foregroundStyle(DS.up)
+                            .lineLimit(1)
+                    } else if let dist = toBuyTargetPercent {
+                        Text(String(format: "🎯 %@%@ (%+.1f%%)", currSym, priceStr, dist))
+                            .font(.inter(9.5, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text("🎯 \(currSym)\(priceStr)")
+                            .font(.inter(10, relativeTo: .caption2).monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                } else if showCompanyName {
+                    Text(subTitleText.isEmpty ? " " : subTitleText)
+                        .font(.inter(10, relativeTo: .caption2))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
+        .frame(width: PortfolioCol.symbol, alignment: .leading)
     }
 
     var body: some View {
-        let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
-        VStack(spacing: 0) {
-            // Parent Summary Row
-            HStack(spacing: 0) {
-                // Chevron Button (Explicit toggle only)
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isExpanded.toggle()
-                    }
-                }) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(DS.brand)
-                        .frame(width: 20, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-
-                // Clickable content triggering Symbol Details
-                Button(action: {
-                    showSymbolDetail.perform(symbol)
-                }) {
-                    HStack(spacing: 0) {
-                        // Col 1: Ticker + Lot Count
-                        HStack(spacing: 6) {
-                            SymbolLogo(symbol: symbol, size: 20)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(StockService.beautifiedSymbol(symbol))
-                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                                    .fontWeight(.bold)
-                                    .lineLimit(1)
-                                HStack(spacing: 4) {
-                                    Text("\(formatQty(totalQty))\u{00D7}\(StorageService.formatNumber(weightedAvgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: weightedAvgPrice))) avg")
-                                        .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
-                                    if holdings.count > 1 {
-                                        Text("\(holdings.count) lots")
-                                            .font(.inter(8.5, weight: .semibold, relativeTo: .caption2))
-                                            .foregroundColor(DS.brand)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 1)
-                                            .background(RoundedRectangle(cornerRadius: 3).fill(DS.brand.opacity(0.12)))
-                                    }
-                                }
-                            }
-                        }
-                        .frame(width: 120, alignment: .leading)
-
-                        if let quote {
-                            let assetCurr = stockService.detectedCurrency(for: symbol)
-                            let quoteCurr = (quote.currency.isEmpty || assetCurr == "JPY") ? assetCurr : quote.currency
-                            let pRate = stockService.priceRate(from: quoteCurr)
-
-                            // Col 2: Price (regular closing price formatted as integer)
-                            HStack(spacing: 3) {
-                                Text("\(StorageService.formatNumber(quote.price * pRate, decimals: 0))")
-                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-
-                            // Col 3: Total Market Value & Total P&L in native currency
-                            let displayPrice = quote.price
-                            let nativeTotals = PortfolioValuation.nativeTotals(holdings: holdings, currentPrice: displayPrice)
-                            let nativeVal = nativeTotals.value
-                            let nativeCost = nativeTotals.cost
-                            let totalPnl = nativeTotals.pnl
-                            let totalPnlPct = abs(nativeCost) >= 0.01 ? (totalPnl / abs(nativeCost)) * 100 : 0
-                            let nativeSym = StorageService.currencySymbol(for: quoteCurr)
-
-                            let dec = storageService.amountDecimals
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(StorageService.formatAmount(nativeVal, symbol: nativeSym, decimals: dec))
-                                    .font(.inter(12.5, relativeTo: .body).monospacedDigit())
-                                    .fontWeight(.medium)
-                                Text("\(StorageService.formatAmount(totalPnl, symbol: nativeSym, decimals: dec, signed: true)) (\(String(format: "%.\(storageService.percentDecimals)f%%", totalPnlPct)))")
-                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                    .foregroundColor(totalPnl >= 0 ? DS.up : DS.down)
-                            }
-                            .frame(width: 120, alignment: .trailing)
-                        } else {
-                            Spacer()
-                            VStack(alignment: .center, spacing: 1) {
-                                ProgressView().scaleEffect(0.5)
-                                Text(" ")
-                                    .font(.inter(10.5, relativeTo: .caption).monospacedDigit())
-                                    .lineLimit(1)
-                            }
-                            .frame(width: 120, alignment: .center)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-            }
-            .contextMenu {
-                Button {
-                    showSymbolDetail.perform(symbol)
-                } label: {
-                    Label("View Details", systemImage: "chart.xyaxis.line")
-                }
-            }
-
-            // Expanded Child Lots
-            if isExpanded {
-                VStack(spacing: 3) {
-                    ForEach(sortedLots) { h in
-                        HStack(spacing: 0) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.turn.down.right")
-                                    .font(.system(size: 8))
-                                    .foregroundColor(.secondary)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(formatQty(h.quantity)) @ \(StorageService.formatNumber(h.avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: h.symbol, price: h.avgPrice)))")
-                                        .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                        .fontWeight(.medium)
-                                    if let date = h.purchaseDate {
-                                        Text(date.formatted(date: .abbreviated, time: .omitted))
-                                            .font(.inter(9.5, relativeTo: .caption2))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                            .frame(width: 120, alignment: .leading)
-
-                            Spacer()
-
-                            if let quote {
-                                let curr = stockService.detectedCurrency(for: h.symbol)
-                                let displayPrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
-                                let val = h.marketValue(currentPrice: displayPrice)
-                                let cost = h.costBasisLocal
-                                let pnl = val - cost
-                                let nativeSymbol = StorageService.currencySymbol(for: curr)
-
-                                Text(StorageService.formatAmount(val, symbol: nativeSymbol, decimals: storageService.amountDecimals))
-                                    .font(.inter(11, relativeTo: .caption).monospacedDigit())
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 70, alignment: .trailing)
-
-                                Text(StorageService.formatAmount(pnl, symbol: nativeSymbol, decimals: storageService.amountDecimals, signed: true))
-                                    .font(.inter(10, relativeTo: .caption2).monospacedDigit())
-                                    .foregroundColor(pnl >= 0 ? DS.up : DS.down)
-                                    .frame(width: 70, alignment: .trailing)
-                            }
-
-                            let isReadOnly = storageService.portfolios.first(where: { $0.id == portfolioId })?.isReadOnly ?? false
-                            if !isReadOnly {
-                                HStack(spacing: 6) {
-                                    Button { confirmDeleteHolding = (h, portfolioId) } label: {
-                                        Image(systemName: "trash").font(.system(size: 10)).foregroundColor(.red.opacity(0.8))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .pointingHandCursor()
-                                    .help("Delete lot")
-                                }
-                                .padding(.leading, 8)
-                            }
-                        }
-                        .padding(.vertical, 3)
-                        .padding(.horizontal, 8)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(DS.cardAlt.opacity(0.5)))
-                    }
-
-                    if !isReadOnly {
-                        // Add another lot for this symbol
-                        Button(action: {
-                            addHoldingAction.perform(portfolioId)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus.circle")
-                                Text("Add another lot for \(symbol)")
-                            }
-                            .font(.inter(9, weight: .semibold, relativeTo: .caption2))
-                            .foregroundColor(DS.brand)
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                    }
-                }
-                .padding(.leading, 8)
-                .padding(.bottom, 4)
-            }
-        }
+        symbolCell
+            .padding(.horizontal, 12)
+            .frame(width: PortfolioCol.pinnedWidth, height: PortfolioCol.rowHeight, alignment: .leading)
+            .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { onOpen() }
+            .pointingHandCursor()
+            .onHover { hoverBox.isHovered = $0 }
+            .contextMenu { menu() }
     }
 }
 
-// MARK: - Row Views
-
-struct PortfolioQuoteRow: View {
+private struct PortfolioMetricsRow<Menu: View>: View {
     let stockService: StockService
     @EnvironmentObject var storageService: StorageService
-    @Environment(\.showSymbolDetail) private var showSymbolDetail
-    let globalPos: PortfolioListView.GlobalPosition
+    let symbol: String
+    let aggregate: PortfolioViewModel.SymbolAggregate
+    let weight: Double
+    let columns: [PortfolioColumnMetric]
+    @ObservedObject var hoverBox: RowHoverBox
+    let onOpen: () -> Void
+    @ViewBuilder let menu: () -> Menu
 
-    var quote: StockQuote? { globalPos.quote }
+    private var quote: StockQuote? { aggregate.quote }
 
     private var priceRate: Double {
         guard let q = quote else { return 1.0 }
         return stockService.priceRate(from: q.currency)
     }
 
-    private var symbolFont: Font { .inter(12.5, relativeTo: .body).monospacedDigit() }
-    private var subtitleFont: Font { .inter(10, relativeTo: .caption2) }
     private var metricFont: Font { .inter(11.5, relativeTo: .body).monospacedDigit() }
     private var metricSubFont: Font { .inter(10.5, relativeTo: .caption).monospacedDigit() }
     private var metricCaption2Font: Font { .inter(10, relativeTo: .caption2).monospacedDigit() }
-    private var extFont: Font { .inter(11.5, relativeTo: .body).monospacedDigit() }
 
     var body: some View {
-        Button(action: {
-            showSymbolDetail.perform(globalPos.symbol)
-        }) {
-            HStack(spacing: 0) {
-                // Col 1: Logo + symbol + name
-                let isJpFund = StockService.isJapaneseMutualFund(globalPos.symbol) || (quote?.isJapaneseFund ?? false)
-                let isDisplayAsset = StockService.isDisplayNameAsset(globalPos.symbol)
-                let titleText = (isJpFund || isDisplayAsset) ? (quote?.displayName ?? StockService.beautifiedSymbol(globalPos.symbol)) : globalPos.symbol
-                let subTitleText = isDisplayAsset ? globalPos.symbol : (isJpFund ? "" : (quote?.name ?? ""))
-
-                HStack(spacing: 4) {
-                    SymbolLogo(symbol: globalPos.symbol, size: 20)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(titleText)
-                            .font(symbolFont)
-                            .fontWeight(.bold)
-                            .lineLimit(1)
-                        if storageService.showCompanyName {
-                            Text(subTitleText.isEmpty ? " " : subTitleText)
-                                .font(subtitleFont)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-                .frame(width: PortfolioCol.symbol, alignment: .leading)
-
-                let activeCols = PortfolioListView.defaultPopoverColumns
-
-                ForEach(activeCols, id: \.self) { col in
-                    metricCell(for: col)
-                }
+        HStack(spacing: 0) {
+            ForEach(columns, id: \.self) { col in
+                metricCell(for: col)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .frame(height: PortfolioCol.rowHeight, alignment: .leading)
+        .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { onOpen() }
         .pointingHandCursor()
-        .contextMenu {
-            Button {
-                showSymbolDetail.perform(globalPos.symbol)
-            } label: {
-                Label("View Details", systemImage: "chart.xyaxis.line")
-            }
-        }
+        .onHover { hoverBox.isHovered = $0 }
+        .contextMenu { menu() }
     }
 
     @ViewBuilder
     private func metricCell(for col: PortfolioColumnMetric) -> some View {
         switch col {
         case .avgPrice:
-            let avgPrice = globalPos.hasCostBasis ? globalPos.avgPrice : 0
-            Text(globalPos.hasCostBasis ? StorageService.formatCompactNumber(avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: globalPos.symbol, price: avgPrice)) : "—")
+            let avgPrice = aggregate.hasCostBasis ? aggregate.avgPrice : 0
+            Text(aggregate.hasCostBasis ? StorageService.formatCompactNumber(avgPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: avgPrice)) : "—")
                 .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
@@ -1372,10 +1133,10 @@ struct PortfolioQuoteRow: View {
                 .frame(width: PortfolioCol.avgPrice, alignment: .trailing)
 
         case .cost:
-            if globalPos.hasCostBasis {
+            if aggregate.hasCostBasis {
                 Text(StorageService.formatCompactAmount(
-                    globalPos.cost,
-                    symbol: globalPos.priceSymbol,
+                    aggregate.nativeCost,
+                    symbol: aggregate.nativeCurrencySymbol,
                     signed: false,
                     decimals: storageService.amountDecimals
                 ))
@@ -1477,46 +1238,32 @@ struct PortfolioQuoteRow: View {
             .frame(width: PortfolioCol.change, alignment: .trailing)
 
         case .value:
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactAmount(
-                    globalPos.valueLocal,
-                    symbol: globalPos.priceSymbol,
-                    signed: false,
-                    decimals: storageService.amountDecimals
-                ))
-                .font(metricFont)
-                .fontWeight(.medium)
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-
-                Text(StorageService.formatCompactAmount(
-                    globalPos.todayPnl,
-                    symbol: globalPos.priceSymbol,
-                    signed: true,
-                    decimals: storageService.amountDecimals
-                ))
-                .font(metricCaption2Font)
-                .fontWeight(.semibold)
-                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-            }
+            Text(StorageService.formatCompactAmount(
+                aggregate.nativeValue,
+                symbol: aggregate.nativeCurrencySymbol,
+                signed: false,
+                decimals: storageService.amountDecimals
+            ))
+            .font(metricFont)
+            .fontWeight(.medium)
+            .foregroundColor(.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .frame(width: PortfolioCol.value, alignment: .trailing)
 
         case .totalPnl:
             VStack(alignment: .trailing, spacing: 1) {
-                if globalPos.hasCostBasis {
-                    Text(StorageService.formatCompactAmount(globalPos.pnl, symbol: globalPos.priceSymbol, signed: true, decimals: storageService.amountDecimals))
+                if aggregate.hasCostBasis {
+                    Text(StorageService.formatCompactAmount(aggregate.nativePnl, symbol: aggregate.nativeCurrencySymbol, signed: true, decimals: storageService.amountDecimals))
                         .font(metricFont)
                         .fontWeight(.medium)
-                        .foregroundColor(globalPos.pnl >= 0 ? DS.up : DS.down)
+                        .foregroundColor(aggregate.nativePnl >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", globalPos.pct))
+                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", aggregate.nativePnlPercent))
                         .font(metricCaption2Font)
                         .fontWeight(.semibold)
-                        .foregroundColor(globalPos.pct >= 0 ? DS.up : DS.down)
+                        .foregroundColor(aggregate.nativePnlPercent >= 0 ? DS.up : DS.down)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 } else {
@@ -1533,35 +1280,23 @@ struct PortfolioQuoteRow: View {
             .frame(width: PortfolioCol.totalPnl, alignment: .trailing)
 
         case .todayPnl:
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(StorageService.formatCompactAmount(
-                    globalPos.todayPnl,
-                    symbol: globalPos.priceSymbol,
-                    signed: true,
-                    decimals: storageService.amountDecimals
-                ))
-                .font(metricFont)
-                .fontWeight(.medium)
-                .foregroundColor(globalPos.todayPnl > 0 ? DS.up : (globalPos.todayPnl < 0 ? DS.down : DS.inkTertiary))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-
-                if let quote {
-                    let isCrypto = storageService.type(for: quote.symbol) == "CRYPTOCURRENCY" || HomeAIInsightService.cryptoBaseAsset(for: quote.symbol) != nil
-                    let isMarketActive = MarketCategory.isTradingDay(symbol: quote.symbol, quote: quote, isCrypto: isCrypto)
-                    Text(String(format: "%+.\(storageService.percentDecimals)f%%", quote.changePercent))
-                        .font(metricSubFont)
-                        .fontWeight(.semibold)
-                        .foregroundColor(isMarketActive ? (quote.isPositive ? DS.up : DS.down) : DS.inkTertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-            }
+            Text(StorageService.formatCompactAmount(
+                aggregate.todayPnl,
+                symbol: aggregate.nativeCurrencySymbol,
+                signed: true,
+                decimals: storageService.amountDecimals
+            ))
+            .font(metricFont)
+            .fontWeight(.medium)
+            .foregroundColor(aggregate.todayPnl > 0 ? DS.up : (aggregate.todayPnl < 0 ? DS.down : DS.inkTertiary))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .frame(width: PortfolioCol.todayPnl, alignment: .trailing)
 
         case .shares:
-            let qtyDecimals = globalPos.shares.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (globalPos.shares < 1 ? 4 : 2)
-            Text(StorageService.formatNumber(globalPos.shares, decimals: qtyDecimals))
+            let qty = aggregate.totalQuantity
+            let qtyDecimals = qty.truncatingRemainder(dividingBy: 1) == 0 ? 0 : (abs(qty) < 1 ? 4 : 2)
+            Text(StorageService.formatNumber(qty, decimals: qtyDecimals))
                 .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
@@ -1570,7 +1305,7 @@ struct PortfolioQuoteRow: View {
                 .frame(width: PortfolioCol.shares, alignment: .trailing)
 
         case .lots:
-            Text("\(globalPos.lotsCount)")
+            Text("\(aggregate.lotsCount)")
                 .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.primary)
@@ -1578,7 +1313,7 @@ struct PortfolioQuoteRow: View {
                 .frame(width: PortfolioCol.lots, alignment: .trailing)
 
         case .weight:
-            Text(String(format: "%.1f%%", globalPos.weight))
+            Text(String(format: "%.1f%%", weight))
                 .font(metricFont)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
@@ -1634,18 +1369,18 @@ struct PortfolioQuoteRow: View {
             }
 
         case .volume50d:
-            VolumeSparkline(symbol: globalPos.symbol, mode: .days50)
+            VolumeSparkline(symbol: symbol, mode: .days50)
                 .frame(width: PortfolioCol.volume, alignment: .trailing)
 
         case .volume50w:
-            VolumeSparkline(symbol: globalPos.symbol, mode: .weeks50)
+            VolumeSparkline(symbol: symbol, mode: .weeks50)
                 .frame(width: PortfolioCol.volume, alignment: .trailing)
         }
     }
 
     @ViewBuilder
     private func valuationText(_ value: Double?, isPercent: Bool) -> some View {
-        if let value, value.isFinite {
+        if let value, value.isFinite, (isPercent ? value >= 0 : value > 0) {
             let str = isPercent ? "\(StorageService.formatNumber(value, decimals: 2))%" : StorageService.formatNumber(value, decimals: 2)
             Text(str)
                 .font(metricFont)

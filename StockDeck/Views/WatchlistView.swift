@@ -57,7 +57,6 @@ struct WatchlistView: View {
     @State private var targetSymbol: TargetSheetItem? = nil
     @State private var alertTarget: TargetSheetItem? = nil
     @State private var confirmDeleteWatchlist: Watchlist? = nil
-    @State private var confirmRemoveSymbol: String? = nil
 
     private var selectedMetrics: [WatchlistMetric] {
         storageService.watchlistMetrics
@@ -433,17 +432,6 @@ struct WatchlistView: View {
             } message: {
                 Text("Are you sure you want to delete watchlist '\(confirmDeleteWatchlist?.name ?? "")'?")
             }
-            .alert("Remove Symbol", isPresented: Binding(get: { confirmRemoveSymbol != nil }, set: { if !$0 { confirmRemoveSymbol = nil } })) {
-                Button("Cancel", role: .cancel) { confirmRemoveSymbol = nil }
-                Button("Remove", role: .destructive) {
-                    if let sym = confirmRemoveSymbol {
-                        storageService.removeFromWatchlist(sym)
-                    }
-                    confirmRemoveSymbol = nil
-                }
-            } message: {
-                Text("Are you sure you want to remove \(confirmRemoveSymbol ?? "") from '\(storageService.currentWatchlist.name)'?")
-            }
             .onChange(of: draggingSymbol) { _, newValue in
                 if newValue == nil {
                     previewSymbolOrder = []
@@ -721,7 +709,7 @@ struct WatchlistView: View {
         }
         Divider()
         Button(role: .destructive) {
-            confirmRemoveSymbol = symbol
+            storageService.removeFromWatchlist(symbol)
         } label: {
             Label("Remove from Watchlist", systemImage: "trash")
         }
