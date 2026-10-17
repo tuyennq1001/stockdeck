@@ -8,10 +8,29 @@ final class DetailChartHistoryTests: XCTestCase {
     }
 
     func testRangeKeepsBaselineAndPrefersFresherDailyHistory() {
-        let daily = [point(12, 10), point(8, 20), point(3, 30), point(0, 40)]
-        let input = PriceChartCard.HistoryInput(symbol: "VGT", range: .week,
-            daily: daily, watchlist: [point(12, 1), point(9, 2)], full: [], intraday: [])
+        let daily = [point(60, 5), point(40, 10), point(20, 20), point(0, 30)]
+        let input = PriceChartCard.HistoryInput(symbol: "VGT", range: .month,
+            daily: daily, watchlist: [point(60, 1), point(9, 2)], full: [], intraday: [])
         XCTAssertEqual(PriceChartCard.computeHistory(input, now: now), Array(daily.dropFirst()))
+    }
+
+    func testSevenYearsAndTenYearsRanges() {
+        XCTAssertEqual(PriceChartCard.ChartRange.sevenYears.rawValue, "7Y")
+        XCTAssertEqual(PriceChartCard.ChartRange.tenYears.rawValue, "10Y")
+        XCTAssertEqual(PriceChartCard.ChartRange.sevenYears.days, 365 * 7)
+        XCTAssertEqual(PriceChartCard.ChartRange.tenYears.days, 365 * 10)
+        XCTAssertFalse(PriceChartCard.ChartRange.allCases.contains(where: { $0.rawValue == "7D" }))
+        XCTAssertEqual(PriceChartCard.ChartRange.sevenYears.changeLabel(isVi: false), "past 7Y")
+        XCTAssertEqual(PriceChartCard.ChartRange.sevenYears.changeLabel(isVi: true), "7 năm qua")
+        XCTAssertEqual(PriceChartCard.ChartRange.tenYears.changeLabel(isVi: false), "past 10Y")
+        XCTAssertEqual(PriceChartCard.ChartRange.tenYears.changeLabel(isVi: true), "10 năm qua")
+
+        let cal = Calendar.current
+        let testDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let expected7Y = cal.date(byAdding: .year, value: -7, to: testDate)
+        let expected10Y = cal.date(byAdding: .year, value: -10, to: testDate)
+        XCTAssertEqual(PriceChartCard.ChartRange.sevenYears.startDate(from: testDate, calendar: cal), expected7Y)
+        XCTAssertEqual(PriceChartCard.ChartRange.tenYears.startDate(from: testDate, calendar: cal), expected10Y)
     }
 
     func testAllRangeUsesFullHistoryAndDetectsMiddlePointChanges() {
