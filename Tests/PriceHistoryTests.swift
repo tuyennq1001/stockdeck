@@ -103,21 +103,54 @@ final class PriceHistoryTests: XCTestCase {
         XCTAssertNil(points[2].volume)
     }
 
-    func testDeriveMonthlyAggregatesVolume() {
+    func testDeriveMonthlyAggregatesVolumeAndPreservesOHLC() {
         let cal = makeCalendar()
         let points = [
-            PricePoint(date: date(2026, 1, 5, calendar: cal), close: 100, volume: 500),
-            PricePoint(date: date(2026, 1, 20, calendar: cal), close: 110, volume: 300),
-            PricePoint(date: date(2026, 2, 3, calendar: cal), close: 115, volume: 400),
-            PricePoint(date: date(2026, 2, 27, calendar: cal), close: 120, volume: 600),
+            PricePoint(date: date(2026, 1, 5, calendar: cal), close: 100, open: 98, high: 105, low: 95, volume: 500),
+            PricePoint(date: date(2026, 1, 20, calendar: cal), close: 110, open: 101, high: 115, low: 100, volume: 300),
+            PricePoint(date: date(2026, 2, 3, calendar: cal), close: 115, open: 112, high: 118, low: 110, volume: 400),
+            PricePoint(date: date(2026, 2, 27, calendar: cal), close: 120, open: 116, high: 125, low: 114, volume: 600),
         ]
         let monthly = PriceHistory.deriveMonthly(from: points, calendar: cal)
 
         XCTAssertEqual(monthly.count, 2)
+        XCTAssertEqual(monthly[0].open, 98)
+        XCTAssertEqual(monthly[0].high, 115)
+        XCTAssertEqual(monthly[0].low, 95)
         XCTAssertEqual(monthly[0].close, 110, accuracy: 0.001)
         XCTAssertEqual(monthly[0].volume, 800)
+
+        XCTAssertEqual(monthly[1].open, 112)
+        XCTAssertEqual(monthly[1].high, 125)
+        XCTAssertEqual(monthly[1].low, 110)
         XCTAssertEqual(monthly[1].close, 120, accuracy: 0.001)
         XCTAssertEqual(monthly[1].volume, 1000)
+    }
+
+    func testPointsSanitizesUnadjustedSplitAnomalies() {
+        // Simulates Yahoo's corrupted monthly bar for VGT where high was left 568.07 unadjusted while close was 73.315
+        let timestamps = [1725148800]
+        let closes: [Double?] = [73.315]
+        let opens: [Double?] = [568.07]
+        let highs: [Double?] = [568.07]
+        let lows: [Double?] = [66.36]
+
+        let points = PriceHistory.points(
+            timestamps: timestamps,
+            closes: closes,
+            opens: opens,
+            highs: highs,
+            lows: lows
+        )
+
+        XCTAssertEqual(points.count, 1)
+        let pt = points[0]
+        XCTAssertEqual(pt.close, 73.315, accuracy: 0.001)
+        // High and open were > 3x close, so they must be clamped to close instead of 568.07
+        XCTAssertEqual(try XCTUnwrap(pt.high), 73.315, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(pt.open), 73.315, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(pt.low), 66.36, accuracy: 0.001)
+        XCTAssertEqual(pt.effectiveHigh, 73.315, accuracy: 0.001)
     }
 
     func testVolumeMetricsCategoriesAndTitles() throws {

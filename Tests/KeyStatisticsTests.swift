@@ -467,5 +467,71 @@ final class KeyStatisticsTests: XCTestCase {
         XCTAssertTrue(StockService.isVietnameseStock("UPINDEX"))
         XCTAssertTrue(StockService.isVietnameseStock("SHS"))
     }
+
+    func testWatchlistAndStorageServiceFromAthSanitizesSplitAnomaly() {
+        // VGT case: current price 118.83, true ATH 130.66, corrupted spike in history 568.07
+        let corruptBar = PricePoint(
+            date: Date(timeIntervalSince1970: 1725148800),
+            close: 73.315,
+            open: 568.07,
+            high: 568.07,
+            low: 66.36
+        )
+        let trueAthBar = PricePoint(
+            date: Date(timeIntervalSince1970: 1728000000),
+            close: 130.0,
+            open: 129.0,
+            high: 130.66,
+            low: 128.5
+        )
+        let histMax = [corruptBar, trueAthBar]
+
+        let q = StockQuote(
+            symbol: "VGT",
+            name: "Vanguard Information Tech ETF",
+            price: 118.83,
+            change: -2.0,
+            changePercent: -1.65,
+            currency: "USD",
+            fiftyTwoWeekHigh: 130.66,
+            fiftyTwoWeekLow: 83.09
+        )
+
+        // Test sorting by .fromAth and .ath via StorageService.sortWatchlistSymbols
+        let sortedAth = StorageService.sortWatchlistSymbols(
+            ["VGT"],
+            key: .metric(.ath),
+            ascending: true,
+            quotes: ["VGT": q],
+            history: [:],
+            priceHistoryMax: ["VGT": histMax]
+        )
+        XCTAssertEqual(sortedAth, ["VGT"])
+
+        // Test WatchRow metricValue
+        let row = WatchlistWideView.WatchRow(
+            id: "VGT", order: 0, symbol: "VGT", name: "VGT", currency: "USD",
+            isIndex: false, rate: 1.0, price: 118.83, extPrice: nil, extChangePercent: nil, extLabel: "",
+            change: -2.0, changePercent: -1.65,
+            oneMonthChangePercent: nil, threeMonthChangePercent: nil, sixMonthChangePercent: nil,
+            ytdChangePercent: nil, oneYearChangePercent: nil, twoYearChangePercent: nil,
+            threeYearChangePercent: nil, fiveYearChangePercent: nil, tenYearChangePercent: nil,
+            allTimeHigh: 130.66,
+            allTimeLow: 83.09,
+            fromAthPercent: (118.83 - 130.66) / 130.66 * 100,
+            fromAtlPercent: nil,
+            history: [],
+            allTimeHistory: histMax,
+            loaded: true,
+            quote: q,
+            marketCap: nil,
+            buyTarget: nil,
+            toBuyTargetPercent: nil,
+            isInBuyZone: false,
+            isCrypto: false
+        )
+        XCTAssertEqual(row.allTimeHigh, 130.66)
+        XCTAssertEqual(try XCTUnwrap(row.fromAthPercent), -9.054, accuracy: 0.01)
+    }
 }
 

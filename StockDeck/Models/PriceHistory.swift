@@ -45,7 +45,8 @@ enum PriceHistory {
     }
 
     /// Pairs the v8 chart `timestamp` array with OHLC arrays into
-    /// chronological price points, skipping nil holes.
+    /// chronological price points, skipping nil holes. Sanitizes corrupt
+    /// single-bar split anomalies where high or open was left unadjusted.
     static func points(timestamps: [Int], closes: [Double?], opens: [Double?]? = nil, highs: [Double?]? = nil, lows: [Double?]? = nil, volumes: [Double?]? = nil) -> [PricePoint] {
         let count = timestamps.count
         var result: [PricePoint] = []
@@ -57,13 +58,20 @@ enum PriceHistory {
         let volsArr = volumes ?? []
 
         for i in 0..<count {
-            guard i < closes.count, let close = closes[i] else { continue }
+            guard i < closes.count, let close = closes[i], close.isFinite, close > 0 else { continue }
             let ts = timestamps[i]
             let date = Date(timeIntervalSince1970: TimeInterval(ts))
-            let open = i < opensArr.count ? opensArr[i] : nil
-            let high = i < highsArr.count ? highsArr[i] : nil
-            let low = i < lowsArr.count ? lowsArr[i] : nil
+            var open = i < opensArr.count ? opensArr[i] : nil
+            var high = i < highsArr.count ? highsArr[i] : nil
+            var low = i < lowsArr.count ? lowsArr[i] : nil
             let volume = i < volsArr.count ? volsArr[i] : nil
+
+            // Sanitize unadjusted split anomalies from Yahoo aggregate bars:
+            // if high or open is > 3.0x close (or low is < 0.25x close) while close is consistent,
+            // fall back to close so corrupted split multiples do not corrupt ATH/ATL.
+            if let h = high, h > close * 3.0 { high = close }
+            if let o = open, o > close * 3.0 { open = close }
+            if let l = low, l > 0, l < close * 0.25 { low = close }
 
             result.append(PricePoint(date: date, close: close, open: open, high: high, low: low, volume: volume))
         }
@@ -97,25 +105,43 @@ enum PriceHistory {
         return (currentPrice - baseline.close) / baseline.close * 100
     }
 
-    /// Resamples a daily (or finer) close series into one point per calendar
-    /// month — the last close of the month, dated at the month's start. This is
-    /// the same shape Yahoo's `interval=1mo` bars produce, so the full-history
-    /// series used by the "All" / 3Y / 5Y chart ranges and the long performance
-    /// periods can be derived locally from the 10-year daily series instead of
-    /// issuing a second network request.
+    /// Resamples a daily (or finer) OHLC series into one point per calendar month.
+    /// Preserves the true monthly open (first day), high (monthly max),
+    /// low (monthly min), close (last day), and total volume.
     static func deriveMonthly(from daily: [PricePoint], calendar: Calendar = .current) -> [PricePoint] {
         let sorted = daily.sorted { $0.date < $1.date }
-        var lastCloseByMonth: [Date: Double] = [:]
-        var volumeByMonth: [Date: Double] = [:]
-        for p in sorted where p.close.isFinite {
+        struct MonthlyBucket {
+            var open: Double?
+            var high: Double
+            var low: Double
+            var close: Double
+            var volume: Double?
+        }
+        var buckets: [Date: MonthlyBucket] = [:]
+        for p in sorted where p.close.isFinite && p.close > 0 {
             let monthStart = calendar.dateInterval(of: .month, for: p.date)?.start
                 ?? calendar.startOfDay(for: p.date)
-            lastCloseByMonth[monthStart] = p.close
-            if let v = p.volume, v > 0 {
-                volumeByMonth[monthStart, default: 0] += v
+            let effHigh = p.effectiveHigh
+            let effLow = p.effectiveLow
+            if var bucket = buckets[monthStart] {
+                bucket.high = max(bucket.high, effHigh)
+                bucket.low = min(bucket.low, effLow)
+                bucket.close = p.close
+                if let v = p.volume, v > 0 {
+                    bucket.volume = (bucket.volume ?? 0) + v
+                }
+                buckets[monthStart] = bucket
+            } else {
+                buckets[monthStart] = MonthlyBucket(
+                    open: p.open ?? p.close,
+                    high: effHigh,
+                    low: effLow,
+                    close: p.close,
+                    volume: p.volume
+                )
             }
         }
-        return lastCloseByMonth.sorted { $0.key < $1.key }
-            .map { PricePoint(date: $0.key, close: $0.value, volume: volumeByMonth[$0.key]) }
+        return buckets.sorted { $0.key < $1.key }
+            .map { PricePoint(date: $0.key, close: $0.value.close, open: $0.value.open, high: $0.value.high, low: $0.value.low, volume: $0.value.volume) }
     }
 }

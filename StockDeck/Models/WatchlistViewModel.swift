@@ -337,12 +337,30 @@ final class WatchlistViewModel {
             // Single-pass ATH & ATL calculation (zero allocations)
             var histHigh: Double? = nil
             var histLow: Double? = nil
-            for pt in allTimeHistory {
+            let pointsToScan = allTimeHistory.isEmpty ? history : allTimeHistory
+            for pt in pointsToScan {
                 if Task.isCancelled { return nil }
-                let h = pt.effectiveHigh
-                let l = pt.effectiveLow
+                // Guard against unadjusted split spike anomalies in historical data
+                let close = pt.close
+                let rawHigh = pt.effectiveHigh
+                let rawLow = pt.effectiveLow
+                let h = (close > 0 && rawHigh > close * 3.0) ? close : rawHigh
+                let l = (close > 0 && rawLow > 0 && rawLow < close * 0.25) ? close : rawLow
                 if histHigh == nil || h > histHigh! { histHigh = h }
                 if histLow == nil || l < histLow! { histLow = l }
+            }
+            // If allTimeHistory was used, also check high/low of recent 10y daily history for intraday precision
+            if !allTimeHistory.isEmpty {
+                for pt in history {
+                    if Task.isCancelled { return nil }
+                    let close = pt.close
+                    let rawHigh = pt.effectiveHigh
+                    let rawLow = pt.effectiveLow
+                    let h = (close > 0 && rawHigh > close * 3.0) ? close : rawHigh
+                    let l = (close > 0 && rawLow > 0 && rawLow < close * 0.25) ? close : rawLow
+                    if histHigh == nil || h > histHigh! { histHigh = h }
+                    if histLow == nil || l < histLow! { histLow = l }
+                }
             }
             
             let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, regularPrice)

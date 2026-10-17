@@ -1407,9 +1407,20 @@ class StorageService: ObservableObject {
                     return tenYearStart.flatMap { PriceHistory.percentChange(points: histMax.isEmpty ? hist : histMax, currentPrice: regularPrice, since: $0) }
                 case .ath:
                     var histHigh: Double? = nil
-                    for p in histMax {
-                        let h = p.effectiveHigh
+                    let points = histMax.isEmpty ? hist : histMax
+                    for p in points {
+                        let c = p.close
+                        let rawHigh = p.effectiveHigh
+                        let h = (c > 0 && rawHigh > c * 3.0) ? c : rawHigh
                         if histHigh == nil || h > histHigh! { histHigh = h }
+                    }
+                    if !histMax.isEmpty {
+                        for p in hist {
+                            let c = p.close
+                            let rawHigh = p.effectiveHigh
+                            let h = (c > 0 && rawHigh > c * 3.0) ? c : rawHigh
+                            if histHigh == nil || h > histHigh! { histHigh = h }
+                        }
                     }
                     let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
                     if let h = histHigh { return max(h, quoteHigh) * pRate }
@@ -1417,9 +1428,20 @@ class StorageService: ObservableObject {
                     return nil
                 case .atl:
                     var histLow: Double? = nil
-                    for p in histMax {
-                        let l = p.effectiveLow
+                    let points = histMax.isEmpty ? hist : histMax
+                    for p in points {
+                        let c = p.close
+                        let rawLow = p.effectiveLow
+                        let l = (c > 0 && rawLow > 0 && rawLow < c * 0.25) ? c : rawLow
                         if histLow == nil || l < histLow! { histLow = l }
+                    }
+                    if !histMax.isEmpty {
+                        for p in hist {
+                            let c = p.close
+                            let rawLow = p.effectiveLow
+                            let l = (c > 0 && rawLow > 0 && rawLow < c * 0.25) ? c : rawLow
+                            if histLow == nil || l < histLow! { histLow = l }
+                        }
                     }
                     let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
                     if let l = histLow, let ql = qLow, ql > 0 { return min(l, ql) * pRate }
@@ -1428,9 +1450,20 @@ class StorageService: ObservableObject {
                     return nil
                 case .fromAth:
                     var histHigh: Double? = nil
-                    for p in histMax {
-                        let h = p.effectiveHigh
+                    let points = histMax.isEmpty ? hist : histMax
+                    for p in points {
+                        let c = p.close
+                        let rawHigh = p.effectiveHigh
+                        let h = (c > 0 && rawHigh > c * 3.0) ? c : rawHigh
                         if histHigh == nil || h > histHigh! { histHigh = h }
+                    }
+                    if !histMax.isEmpty {
+                        for p in hist {
+                            let c = p.close
+                            let rawHigh = p.effectiveHigh
+                            let h = (c > 0 && rawHigh > c * 3.0) ? c : rawHigh
+                            if histHigh == nil || h > histHigh! { histHigh = h }
+                        }
                     }
                     let quoteHigh = max(q?.fiftyTwoWeekHigh ?? 0, q?.price ?? 0)
                     let ath: Double?
@@ -1443,9 +1476,20 @@ class StorageService: ObservableObject {
                     return min(0.0, (priceConverted - ath) / ath * 100)
                 case .fromAtl:
                     var histLow: Double? = nil
-                    for p in histMax {
-                        let l = p.effectiveLow
+                    let points = histMax.isEmpty ? hist : histMax
+                    for p in points {
+                        let c = p.close
+                        let rawLow = p.effectiveLow
+                        let l = (c > 0 && rawLow > 0 && rawLow < c * 0.25) ? c : rawLow
                         if histLow == nil || l < histLow! { histLow = l }
+                    }
+                    if !histMax.isEmpty {
+                        for p in hist {
+                            let c = p.close
+                            let rawLow = p.effectiveLow
+                            let l = (c > 0 && rawLow > 0 && rawLow < c * 0.25) ? c : rawLow
+                            if histLow == nil || l < histLow! { histLow = l }
+                        }
                     }
                     let qLow = q?.fiftyTwoWeekLow != nil ? min(q!.fiftyTwoWeekLow!, q?.price ?? Double.greatestFiniteMagnitude) : q?.price
                     let atl: Double?
