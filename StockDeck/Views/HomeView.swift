@@ -13,11 +13,12 @@ struct HomeView: View {
     @State private var isLoadingInsight = false
     @State private var insightError: String? = nil
 
-    /// Filters by headline, tickers (source + related) and publisher.
+    /// Filters by headline, tickers (source + related) and publisher, sorted newest first.
     private var filteredNews: [NewsArticle] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return stockService.news }
-        return stockService.news.filter { a in
+        let sorted = stockService.news.sorted { $0.publishTime > $1.publishTime }
+        guard !q.isEmpty else { return sorted }
+        return sorted.filter { a in
             a.title.lowercased().contains(q)
             || a.publisher.lowercased().contains(q)
             || (a.sourceSymbol?.lowercased().contains(q) ?? false)
