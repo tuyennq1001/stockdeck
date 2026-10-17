@@ -495,6 +495,18 @@ private struct SettingsContentView: View {
             SettingToggle("Extended hours (Pre/Post)",
                           caption: "Show pre-market and after-hours prices",
                           isOn: $storageService.showExtendedHours)
+            SettingDivider()
+            SettingToggle("Show insider trades on chart",
+                          caption: "Plot Form 4 buy/sell transactions on historical price charts",
+                          isOn: $storageService.showInsiderMarkers)
+            SettingDivider()
+            SettingToggle("Exclude Rule 10b5-1 plans",
+                          caption: "Omit pre-scheduled automated sales from charts, sentiment, and trade logs",
+                          isOn: $storageService.excludeInsider10b51)
+            SettingDivider()
+            SettingToggle("Open-market transactions only",
+                          caption: "Focus on open-market buys and sells; hide stock grants, awards, and option exercises",
+                          isOn: $storageService.insiderOpenMarketOnly)
         }
     }
 

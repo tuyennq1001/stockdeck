@@ -21,6 +21,18 @@
 "Show extended hours (Pre/Post)" = "Show extended hours (Pre/Post)";
 "Show pre-market and after-hours prices" = "Show pre-market and after-hours prices";
 
+/* Insider Trading */
+"Insider Trading" = "Insider Trading";
+"Show insider trades on chart" = "Show insider trades on chart";
+"Plot Form 4 buy/sell transactions on historical price charts" = "Plot Form 4 buy/sell transactions on historical price charts";
+"Plot buy/sell markers on historical price charts" = "Plot buy/sell markers on historical price charts";
+"Exclude Rule 10b5-1 plans" = "Exclude Rule 10b5-1 plans";
+"Omit pre-scheduled automated sales from charts, sentiment, and trade logs" = "Omit pre-scheduled automated sales from charts, sentiment, and trade logs";
+"Omit pre-scheduled automated sales from sentiment and logs" = "Omit pre-scheduled automated sales from sentiment and logs";
+"Open-market transactions only" = "Open-market transactions only";
+"Focus on open-market buys and sells; hide stock grants, awards, and option exercises" = "Focus on open-market buys and sells; hide stock grants, awards, and option exercises";
+"Focus on open-market purchases and sales, excluding grants/awards" = "Focus on open-market purchases and sales, excluding grants/awards";
+
 /* Watchlist display */
 "Watchlist Display" = "Watchlist Display";
 "Company name" = "Company name";

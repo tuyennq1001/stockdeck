@@ -29,6 +29,18 @@
 "Show pre-market and after-hours prices" = "Hiển thị giá trước giờ mở cửa và sau giờ đóng cửa";
 "Extended hours (Pre/Post)" = "Ngoài giờ (Trước/Sau phiên)";
 
+/* Insider Trading */
+"Insider Trading" = "Giao dịch nội bộ";
+"Show insider trades on chart" = "Hiện giao dịch nội bộ trên biểu đồ";
+"Plot Form 4 buy/sell transactions on historical price charts" = "Vẽ các điểm mua/bán theo Form 4 lên biểu đồ lịch sử giá";
+"Plot buy/sell markers on historical price charts" = "Vẽ điểm mua/bán lên biểu đồ lịch sử giá";
+"Exclude Rule 10b5-1 plans" = "Loại trừ kế hoạch Rule 10b5-1";
+"Omit pre-scheduled automated sales from charts, sentiment, and trade logs" = "Bỏ qua các lệnh bán định kỳ tự động khỏi biểu đồ, chỉ số tâm lý và nhật ký giao dịch";
+"Omit pre-scheduled automated sales from sentiment and logs" = "Bỏ qua các lệnh bán định kỳ tự động khỏi chỉ số tâm lý và nhật ký";
+"Open-market transactions only" = "Chỉ tính giao dịch mở (Open-market)";
+"Focus on open-market buys and sells; hide stock grants, awards, and option exercises" = "Tập trung vào giao dịch mua/bán khớp lệnh trên sàn; ẩn thưởng cổ phiếu và thực hiện quyền chọn";
+"Focus on open-market purchases and sales, excluding grants/awards" = "Tập trung vào giao dịch mua/bán khớp lệnh trên sàn, loại bỏ cổ phiếu thưởng";
+
 /* Watchlist display */
 "Watchlist Display" = "Hiển thị danh sách";
 "Company name" = "Tên công ty";

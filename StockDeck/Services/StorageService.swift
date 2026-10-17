@@ -203,6 +203,12 @@ class StorageService: ObservableObject {
     @Published var showInsiderMarkers: Bool = true {
         didSet { scheduleSave() }
     }
+    @Published var excludeInsider10b51: Bool = true {
+        didSet { scheduleSave() }
+    }
+    @Published var insiderOpenMarketOnly: Bool = true {
+        didSet { scheduleSave() }
+    }
 
     // MARK: - Appearance & tabs (issue #11)
     /// "system" | "light" | "dark". The 1.9.0 redesign forced light; this restores
@@ -2366,6 +2372,8 @@ class StorageService: ObservableObject {
         show52WeekBar = true
         showAbsoluteChange = false
         showInsiderMarkers = true
+        excludeInsider10b51 = true
+        insiderOpenMarketOnly = true
         menuBarDisplay = "pnl"
         gainColorHex = ""
         lossColorHex = ""
@@ -2487,6 +2495,8 @@ class StorageService: ObservableObject {
         var show52WeekBar: Bool?
         var showAbsoluteChange: Bool?
         var showInsiderMarkers: Bool?
+        var excludeInsider10b51: Bool?
+        var insiderOpenMarketOnly: Bool?
         var portfolioNotifications: [String: [PortfolioNotification]]?
         var portfolioSnapshots: [String: [PortfolioSnapshot]]?
         var portfolioChartRanges: [String: String]?
@@ -2559,6 +2569,8 @@ class StorageService: ObservableObject {
             show52WeekBar: show52WeekBar,
             showAbsoluteChange: showAbsoluteChange,
             showInsiderMarkers: showInsiderMarkers,
+            excludeInsider10b51: excludeInsider10b51,
+            insiderOpenMarketOnly: insiderOpenMarketOnly,
             portfolioNotifications: portfolioNotifications,
             portfolioSnapshots: portfolioSnapshots,
             portfolioChartRanges: portfolioChartRanges,
@@ -2713,6 +2725,8 @@ class StorageService: ObservableObject {
         show52WeekBar = decoded.show52WeekBar ?? true
         showAbsoluteChange = decoded.showAbsoluteChange ?? false
         showInsiderMarkers = decoded.showInsiderMarkers ?? true
+        excludeInsider10b51 = decoded.excludeInsider10b51 ?? true
+        insiderOpenMarketOnly = decoded.insiderOpenMarketOnly ?? true
         fontSizeLevel = decoded.fontSizeLevel ?? 9
         fontFamily = decoded.fontFamily ?? "Inter Variable"
         appearanceRaw = decoded.appearanceRaw ?? AppearanceMode.default.rawValue

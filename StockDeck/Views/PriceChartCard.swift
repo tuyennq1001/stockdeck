@@ -151,6 +151,7 @@ struct PriceChartCard: View {
             }
         }
         var count: Int { trades.count }
+        var isRule10b51: Bool { !trades.isEmpty && trades.allSatisfy(\.isRule10b51) }
         var primaryOwner: String { trades.first?.ownerName ?? "Insider" }
         var primaryRole: String { trades.first?.displayRole ?? "Insider" }
     }
@@ -168,8 +169,16 @@ struct PriceChartCard: View {
         guard let firstDate = currentHistory.first?.date, let lastDate = currentHistory.last?.date else { return [] }
         let minDate = min(firstDate, lastDate)
         let maxDate = max(firstDate, lastDate)
-        let raw = insiderService.getTransactions(for: symbol, startDate: minDate, endDate: maxDate, openMarketOnly: true)
-        let trades = raw.filter { $0.shares > 0 && !$0.isPendingPlan && ($0.price > 0 || $0.isVNDisclosure) }
+        let raw = insiderService.getTransactions(
+            for: symbol,
+            startDate: minDate,
+            endDate: maxDate,
+            openMarketOnly: storageService.insiderOpenMarketOnly
+        )
+        var trades = raw.filter { $0.shares > 0 && !$0.isPendingPlan && ($0.price > 0 || $0.isVNDisclosure) }
+        if storageService.excludeInsider10b51 {
+            trades = trades.filter { !$0.isRule10b51 }
+        }
         guard !trades.isEmpty else { return [] }
 
         var groups: [String: [InsiderTransaction]] = [:]
@@ -375,15 +384,8 @@ struct PriceChartCard: View {
             }
 
             // Row 2: Range Picker (7D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, All) placed above chart
-            HStack(spacing: 8) {
-                rangePicker
-
-                if hasInsiderChartTrades {
-                    Spacer()
-                    insiderToggleButton
-                }
-            }
-            .padding(.top, 2)
+            rangePicker
+                .padding(.top, 2)
 
             // Row 3: Chart.
             PriceChartPlot(currentHistory: currentHistory,
@@ -454,6 +456,12 @@ struct PriceChartCard: View {
         .onChange(of: storageService.showInsiderMarkers) { _, _ in
             updateCachedInsiderTrades()
         }
+        .onChange(of: storageService.excludeInsider10b51) { _, _ in
+            updateCachedInsiderTrades()
+        }
+        .onChange(of: storageService.insiderOpenMarketOnly) { _, _ in
+            updateCachedInsiderTrades()
+        }
         .onChange(of: insiderService.transactions[cleanSym]) { _, _ in
             updateCachedInsiderTrades()
         }
@@ -464,30 +472,6 @@ struct PriceChartCard: View {
 
     private var rangePicker: some View {
         SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
-    }
-
-    private var insiderToggleButton: some View {
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                storageService.showInsiderMarkers.toggle()
-            }
-        }) {
-            HStack(spacing: 4) {
-                Image(systemName: storageService.showInsiderMarkers ? "person.badge.shield.checkmark.fill" : "person.badge.shield.checkmark")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Insider")
-                    .font(.inter(11, weight: .semibold, relativeTo: .caption))
-            }
-            .foregroundStyle(storageService.showInsiderMarkers ? .white : DS.inkSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule().fill(storageService.showInsiderMarkers ? DS.brand : DS.cardAlt)
-            )
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .help(storageService.showInsiderMarkers ? "Hide insider trades on chart" : "Show insider trades on chart")
     }
 
     private func chartDomain(using currentHistory: [PricePoint]) -> ClosedRange<Double> {
@@ -860,13 +844,23 @@ struct ChartTooltipWithInsider: View {
                     Circle()
                         .fill(trade.isBuy ? DS.up : DS.down)
                         .frame(width: 6, height: 6)
-                    Text(trade.isBuy ? "BUY" : "SELL")
+                    let isVi = StorageService.shared.appLanguage.lowercased() == "vi"
+                    Text(trade.isBuy ? (isVi ? "MUA" : "BUY") : (isVi ? "BÁN" : "SELL"))
                         .font(.inter(9, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(trade.isBuy ? DS.up : DS.down)
 
+                    if trade.isRule10b51 {
+                        Text("10b5-1")
+                            .font(.inter(8, weight: .bold, relativeTo: .caption2))
+                            .foregroundStyle(DS.brand)
+                            .padding(.horizontal, 3.5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(DS.brand.opacity(0.12)))
+                    }
+
                     let valStr = formatTradeValue(trade.totalValue)
                     if trade.count > 1 {
-                        Text("\(trade.count) Trades: \(valStr)")
+                        Text(isVi ? "\(trade.count) lệnh: \(valStr)" : "\(trade.count) Trades: \(valStr)")
                             .font(.inter(10, weight: .medium, relativeTo: .caption2))
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)

@@ -334,6 +334,20 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                     caption("Show pre-market and after-hours prices")
 
+                    Divider().padding(.vertical, 4)
+
+                    subHeader("Insider Trading")
+                    Toggle("Show insider trades on chart", isOn: $storageService.showInsiderMarkers)
+                        .toggleStyle(.switch)
+                    caption("Plot buy/sell markers on historical price charts")
+
+                    Toggle("Exclude Rule 10b5-1 plans", isOn: $storageService.excludeInsider10b51)
+                        .toggleStyle(.switch)
+                    caption("Omit pre-scheduled automated sales from sentiment and logs")
+
+                    Toggle("Open-market transactions only", isOn: $storageService.insiderOpenMarketOnly)
+                        .toggleStyle(.switch)
+                    caption("Focus on open-market purchases and sales, excluding grants/awards")
                 }
 
                 // MARK: - AI Review
