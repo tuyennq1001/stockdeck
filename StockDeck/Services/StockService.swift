@@ -1798,6 +1798,21 @@ class StockService: ObservableObject {
                 watchlistHistory[symbol] = daily
                 didHeal = true
             }
+
+            // Also heal priceHistoryMax: if priceHistoryMax contains split anomalies or lacks daily precision,
+            // re-derive monthly bars from the clean daily series and preserve pre-10y bars.
+            if !isJapaneseMutualFund(symbol) && !isVietnameseStock(symbol) {
+                let monthlyDerived = PriceHistory.deriveMonthly(from: daily)
+                if !monthlyDerived.isEmpty, let earliest = monthlyDerived.first {
+                    let existingMax = priceHistoryMax[symbol] ?? []
+                    let olderBars = existingMax.filter { $0.date < earliest.date && ($0.high ?? 0) <= ($0.close * 3.0) }
+                    let stitched = olderBars + monthlyDerived
+                    if stitched != existingMax {
+                        priceHistoryMax[symbol] = stitched
+                        didHeal = true
+                    }
+                }
+            }
         }
         for (symbol, spark) in watchlistHistory where !spark.isEmpty {
             if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
@@ -2761,7 +2776,14 @@ class StockService: ObservableObject {
                 scheduleHistoryCacheSave()
                 return
             }
-            priceHistoryMax[symbol] = points
+            if !monthly.isEmpty, let earliestMonthly = monthly.first {
+                // Stitching: Keep clean derived monthly bars for the last 10 years,
+                // and prepend only older monthly bars (strictly before earliestMonthly) from Yahoo.
+                let olderBars = points.filter { $0.date < earliestMonthly.date }
+                priceHistoryMax[symbol] = olderBars + monthly
+            } else {
+                priceHistoryMax[symbol] = points
+            }
             priceHistoryMaxAt[symbol] = Date()
             scheduleHistoryCacheSave()
         } catch {
