@@ -313,7 +313,7 @@ private struct SettingsContentView: View {
                                         .lineLimit(1)
                                         .truncationMode(.middle)
                                 } else {
-                                    Text(verbatim: "Signed in")
+                                    Text("Signed in")
                                         .font(.inter(11.5, weight: .medium, relativeTo: .caption))
                                         .foregroundStyle(DS.ink)
                                         .lineLimit(1)
@@ -350,7 +350,7 @@ private struct SettingsContentView: View {
                                     } else {
                                         Image(systemName: "arrow.up.right.square")
                                             .font(.system(size: 11, weight: .medium))
-                                        Text(verbatim: "Sign in with \(oauthProviderName(for: storageService.aiProvider))")
+                                        Text("Sign in with \(oauthProviderName(for: storageService.aiProvider))")
                                             .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
                                             .lineLimit(1)
                                     }
@@ -379,7 +379,7 @@ private struct SettingsContentView: View {
                                 HStack(spacing: 4) {
                                     Image(systemName: "key")
                                         .font(.system(size: 10, weight: .medium))
-                                    Text(verbatim: "Get free key ↗")
+                                    Text("Get free key ↗")
                                         .font(.inter(10.5, weight: .medium, relativeTo: .caption))
                                         .lineLimit(1)
                                 }

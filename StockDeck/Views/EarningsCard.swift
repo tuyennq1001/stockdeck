@@ -72,14 +72,14 @@ struct EarningsCard: View {
                 HStack(spacing: 5) {
                     Image(systemName: "calendar")
                         .font(.system(size: 11, weight: .semibold))
-                    Text(item.formattedDateRange)
+                    Text(item.formattedDateRange(isVi: isVi))
                         .font(.inter(12, weight: .bold, relativeTo: .subheadline))
                 }
                 .foregroundStyle(DS.ink)
 
                 // Countdown Pill
                 if let days = item.daysUntilNextEarnings {
-                    Text(item.countdownText)
+                    Text(item.countdownText(isVi: isVi))
                         .font(.inter(10, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(countdownForegroundColor(days: days))
                         .padding(.horizontal, 6)
@@ -91,7 +91,7 @@ struct EarningsCard: View {
 
                 // Session Badge (BMO / AMC)
                 if item.session != .unspecified {
-                    Text(item.session.title)
+                    Text(item.session.title(isVi: isVi))
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                         .foregroundStyle(item.session == .bmo ? Color.orange : Color.indigo)
                         .padding(.horizontal, 6)
@@ -116,7 +116,7 @@ struct EarningsCard: View {
             HStack(spacing: 16) {
                 // EPS Consensus
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isVi ? "EPS Dự báo" : "Consensus EPS")
+                    Text(isVi ? "Dự báo EPS" : "EPS Estimate")
                         .font(.inter(10.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
                     if let eps = item.epsEstimate {
@@ -135,7 +135,7 @@ struct EarningsCard: View {
 
                 // Revenue Consensus
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isVi ? "Doanh thu Dự báo" : "Consensus Revenue")
+                    Text(isVi ? "Dự báo Doanh thu" : "Revenue Estimate")
                         .font(.inter(10.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
                     if let rev = item.revenueEstimate {
@@ -154,7 +154,7 @@ struct EarningsCard: View {
                     Divider().frame(height: 24)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isVi ? "Biên độ EPS" : "EPS Range")
+                        Text(isVi ? "Khoảng dự báo EPS" : "EPS Range")
                             .font(.inter(10.5, weight: .medium, relativeTo: .caption2))
                             .foregroundStyle(DS.inkTertiary)
                         Text(String(format: "$%.2f – $%.2f", low, high))
@@ -183,19 +183,22 @@ struct EarningsCard: View {
             }
 
             VStack(spacing: 0) {
-                // Table Header
-                HStack(spacing: 6) {
+                // Table Header (5 distinct columns)
+                HStack(spacing: 4) {
                     Text(isVi ? "Quý" : "Quarter")
-                        .frame(width: 52, alignment: .leading)
-                    Spacer()
-                    Text(isVi ? "Doanh thu / LN" : "Rev / Net")
-                        .frame(width: 82, alignment: .trailing)
-                        .help(isVi ? "Doanh thu & Lợi nhuận ròng (Biên lợi nhuận %)" : "Revenue & Net Income (Net Margin %)")
-                    Text(isVi ? "EPS TT / DB" : "EPS Act / Est")
-                        .frame(width: 88, alignment: .trailing)
-                    Text(isVi ? "Surprise" : "Surprise")
-                        .frame(width: 64, alignment: .trailing)
-                        .help(isVi ? "Tỷ lệ % chênh lệch giữa EPS Thực tế và Dự báo phân tích." : "EPS Actual vs Consensus Estimate Surprise %")
+                        .frame(width: 48, alignment: .leading)
+                    Text(isVi ? "Doanh thu" : "Revenue")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .help(isVi ? "Tổng doanh thu trong quý" : "Quarterly total revenue")
+                    Text(isVi ? "Lợi nhuận" : "Net Income")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .help(isVi ? "Lợi nhuận ròng & Biên lợi nhuận ròng (%)" : "Net Income & Net Profit Margin (%)")
+                    Text(verbatim: "EPS")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .help(isVi ? "Lợi nhuận trên mỗi cổ phiếu (Thực tế so với Dự báo)" : "Earnings Per Share (Actual vs Estimate)")
+                    Text(isVi ? "So với dự báo" : "vs Est.")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .help(isVi ? "Mức vượt hoặc thấp hơn so với dự báo EPS của giới phân tích" : "EPS Actual vs Consensus Estimate Surprise %")
                 }
                 .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
                 .foregroundStyle(DS.inkTertiary)
@@ -223,53 +226,60 @@ struct EarningsCard: View {
 
     @ViewBuilder
     private func quarterRow(_ q: EarningsQuarterResult) -> some View {
-        HStack(spacing: 6) {
-            // Quarter
+        HStack(spacing: 4) {
+            // 1. Quarter
             Text(q.quarterFormatted)
                 .font(.inter(10.5, weight: .bold, relativeTo: .caption2))
                 .foregroundStyle(DS.ink)
-                .frame(width: 52, alignment: .leading)
+                .lineLimit(1)
+                .frame(width: 48, alignment: .leading)
 
-            Spacer()
+            // 2. Revenue
+            Text(q.revenue.map { formatRevenue($0) } ?? "—")
+                .font(.inter(10, weight: .semibold, relativeTo: .caption2))
+                .foregroundStyle(q.revenue != nil ? DS.ink : DS.inkTertiary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Revenue & Net Income
+            // 3. Net Income & Margin
             VStack(alignment: .trailing, spacing: 1) {
-                Text(q.revenue.map { formatRevenue($0) } ?? "—")
-                    .font(.inter(10, weight: .semibold, relativeTo: .caption2))
-                    .foregroundStyle(DS.ink)
-
                 if let net = q.netIncome {
-                    HStack(spacing: 2) {
-                        Text(formatRevenue(net))
+                    Text(formatRevenue(net))
+                        .font(.inter(10, weight: .semibold, relativeTo: .caption2))
+                        .foregroundStyle(net >= 0 ? DS.ink : DS.down)
+                        .lineLimit(1)
+                    if let margin = q.profitMarginFormatted {
+                        Text(isVi ? "Biên \(margin)" : "Margin \(margin)")
                             .font(.inter(8, weight: .medium, relativeTo: .caption2))
-                            .foregroundStyle(DS.inkSecondary)
-                        if let margin = q.profitMarginFormatted {
-                            Text("(\(margin))")
-                                .font(.inter(7.5, weight: .regular, relativeTo: .caption2))
-                                .foregroundStyle(DS.inkTertiary)
-                        }
+                            .foregroundStyle(DS.inkTertiary)
+                            .lineLimit(1)
                     }
+                } else {
+                    Text("—")
+                        .font(.inter(10, weight: .regular, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
                 }
             }
-            .frame(width: 82, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // EPS Actual vs Estimate
-            HStack(spacing: 3) {
+            // 4. EPS Actual vs Estimate
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(q.epsActual.map { String(format: "$%.2f", $0) } ?? "—")
                     .font(.inter(10.5, weight: .bold, relativeTo: .caption2))
                     .foregroundStyle(DS.ink)
-                Text("/")
-                    .font(.inter(9, weight: .regular, relativeTo: .caption2))
-                    .foregroundStyle(DS.inkTertiary)
-                Text(q.epsEstimate.map { String(format: "$%.2f", $0) } ?? "—")
-                    .font(.inter(10, weight: .medium, relativeTo: .caption2))
-                    .foregroundStyle(DS.inkSecondary)
+                    .lineLimit(1)
+                if let est = q.epsEstimate {
+                    Text(isVi ? String(format: "Dự báo: $%.2f", est) : String(format: "Est: $%.2f", est))
+                        .font(.inter(8, weight: .medium, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
+                }
             }
-            .frame(width: 88, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Beat / Miss Badge with tooltip
+            // 5. Beat / Miss Badge with tooltip
             beatMissBadge(q)
-                .frame(width: 64, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -327,7 +337,7 @@ struct EarningsCard: View {
                 .background(Capsule().fill(DS.down.opacity(0.12)))
 
             case .inLine:
-                Text("In-Line")
+                Text(q.beatMiss.title(isVi: isVi))
                     .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
                     .foregroundStyle(DS.inkSecondary)
                     .padding(.horizontal, 4)
@@ -352,6 +362,12 @@ struct EarningsCard: View {
             return String(format: "$%.2fB", val / 1_000_000_000.0)
         } else if val >= 1_000_000 {
             return String(format: "$%.2fM", val / 1_000_000.0)
+        } else if val >= -1_000_000 && val < 0 {
+            return String(format: "-$%.0f", abs(val))
+        } else if val <= -1_000_000_000 {
+            return String(format: "-$%.2fB", abs(val) / 1_000_000_000.0)
+        } else if val <= -1_000_000 {
+            return String(format: "-$%.2fM", abs(val) / 1_000_000.0)
         } else {
             return String(format: "$%.0f", val)
         }
@@ -381,10 +397,15 @@ struct EarningsCard: View {
 /// A compact pill badge displayed next to symbols in tables when an earnings report is approaching.
 struct UpcomingEarningsBadge: View {
     @ObservedObject var earningsService = EarningsService.shared
+    @EnvironmentObject var storageService: StorageService
     let symbol: String
 
     private var cleanSym: String {
         EarningsService.cleanSymbol(symbol)
+    }
+
+    private var isVi: Bool {
+        storageService.appLanguage.lowercased() == "vi"
     }
 
     var body: some View {
@@ -392,7 +413,7 @@ struct UpcomingEarningsBadge: View {
             HStack(spacing: 2.5) {
                 Image(systemName: "calendar")
                     .font(.system(size: 7.5, weight: .bold))
-                Text(item.countdownText.uppercased())
+                Text(item.countdownText(isVi: isVi).uppercased())
                     .font(.inter(7.5, weight: .bold, relativeTo: .caption2))
             }
             .foregroundStyle(item.isToday ? Color.red : Color.orange)
@@ -401,7 +422,7 @@ struct UpcomingEarningsBadge: View {
             .background(
                 Capsule().fill((item.isToday ? Color.red : Color.orange).opacity(0.12))
             )
-            .help("Earnings announcement: \(item.shortDateFormatted)")
+            .help(isVi ? "Công bố BCTC: \(item.shortDateFormatted(isVi: true))" : "Earnings announcement: \(item.shortDateFormatted(isVi: false))")
         }
     }
 }

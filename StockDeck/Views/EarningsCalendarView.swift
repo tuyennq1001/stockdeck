@@ -262,27 +262,27 @@ struct EarningsCalendarView: View {
 
             // Detail: Right Inspector Panel
             inspectorPanel
-                .frame(width: 380)
+                .frame(minWidth: 400, idealWidth: 430, maxWidth: 450)
         }
     }
 
     private var columnHeaderBar: some View {
         HStack(spacing: 8) {
             Text(isVi ? "MÃ & CÔNG TY" : "SYMBOL")
-                .frame(minWidth: 140, alignment: .leading)
+                .frame(minWidth: 115, alignment: .leading)
 
             Spacer()
 
             Text(isVi ? "NGÀY & PHIÊN" : "DATE & SESSION")
-                .frame(minWidth: 95, alignment: .trailing)
+                .frame(minWidth: 85, alignment: .trailing)
 
             Text(isVi ? "DỰ BÁO KỲ TỚI" : "NEXT ESTIMATE")
-                .frame(minWidth: 85, alignment: .trailing)
+                .frame(minWidth: 75, alignment: .trailing)
                 .help(isVi ? "EPS & Doanh thu ước tính đồng thuận từ các nhà phân tích" : "Consensus EPS & Revenue estimates")
 
             Text(isVi ? "QUÝ TRƯỚC" : "PRIOR")
-                .frame(width: 65, alignment: .trailing)
-                .help(isVi ? "Kết quả Surprise (Beat / Miss) của kỳ báo cáo liền trước" : "Surprise % from the most recent reported quarter")
+                .frame(width: 60, alignment: .trailing)
+                .help(isVi ? "Kết quả so với dự báo (Vượt / Hụt) của kỳ báo cáo liền trước" : "Surprise % from the most recent reported quarter")
         }
         .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
         .foregroundStyle(DS.inkTertiary)
@@ -358,14 +358,14 @@ struct EarningsCalendarView: View {
                         .foregroundStyle(DS.inkSecondary)
                         .lineLimit(1)
                 }
-                .frame(minWidth: 140, alignment: .leading)
+                .frame(minWidth: 115, alignment: .leading)
 
                 Spacer()
 
                 // Date & Session
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text(item.shortDateFormatted)
+                        Text(item.shortDateFormatted(isVi: isVi))
                             .font(.inter(12, weight: .semibold, relativeTo: .body))
                             .foregroundStyle(DS.ink)
 
@@ -376,15 +376,17 @@ struct EarningsCalendarView: View {
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(Capsule().fill((item.session == .bmo ? Color.orange : Color.indigo).opacity(0.12)))
-                                .help(item.session == .bmo ? "BMO: Before Market Open (Trước giờ mở cửa)" : "AMC: After Market Close (Sau giờ đóng cửa)")
+                                .help(item.session == .bmo
+                                      ? (isVi ? "BMO: Công bố trước giờ mở cửa (Before Market Open)" : "BMO: Before Market Open")
+                                      : (isVi ? "AMC: Công bố sau giờ đóng cửa (After Market Close)" : "AMC: After Market Close"))
                         }
                     }
 
-                    Text(item.countdownText)
+                    Text(item.countdownText(isVi: isVi))
                         .font(.inter(9.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(countdownColor(item: item))
                 }
-                .frame(minWidth: 95, alignment: .trailing)
+                .frame(minWidth: 85, alignment: .trailing)
 
                 Divider().frame(height: 22)
 
@@ -400,7 +402,7 @@ struct EarningsCalendarView: View {
                     }
 
                     HStack(spacing: 3) {
-                        Text("Rev:")
+                        Text(isVi ? "DT:" : "Rev:")
                             .font(.inter(9.5, weight: .regular, relativeTo: .caption2))
                             .foregroundStyle(DS.inkTertiary)
                         Text(item.revenueEstimate.map { formatRevenue($0) } ?? "—")
@@ -408,15 +410,15 @@ struct EarningsCalendarView: View {
                             .foregroundStyle(DS.inkSecondary)
                     }
                 }
-                .frame(minWidth: 85, alignment: .trailing)
+                .frame(minWidth: 75, alignment: .trailing)
                 .help(isVi ? "Dự báo: EPS \(item.epsEstimate.map { String(format: "$%.2f", $0) } ?? "—"), Doanh thu \(item.revenueEstimate.map { formatRevenue($0) } ?? "—")" : "Consensus: EPS \(item.epsEstimate.map { String(format: "$%.2f", $0) } ?? "—"), Rev \(item.revenueEstimate.map { formatRevenue($0) } ?? "—")")
 
                 // Prior Quarter Surprise Badge (first item in descending chronological order)
                 if let priorQuarter = item.history.first {
                     priorQuarterBadge(priorQuarter)
-                        .frame(width: 65, alignment: .trailing)
+                        .frame(width: 60, alignment: .trailing)
                 } else {
-                    Spacer().frame(width: 65)
+                    Spacer().frame(width: 60)
                 }
             }
             .padding(.horizontal, 10)
@@ -521,12 +523,12 @@ struct EarningsCalendarView: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(DS.brand)
 
-                Text(item.formattedDateRange)
+                Text(item.formattedDateRange(isVi: isVi))
                     .font(.inter(12, weight: .bold, relativeTo: .subheadline))
                     .foregroundStyle(DS.ink)
 
                 if item.daysUntilNextEarnings != nil {
-                    Text(item.countdownText)
+                    Text(item.countdownText(isVi: isVi))
                         .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(countdownColor(item: item))
                         .padding(.horizontal, 5)
@@ -537,7 +539,7 @@ struct EarningsCalendarView: View {
                 Spacer()
 
                 if item.session != .unspecified {
-                    Text(item.session.title)
+                    Text(item.session.title(isVi: isVi))
                         .font(.inter(9.5, weight: .semibold, relativeTo: .caption2))
                         .foregroundStyle(item.session == .bmo ? Color.orange : Color.indigo)
                         .padding(.horizontal, 6)
@@ -553,7 +555,7 @@ struct EarningsCalendarView: View {
             HStack(spacing: 12) {
                 // Consensus EPS
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(isVi ? "EPS Dự báo" : "Consensus EPS")
+                    Text(isVi ? "Dự báo EPS" : "Consensus EPS")
                         .font(.inter(10, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
                     Text(item.epsEstimate.map { String(format: "$%.2f", $0) } ?? "—")
@@ -561,13 +563,13 @@ struct EarningsCalendarView: View {
                         .foregroundStyle(DS.ink)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help(isVi ? "Ước tính EPS trung bình của các nhà phân tích cho kỳ tới" : "Consensus EPS average estimate")
+                .help(isVi ? "Lợi nhuận trên mỗi cổ phiếu (EPS) dự báo trung bình cho kỳ tới" : "Consensus EPS average estimate")
 
                 Divider().frame(height: 24)
 
                 // Consensus Revenue
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(isVi ? "Doanh thu Dự báo" : "Consensus Revenue")
+                    Text(isVi ? "Dự báo Doanh thu" : "Consensus Revenue")
                         .font(.inter(10, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
                     Text(item.revenueEstimate.map { formatRevenue($0) } ?? "—")
@@ -575,7 +577,7 @@ struct EarningsCalendarView: View {
                         .foregroundStyle(DS.ink)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .help(isVi ? "Ước tính Doanh thu trung bình của các nhà phân tích cho kỳ tới" : "Consensus Revenue average estimate")
+                .help(isVi ? "Tổng doanh thu dự báo trung bình cho kỳ tới" : "Consensus Revenue average estimate")
 
                 if let low = item.epsLow, let high = item.epsHigh, low != high {
                     Divider().frame(height: 24)
@@ -612,7 +614,7 @@ struct EarningsCalendarView: View {
                 let beats = item.history.filter { $0.beatMiss == .beat }.count
                 let total = item.history.filter { $0.beatMiss == .beat || $0.beatMiss == .miss }.count
                 if total > 0 {
-                    Text(isVi ? "\(beats)/\(total) quý vượt kỳ vọng" : "\(beats)/\(total) Beats")
+                    Text(isVi ? "\(beats)/\(total) quý vượt dự báo" : "\(beats)/\(total) Beats")
                         .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
                         .foregroundStyle(beats >= total / 2 ? DS.up : DS.down)
                         .padding(.horizontal, 6)
@@ -634,20 +636,22 @@ struct EarningsCalendarView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 VStack(spacing: 0) {
-                    // Table Header
+                    // Table Header (5 distinct columns)
                     HStack(spacing: 6) {
                         Text(isVi ? "Quý" : "Quarter")
                             .frame(width: 50, alignment: .leading)
-                        Spacer()
-                        Text(isVi ? "Doanh thu & LN" : "Rev & Net Inc")
-                            .frame(width: 96, alignment: .trailing)
-                            .help(isVi ? "Doanh thu & Lợi nhuận ròng (Biên lợi nhuận ròng %)" : "Revenue & Net Income (Net Margin %)")
-                        Text(isVi ? "EPS TT / DB" : "EPS Act/Est")
-                            .frame(width: 66, alignment: .trailing)
-                            .help(isVi ? "EPS Thực tế và Dự báo phân tích" : "Actual EPS vs Consensus Estimate")
-                        Text(isVi ? "Surprise" : "Surprise")
-                            .frame(width: 64, alignment: .trailing)
-                            .help(isVi ? "Tỷ lệ % vượt hoặc hụt so với dự báo của phân tích" : "Beat / Miss Surprise %")
+                        Text(isVi ? "Doanh thu" : "Revenue")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .help(isVi ? "Tổng doanh thu trong quý" : "Quarterly total revenue")
+                        Text(isVi ? "Lợi nhuận" : "Net Income")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .help(isVi ? "Lợi nhuận ròng & Biên lợi nhuận ròng (%)" : "Net Income & Net Profit Margin (%)")
+                        Text("EPS")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .help(isVi ? "Lợi nhuận trên mỗi cổ phiếu: Thực tế đạt được (dòng trên) so với Dự báo (dòng dưới)" : "Actual EPS vs Consensus Estimate")
+                        Text(isVi ? "So với dự báo" : "Vs Estimate")
+                            .frame(width: 72, alignment: .trailing)
+                            .help(isVi ? "Tỷ lệ % EPS thực tế vượt hoặc hụt so với mức dự báo" : "Beat / Miss Surprise %")
                     }
                     .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
                     .foregroundStyle(DS.inkTertiary)
@@ -677,57 +681,62 @@ struct EarningsCalendarView: View {
     @ViewBuilder
     private func inspectorQuarterRow(_ q: EarningsQuarterResult) -> some View {
         HStack(spacing: 6) {
-            // Quarter
+            // 1. Quarter
             Text(q.quarterFormatted)
                 .font(.inter(11, weight: .bold, relativeTo: .caption))
                 .foregroundStyle(DS.ink)
+                .lineLimit(1)
                 .frame(width: 50, alignment: .leading)
 
-            Spacer()
+            // 2. Revenue
+            Text(q.revenue.map { formatRevenue($0) } ?? "—")
+                .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+                .foregroundStyle(q.revenue != nil ? DS.ink : DS.inkTertiary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Revenue & Net Income
+            // 3. Net Income & Profit Margin
             VStack(alignment: .trailing, spacing: 1.5) {
-                Text(q.revenue.map { formatRevenue($0) } ?? "—")
-                    .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
-                    .foregroundStyle(DS.ink)
-
                 if let net = q.netIncome {
-                    HStack(spacing: 2) {
-                        Text(isVi ? "LN:" : "Net:")
-                            .font(.inter(8.5, weight: .regular, relativeTo: .caption2))
-                            .foregroundStyle(DS.inkTertiary)
-                        Text(formatRevenue(net))
+                    Text(formatRevenue(net))
+                        .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
+                        .foregroundStyle(net >= 0 ? DS.ink : DS.down)
+                        .lineLimit(1)
+                    if let margin = q.profitMarginFormatted {
+                        Text(isVi ? "Biên \(margin)" : "Margin \(margin)")
                             .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
-                            .foregroundStyle(DS.inkSecondary)
-                        if let margin = q.profitMarginFormatted {
-                            Text("(\(margin))")
-                                .font(.inter(8, weight: .regular, relativeTo: .caption2))
-                                .foregroundStyle(DS.inkTertiary)
-                        }
+                            .foregroundStyle(DS.inkTertiary)
+                            .lineLimit(1)
                     }
+                } else {
+                    Text("—")
+                        .font(.inter(10.5, weight: .regular, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
                 }
             }
-            .frame(width: 96, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // EPS Actual vs Estimate
+            // 4. EPS Actual vs Estimate
             VStack(alignment: .trailing, spacing: 1.5) {
                 Text(q.epsActual.map { String(format: "$%.2f", $0) } ?? "—")
                     .font(.inter(11, weight: .bold, relativeTo: .caption))
                     .foregroundStyle(DS.ink)
+                    .lineLimit(1)
                 if let est = q.epsEstimate {
-                    Text(String(format: "Est $%.2f", est))
+                    Text(String(format: "%@: $%.2f", isVi ? "Dự báo" : "Est", est))
                         .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 66, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
-            // Surprise Badge
+            // 5. Surprise Badge
             priorQuarterBadge(q)
-                .frame(width: 64, alignment: .trailing)
+                .frame(width: 72, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -739,7 +748,7 @@ struct EarningsCalendarView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(DS.brand)
 
-                    Text(isVi ? "Dự báo tăng trưởng Wall Street" : "Wall Street Consensus Guidance")
+                    Text(isVi ? "Dự báo tăng trưởng tương lai" : "Forward Growth Outlook")
                         .font(.inter(11.5, weight: .bold, relativeTo: .subheadline))
                         .foregroundStyle(DS.ink)
 
@@ -748,19 +757,15 @@ struct EarningsCalendarView: View {
 
                 VStack(spacing: 0) {
                     // Table Header
-                    HStack(spacing: 6) {
-                        Text(isVi ? "Kỳ" : "Period")
-                            .frame(width: 65, alignment: .leading)
-                        Spacer()
-                        Text(isVi ? "EPS (Tăng trưởng)" : "EPS (Growth)")
-                            .frame(width: 105, alignment: .trailing)
-                            .help(isVi ? "Dự báo EPS đồng thuận & Tăng trưởng YoY" : "Consensus EPS Estimate & YoY Growth")
-                        Text(isVi ? "D.Thu (Tăng trưởng)" : "Rev (Growth)")
-                            .frame(width: 105, alignment: .trailing)
-                            .help(isVi ? "Dự báo Doanh thu đồng thuận & Tăng trưởng YoY" : "Consensus Revenue Estimate & YoY Growth")
-                        Text(isVi ? "CTCK" : "Analysts")
-                            .frame(width: 40, alignment: .trailing)
-                            .help(isVi ? "Số lượng nhà phân tích phố Wall đưa ra ước tính" : "Number of Wall Street analysts contributing to consensus")
+                    HStack(spacing: 8) {
+                        Text(isVi ? "Kỳ báo cáo" : "Period")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(isVi ? "Dự báo EPS" : "EPS Forecast")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .help(isVi ? "Lợi nhuận trên mỗi cổ phiếu dự báo & tăng trưởng so với cùng kỳ năm trước" : "Consensus EPS Estimate & YoY Growth")
+                        Text(isVi ? "Dự báo Doanh thu" : "Revenue Forecast")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .help(isVi ? "Tổng doanh thu dự báo & tăng trưởng so với cùng kỳ năm trước" : "Consensus Revenue Estimate & YoY Growth")
                     }
                     .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
                     .foregroundStyle(DS.inkTertiary)
@@ -788,54 +793,54 @@ struct EarningsCalendarView: View {
 
     @ViewBuilder
     private func inspectorTrendRow(_ t: EarningsTrendItem) -> some View {
-        HStack(spacing: 6) {
-            // Period title (e.g. "Quý này" / "Current Qtr", sub: "0q")
+        HStack(spacing: 8) {
+            // Period title + Fiscal period end date
             VStack(alignment: .leading, spacing: 1.5) {
                 Text(trendPeriodTitle(t.period))
                     .font(.inter(10.5, weight: .bold, relativeTo: .caption2))
                     .foregroundStyle(DS.ink)
-                Text(t.period.uppercased())
-                    .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
-                    .foregroundStyle(DS.inkTertiary)
+                    .lineLimit(1)
+                if let endDateStr = t.formattedEndDate(isVi: isVi) {
+                    Text(isVi ? "Kỳ: \(endDateStr)" : "Ends \(endDateStr)")
+                        .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
+                        .foregroundStyle(DS.inkTertiary)
+                        .lineLimit(1)
+                }
             }
-            .frame(width: 65, alignment: .leading)
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // EPS Est + Growth
             VStack(alignment: .trailing, spacing: 1.5) {
                 Text(t.epsEstimate.map { String(format: "$%.2f", $0) } ?? "—")
                     .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
                     .foregroundStyle(DS.ink)
+                    .lineLimit(1)
                 if let g = t.epsGrowth {
-                    Text(formatGrowthPercent(g))
+                    Text(isVi ? "\(formatGrowthPercent(g)) cùng kỳ" : "\(formatGrowthPercent(g)) YoY")
                         .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(g >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 105, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             // Revenue Est + Growth
             VStack(alignment: .trailing, spacing: 1.5) {
                 Text(t.revenueEstimate.map { formatRevenue($0) } ?? "—")
                     .font(.inter(10.5, weight: .semibold, relativeTo: .caption2))
                     .foregroundStyle(DS.ink)
+                    .lineLimit(1)
                 if let g = t.revenueGrowth {
-                    Text(formatGrowthPercent(g))
+                    Text(isVi ? "\(formatGrowthPercent(g)) cùng kỳ" : "\(formatGrowthPercent(g)) YoY")
                         .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
                         .foregroundStyle(g >= 0 ? DS.up : DS.down)
+                        .lineLimit(1)
                 }
             }
-            .frame(width: 105, alignment: .trailing)
-
-            // Analysts count
-            Text(t.numberOfAnalysts.map { "\($0)" } ?? "—")
-                .font(.inter(10, weight: .medium, relativeTo: .caption2))
-                .foregroundStyle(DS.inkSecondary)
-                .frame(width: 40, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
     }
 
     private var emptyInspectorPlaceholder: some View {
@@ -933,7 +938,7 @@ struct EarningsCalendarView: View {
                 .background(Capsule().fill(DS.down.opacity(0.12)))
 
             case .inLine:
-                Text("In-Line")
+                Text(q.beatMiss.title(isVi: isVi))
                     .font(.inter(8.5, weight: .medium, relativeTo: .caption2))
                     .foregroundStyle(DS.inkSecondary)
                     .padding(.horizontal, 4)
@@ -967,6 +972,12 @@ struct EarningsCalendarView: View {
             return String(format: "$%.2fB", val / 1_000_000_000.0)
         } else if val >= 1_000_000 {
             return String(format: "$%.2fM", val / 1_000_000.0)
+        } else if val >= -1_000_000 && val < 0 {
+            return String(format: "-$%.0f", abs(val))
+        } else if val <= -1_000_000_000 {
+            return String(format: "-$%.2fB", abs(val) / 1_000_000_000.0)
+        } else if val <= -1_000_000 {
+            return String(format: "-$%.2fM", abs(val) / 1_000_000.0)
         } else {
             return String(format: "$%.0f", val)
         }
@@ -980,10 +991,10 @@ struct EarningsCalendarView: View {
 
     private func trendPeriodTitle(_ period: String) -> String {
         switch period {
-        case "0q": return isVi ? "Quý này" : "Current Qtr"
-        case "+1q": return isVi ? "Quý sau" : "Next Qtr"
-        case "0y": return isVi ? "Năm nay" : "Current Year"
-        case "+1y": return isVi ? "Năm sau" : "Next Year"
+        case "0q": return isVi ? "Quý hiện tại" : "Current Qtr"
+        case "+1q": return isVi ? "Quý kế tiếp" : "Next Qtr"
+        case "0y": return isVi ? "Năm tài chính này" : "Current Year"
+        case "+1y": return isVi ? "Năm tài chính tới" : "Next Year"
         default: return period.uppercased()
         }
     }
