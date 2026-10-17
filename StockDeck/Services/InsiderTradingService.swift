@@ -28,14 +28,14 @@ public final class InsiderTradingService: ObservableObject {
 
     /// Rate-limiting semaphore: SEC EDGAR fair-use allows up to 10 req/sec.
     /// We cap concurrency at 3 simultaneous requests.
-    private let requestGate = AsyncSemaphore(count: 3)
+    nonisolated private let requestGate = AsyncSemaphore(count: 3)
 
     /// In-memory cache timestamps
     private var lastFetchDates: [String: Date] = [:]
     /// TTL for cache: 12 hours (Form 4 filings are typically once or twice a week per company)
     private let cacheTTL: TimeInterval = 12 * 3600
 
-    private let session: URLSession
+    nonisolated private let session: URLSession
 
     private var cacheDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -64,7 +64,7 @@ public final class InsiderTradingService: ObservableObject {
         guard detectedMarket != .unsupported else { return }
         let clean = cleanSymbol(symbol)
 
-        // Return if fresh cache exists and not forced
+        // Return if fresh in-memory cache exists and not forced
         if !force,
            let lastFetch = lastFetchDates[clean],
            Date().timeIntervalSince(lastFetch) < cacheTTL,
@@ -72,8 +72,17 @@ public final class InsiderTradingService: ObservableObject {
             return
         }
 
-        // Try reading disk cache first when not forced
-        if !force && loadDiskCache(for: clean) {
+        // Always read disk cache into memory first if not in memory
+        var isDiskFresh = false
+        if transactions[clean] == nil {
+            let (loaded, fresh) = loadDiskCache(for: clean)
+            isDiskFresh = loaded && fresh
+        } else if let lastFetch = lastFetchDates[clean] {
+            isDiskFresh = Date().timeIntervalSince(lastFetch) < cacheTTL
+        }
+
+        // Return immediately if disk cache was loaded and is still fresh and not forced
+        if !force && isDiskFresh {
             return
         }
 
@@ -359,17 +368,16 @@ public final class InsiderTradingService: ObservableObject {
                     return []
                 }
                 var list: [(accession: String, doc: String, filingDate: String)] = []
-                let twoYearsAgo = Calendar.current.date(byAdding: .year, value: -2, to: Date()) ?? Date.distantPast
+                let fiveYearsAgo = Calendar.current.date(byAdding: .year, value: -5, to: Date()) ?? Date.distantPast
                 for i in 0..<min(forms.count, accessions.count, primaryDocs.count, filingDates.count) {
                     guard forms[i] == "4" else { continue }
                     let acc = accessions[i]
                     let dateStr = filingDates[i]
-                    if let filingDate = DateFormatter.secDate.date(from: dateStr), filingDate < twoYearsAgo {
+                    if let filingDate = DateFormatter.secDate.date(from: dateStr), filingDate < fiveYearsAgo {
                         break
                     }
                     if !knownAccessions.contains(acc) {
                         list.append((accession: acc, doc: primaryDocs[i], filingDate: dateStr))
-                        if list.count >= 30 { break }
                     }
                 }
                 return list
@@ -379,49 +387,20 @@ public final class InsiderTradingService: ObservableObject {
 
             // If no new filings need downloading, our existing cache is fully up to date!
             if targetFilings.isEmpty {
-                self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: existing)
+                self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: existing, lookbackMonths: 60)
                 self.lastFetchDates[symbol] = Date()
                 return
             }
 
-            // Fetch and parse only the new Form 4 XML files concurrently
-            var newTransactions: [InsiderTransaction] = []
+            let immediateLimit = 35
+            let immediateFilings = Array(targetFilings.prefix(immediateLimit))
+            let remainingFilings = Array(targetFilings.dropFirst(immediateLimit))
 
-            await withTaskGroup(of: [InsiderTransaction].self) { group in
-                for filing in targetFilings {
-                    group.addTask { [weak self] in
-                        guard let self = self else { return [] }
-                        let accessionNoHyphen = filing.accession.replacingOccurrences(of: "-", with: "")
-                        let docName = filing.doc.components(separatedBy: "/").last ?? "form4.xml"
-                        let xmlURLString = "https://www.sec.gov/Archives/edgar/data/\(cikIntString)/\(accessionNoHyphen)/\(docName)"
-
-                        guard let xmlURL = URL(string: xmlURLString) else { return [] }
-
-                        do {
-                            await self.requestGate.wait()
-                            defer { self.requestGate.signal() }
-                            let (xmlData, xmlResp) = try await self.session.data(from: xmlURL)
-                            guard let xmlHttp = xmlResp as? HTTPURLResponse, xmlHttp.statusCode == 200 else {
-                                return []
-                            }
-
-                            let filingDate = ISO8601DateFormatter().date(from: filing.filingDate)
-                                ?? DateFormatter.secDate.date(from: filing.filingDate)
-
-                            return Form4XMLParser.parse(data: xmlData, symbol: symbol, filingId: filing.accession, filingDate: filingDate)
-                        } catch {
-                            return []
-                        }
-                    }
-                }
-
-                for await list in group {
-                    newTransactions.append(contentsOf: list)
-                }
-            }
+            // Phase 1: Fetch immediate batch (recent filings first)
+            let immediateTxs = await fetchAndParseFilings(immediateFilings, cikIntString: cikIntString, symbol: symbol)
 
             // Merge new filings with existing historical database
-            var combined = newTransactions + existing
+            var combined = immediateTxs + existing
             combined.sort { $0.transactionDate > $1.transactionDate }
 
             // Deduplicate by unique transaction ID and keep only positive price trades
@@ -429,14 +408,104 @@ public final class InsiderTradingService: ObservableObject {
             let uniqueTxs = combined.filter { $0.price > 0 && $0.shares > 0 && seen.insert($0.id).inserted }
 
             self.transactions[symbol] = uniqueTxs
-            self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: uniqueTxs)
+            self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: uniqueTxs, lookbackMonths: 60)
             self.lastFetchDates[symbol] = Date()
             self.errorSymbols.removeValue(forKey: symbol)
+            self.loadingSymbols.remove(symbol)
 
             saveDiskCache(for: symbol, txs: uniqueTxs)
+
+            // Phase 2: If there are remaining older filings (e.g. initial 5-year backfill), backfill in background
+            if !remainingFilings.isEmpty {
+                startBackgroundBackfill(
+                    remainingFilings: remainingFilings,
+                    cikIntString: cikIntString,
+                    symbol: symbol
+                )
+            }
         } catch {
             self.errorSymbols[symbol] = error.localizedDescription
         }
+    }
+
+    nonisolated private func fetchAndParseFilings(
+        _ filings: [(accession: String, doc: String, filingDate: String)],
+        cikIntString: String,
+        symbol: String
+    ) async -> [InsiderTransaction] {
+        await withTaskGroup(of: [InsiderTransaction].self) { group in
+            for filing in filings {
+                group.addTask { [session = self.session, requestGate = self.requestGate] in
+                    guard !Task.isCancelled else { return [] }
+                    let accessionNoHyphen = filing.accession.replacingOccurrences(of: "-", with: "")
+                    let docName = filing.doc.components(separatedBy: "/").last ?? "form4.xml"
+                    let xmlURLString = "https://www.sec.gov/Archives/edgar/data/\(cikIntString)/\(accessionNoHyphen)/\(docName)"
+
+                    guard let xmlURL = URL(string: xmlURLString) else { return [] }
+
+                    do {
+                        await requestGate.wait()
+                        defer { requestGate.signal() }
+                        guard !Task.isCancelled else { return [] }
+                        let (xmlData, xmlResp) = try await session.data(from: xmlURL)
+                        guard let xmlHttp = xmlResp as? HTTPURLResponse, xmlHttp.statusCode == 200 else {
+                            return []
+                        }
+
+                        let filingDate = ISO8601DateFormatter().date(from: filing.filingDate)
+                            ?? DateFormatter.secDate.date(from: filing.filingDate)
+
+                        return Form4XMLParser.parse(data: xmlData, symbol: symbol, filingId: filing.accession, filingDate: filingDate)
+                    } catch {
+                        return []
+                    }
+                }
+            }
+
+            var results: [InsiderTransaction] = []
+            for await list in group {
+                results.append(contentsOf: list)
+            }
+            return results
+        }
+    }
+
+    private func startBackgroundBackfill(
+        remainingFilings: [(accession: String, doc: String, filingDate: String)],
+        cikIntString: String,
+        symbol: String
+    ) {
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+
+            let chunkSize = 25
+            for i in stride(from: 0, to: remainingFilings.count, by: chunkSize) {
+                if Task.isCancelled { break }
+
+                let chunk = Array(remainingFilings[i..<min(i + chunkSize, remainingFilings.count)])
+                let chunkTxs = await self.fetchAndParseFilings(chunk, cikIntString: cikIntString, symbol: symbol)
+
+                if !chunkTxs.isEmpty {
+                    await self.mergeAndPersist(chunkTxs: chunkTxs, symbol: symbol)
+                }
+
+                // Polite pause between chunks to respect SEC fair-use
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+    }
+
+    private func mergeAndPersist(chunkTxs: [InsiderTransaction], symbol: String) {
+        let current = self.transactions[symbol] ?? []
+        var combined = chunkTxs + current
+        combined.sort { $0.transactionDate > $1.transactionDate }
+
+        var seen = Set<String>()
+        let uniqueTxs = combined.filter { $0.price > 0 && $0.shares > 0 && seen.insert($0.id).inserted }
+
+        self.transactions[symbol] = uniqueTxs
+        self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: uniqueTxs, lookbackMonths: 60)
+        saveDiskCache(for: symbol, txs: uniqueTxs)
     }
 
     // MARK: - Vietnam Insider Fetching
@@ -471,15 +540,22 @@ public final class InsiderTradingService: ObservableObject {
             }
 
             let parsed = await Task.detached(priority: .utility) {
-                VNInsiderParser.parse(data: data, symbol: symbol)
+                VNInsiderParser.parse(data: data, symbol: symbol, lookbackMonths: 60)
             }.value
 
-            self.transactions[symbol] = parsed
-            self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: parsed)
+            let existing = self.transactions[symbol] ?? []
+            var combined = parsed + existing
+            combined.sort { $0.transactionDate > $1.transactionDate }
+
+            var seen = Set<String>()
+            let uniqueTxs = combined.filter { ($0.price > 0 || $0.isVNDisclosure) && $0.shares > 0 && seen.insert($0.id).inserted }
+
+            self.transactions[symbol] = uniqueTxs
+            self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: uniqueTxs, lookbackMonths: 60)
             self.lastFetchDates[symbol] = Date()
             self.errorSymbols.removeValue(forKey: symbol)
 
-            saveDiskCache(for: symbol, txs: parsed)
+            saveDiskCache(for: symbol, txs: uniqueTxs)
         } catch {
             self.errorSymbols[symbol] = error.localizedDescription
         }
@@ -547,15 +623,15 @@ public final class InsiderTradingService: ObservableObject {
     }
 
     /// Synchronous accessor for sentiment summary using latest available price quotes/history
-    public func sentimentSummary(for symbol: String) -> InsiderSentimentSummary? {
+    public func sentimentSummary(for symbol: String, lookbackMonths: Int = 60) -> InsiderSentimentSummary? {
         let clean = cleanSymbol(symbol)
         guard let list = transactions[clean] else { return nil }
-        return computeSentiment(symbol: symbol, transactions: list)
+        return computeSentiment(symbol: symbol, transactions: list, lookbackMonths: lookbackMonths)
     }
 
     // MARK: - Sentiment Calculation
 
-    public func computeSentiment(symbol: String, transactions: [InsiderTransaction], lookbackMonths: Int = 24) -> InsiderSentimentSummary {
+    public func computeSentiment(symbol: String, transactions: [InsiderTransaction], lookbackMonths: Int = 60) -> InsiderSentimentSummary {
         let calendar = Calendar.current
         let cutoff = calendar.date(byAdding: .month, value: -lookbackMonths, to: Date()) ?? Date.distantPast
 
@@ -631,33 +707,41 @@ public final class InsiderTradingService: ObservableObject {
 
     // MARK: - Disk Caching
 
-    private func cacheFilePath(for symbol: String) -> URL {
+    func cacheFilePath(for symbol: String) -> URL {
         cacheDirectory.appendingPathComponent("\(symbol)_insider.json")
     }
 
-    private func saveDiskCache(for symbol: String, txs: [InsiderTransaction]) {
+    func saveDiskCache(for symbol: String, txs: [InsiderTransaction], synchronous: Bool = false) {
         let path = cacheFilePath(for: symbol)
-        Task.detached(priority: .background) {
+        let writeBlock = {
             guard let data = try? JSONEncoder().encode(txs) else { return }
             try? data.write(to: path, options: .atomic)
         }
+        if synchronous {
+            writeBlock()
+        } else {
+            Task.detached(priority: .background) {
+                writeBlock()
+            }
+        }
     }
 
-    private func loadDiskCache(for symbol: String) -> Bool {
+    @discardableResult
+    func loadDiskCache(for symbol: String) -> (loaded: Bool, isFresh: Bool) {
         let path = cacheFilePath(for: symbol)
         guard FileManager.default.fileExists(atPath: path.path),
               let attrs = try? FileManager.default.attributesOfItem(atPath: path.path),
               let modDate = attrs[.modificationDate] as? Date,
-              Date().timeIntervalSince(modDate) < cacheTTL,
               let data = try? Data(contentsOf: path),
               let decoded = try? JSONDecoder().decode([InsiderTransaction].self, from: data) else {
-            return false
+            return (false, false)
         }
         let validTxs = decoded.filter { $0.shares > 0 && ($0.price > 0 || $0.isVNDisclosure) }
         self.transactions[symbol] = validTxs
-        self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: validTxs)
+        self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: validTxs, lookbackMonths: 60)
         self.lastFetchDates[symbol] = modDate
-        return true
+        let isFresh = Date().timeIntervalSince(modDate) < cacheTTL
+        return (true, isFresh)
     }
 }
 
@@ -968,7 +1052,7 @@ public enum VNInsiderParser {
         data: Data,
         symbol: String,
         now: Date = Date(),
-        lookbackMonths: Int = 24
+        lookbackMonths: Int = 60
     ) -> [InsiderTransaction] {
         guard let root = try? JSONDecoder().decode(ResponseRoot.self, from: data),
               let items = root.Data?.Data else {

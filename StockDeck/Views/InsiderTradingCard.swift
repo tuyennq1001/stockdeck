@@ -9,7 +9,7 @@ struct InsiderTradingCard: View {
     let symbol: String
 
     @State private var showInfoPopover: Bool = false
-    private let lookbackMonths: Int = 24
+    private let lookbackMonths: Int = 60
     @State private var isExpanded: Bool = false
 
     struct GroupedTradeRow: Identifiable {
@@ -244,7 +244,7 @@ struct InsiderTradingCard: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
-                Text(isVi ? "Tổng quan 2 năm" : "2-Year Summary")
+                Text(isVi ? "Tổng quan 5 năm" : "5-Year Summary")
                     .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
                     .foregroundStyle(DS.inkSecondary)
 
@@ -373,8 +373,8 @@ struct InsiderTradingCard: View {
                     .foregroundStyle(DS.inkSecondary)
             } else {
                 Text(market == .vn
-                     ? (isVi ? "Chỉ có giao dịch ESOP trong 2 năm qua." : "Only ESOP transactions recorded in the past 2 years.")
-                     : (isVi ? "Không có giao dịch mở nào trong 2 năm qua." : "No open-market trades in the past 2 years."))
+                     ? (isVi ? "Chỉ có giao dịch ESOP trong 5 năm qua." : "Only ESOP transactions recorded in the past 5 years.")
+                     : (isVi ? "Không có giao dịch mở nào trong 5 năm qua." : "No open-market trades in the past 5 years."))
                     .font(.inter(11, weight: .regular, relativeTo: .caption))
                     .foregroundStyle(DS.inkSecondary)
             }
