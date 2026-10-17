@@ -161,15 +161,16 @@ final class PortfolioPeriodChangeTests: XCTestCase {
         let vm = PortfolioViewModel(scope: .portfolio(pId))
         vm.setup(stockService: StockService.shared, storageService: storage)
 
-        XCTAssertTrue(vm.isRangeAvailable(.week, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.month, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.threeMonths, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.sixMonths, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.ytd, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.year, now: now, calendar: cal))
-        // 3Y and 5Y must be dimmed / false because portfolio is only 2.5 years old
+        // 3Y, 5Y, 7Y, 10Y must be dimmed / false because portfolio is only 2.5 years old
         XCTAssertFalse(vm.isRangeAvailable(.threeYears, now: now, calendar: cal))
         XCTAssertFalse(vm.isRangeAvailable(.fiveYears, now: now, calendar: cal))
+        XCTAssertFalse(vm.isRangeAvailable(.sevenYears, now: now, calendar: cal))
+        XCTAssertFalse(vm.isRangeAvailable(.tenYears, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.all, now: now, calendar: cal))
 
         // Clean up
@@ -195,6 +196,33 @@ final class PortfolioPeriodChangeTests: XCTestCase {
 
         XCTAssertTrue(vm.isRangeAvailable(.threeYears, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.fiveYears, now: now, calendar: cal))
+        XCTAssertFalse(vm.isRangeAvailable(.sevenYears, now: now, calendar: cal))
+        XCTAssertFalse(vm.isRangeAvailable(.tenYears, now: now, calendar: cal))
+        XCTAssertTrue(vm.isRangeAvailable(.all, now: now, calendar: cal))
+
+        // Clean up
+        storage.deletePortfolio(id: pId)
+    }
+
+    @MainActor
+    func testIsRangeAvailableWhenPortfolioIsOlderThan10Y() {
+        let (storage, tempDir) = createTestStorage()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let pId = UUID()
+        let portfolio = Portfolio(id: pId, name: "Test Decade Portfolio", holdings: [])
+        storage.portfolios = [portfolio]
+
+        let now = Date()
+        let cal = Calendar.current
+        // Earliest purchase date is 11 years ago
+        let inceptionDate = cal.date(byAdding: .year, value: -11, to: now)!
+        storage.addHolding(to: pId, symbol: "AAPL", quantity: 10, avgPrice: 50, purchaseDate: inceptionDate)
+
+        let vm = PortfolioViewModel(scope: .portfolio(pId))
+        vm.setup(stockService: StockService.shared, storageService: storage)
+
+        XCTAssertTrue(vm.isRangeAvailable(.sevenYears, now: now, calendar: cal))
+        XCTAssertTrue(vm.isRangeAvailable(.tenYears, now: now, calendar: cal))
         XCTAssertTrue(vm.isRangeAvailable(.all, now: now, calendar: cal))
 
         // Clean up

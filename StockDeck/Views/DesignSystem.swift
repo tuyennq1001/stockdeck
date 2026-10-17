@@ -758,7 +758,6 @@ struct SegmentedRangePicker<T: Hashable>: View {
 
     private func help(_ label: String) -> String {
         switch label {
-        case "7D": return "Last 7 days"
         case "1M": return "Last month"
         case "3M": return "Last 3 months"
         case "6M": return "Last 6 months"
@@ -766,6 +765,8 @@ struct SegmentedRangePicker<T: Hashable>: View {
         case "1Y": return "Last year"
         case "3Y": return "Last 3 years"
         case "5Y": return "Last 5 years"
+        case "7Y": return "Last 7 years"
+        case "10Y": return "Last 10 years"
         case "All": return "All available history"
         default: return label
         }

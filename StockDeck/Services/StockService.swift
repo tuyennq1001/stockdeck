@@ -54,8 +54,8 @@ class StockService: ObservableObject {
     private var vnValuationCacheRevision: UInt64 = 0
     private let vnValuationCacheWriter = PersistenceWriter()
     private var vnValuationTasks: [String: Task<VietnameseValuationCacheEntry?, Never>] = [:]
-    /// Daily close history per symbol (~2 years, full daily resolution) for the
-    /// 7D/1M/1Y ranges. Cached ~1h.
+    /// Daily close history per symbol (~10 years, full daily resolution) for the
+    /// 1M/1Y/5Y/10Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:] {
         didSet {
             let changed = changedSymbols(from: oldValue, to: priceHistory)
@@ -80,15 +80,6 @@ class StockService: ObservableObject {
         didSet {
             let changed = changedSymbols(from: oldValue, to: intradayHistory)
             guard !changed.isEmpty else { return }
-            publish(kind: .intradayHistory, symbols: changed)
-        }
-    }
-    /// Hourly closes over ~7 days for the "7D" chart range. Cached ~15min.
-    @Published var intradayWeek: [String: [PricePoint]] = [:] {
-        didSet {
-            let changed = changedSymbols(from: oldValue, to: intradayWeek)
-            guard !changed.isEmpty else { return }
-            historyRevision &+= 1
             publish(kind: .intradayHistory, symbols: changed)
         }
     }
@@ -192,7 +183,6 @@ class StockService: ObservableObject {
     private var priceHistoryFetchedAt: [String: Date] = [:]
     private var priceHistoryMaxAt: [String: Date] = [:]
     private var intradayFetchedAt: [String: Date] = [:]
-    private var intradayWeekAt: [String: Date] = [:]
     private var sparkFetchedAt: Date?
     /// Single-flight: coalesces concurrent `ensurePriceHistory` calls for the
     /// same symbol so the window-open task and the range-change task never issue
@@ -2814,33 +2804,6 @@ class StockService: ObservableObject {
             guard !points.isEmpty else { return }
             intradayHistory[symbol] = points
             intradayFetchedAt[symbol] = Date()
-        } catch {
-        }
-    }
-
-    /// Hourly closes over ~7 days for the "7D" range. Cached ~15min.
-    func ensureIntradayWeek(for symbol: String) async {
-        if let at = intradayWeekAt[symbol],
-           Date().timeIntervalSince(at) < 900,
-           intradayWeek[symbol]?.isEmpty == false { return }
-        let fetchSymbol = yahooSymbol(for: symbol)
-        let encoded = fetchSymbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fetchSymbol
-        guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
-              let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=60m&range=7d"),
-              let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
-        do {
-            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
-            guard let result = response.chart.result?.first else { return }
-            let q = result.indicators?.quote?.first
-            let points = PriceHistory.points(timestamps: result.timestamp ?? [],
-                                             closes: q?.close ?? [],
-                                             opens: q?.open,
-                                             highs: q?.high,
-                                             lows: q?.low,
-                                             volumes: q?.volume)
-            guard !points.isEmpty else { return }
-            intradayWeek[symbol] = points
-            intradayWeekAt[symbol] = Date()
         } catch {
         }
     }

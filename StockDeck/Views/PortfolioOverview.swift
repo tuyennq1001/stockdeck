@@ -633,13 +633,6 @@ struct PortfolioOverview: View {
         }
         .task(id: "\(symbols.joined())-\(chartRange.rawValue)") {
             switch chartRange {
-            case .week:
-                await withTaskGroup(of: Void.self) { group in
-                    for s in symbols {
-                        let sym = s
-                        group.addTask { await stockService.ensureIntradayWeek(for: sym) }
-                    }
-                }
             case .all:
                 await withTaskGroup(of: Void.self) { group in
                     for s in symbols {
@@ -647,7 +640,7 @@ struct PortfolioOverview: View {
                         group.addTask { await stockService.ensureFullHistoryMax(for: sym) }
                     }
                 }
-            case .threeYears, .fiveYears:
+            case .threeYears, .fiveYears, .sevenYears, .tenYears:
                 await withTaskGroup(of: Void.self) { group in
                     for s in symbols {
                         let sym = s
@@ -868,6 +861,7 @@ struct PortfolioOverview: View {
         case y1 = "1Y"
         case y3 = "3Y"
         case y5 = "5Y"
+        case y7 = "7Y"
         case y10 = "10Y"
 
         var id: String { rawValue }
@@ -882,6 +876,7 @@ struct PortfolioOverview: View {
             case .y1: return cal.date(byAdding: .year, value: -1, to: now) ?? now
             case .y3: return cal.date(byAdding: .year, value: -3, to: now) ?? now
             case .y5: return cal.date(byAdding: .year, value: -5, to: now) ?? now
+            case .y7: return cal.date(byAdding: .year, value: -7, to: now) ?? now
             case .y10: return cal.date(byAdding: .year, value: -10, to: now) ?? now
             }
         }
@@ -1531,10 +1526,12 @@ private struct PortfolioHeroChartView: View, Equatable {
 
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
-        case .year, .threeYears, .fiveYears, .all:
+        case .month, .threeMonths, .sixMonths, .ytd:
+            return date.formatted(.dateTime.day().month(.abbreviated))
+        case .year, .threeYears, .fiveYears:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        case .sevenYears, .tenYears, .all:
+            return date.formatted(.dateTime.year())
         }
     }
 
@@ -1624,10 +1621,7 @@ private struct PortfolioHeroChartCrosshairOverlay: View {
     @State private var hoverPoint: ValuePoint?
 
     private func tooltipDate(_ date: Date) -> String {
-        switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated).hour())
-        default: return date.formatted(date: .abbreviated, time: .omitted)
-        }
+        date.formatted(date: .abbreviated, time: .omitted)
     }
 
     var body: some View {

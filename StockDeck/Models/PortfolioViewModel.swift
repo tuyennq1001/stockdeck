@@ -3,10 +3,9 @@ import Combine
 
 /// Hero chart range — a pure UI filter over the value series.
 enum ChartRange: String, CaseIterable {
-    case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
+    case month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", sevenYears = "7Y", tenYears = "10Y", all = "All"
     var days: Int? {
         switch self {
-        case .week: return 7
         case .month: return 30
         case .threeMonths: return 90
         case .sixMonths: return 180
@@ -18,6 +17,8 @@ enum ChartRange: String, CaseIterable {
         case .year: return 365
         case .threeYears: return 365 * 3
         case .fiveYears: return 365 * 5
+        case .sevenYears: return 365 * 7
+        case .tenYears: return 365 * 10
         case .all: return nil
         }
     }
@@ -25,8 +26,6 @@ enum ChartRange: String, CaseIterable {
     /// Calendar-accurate period start date matching PerformancePeriod.cutoffDate().
     func startDate(from now: Date = Date(), calendar: Calendar = .current) -> Date? {
         switch self {
-        case .week:
-            return calendar.date(byAdding: .day, value: -7, to: now)
         case .month:
             return calendar.date(byAdding: .month, value: -1, to: now)
         case .threeMonths:
@@ -41,6 +40,10 @@ enum ChartRange: String, CaseIterable {
             return calendar.date(byAdding: .year, value: -3, to: now)
         case .fiveYears:
             return calendar.date(byAdding: .year, value: -5, to: now)
+        case .sevenYears:
+            return calendar.date(byAdding: .year, value: -7, to: now)
+        case .tenYears:
+            return calendar.date(byAdding: .year, value: -10, to: now)
         case .all:
             return nil
         }
@@ -48,7 +51,6 @@ enum ChartRange: String, CaseIterable {
     /// Suffix for the hero pill, describing the span it measures.
     var changeLabel: String {
         switch self {
-        case .week: return "past 7d"
         case .month: return "past 1M"
         case .threeMonths: return "past 3M"
         case .sixMonths: return "past 6M"
@@ -56,6 +58,8 @@ enum ChartRange: String, CaseIterable {
         case .year: return "past 1Y"
         case .threeYears: return "past 3Y"
         case .fiveYears: return "past 5Y"
+        case .sevenYears: return "past 7Y"
+        case .tenYears: return "past 10Y"
         case .all: return "all-time"
         }
     }
@@ -68,7 +72,9 @@ enum ChartRange: String, CaseIterable {
         case .year: return .y1
         case .threeYears: return .y3
         case .fiveYears: return .y5
-        case .week, .all: return nil
+        case .sevenYears: return .y7
+        case .tenYears: return .y10
+        case .all: return nil
         }
     }
 }
@@ -281,7 +287,7 @@ final class PortfolioViewModel {
     /// Dimmed and disabled when the portfolio's earliest purchase date is more recent than
     /// the range's start date (with a 7-day grace window for weekend/holiday offsets).
     func isRangeAvailable(_ range: ChartRange, now: Date = Date(), calendar: Calendar = .current) -> Bool {
-        if range == .week || range == .all { return true }
+        if range == .all { return true }
         guard let cutoff = range.startDate(from: now, calendar: calendar) else { return true }
         guard let inception = earliestPurchaseDate else { return true }
         let graceCutoff = cutoff.addingTimeInterval(7 * 86400)
@@ -1197,10 +1203,9 @@ final class PortfolioViewModel {
             chartCutoff = earliestPurchaseDate.map(Calendar.current.startOfDay(for:))
                 ?? Calendar.current.date(byAdding: .year, value: -5, to: chartNow)
         } else {
-            chartCutoff = range == .week ? nil : range.startDate(from: chartNow)
+            chartCutoff = range.startDate(from: chartNow)
         }
-        if range != .week,
-           let purchaseDate = earliestPurchaseDate {
+        if let purchaseDate = earliestPurchaseDate {
             let purchaseCutoff = Calendar.current.startOfDay(for: purchaseDate)
             chartCutoff = chartCutoff.map { max($0, purchaseCutoff) } ?? purchaseCutoff
         }
@@ -1211,13 +1216,9 @@ final class PortfolioViewModel {
             let symbol = holding.symbol
             rates[symbol] = stockService.rate(from: stockService.detectedCurrency(for: symbol),
                                               to: storageService?.preferredCurrency ?? "USD")
-            if range == .week {
-                histories[symbol] = stockService.intradayWeek[symbol] ?? []
-            } else {
-                let daySpan = chartCutoff.map { Calendar.current.dateComponents([.day], from: $0, to: chartNow).day ?? 9999 } ?? 9999
-                let source = daySpan > 730 ? stockService.priceHistoryMax : stockService.priceHistory
-                histories[symbol] = source[symbol] ?? []
-            }
+            let daySpan = chartCutoff.map { Calendar.current.dateComponents([.day], from: $0, to: chartNow).day ?? 9999 } ?? 9999
+            let source = daySpan > 730 ? stockService.priceHistoryMax : stockService.priceHistory
+            histories[symbol] = source[symbol] ?? []
         }
         let snapshot = ChartPreparationSnapshot(holdings: holdings, histories: histories, rates: rates)
         let cutoff = chartCutoff

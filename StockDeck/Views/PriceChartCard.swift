@@ -12,11 +12,10 @@ struct PriceChartCard: View {
     var chartHeight: CGFloat = 280
 
     enum ChartRange: String, CaseIterable, Sendable {
-        case week = "7D", month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", all = "All"
+        case month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", sevenYears = "7Y", tenYears = "10Y", all = "All"
         /// Lookback window in days; nil = the whole fetched history.
         var days: Int? {
             switch self {
-            case .week: return 7
             case .month: return 30
             case .threeMonths: return 90
             case .sixMonths: return 180
@@ -29,6 +28,8 @@ struct PriceChartCard: View {
             case .year: return 365
             case .threeYears: return 365 * 3
             case .fiveYears: return 365 * 5
+            case .sevenYears: return 365 * 7
+            case .tenYears: return 365 * 10
             case .all: return nil
             }
         }
@@ -36,8 +37,6 @@ struct PriceChartCard: View {
         /// Calendar-accurate period start date matching Watchlist and Portfolio benchmark metrics.
         func startDate(from now: Date = Date(), calendar: Calendar = .current) -> Date? {
             switch self {
-            case .week:
-                return calendar.date(byAdding: .day, value: -7, to: now)
             case .month:
                 return calendar.date(byAdding: .month, value: -1, to: now)
             case .threeMonths:
@@ -52,6 +51,10 @@ struct PriceChartCard: View {
                 return calendar.date(byAdding: .year, value: -3, to: now)
             case .fiveYears:
                 return calendar.date(byAdding: .year, value: -5, to: now)
+            case .sevenYears:
+                return calendar.date(byAdding: .year, value: -7, to: now)
+            case .tenYears:
+                return calendar.date(byAdding: .year, value: -10, to: now)
             case .all:
                 return nil
             }
@@ -65,7 +68,6 @@ struct PriceChartCard: View {
 
         func changeLabel(isVi: Bool) -> String {
             switch self {
-            case .week: return isVi ? "7 ngày qua" : "past 7d"
             case .month: return isVi ? "1 tháng qua" : "past 1M"
             case .threeMonths: return isVi ? "3 tháng qua" : "past 3M"
             case .sixMonths: return isVi ? "6 tháng qua" : "past 6M"
@@ -73,6 +75,8 @@ struct PriceChartCard: View {
             case .year: return isVi ? "1 năm qua" : "past 1Y"
             case .threeYears: return isVi ? "3 năm qua" : "past 3Y"
             case .fiveYears: return isVi ? "5 năm qua" : "past 5Y"
+            case .sevenYears: return isVi ? "7 năm qua" : "past 7Y"
+            case .tenYears: return isVi ? "10 năm qua" : "past 10Y"
             case .all: return isVi ? "Toàn thời gian" : "all-time"
             }
         }
@@ -220,7 +224,7 @@ struct PriceChartCard: View {
         for trade in trades {
             let key: String
             switch chartRange {
-            case .week, .month, .threeMonths:
+            case .month, .threeMonths:
                 // Daily granularity
                 key = "\(df.string(from: trade.transactionDate))_\(trade.isBuy)"
             case .sixMonths, .ytd, .year:
@@ -230,7 +234,7 @@ struct PriceChartCard: View {
                 } else {
                     key = "\(df.string(from: trade.transactionDate))_\(trade.isBuy)"
                 }
-            case .threeYears, .fiveYears, .all:
+            case .threeYears, .fiveYears, .sevenYears, .tenYears, .all:
                 // Monthly granularity
                 if let monthStart = cal.dateInterval(of: .month, for: trade.transactionDate)?.start {
                     key = "M_\(df.string(from: monthStart))_\(trade.isBuy)"
@@ -351,10 +355,32 @@ struct PriceChartCard: View {
         switch chartRange {
         case .all:
             return stockService.priceHistoryMax[symbol] == nil && stockService.priceHistory[symbol] == nil
-        case .threeYears, .fiveYears:
+        case .threeYears, .fiveYears, .sevenYears, .tenYears:
             return stockService.priceHistory[symbol] == nil && stockService.priceHistoryMax[symbol] == nil
         default:
             return stockService.priceHistory[symbol] == nil
+        }
+    }
+
+    private func isRangeAvailable(_ range: ChartRange) -> Bool {
+        switch range {
+        case .month, .threeMonths, .sixMonths, .ytd:
+            return true
+        case .year, .threeYears, .fiveYears, .sevenYears, .tenYears:
+            guard let cutoff = range.startDate() else { return true }
+            let dailyFirst = (stockService.priceHistory[symbol] ?? stockService.watchlistHistory[symbol])?.first?.date
+            let maxFirst = stockService.priceHistoryMax[symbol]?.first?.date
+            let earliestDate: Date?
+            if let d = dailyFirst, let m = maxFirst {
+                earliestDate = min(d, m)
+            } else {
+                earliestDate = dailyFirst ?? maxFirst
+            }
+            guard let earliest = earliestDate else { return true }
+            let tolerance: TimeInterval = 15 * 86400
+            return earliest.timeIntervalSince(cutoff) <= tolerance
+        case .all:
+            return true
         }
     }
 
@@ -417,7 +443,7 @@ struct PriceChartCard: View {
                 }
             }
 
-            // Row 2: Range Picker (7D, 1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, All) placed above chart
+            // Row 2: Range Picker (1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, 7Y, 10Y, All) placed above chart
             rangePicker
                 .padding(.top, 2)
 
@@ -471,7 +497,7 @@ struct PriceChartCard: View {
             }
         }
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
-            if chartRange == .all || chartRange == .fiveYears || chartRange == .threeYears {
+            if chartRange == .all || chartRange == .tenYears || chartRange == .sevenYears || chartRange == .fiveYears || chartRange == .threeYears {
                 await stockService.ensureFullHistoryMax(for: symbol)
             }
         }
@@ -500,7 +526,13 @@ struct PriceChartCard: View {
     }
 
     private var rangePicker: some View {
-        SegmentedRangePicker(options: ChartRange.allCases, label: \.rawValue, selection: $chartRange)
+        SegmentedRangePicker(
+            options: ChartRange.allCases,
+            label: \.rawValue,
+            selection: $chartRange,
+            isOptionEnabled: { isRangeAvailable($0) },
+            disabledHelp: { _ in isVi ? "Dữ liệu lịch sử chưa đủ cho mốc này" : "Historical data does not yet span this period" }
+        )
     }
 
     private func chartDomain(using currentHistory: [PricePoint]) -> ClosedRange<Double> {
@@ -986,11 +1018,11 @@ private struct PriceChartCrosshair: View {
                         let matchedInsider = cachedGroupedTrades.first(where: {
                             let diff = abs($0.date.timeIntervalSince(h.date))
                             switch chartRange {
-                            case .week, .month, .threeMonths:
+                            case .month, .threeMonths:
                                 return Calendar.current.isDate($0.date, inSameDayAs: h.date)
                             case .sixMonths, .ytd, .year:
                                 return diff < 86400 * 4
-                            case .threeYears, .fiveYears, .all:
+                            case .threeYears, .fiveYears, .sevenYears, .tenYears, .all:
                                 return diff < 86400 * 16
                             }
                         })
@@ -1033,11 +1065,11 @@ private struct PriceChartPlot: View, Equatable {
     /// X-axis tick label, formatted for the selected period.
     private func xAxisLabel(_ date: Date) -> String {
         switch chartRange {
-        case .week: return date.formatted(.dateTime.weekday(.abbreviated))
-        case .month, .threeMonths, .sixMonths, .ytd: return date.formatted(.dateTime.day().month(.abbreviated))
+        case .month, .threeMonths, .sixMonths, .ytd:
+            return date.formatted(.dateTime.day().month(.abbreviated))
         case .year, .threeYears, .fiveYears:
             return date.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
-        case .all:
+        case .sevenYears, .tenYears, .all:
             return date.formatted(.dateTime.year())
         }
     }
