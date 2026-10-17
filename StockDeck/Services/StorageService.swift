@@ -1834,6 +1834,48 @@ class StorageService: ObservableObject {
         selectedWatchlistId = id
     }
 
+    /// Reorders one or more symbols relative to `targetSymbol` in a single atomic
+    /// `watchlists` mutation (including switching sort mode to `.order` ascending)
+    /// so `@Published var watchlists` and persistence fire at most once.
+    @discardableResult
+    func moveWatchlistSymbols(
+        _ group: Set<String>,
+        relativeTo targetSymbol: String,
+        placement: InsertPlacement,
+        in displayedOrder: [String]? = nil
+    ) -> [String]? {
+        let activeId = currentWatchlist.id
+        guard let wlIndex = watchlists.firstIndex(where: { $0.id == activeId }) else { return nil }
+        let existing = watchlists[wlIndex].symbols
+        let baseOrder: [String]
+        if let displayedOrder,
+           displayedOrder.count == existing.count,
+           Set(displayedOrder) == Set(existing) {
+            baseOrder = displayedOrder
+        } else {
+            baseOrder = existing
+        }
+        guard !group.isEmpty,
+              !group.contains(targetSymbol),
+              let tgtIndex = baseOrder.firstIndex(of: targetSymbol) else { return nil }
+
+        let members = baseOrder.filter { group.contains($0) }
+        guard !members.isEmpty else { return nil }
+        var afterRemoval = baseOrder.filter { !group.contains($0) }
+        let targetAfterRemoval = afterRemoval.firstIndex(of: targetSymbol) ?? min(tgtIndex, afterRemoval.count)
+        let insertIndex = placement == .before ? targetAfterRemoval : targetAfterRemoval + 1
+        guard insertIndex >= 0, insertIndex <= afterRemoval.count else { return nil }
+        afterRemoval.insert(contentsOf: members, at: insertIndex)
+
+        var updated = watchlists[wlIndex]
+        updated.symbols = afterRemoval
+        updated.sortKey = WatchlistSortKey.order.rawString
+        updated.sortAsc = true
+        guard updated != watchlists[wlIndex] else { return nil }
+        watchlists[wlIndex] = updated
+        return afterRemoval
+    }
+
     func moveWatchlist(from sourceId: UUID, beforeOrAfter targetId: UUID) {
         guard sourceId != targetId,
               let srcIndex = watchlists.firstIndex(where: { $0.id == sourceId }),
@@ -1851,8 +1893,9 @@ class StorageService: ObservableObject {
         let item = result.remove(at: srcIndex)
         let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
         let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
-        guard insertIndex >= 0, insertIndex <= result.count, result != watchlists else { return }
+        guard insertIndex >= 0, insertIndex <= result.count else { return }
         result.insert(item, at: insertIndex)
+        guard result != watchlists else { return }
         watchlists = result
     }
 
@@ -1868,9 +1911,9 @@ class StorageService: ObservableObject {
         let item = result.remove(at: srcIndex)
         let newTargetIndex = result.firstIndex(where: { $0.id == targetId }) ?? tgtIndex
         let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
-        guard insertIndex >= 0, insertIndex <= result.count,
-              result.map(\.id) != portfolios.map(\.id) else { return }
+        guard insertIndex >= 0, insertIndex <= result.count else { return }
         result.insert(item, at: insertIndex)
+        guard result.map(\.id) != portfolios.map(\.id) else { return }
         portfolios = result
     }
 
@@ -1879,6 +1922,7 @@ class StorageService: ObservableObject {
     /// concurrent add/remove/switch.
     func commitWatchlistOrder(_ orderedIds: [UUID]) {
         guard orderedIds.count == watchlists.count,
+              orderedIds != watchlists.map(\.id),
               Set(orderedIds) == Set(watchlists.map(\.id)) else { return }
         let byId = Dictionary(uniqueKeysWithValues: watchlists.map { ($0.id, $0) })
         watchlists = orderedIds.compactMap { byId[$0] }
@@ -1889,6 +1933,7 @@ class StorageService: ObservableObject {
     /// concurrent add/remove.
     func commitPortfolioOrder(_ orderedIds: [UUID]) {
         guard orderedIds.count == portfolios.count,
+              orderedIds != portfolios.map(\.id),
               Set(orderedIds) == Set(portfolios.map(\.id)) else { return }
         let byId = Dictionary(uniqueKeysWithValues: portfolios.map { ($0.id, $0) })
         portfolios = orderedIds.compactMap { byId[$0] }

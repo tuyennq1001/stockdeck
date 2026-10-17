@@ -85,8 +85,16 @@ final class PortfolioReorderTests: XCTestCase {
         let p3 = storage.createPortfolio(name: "C")
 
         // Move B after A → [A, B, C] already satisfied; must be a no-op.
+        var changeCount = 0
+        let cancellable = storage.objectWillChange.sink { _ in changeCount += 1 }
         storage.movePortfolio(from: p2.id, relativeTo: p1.id, placement: .after)
+        XCTAssertEqual(changeCount, 0)
         XCTAssertEqual(storage.portfolios.map(\.name), ["A", "B", "C"])
+
+        // Move A before B → [A, B, C] already satisfied; must also be a no-op.
+        storage.movePortfolio(from: p1.id, relativeTo: p2.id, placement: .before)
+        XCTAssertEqual(changeCount, 0)
+        _ = cancellable
 
         // Move B after C (target after removal) → B reaches the end.
         storage.movePortfolio(from: p2.id, relativeTo: p3.id, placement: .after)
