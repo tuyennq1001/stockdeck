@@ -37,20 +37,66 @@ enum AIReviewScope: Hashable {
     }
 }
 
-/// Known OpenAI-compatible provider presets used by the AI Review settings.
+/// Known OpenAI-compatible and OAuth provider presets used by the AI Review settings.
 enum AIProviderOption: String, CaseIterable, Identifiable {
-    case openai, gemini, deepseek, groq, openrouter, custom
+    case geminiOAuth = "gemini_oauth"
+    case claudeOAuth = "claude_oauth"
+    case codexOAuth = "codex_oauth"
+    case gemini
+    case openai
+    case deepseek
+    case groq
+    case openrouter
+    case custom
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .openai: return "OpenAI"
+        case .geminiOAuth: return "Google Gemini"
+        case .claudeOAuth: return "Claude"
+        case .codexOAuth: return "OpenAI Codex"
         case .gemini: return "Google Gemini"
+        case .openai: return "OpenAI"
         case .deepseek: return "DeepSeek"
         case .groq: return "Groq"
         case .openrouter: return "OpenRouter"
         case .custom: return "Custom…"
+        }
+    }
+
+    var isOAuth: Bool {
+        switch self {
+        case .geminiOAuth, .claudeOAuth, .codexOAuth:
+            return true
+        default:
+            return false
+        }
+    }
+
+    static var oauthProviders: [AIProviderOption] {
+        allCases.filter { $0.isOAuth }
+    }
+
+    static var apiKeyProviders: [AIProviderOption] {
+        allCases.filter { !$0.isOAuth }
+    }
+
+    func toggledAuthMode(toOAuth: Bool) -> AIProviderOption {
+        if toOAuth {
+            switch self {
+            case .geminiOAuth, .claudeOAuth, .codexOAuth: return self
+            case .gemini: return .geminiOAuth
+            case .openai: return .codexOAuth
+            default: return .geminiOAuth
+            }
+        } else {
+            switch self {
+            case .gemini, .openai, .deepseek, .groq, .openrouter, .custom: return self
+            case .geminiOAuth: return .gemini
+            case .codexOAuth: return .openai
+            case .claudeOAuth: return .gemini
+            }
         }
     }
 

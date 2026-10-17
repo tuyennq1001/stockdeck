@@ -32,7 +32,6 @@ private struct SettingsContentView: View {
     @State private var showEditProfileSheet = false
     @State private var isLoadingModels = false
     @State private var modelFetchError: String? = nil
-    @State private var showCustomModelField = false
     @State private var showApiKeyText = false
     @State private var telegramTesting = false
     @State private var telegramTestResult: (success: Bool, message: String)? = nil
@@ -41,6 +40,16 @@ private struct SettingsContentView: View {
         c.hour = 7; c.minute = 30
         return Calendar.current.date(from: c) ?? Date()
     }()
+    @ObservedObject private var oauthService = AIOAuthService.shared
+
+    private func oauthProviderName(for provider: String) -> String {
+        switch provider {
+        case "gemini_oauth": return "Google"
+        case "claude_oauth": return "Claude"
+        case "codex_oauth": return "OpenAI"
+        default: return "Provider"
+        }
+    }
 
     private var availableModelOptions: [(String, String)] {
         let list = storageService.availableModels(for: storageService.aiProvider)
@@ -48,7 +57,7 @@ private struct SettingsContentView: View {
     }
 
     private func loadModels(silent: Bool = false) {
-        guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else { return }
+        let isOAuth = AIProviderOption(rawValue: storageService.aiProvider)?.isOAuth ?? false
         if !silent {
             isLoadingModels = true
         }
@@ -56,10 +65,19 @@ private struct SettingsContentView: View {
         let currentProvider = storageService.aiProvider
         Task {
             do {
-                let models = try await AIReviewService.shared.fetchModels(
-                    baseURL: storageService.aiBaseURL,
-                    apiKey: storageService.aiApiKey
-                )
+                let models: [String]
+                if isOAuth {
+                    models = try await AIReviewService.shared.fetchOAuthModels(provider: currentProvider)
+                } else {
+                    guard !storageService.aiBaseURL.isEmpty, !storageService.aiApiKey.isEmpty else {
+                        await MainActor.run { self.isLoadingModels = false }
+                        return
+                    }
+                    models = try await AIReviewService.shared.fetchModels(
+                        baseURL: storageService.aiBaseURL,
+                        apiKey: storageService.aiApiKey
+                    )
+                }
                 await MainActor.run {
                     self.storageService.setCachedModels(models, for: currentProvider)
                     self.isLoadingModels = false
@@ -69,6 +87,13 @@ private struct SettingsContentView: View {
                 }
             } catch {
                 await MainActor.run {
+                    let presets = self.storageService.availableModels(for: currentProvider)
+                    if !presets.isEmpty {
+                        self.storageService.setCachedModels(presets, for: currentProvider)
+                        if let first = presets.first, (self.storageService.aiModel.isEmpty || !presets.contains(self.storageService.aiModel)) {
+                            self.storageService.aiModel = first
+                        }
+                    }
                     if !silent {
                         self.modelFetchError = error.localizedDescription
                     }
@@ -239,71 +264,192 @@ private struct SettingsContentView: View {
     }
 
     private var aiReviewCard: some View {
-        SettingsCard(title: "AI Review") {
-            SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
-                DSFocusableContainer { focused in
-                    HStack(spacing: 8) {
-                        if showApiKeyText {
-                            TextField("sk-… / AIzaSy…", text: Binding(
-                                get: { storageService.aiApiKey },
-                                set: {
-                                    storageService.aiApiKey = $0
-                                    if !storageService.aiApiKey.isEmpty {
-                                        loadModels(silent: true)
-                                    }
-                                }))
-                                .textFieldStyle(.plain)
-                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                                .focused(focused)
-                        } else {
-                            SecureField("sk-… / AIzaSy…", text: Binding(
-                                get: { storageService.aiApiKey },
-                                set: {
-                                    storageService.aiApiKey = $0
-                                    if !storageService.aiApiKey.isEmpty {
-                                        loadModels(silent: true)
-                                    }
-                                }))
-                                .textFieldStyle(.plain)
-                                .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
-                                .focused(focused)
-                        }
-
-                        Button {
-                            withAnimation {
-                                showApiKeyText.toggle()
-                            }
-                        } label: {
-                            Image(systemName: showApiKeyText ? "eye.slash" : "eye")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(DS.inkSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        .help(showApiKeyText ? "Hide API key" : "Show API key")
-
-                        Button {
-                            storageService.aiApiKey = ""
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(storageService.aiApiKey.isEmpty ? DS.inkTertiary : DS.down)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(storageService.aiApiKey.isEmpty)
-                        .pointingHandCursor()
-                        .help("Remove the stored API key")
-                    }
+        let isOAuth = AIProviderOption(rawValue: storageService.aiProvider)?.isOAuth ?? false
+        let authMethodBinding = Binding<String>(
+            get: { isOAuth ? "oauth" : "apikey" },
+            set: { newMode in
+                let targetOAuth = (newMode == "oauth")
+                if let current = AIProviderOption(rawValue: storageService.aiProvider) {
+                    let next = current.toggledAuthMode(toOAuth: targetOAuth)
+                    storageService.applyAIPreset(next.rawValue)
+                } else {
+                    storageService.applyAIPreset(targetOAuth ? "gemini_oauth" : "gemini")
                 }
+                loadModels(silent: true)
+            }
+        )
+        let providerOptions = (isOAuth ? AIProviderOption.oauthProviders : AIProviderOption.apiKeyProviders)
+            .map { ($0.rawValue, $0.label) }
+
+        return SettingsCard(title: "AI Review") {
+            SettingRow("Auth method", caption: "Sign in with your AI subscription or use an API key") {
+                DSPicker(options: [
+                    ("oauth", "OAuth (Subscription)"),
+                    ("apikey", "API Key")
+                ], selection: authMethodBinding, width: 200)
             }
             SettingDivider()
-            SettingRow("Provider", caption: "Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, etc.") {
-                DSPicker(options: AIProviderOption.all.map { ($0.value.rawValue, $0.label) },
+            SettingRow("Provider", caption: isOAuth ? "Google Gemini, Claude, OpenAI Codex" : "Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, Custom") {
+                DSPicker(options: providerOptions,
                          selection: $storageService.aiProvider, width: 200)
                     .onChange(of: storageService.aiProvider) { _, newValue in
                         storageService.applyAIPreset(newValue)
                         loadModels(silent: true)
                     }
+            }
+            SettingDivider()
+            if isOAuth {
+                SettingRow("Account", caption: "Sign in with your subscription without needing an API key") {
+                    HStack(spacing: 10) {
+                        if oauthService.isAuthenticated(for: storageService.aiProvider) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(DS.up)
+                                    .frame(width: 7, height: 7)
+                                if let email = oauthService.userEmail(for: storageService.aiProvider), !email.isEmpty {
+                                    Text(verbatim: email)
+                                        .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                                        .foregroundStyle(DS.ink)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                } else {
+                                    Text(verbatim: "Signed in")
+                                        .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                                        .foregroundStyle(DS.ink)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                            .fixedSize(horizontal: true, vertical: false)
+
+                            Button {
+                                oauthService.signOut(for: storageService.aiProvider)
+                            } label: {
+                                Text("Sign out")
+                                    .font(.inter(11, weight: .medium, relativeTo: .caption))
+                                    .foregroundStyle(DS.down)
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .pointingHandCursor()
+                        } else {
+                            Button {
+                                Task {
+                                    try? await oauthService.startOAuthFlow(for: storageService.aiProvider)
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if oauthService.authenticatingProvider == storageService.aiProvider {
+                                        DSSpinner(size: 11)
+                                        Text("Signing in…")
+                                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                                            .lineLimit(1)
+                                    } else {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 11, weight: .medium))
+                                        Text(verbatim: "Sign in with \(oauthProviderName(for: storageService.aiProvider))")
+                                            .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .foregroundStyle(DS.brand)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                                .fixedSize(horizontal: true, vertical: false)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(oauthService.authenticatingProvider != nil)
+                            .pointingHandCursor()
+                        }
+                    }
+                }
+            } else {
+                SettingRow("API key", caption: "Stored in the Keychain, never in plaintext files") {
+                    HStack(spacing: 8) {
+                        if storageService.aiProvider == "gemini" {
+                            Button {
+                                if let url = URL(string: "https://aistudio.google.com/app/apikey") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "key")
+                                        .font(.system(size: 10, weight: .medium))
+                                    Text(verbatim: "Get free key ↗")
+                                        .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                                        .lineLimit(1)
+                                }
+                                .foregroundStyle(DS.brand)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                            }
+                            .buttonStyle(.plain)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .pointingHandCursor()
+                            .help("Open Google AI Studio to create or view your free Gemini API key")
+                        }
+
+                        DSFocusableContainer { focused in
+                            HStack(spacing: 8) {
+                                if showApiKeyText {
+                                    TextField("sk-… / AIzaSy…", text: Binding(
+                                        get: { storageService.aiApiKey },
+                                        set: {
+                                            storageService.aiApiKey = $0
+                                            if !storageService.aiApiKey.isEmpty {
+                                                loadModels(silent: true)
+                                            }
+                                        }))
+                                        .textFieldStyle(.plain)
+                                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                        .focused(focused)
+                                } else {
+                                    SecureField("sk-… / AIzaSy…", text: Binding(
+                                        get: { storageService.aiApiKey },
+                                        set: {
+                                            storageService.aiApiKey = $0
+                                            if !storageService.aiApiKey.isEmpty {
+                                                loadModels(silent: true)
+                                            }
+                                        }))
+                                        .textFieldStyle(.plain)
+                                        .font(.inter(11.5, relativeTo: .caption).monospacedDigit())
+                                        .focused(focused)
+                                }
+
+                                Button {
+                                    withAnimation {
+                                        showApiKeyText.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: showApiKeyText ? "eye.slash" : "eye")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(DS.inkSecondary)
+                                }
+                                .buttonStyle(.plain)
+                                .pointingHandCursor()
+                                .help(showApiKeyText ? "Hide API key" : "Show API key")
+
+                                Button {
+                                    storageService.aiApiKey = ""
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(storageService.aiApiKey.isEmpty ? DS.inkTertiary : DS.down)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(storageService.aiApiKey.isEmpty)
+                                .pointingHandCursor()
+                                .help("Remove the stored API key")
+                            }
+                        }
+                    }
+                }
             }
             SettingDivider()
             if storageService.aiProvider == "custom" {
@@ -317,8 +463,8 @@ private struct SettingsContentView: View {
             }
             SettingRow("Model") {
                 HStack(spacing: 8) {
-                    if showCustomModelField {
-                        TextField("Model ID (e.g. gemini-2.0-flash)", text: $storageService.aiModel)
+                    if availableModelOptions.isEmpty {
+                        TextField("Model ID", text: $storageService.aiModel)
                             .textFieldStyle(.plain)
                             .font(.inter(11, relativeTo: .caption).monospacedDigit())
                             .frame(width: 200)
@@ -348,37 +494,19 @@ private struct SettingsContentView: View {
                         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
                     }
                     .buttonStyle(.plain)
-                    .disabled(isLoadingModels || storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)
+                    .disabled(isLoadingModels || (!isOAuth && (storageService.aiApiKey.isEmpty || storageService.aiBaseURL.isEmpty)))
                     .pointingHandCursor()
                     .help("Fetch available models from provider")
-
-                    Button {
-                        withAnimation {
-                            showCustomModelField.toggle()
-                        }
-                    } label: {
-                        Image(systemName: showCustomModelField ? "list.bullet" : "pencil")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(DS.inkSecondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 5)
-                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
-                    }
-                    .buttonStyle(.plain)
-                    .pointingHandCursor()
-                    .help(showCustomModelField ? "Switch to model dropdown" : "Type custom model ID")
                 }
             }
             if let err = modelFetchError {
                 Text("Lỗi tải danh sách model: \(err)")
                     .font(DS.micro)
                     .foregroundStyle(DS.down)
-                    .padding(.horizontal, 16)
             } else if let cached = storageService.cachedModelsByProvider[storageService.aiProvider], !cached.isEmpty {
                 Text("Đã tải \(cached.count) models từ server")
                     .font(DS.micro)
                     .foregroundStyle(DS.up)
-                    .padding(.horizontal, 16)
             }
             if storageService.aiProvider == "deepseek" {
                 SettingDivider()
@@ -387,7 +515,7 @@ private struct SettingsContentView: View {
                               isOn: $storageService.aiDeepseekThinking)
             }
             SettingDivider()
-            SettingRow("Workspace folder", caption: "A folder the assistant reads & writes as long-term memory (ai-context.md). Durable notes survive across sessions — no need to re-answer every time.") {
+            SettingRow("Workspace folder", caption: "Reads & writes ai-context.md (valuation templates, persistent notes)") {
                 workspaceFolderControl
             }
             SettingDivider()
@@ -431,45 +559,54 @@ private struct SettingsContentView: View {
 
     @ViewBuilder
     private var workspaceFolderControl: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 8) {
             if storageService.aiWorkspacePath.isEmpty {
                 Text("Not set")
                     .font(.inter(11.5, relativeTo: .caption))
                     .foregroundStyle(DS.inkTertiary)
             } else {
-                Text((storageService.aiWorkspacePath as NSString).lastPathComponent)
-                    .font(.inter(11.5, weight: .medium, relativeTo: .caption))
-                    .foregroundStyle(DS.ink)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(storageService.aiWorkspacePath)
+                HStack(spacing: 5) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DS.inkSecondary)
+                    Text((storageService.aiWorkspacePath as NSString).lastPathComponent)
+                        .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(DS.cardAlt))
+                .help(storageService.aiWorkspacePath)
             }
-            HStack(spacing: 8) {
-                Button("Choose…") {
-                    chooseWorkspaceFolder()
+
+            Button("Choose…") {
+                chooseWorkspaceFolder()
+            }
+            .buttonStyle(.plain)
+            .font(.inter(11, weight: .medium, relativeTo: .caption))
+            .foregroundStyle(DS.brand)
+            .pointingHandCursor()
+
+            if !storageService.aiWorkspacePath.isEmpty {
+                Button("Open") {
+                    if let folder = storageService.ensureAIWorkspace() {
+                        NSWorkspace.shared.open(folder)
+                    }
                 }
                 .buttonStyle(.plain)
                 .font(.inter(11, weight: .medium, relativeTo: .caption))
-                .foregroundStyle(DS.brand)
+                .foregroundStyle(DS.inkSecondary)
                 .pointingHandCursor()
-                if !storageService.aiWorkspacePath.isEmpty {
-                    Button("Open") {
-                        if let folder = storageService.ensureAIWorkspace() {
-                            NSWorkspace.shared.open(folder)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.inter(11, weight: .medium, relativeTo: .caption))
-                    .foregroundStyle(DS.inkSecondary)
-                    .pointingHandCursor()
-                    Button("Remove") {
-                        storageService.aiWorkspacePath = ""
-                    }
-                    .buttonStyle(.plain)
-                    .font(.inter(11, weight: .medium, relativeTo: .caption))
-                    .foregroundStyle(DS.down)
-                    .pointingHandCursor()
+
+                Button("Remove") {
+                    storageService.aiWorkspacePath = ""
                 }
+                .buttonStyle(.plain)
+                .font(.inter(11, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.down)
+                .pointingHandCursor()
             }
         }
     }

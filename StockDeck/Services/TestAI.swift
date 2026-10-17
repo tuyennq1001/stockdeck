@@ -14,24 +14,37 @@ enum TestAI {
 
     /// Performs a probe chat completion request to diagnose connectivity.
     static func testConnection(storageService: StorageService, apiKeyOverride: String? = nil) async -> TestResult {
+        let isOAuth = AIProviderOption(rawValue: storageService.aiProvider)?.isOAuth ?? false
         let key = apiKeyOverride ?? storageService.aiApiKey
         let cleanKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanKey.isEmpty else {
-            return TestResult(
-                success: false,
-                message: "Chưa cấu hình API Key. Vui lòng nhập API Key.",
-                latencyMs: 0,
-                model: storageService.aiModel
-            )
-        }
-        let cleanBaseURL = storageService.aiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanBaseURL.isEmpty else {
-            return TestResult(
-                success: false,
-                message: "Chưa cấu hình Base URL.",
-                latencyMs: 0,
-                model: storageService.aiModel
-            )
+
+        if !isOAuth {
+            guard !cleanKey.isEmpty else {
+                return TestResult(
+                    success: false,
+                    message: "Chưa cấu hình API Key. Vui lòng nhập API Key.",
+                    latencyMs: 0,
+                    model: storageService.aiModel
+                )
+            }
+            let cleanBaseURL = storageService.aiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanBaseURL.isEmpty else {
+                return TestResult(
+                    success: false,
+                    message: "Chưa cấu hình Base URL.",
+                    latencyMs: 0,
+                    model: storageService.aiModel
+                )
+            }
+        } else {
+            guard AIOAuthService.shared.isAuthenticated(for: storageService.aiProvider) else {
+                return TestResult(
+                    success: false,
+                    message: "Chưa đăng nhập tài khoản. Vui lòng bấm Sign In.",
+                    latencyMs: 0,
+                    model: storageService.aiModel
+                )
+            }
         }
 
         let service = AIReviewService.shared
@@ -41,7 +54,8 @@ enum TestAI {
             model: storageService.aiModel,
             systemContext: "You are a test probe. Reply with exactly: ok",
             messages: [AIChatSection.APIMessage(role: "user", content: "ping")],
-            thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil
+            thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
+            provider: storageService.aiProvider
         )
 
         let startTime = CFAbsoluteTimeGetCurrent()

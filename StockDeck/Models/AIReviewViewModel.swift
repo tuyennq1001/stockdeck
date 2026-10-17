@@ -75,8 +75,8 @@ final class AIReviewViewModel {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasImage = attachedImageData != nil
         guard (!text.isEmpty || hasImage), !isSending else { return }
-        guard !storageService.aiApiKey.isEmpty else {
-            errorMessage = "Set an API key in Settings → AI Review first."
+        guard storageService.hasAIConfiguration else {
+            errorMessage = "Configure AI Provider or sign in via Settings → AI Review first."
             return
         }
         guard let sectionID = selectedSectionID else { return }
@@ -145,7 +145,8 @@ final class AIReviewViewModel {
             model: storageService.aiModel,
             systemContext: context.contextText,
             messages: messages,
-            thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil
+            thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
+            provider: storageService.aiProvider
         )
     }
 

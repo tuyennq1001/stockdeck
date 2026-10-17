@@ -51,6 +51,7 @@ final class AIReviewService {
         let maxTokens: Int?
         /// Enable Google Search Grounding for real-time web search (Gemini).
         let enableSearchGrounding: Bool?
+        let provider: String?
 
         init(
             baseURL: String,
@@ -60,7 +61,8 @@ final class AIReviewService {
             messages: [AIChatSection.APIMessage],
             thinking: Bool? = nil,
             maxTokens: Int? = nil,
-            enableSearchGrounding: Bool? = nil
+            enableSearchGrounding: Bool? = nil,
+            provider: String? = nil
         ) {
             self.baseURL = baseURL
             self.apiKey = apiKey
@@ -70,11 +72,25 @@ final class AIReviewService {
             self.thinking = thinking
             self.maxTokens = maxTokens
             self.enableSearchGrounding = enableSearchGrounding
+            self.provider = provider
         }
     }
 
     /// Sends the conversation + context to the provider and returns the assistant reply.
     func send(request: Request) async throws -> String {
+        if let provider = request.provider {
+            switch provider {
+            case "claude_oauth":
+                return try await sendClaudeOAuth(request: request)
+            case "codex_oauth":
+                return try await sendCodexOAuth(request: request)
+            case "gemini_oauth":
+                return try await sendGeminiOAuth(request: request)
+            default:
+                break
+            }
+        }
+
         let cleanApiKey = request.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanBaseURL = request.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanApiKey.isEmpty, !cleanBaseURL.isEmpty else {
@@ -269,15 +285,20 @@ final class AIReviewService {
         return cleaned.sorted { a, b in
             if cleanBaseURL.contains("googleapis.com") {
                 func geminiScore(_ s: String) -> Int {
-                    if s == "gemini-2.0-flash" { return 0 }
-                    if s == "gemini-2.5-flash" { return 1 }
-                    if s == "gemini-2.5-pro" { return 2 }
-                    if s == "gemini-1.5-flash" { return 3 }
-                    if s == "gemini-1.5-pro" { return 4 }
-                    if s.hasPrefix("gemini-2.0") { return 5 }
-                    if s.hasPrefix("gemini-2.5") { return 6 }
-                    if s.hasPrefix("gemini-1.5") { return 7 }
-                    return 8
+                    if s == "gemini-3.8-flash" { return 0 }
+                    if s == "gemini-3.1-pro" { return 1 }
+                    if s == "gemini-3.5-flash-lite" { return 2 }
+                    if s == "gemini-3-flash" { return 3 }
+                    if s.hasPrefix("gemini-3") { return 4 }
+                    if s == "gemini-2.5-pro" { return 5 }
+                    if s == "gemini-2.5-flash" { return 6 }
+                    if s == "gemini-2.0-flash" { return 7 }
+                    if s == "gemini-1.5-pro" { return 8 }
+                    if s == "gemini-1.5-flash" { return 9 }
+                    if s.hasPrefix("gemini-2.5") { return 10 }
+                    if s.hasPrefix("gemini-2.0") { return 11 }
+                    if s.hasPrefix("gemini-1.5") { return 12 }
+                    return 13
                 }
                 let scoreA = geminiScore(a)
                 let scoreB = geminiScore(b)
@@ -301,6 +322,111 @@ final class AIReviewService {
                 }
             }
             return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }
+    }
+
+    /// Fetches models dynamically for OAuth providers from their servers.
+    func fetchOAuthModels(provider: String) async throws -> [String] {
+        switch provider {
+        case "gemini_oauth":
+            let token = try await AIOAuthService.shared.getValidAccessToken(for: "gemini_oauth")
+            let hosts = [
+                "https://daily-cloudcode-pa.googleapis.com",
+                "https://cloudcode-pa.googleapis.com"
+            ]
+            for host in hosts {
+                guard let url = URL(string: "\(host)/v1internal:fetchAvailableModels") else { continue }
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                applyAntigravityHeaders(to: &req, accessToken: token)
+                req.httpBody = Data("{}".utf8)
+
+                if let (data, response) = try? await session.data(for: req),
+                   let http = response as? HTTPURLResponse, http.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let modelsDict = json["models"] as? [String: [String: Any]] {
+                    var list: [String] = ["gemini-4-argon"]
+                    for key in modelsDict.keys {
+                        let lower = key.lowercased()
+                        guard lower.hasPrefix("gemini-") else { continue }
+                        if lower.contains("image") || lower.contains("tiered") || lower.contains("embedding") {
+                            continue
+                        }
+                        if !list.contains(key) {
+                            list.append(key)
+                        }
+                    }
+                    if list.count > 1 {
+                        return sortGeminiModels(list)
+                    }
+                }
+            }
+            return StorageService.providerPresetModels["gemini_oauth"] ?? []
+
+        case "codex_oauth":
+            let token = try await AIOAuthService.shared.getValidAccessToken(for: "codex_oauth")
+            if let url = URL(string: "https://api.openai.com/v1/models") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+                if let (data, response) = try? await session.data(for: req),
+                   let http = response as? HTTPURLResponse, http.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let dataArr = json["data"] as? [[String: Any]] {
+                    var list: [String] = []
+                    for item in dataArr {
+                        if let id = item["id"] as? String {
+                            let lower = id.lowercased()
+                            if lower.hasPrefix("gpt-") || lower.hasPrefix("o1") || lower.hasPrefix("o3") || lower.hasPrefix("chatgpt") {
+                                if !list.contains(id) { list.append(id) }
+                            }
+                        }
+                    }
+                    if !list.isEmpty {
+                        return list.sorted()
+                    }
+                }
+            }
+            return StorageService.providerPresetModels["codex_oauth"] ?? []
+
+        case "claude_oauth":
+            return StorageService.providerPresetModels["claude_oauth"] ?? []
+
+        default:
+            return StorageService.providerPresetModels[provider] ?? []
+        }
+    }
+
+    private func sortGeminiModels(_ models: [String]) -> [String] {
+        func geminiScore(_ s: String) -> Int {
+            if s == "gemini-4-argon" { return 0 }
+            if s.hasPrefix("gemini-4") { return 1 }
+            if s == "gemini-3.8-flash-high" { return 2 }
+            if s == "gemini-3.8-flash-medium" { return 3 }
+            if s == "gemini-3.8-flash-low" { return 4 }
+            if s.hasPrefix("gemini-3.8") { return 5 }
+            if s.hasPrefix("gemini-3.7") { return 6 }
+            if s.hasPrefix("gemini-3.6") { return 7 }
+            if s == "gemini-3.5-flash-lite" { return 8 }
+            if s.hasPrefix("gemini-3.5") { return 9 }
+            if s == "gemini-3.1-pro-high" || s == "gemini-3.1-pro" { return 10 }
+            if s.hasPrefix("gemini-3.1") { return 11 }
+            if s == "gemini-3-flash-agent" { return 12 }
+            if s == "gemini-3-flash" { return 13 }
+            if s.hasPrefix("gemini-3") { return 14 }
+            if s == "gemini-2.5-pro" { return 15 }
+            if s == "gemini-2.5-flash" { return 16 }
+            if s.hasPrefix("gemini-2.5") { return 17 }
+            if s == "gemini-2.0-flash" { return 18 }
+            return 19
+        }
+        return models.sorted { a, b in
+            let scoreA = geminiScore(a)
+            let scoreB = geminiScore(b)
+            if scoreA != scoreB { return scoreA < scoreB }
+            return a < b
         }
     }
 
@@ -435,6 +561,257 @@ final class AIReviewService {
         } catch {
             throw AIReviewError.decoding(error.localizedDescription)
         }
+    }
+
+    // MARK: - OAuth Senders
+
+    private func sendClaudeOAuth(request: Request) async throws -> String {
+        let accessToken = try await AIOAuthService.shared.getValidAccessToken(for: "claude_oauth")
+        guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
+            throw AIReviewError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var anthropicMessages: [[String: Any]] = []
+        for m in request.messages {
+            let role = m.role == "assistant" ? "assistant" : "user"
+            if let img = m.imageBase64, !img.isEmpty {
+                let cleanBase64 = img.contains(",") ? String(img.components(separatedBy: ",").last ?? img) : img
+                anthropicMessages.append([
+                    "role": role,
+                    "content": [
+                        [
+                            "type": "image",
+                            "source": [
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": cleanBase64
+                            ]
+                        ],
+                        [
+                            "type": "text",
+                            "text": m.content
+                        ]
+                    ]
+                ])
+            } else {
+                anthropicMessages.append([
+                    "role": role,
+                    "content": m.content
+                ])
+            }
+        }
+        if anthropicMessages.isEmpty {
+            anthropicMessages.append(["role": "user", "content": "Analyze portfolio."])
+        }
+
+        var payload: [String: Any] = [
+            "model": request.model.isEmpty ? "claude-3-7-sonnet-20250219" : request.model,
+            "max_tokens": request.maxTokens ?? 4096,
+            "messages": anthropicMessages
+        ]
+        if !request.systemContext.isEmpty {
+            payload["system"] = request.systemContext
+        }
+
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw AIReviewError.network("No HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIReviewError.badStatus(http.statusCode, body)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let contentArr = json["content"] as? [[String: Any]] else {
+            throw AIReviewError.decoding("Invalid Claude response structure")
+        }
+        let reply = contentArr.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        return reply.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func sendCodexOAuth(request: Request) async throws -> String {
+        let accessToken = try await AIOAuthService.shared.getValidAccessToken(for: "codex_oauth")
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
+            throw AIReviewError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var payload = [String: Any]()
+        payload["model"] = request.model.isEmpty ? "gpt-4o" : request.model
+        payload["messages"] = Self.buildMessages(systemContext: request.systemContext, messages: request.messages)
+        payload["temperature"] = 0.4
+        payload["max_tokens"] = request.maxTokens ?? 4096
+
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw AIReviewError.network("No HTTP response")
+        }
+        guard http.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw AIReviewError.badStatus(http.statusCode, body)
+        }
+        let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+        guard let reply = decoded.choices.first?.message.content else {
+            throw AIReviewError.decoding("Empty response choices")
+        }
+        return reply.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var cachedCloudCodeProject: String?
+
+    private func applyAntigravityHeaders(to req: inout URLRequest, accessToken: String) {
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("antigravity/2.24.0 darwin/arm64", forHTTPHeaderField: "User-Agent")
+        req.setValue("google-cloud-sdk vscode_cloudshelleditor/0.1", forHTTPHeaderField: "X-Goog-Api-Client")
+        req.setValue("{\"ideType\":\"IDE_UNSPECIFIED\",\"platform\":\"PLATFORM_UNSPECIFIED\",\"pluginType\":\"GEMINI\"}", forHTTPHeaderField: "Client-Metadata")
+    }
+
+    private func resolveGeminiCloudCodeProject(accessToken: String) async -> String {
+        if let cached = cachedCloudCodeProject, !cached.isEmpty {
+            return cached
+        }
+        let hosts = [
+            "https://daily-cloudcode-pa.googleapis.com",
+            "https://cloudcode-pa.googleapis.com"
+        ]
+        let bodyDict: [String: Any] = [
+            "metadata": [
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            ]
+        ]
+        let bodyData = try? JSONSerialization.data(withJSONObject: bodyDict)
+
+        for host in hosts {
+            guard let url = URL(string: "\(host)/v1internal:loadCodeAssist") else { continue }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            applyAntigravityHeaders(to: &req, accessToken: accessToken)
+            req.httpBody = bodyData
+
+            if let (data, response) = try? await session.data(for: req),
+               let http = response as? HTTPURLResponse, http.statusCode == 200,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let proj = json["cloudaicompanionProject"] as? String, !proj.isEmpty {
+                cachedCloudCodeProject = proj
+                return proj
+            }
+        }
+        return "aicode-consumers"
+    }
+
+    private func extractGeminiCandidateText(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let respObj = (json["response"] as? [String: Any]) ?? json
+        guard let candidates = respObj["candidates"] as? [[String: Any]],
+              let first = candidates.first,
+              let content = first["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]] else {
+            return nil
+        }
+        let nonThoughtTexts = parts.compactMap { part -> String? in
+            if (part["thought"] as? Bool) == true { return nil }
+            if part["thoughtSignature"] != nil && part["text"] == nil { return nil }
+            guard let t = part["text"] as? String, !t.isEmpty else { return nil }
+            return t
+        }
+        let joined = nonThoughtTexts.isEmpty
+            ? parts.compactMap({ $0["text"] as? String }).joined()
+            : nonThoughtTexts.joined()
+        let trimmed = joined.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func sendGeminiOAuth(request: Request) async throws -> String {
+        let accessToken = try await AIOAuthService.shared.getValidAccessToken(for: "gemini_oauth")
+        let projectId = await resolveGeminiCloudCodeProject(accessToken: accessToken)
+
+        var contents: [[String: Any]] = []
+        if !request.systemContext.isEmpty {
+            contents.append([
+                "role": "user",
+                "parts": [["text": "System context:\n" + request.systemContext]]
+            ])
+            contents.append([
+                "role": "model",
+                "parts": [["text": "Understood. I will analyze your portfolio based on these instructions."]]
+            ])
+        }
+        for m in request.messages {
+            contents.append([
+                "role": m.role == "assistant" ? "model" : "user",
+                "parts": [["text": m.content]]
+            ])
+        }
+        if contents.isEmpty {
+            contents.append(["role": "user", "parts": [["text": "Analyze portfolio."]]])
+        }
+
+        let primaryModel = request.model.isEmpty ? "gemini-3.8-flash-high" : request.model
+        var candidateModels: [String] = [primaryModel]
+        for fallback in ["gemini-3.8-flash-high", "gemini-3-flash", "gemini-2.5-flash"] {
+            if !candidateModels.contains(fallback) {
+                candidateModels.append(fallback)
+            }
+        }
+
+        let hosts = [
+            "https://daily-cloudcode-pa.googleapis.com",
+            "https://cloudcode-pa.googleapis.com"
+        ]
+
+        var lastStatus: Int = 500
+        var lastErrorBody: String = "Unknown error"
+
+        for host in hosts {
+            guard let url = URL(string: "\(host)/v1internal:generateContent") else { continue }
+            for modelId in candidateModels {
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                applyAntigravityHeaders(to: &req, accessToken: accessToken)
+
+                let payload: [String: Any] = [
+                    "project": projectId,
+                    "model": modelId,
+                    "request": [
+                        "contents": contents,
+                        "generationConfig": [
+                            "temperature": 0.4,
+                            "maxOutputTokens": max(request.maxTokens ?? 4096, 512)
+                        ]
+                    ]
+                ]
+                req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+                if let (data, response) = try? await session.data(for: req),
+                   let http = response as? HTTPURLResponse {
+                    if http.statusCode == 200, let reply = extractGeminiCandidateText(from: data) {
+                        return reply
+                    }
+                    lastStatus = http.statusCode
+                    lastErrorBody = String(data: data, encoding: .utf8) ?? ""
+                }
+            }
+        }
+
+        throw AIReviewError.badStatus(lastStatus, lastErrorBody)
     }
 
     // MARK: - DTOs

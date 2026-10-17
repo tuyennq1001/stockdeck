@@ -462,7 +462,8 @@ final class HomeAIInsightService {
             messages: [AIChatSection.APIMessage(role: "user", content: prompt.userMessage)],
             thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
             maxTokens: 4096,
-            enableSearchGrounding: isGemini
+            enableSearchGrounding: isGemini,
+            provider: storageService.aiProvider
         )
 
         let reply = try await aiService.send(request: request)
