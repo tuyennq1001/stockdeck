@@ -128,6 +128,8 @@ struct HoldingDetailView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
+                    EarningsCard(symbol: holding.symbol)
+                        .frame(maxWidth: .infinity)
                     if insiderService.shouldShowCard(for: holding.symbol) {
                         InsiderTradingCard(symbol: holding.symbol)
                     }
@@ -150,11 +152,13 @@ struct HoldingDetailView: View {
         .navigationTitle(mainTitle)
         .task(id: holding.symbol) {
             async let insiderTask: Void = insiderService.ensureTransactions(for: holding.symbol)
+            async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: holding.symbol)
             if liveQuote.hasValuationData != true {
                 await stockService.ensureQuoteValuation(for: holding.symbol)
             }
             await stockService.ensureKeyStatistics(for: holding.symbol)
             await insiderTask
+            await earningsTask
         }
         .sheet(item: $targetCloseLot) { target in
             CloseHoldingSheet(

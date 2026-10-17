@@ -36,6 +36,7 @@ final class PortfolioMonitor {
 
     func check(now: Date = Date()) {
         checkTelegramSchedules(now: now)
+        checkEarningsNotifications(now: now)
 
         guard !storage.portfolioNotifications.isEmpty else { return }
         let today = Self.dayKey(now)
@@ -259,6 +260,17 @@ final class PortfolioMonitor {
             lines.append("…and \(metrics.holdings.count - limit) more")
         }
         return lines
+    }
+
+    /// Evaluates if any equities held in active portfolios have earnings reports today or tomorrow.
+    private func checkEarningsNotifications(now: Date = Date()) {
+        let uniqueSymbols = Set(storage.portfolios.flatMap { $0.holdings.map(\.symbol) })
+        for sym in uniqueSymbols {
+            guard EarningsService.isEligible(symbol: sym) else { continue }
+            if let item = EarningsService.shared.getEarnings(for: sym) {
+                notifier.notifyUpcomingEarningsIfNeeded(item: item)
+            }
+        }
     }
 
     private static let dayFormatter: DateFormatter = {

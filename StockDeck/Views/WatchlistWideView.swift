@@ -373,6 +373,7 @@ struct WatchlistWideView: View {
                             ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
                         }
                     }
+                    EarningsCard(symbol: symbol)
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
                         .id("notes-\(symbol)")
@@ -382,8 +383,10 @@ struct WatchlistWideView: View {
                 .padding(16)
             }
             .task(id: symbol) {
+                async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: symbol)
                 await stockService.ensureQuoteValuation(for: symbol)
                 await stockService.ensureKeyStatistics(for: symbol)
+                await earningsTask
             }
         }
         .background(DS.ground)
@@ -1441,10 +1444,13 @@ private struct WatchRowView<Menu: View>: View {
                 HStack(spacing: 9) {
                     SymbolLogo(symbol: row.symbol, size: 28)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(titleText)
-                            .font(DS.figure)
-                            .foregroundStyle(DS.ink)
-                            .lineLimit(1)
+                        HStack(spacing: 5) {
+                            Text(titleText)
+                                .font(DS.figure)
+                                .foregroundStyle(DS.ink)
+                                .lineLimit(1)
+                            UpcomingEarningsBadge(symbol: row.symbol)
+                        }
                         if !subTitleText.isEmpty {
                             Text(subTitleText)
                                 .font(DS.micro)

@@ -2530,6 +2530,7 @@ private struct PositionSummaryRow: View {
                             .font(DS.figure)
                             .foregroundStyle(DS.ink)
                             .lineLimit(1)
+                        UpcomingEarningsBadge(symbol: symbol)
                         if first?.holding.isShort == true {
                             Tag(text: "S", color: DS.down)
                         }
