@@ -37,15 +37,17 @@ struct SymbolDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DS.ground)
         .task(id: symbol) {
+            let hasVal = quote?.hasValuationData == true
+            async let priceTask: Void = stockService.ensurePriceHistory(for: symbol)
             async let insiderTask: Void = insiderService.ensureTransactions(for: symbol)
             async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: symbol)
-            await stockService.ensurePriceHistory(for: symbol)
-            if quote?.hasValuationData != true {
-                await stockService.ensureQuoteValuation(for: symbol)
-            }
-            await stockService.ensureKeyStatistics(for: symbol)
-            await insiderTask
-            await earningsTask
+            async let valTask: Void = {
+                if !hasVal {
+                    await stockService.ensureQuoteValuation(for: symbol)
+                }
+            }()
+            async let statsTask: Void = stockService.ensureKeyStatistics(for: symbol)
+            _ = await (priceTask, insiderTask, earningsTask, valTask, statsTask)
         }
     }
 

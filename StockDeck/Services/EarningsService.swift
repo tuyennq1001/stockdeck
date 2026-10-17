@@ -139,9 +139,15 @@ public final class EarningsService: ObservableObject {
 
         // 2. Try loading from disk cache first
         if !force {
-            let (loaded, isFresh) = loadDiskCache(for: clean)
-            if loaded && isFresh {
-                return
+            let cached = await Task.detached(priority: .userInitiated) {
+                Self.readDiskCache(for: clean, cacheTTL: 24 * 3600)
+            }.value
+            if let cached = cached {
+                self.earnings[clean] = cached.item
+                self.lastFetchDates[clean] = cached.modDate
+                if cached.isFresh {
+                    return
+                }
             }
         }
 

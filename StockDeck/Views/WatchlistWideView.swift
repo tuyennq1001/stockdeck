@@ -175,8 +175,18 @@ struct WatchlistWideView: View {
                         HStack(spacing: 0) {
                             Divider().overlay(DS.hairline)
                             if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
-                                sideChartPane(symbol: sym, quote: q)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                WatchlistSideDetailPane(
+                                    symbol: sym,
+                                    quote: q,
+                                    onSetBuyTarget: { targetSymbol = TargetTarget(symbol: sym) },
+                                    onAddToPortfolio: { addToPortfolio = $0 },
+                                    onClose: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            activeDetailSymbol = nil
+                                        }
+                                    }
+                                )
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
                         }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -269,154 +279,6 @@ struct WatchlistWideView: View {
             }
         } message: {
             Text("Enter a new name for this watchlist:")
-        }
-    }
-
-    // MARK: - Side Chart Pane
-
-    @ViewBuilder
-    private func sideChartPane(symbol: String, quote: StockQuote) -> some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                SymbolLogo(symbol: symbol, size: 36)
-                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(symbol)
-                let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
-                let titleText = (isJpFund || isDisplayAsset) ? quote.displayName : symbol
-                let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : quote.name)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink).lineLimit(1)
-                    if !subTitleText.isEmpty {
-                        Text(subTitleText).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                    }
-                }
-                Spacer()
-                Button {
-                    targetSymbol = TargetTarget(symbol: symbol)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "target").font(.system(size: 10, weight: .bold))
-                        if let target = storageService.buyTarget(for: symbol) {
-                            Text(target.isInBuyZone(currentPrice: quote.effectivePrice) ? "Buy Zone" : "Buy Target")
-                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-                        } else {
-                            Text("Buy Target")
-                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-                        }
-                    }
-                    .foregroundStyle(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? .white : DS.brand)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Capsule().fill(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? DS.up : DS.brand.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Set a buy target price for this stock")
-
-                if !storageService.portfolios.isEmpty {
-                    DSMenu(width: 200, sections: [storageService.portfolios.map { p in
-                        DSMenuAction(title: p.name, icon: "briefcase") {
-                            addToPortfolio = AddTarget(symbol: symbol, portfolioId: p.id)
-                        }
-                    }]) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
-                            Text("Portfolio").font(.inter(11.5, weight: .semibold, relativeTo: .caption))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Capsule().fill(DS.brand))
-                    }
-                    .pointingHandCursor()
-                    .help("Add this stock as a position in a portfolio")
-                }
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        activeDetailSymbol = nil
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(DS.inkSecondary)
-                        .padding(6)
-                        .background(Circle().fill(DS.cardAlt))
-                }
-                .buttonStyle(.plain)
-                .pointingHandCursor()
-                .help("Close chart")
-            }
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
-
-            Divider().overlay(DS.hairline)
-
-            ScrollView {
-                LazyVStack(spacing: DS.gap) {
-                    PriceChartCard(symbol: symbol, quote: quote)
-                        .id("price-\(symbol)")
-                    VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
-                        .id("volume-\(symbol)")
-                    if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
-                    if quote.hasValuationData {
-                        let keyStats = stockService.keyStatistics[symbol]
-                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
-                        ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
-                        if !StockService.isIndexSymbol(symbol) {
-                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
-                        }
-                    }
-                    EarningsCard(symbol: symbol)
-                    InsiderTradingCard(symbol: symbol)
-                    SymbolNotesCard(storageService: storageService, symbol: symbol)
-                        .id("notes-\(symbol)")
-                    SymbolNewsCard(stockService: stockService, symbol: symbol)
-                        .id("news-\(symbol)")
-                }
-                .padding(16)
-            }
-            .task(id: symbol) {
-                async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: symbol)
-                await stockService.ensureQuoteValuation(for: symbol)
-                await stockService.ensureKeyStatistics(for: symbol)
-                await earningsTask
-            }
-        }
-        .background(DS.ground)
-    }
-
-    @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
-        if let pos = quote.fiftyTwoWeekPosition,
-           let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
-            let idxFlag = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
-            let priceSymbol = idxFlag ? "" : StorageService.currencySymbol(for: quote.currency)
-            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low)
-            Card(title: "52-week range") {
-                VStack(spacing: 10) {
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(DS.cardAlt).frame(height: 6)
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 10, height: 10)
-                                .overlay(Circle().strokeBorder(DS.brand, lineWidth: 2))
-                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
-                                .offset(x: CGFloat(pos) * (geo.size.width - 10))
-                        }
-                        .frame(maxHeight: .infinity, alignment: .center)
-                    }
-                    .frame(height: 16)
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            SectionLabel("Low")
-                            Text(idxFlag ? StorageService.formatNumber(low, decimals: dec) : StorageService.formatAmount(low, symbol: priceSymbol, decimals: dec))
-                                .font(DS.figure).foregroundStyle(DS.ink)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            SectionLabel("High")
-                            Text(idxFlag ? StorageService.formatNumber(high, decimals: dec) : StorageService.formatAmount(high, symbol: priceSymbol, decimals: dec))
-                                .font(DS.figure).foregroundStyle(DS.ink)
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -1301,5 +1163,161 @@ private struct WatchRowView<Menu: View>: View {
         }
         .onHover { hover = $0 }
         .contextMenu { menu() }
+    }
+}
+
+// MARK: - Isolated Side Detail Pane
+
+private struct WatchlistSideDetailPane: View {
+    let symbol: String
+    let quote: StockQuote
+    let onSetBuyTarget: () -> Void
+    let onAddToPortfolio: (WatchlistWideView.AddTarget) -> Void
+    let onClose: () -> Void
+
+    @ObservedObject private var stockService = StockService.shared
+    @ObservedObject private var storageService = StorageService.shared
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 10) {
+                SymbolLogo(symbol: symbol, size: 36)
+                let isJpFund = quote.isJapaneseFund || stockService.isJapaneseMutualFund(symbol)
+                let isDisplayAsset = StockService.isDisplayNameAsset(symbol)
+                let titleText = (isJpFund || isDisplayAsset) ? quote.displayName : symbol
+                let subTitleText = isDisplayAsset ? symbol : (isJpFund ? "" : quote.name)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(titleText).font(DS.titleXL).tracking(-0.3).foregroundStyle(DS.ink).lineLimit(1)
+                    if !subTitleText.isEmpty {
+                        Text(subTitleText).font(DS.caption).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                Button {
+                    onSetBuyTarget()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "target").font(.system(size: 10, weight: .bold))
+                        if let target = storageService.buyTarget(for: symbol) {
+                            Text(target.isInBuyZone(currentPrice: quote.effectivePrice) ? "Buy Zone" : "Buy Target")
+                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        } else {
+                            Text("Buy Target")
+                                .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        }
+                    }
+                    .foregroundStyle(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? .white : DS.brand)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(storageService.buyTarget(for: symbol)?.isInBuyZone(currentPrice: quote.effectivePrice) == true ? DS.up : DS.brand.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Set a buy target price for this stock")
+
+                if !storageService.portfolios.isEmpty {
+                    DSMenu(width: 200, sections: [storageService.portfolios.map { p in
+                        DSMenuAction(title: p.name, icon: "briefcase") {
+                            onAddToPortfolio(WatchlistWideView.AddTarget(symbol: symbol, portfolioId: p.id))
+                        }
+                    }]) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 10, weight: .bold))
+                            Text("Portfolio").font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(DS.brand))
+                    }
+                    .pointingHandCursor()
+                    .help("Add this stock as a position in a portfolio")
+                }
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(DS.inkSecondary)
+                        .padding(6)
+                        .background(Circle().fill(DS.cardAlt))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("Close chart")
+            }
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+
+            Divider().overlay(DS.hairline)
+
+            ScrollView {
+                LazyVStack(spacing: DS.gap) {
+                    PriceChartCard(symbol: symbol, quote: quote)
+                        .id("price-\(symbol)")
+                    VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
+                        .id("volume-\(symbol)")
+                    if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
+                    if quote.hasValuationData {
+                        let keyStats = stockService.keyStatistics[symbol]
+                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
+                        ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                        if !StockService.isIndexSymbol(symbol) {
+                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                        }
+                    }
+                    EarningsCard(symbol: symbol)
+                    InsiderTradingCard(symbol: symbol)
+                    SymbolNotesCard(storageService: storageService, symbol: symbol)
+                        .id("notes-\(symbol)")
+                    SymbolNewsCard(stockService: stockService, symbol: symbol)
+                        .id("news-\(symbol)")
+                }
+                .padding(16)
+            }
+            .task(id: symbol) {
+                async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: symbol)
+                async let valTask: Void = stockService.ensureQuoteValuation(for: symbol)
+                async let statsTask: Void = stockService.ensureKeyStatistics(for: symbol)
+                _ = await (earningsTask, valTask, statsTask)
+            }
+        }
+        .background(DS.ground)
+    }
+
+    @ViewBuilder private func fiftyTwoWeekCard(_ quote: StockQuote) -> some View {
+        if let pos = quote.fiftyTwoWeekPosition,
+           let low = quote.fiftyTwoWeekLow, let high = quote.fiftyTwoWeekHigh {
+            let idxFlag = StorageService.isIndex(symbol: quote.symbol, type: storageService.type(for: quote.symbol))
+            let priceSymbol = idxFlag ? "" : StorageService.currencySymbol(for: quote.currency)
+            let dec = storageService.resolvedPriceDecimals(symbol: quote.symbol, price: low)
+            Card(title: "52-week range") {
+                VStack(spacing: 10) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(DS.cardAlt).frame(height: 6)
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 10, height: 10)
+                                .overlay(Circle().strokeBorder(DS.brand, lineWidth: 2))
+                                .shadow(color: .black.opacity(0.10), radius: 2, y: 1)
+                                .offset(x: CGFloat(pos) * (geo.size.width - 10))
+                        }
+                        .frame(maxHeight: .infinity, alignment: .center)
+                    }
+                    .frame(height: 16)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            SectionLabel("Low")
+                            Text(idxFlag ? StorageService.formatNumber(low, decimals: dec) : StorageService.formatAmount(low, symbol: priceSymbol, decimals: dec))
+                                .font(DS.figure).foregroundStyle(DS.ink)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            SectionLabel("High")
+                            Text(idxFlag ? StorageService.formatNumber(high, decimals: dec) : StorageService.formatAmount(high, symbol: priceSymbol, decimals: dec))
+                                .font(DS.figure).foregroundStyle(DS.ink)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

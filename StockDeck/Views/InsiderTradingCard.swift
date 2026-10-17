@@ -125,17 +125,19 @@ struct InsiderTradingCard: View {
     var body: some View {
         Group {
             if insiderService.shouldShowCard(for: symbol) {
+                let groups = groupedTransactions
+                let summary = activeSummary
                 VStack(alignment: .leading, spacing: 12) {
                     headerRow
 
-                    summaryCardView(activeSummary)
+                    summaryCardView(summary)
 
                     filterBar
 
-                    if groupedTransactions.isEmpty && !allTransactions.isEmpty {
+                    if groups.isEmpty && !allTransactions.isEmpty {
                         noOpenMarketNoticeView
                     } else {
-                        transactionsListView
+                        transactionsListView(groups: groups)
                     }
                 }
                 .padding(14)
@@ -382,27 +384,28 @@ struct InsiderTradingCard: View {
         .padding(.vertical, 6)
     }
 
-    private var displayedTransactions: [GroupedTradeRow] {
-        isExpanded ? groupedTransactions : Array(groupedTransactions.prefix(8))
+    private func displayedTransactions(from groups: [GroupedTradeRow]) -> [GroupedTradeRow] {
+        isExpanded ? groups : Array(groups.prefix(8))
     }
 
-    private var transactionsListView: some View {
-        VStack(spacing: 6) {
-            ForEach(displayedTransactions) { row in
+    private func transactionsListView(groups: [GroupedTradeRow]) -> some View {
+        let displayed = displayedTransactions(from: groups)
+        return VStack(spacing: 6) {
+            ForEach(displayed) { row in
                 transactionRow(row)
-                if row.id != displayedTransactions.last?.id {
+                if row.id != displayed.last?.id {
                     Divider().opacity(0.5)
                 }
             }
 
-            if groupedTransactions.count > 8 {
+            if groups.count > 8 {
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isExpanded.toggle()
                     }
                 }) {
                     HStack(spacing: 4) {
-                        Text(isExpanded ? (isVi ? "Thu gọn" : "Show less") : (isVi ? "Xem tất cả \(groupedTransactions.count) giao dịch" : "Show all \(groupedTransactions.count) transactions"))
+                        Text(isExpanded ? (isVi ? "Thu gọn" : "Show less") : (isVi ? "Xem tất cả \(groups.count) giao dịch" : "Show all \(groups.count) transactions"))
                             .font(.inter(11, weight: .semibold, relativeTo: .caption))
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 9, weight: .bold))
