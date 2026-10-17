@@ -1957,6 +1957,38 @@ class StockService: ObservableObject {
         }
     }
 
+    /// Fetches raw JSON data from Yahoo Finance quoteSummary for calendarEvents, earningsHistory, and earningsTrend.
+    public func fetchEarningsQuoteSummary(for symbol: String, retried: Bool = false) async -> Data? {
+        if crumb == nil {
+            guard await fetchCrumb() else { return nil }
+        }
+
+        guard let crumb = crumb else { return nil }
+
+        let symbolEncoded = symbol.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? symbol
+        let crumbEncoded = crumb.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? crumb
+        guard let url = URL(string: "https://query2.finance.yahoo.com/v10/finance/quoteSummary/\(symbolEncoded)?modules=calendarEvents,earningsHistory,earnings,earningsTrend&crumb=\(crumbEncoded)") else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let httpResp = response as? HTTPURLResponse else { return nil }
+
+            if httpResp.statusCode == 401 {
+                guard !retried else { return nil }
+                self.crumb = nil
+                guard await fetchCrumb() else { return nil }
+                return await fetchEarningsQuoteSummary(for: symbol, retried: true)
+            }
+
+            guard httpResp.statusCode == 200 else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+
     /// Pure, unit-testable parser mapping Yahoo quoteSummary modules (defaultKeyStatistics, financialData) to KeyStatistics.
     nonisolated static func parseQuoteSummaryResponse(_ data: Data, fetchedAt: Date = Date()) throws -> KeyStatistics {
         let decoder = JSONDecoder()

@@ -38,12 +38,14 @@ struct SymbolDetailView: View {
         .background(DS.ground)
         .task(id: symbol) {
             async let insiderTask: Void = insiderService.ensureTransactions(for: symbol)
+            async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: symbol)
             await stockService.ensurePriceHistory(for: symbol)
             if quote?.hasValuationData != true {
                 await stockService.ensureQuoteValuation(for: symbol)
             }
             await stockService.ensureKeyStatistics(for: symbol)
             await insiderTask
+            await earningsTask
         }
     }
 
@@ -70,6 +72,7 @@ struct SymbolDetailView: View {
                                 ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
                             }
                         }
+                        EarningsCard(symbol: symbol)
                         if insiderService.shouldShowCard(for: symbol) {
                             InsiderTradingCard(symbol: symbol)
                         }
@@ -167,6 +170,7 @@ struct SymbolDetailView: View {
                     await stockService.ensureQuoteValuation(for: symbol)
                     await stockService.ensureKeyStatistics(for: symbol, force: true)
                     await insiderService.ensureTransactions(for: symbol, force: true)
+                    await EarningsService.shared.ensureEarnings(for: symbol, force: true)
                 }
             }) {
                 Image(systemName: "arrow.clockwise")

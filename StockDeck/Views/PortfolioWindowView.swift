@@ -16,7 +16,7 @@ struct PortfolioWindowView: View {
 
     /// Sidebar destinations — the dock tabs, with Portfolios expanded per portfolio.
     enum Nav: Hashable {
-        case home, watchlist, portfoliosAll, importExport, settings, aiReview, alerts
+        case home, watchlist, portfoliosAll, importExport, settings, aiReview, alerts, earnings
         case portfolio(UUID)
     }
 
@@ -26,13 +26,14 @@ struct PortfolioWindowView: View {
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
     @State private var portfolioPath = NavigationPath()
 
-    /// Dev affordance: SD_OPEN_TAB=home|watchlist|settings preselects a tab so
+    /// Dev affordance: SD_OPEN_TAB=home|watchlist|settings|earnings preselects a tab so
     /// each pane can be screenshotted deterministically.
     static func initialSelection() -> Nav {
         switch ProcessInfo.processInfo.environment["SD_OPEN_TAB"] {
         case "home": return .home
         case "watchlist": return .watchlist
         case "settings": return .settings
+        case "earnings": return .earnings
         default: return .portfoliosAll
         }
     }
@@ -413,6 +414,9 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "sparkles", title: "AI Review",
                            helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
                            selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
+                    NavRow(icon: "calendar", title: "Earnings",
+                           helpText: "Earnings report calendar for your portfolios & watchlists",
+                           selected: selection == .earnings, namespace: navNamespace) { navigate(to: .earnings) }
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
@@ -709,6 +713,8 @@ struct PortfolioWindowView: View {
             }
         case .aiReview:
             AIReviewWideView(onOpenSettings: { navigate(to: .settings) })
+        case .earnings:
+            EarningsCalendarView()
         case .alerts:
             AlertsWideView()
         }

@@ -978,6 +978,7 @@ struct QuoteFrozenRow<Menu: View>: View {
                         .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)
+                    UpcomingEarningsBadge(symbol: row.symbol)
                     if isBuyZone {
                         Text("🎯 MUA")
                             .font(.system(size: 8, weight: .bold))

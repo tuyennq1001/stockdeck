@@ -64,6 +64,17 @@ final class NotificationManager {
         }
     }
 
+    /// Sends an earnings notification for a symbol if an announcement is scheduled today or tomorrow.
+    func notifyUpcomingEarningsIfNeeded(item: EarningsReportItem) {
+        guard let days = item.daysUntilNextEarnings, days >= 0, days <= 1 else { return }
+        let dayString = item.isToday ? "today" : "tomorrow"
+        let sessionString = item.session != .unspecified ? " (\(item.session.title))" : ""
+        let id = "earnings-\(item.symbol)-\(item.shortDateFormatted)"
+        let title = "Earnings Alert: \(item.symbol)"
+        let body = "\(item.symbol) reports earnings \(dayString)\(sessionString). Consensus EPS: \(item.epsEstimate.map { String(format: "$%.2f", $0) } ?? "TBD")."
+        send(title: title, body: body, identifier: id, sentiment: .neutral)
+    }
+
     /// Tone of a notification — maps to a Discord embed color.
     enum Sentiment {
         case positive, negative, neutral
