@@ -1865,6 +1865,10 @@ class StockService: ObservableObject {
     /// are fetched and populated for a single symbol when viewed on detail screens.
     func ensureQuoteValuation(for symbol: String) async {
         guard !isJapaneseMutualFund(symbol) else { return }
+        let canonical = Self.canonicalSymbol(for: symbol)
+        if let quote = quotes[canonical] ?? quotes[symbol], quote.hasValuationData {
+            return
+        }
         if Self.isVietnameseStock(symbol) {
             if let yahooSym = Self.yahooSymbolForVietnameseStock(symbol) {
                 _ = await fetchQuotesV7(symbols: [yahooSym])
@@ -2510,18 +2514,26 @@ class StockService: ObservableObject {
                 let scaledLows = response.l?.map { $0 * scale }
                 let points = PriceHistory.points(timestamps: timestamps.map { Int($0) }, closes: scaledCloses, opens: scaledOpens, highs: scaledHighs, lows: scaledLows, volumes: response.v)
                 guard !points.isEmpty else { return }
-                priceHistory[symbol] = points
-                priceHistory[symbol.uppercased()] = points
-                watchlistHistory[symbol] = points
-                watchlistHistory[symbol.uppercased()] = points
-                if clean == "VNINDEX" {
-                    priceHistory["^VNINDEX"] = points
-                    priceHistory["^VNINDEX.VN"] = points
-                    priceHistory["VNINDEX"] = points
-                    watchlistHistory["^VNINDEX"] = points
-                    watchlistHistory["^VNINDEX.VN"] = points
-                    watchlistHistory["VNINDEX"] = points
+                var updatedPrice = priceHistory
+                var updatedWatchlist = watchlistHistory
+                updatedPrice[symbol] = points
+                if symbol != symbol.uppercased() {
+                    updatedPrice[symbol.uppercased()] = points
                 }
+                updatedWatchlist[symbol] = points
+                if symbol != symbol.uppercased() {
+                    updatedWatchlist[symbol.uppercased()] = points
+                }
+                if clean == "VNINDEX" {
+                    updatedPrice["^VNINDEX"] = points
+                    updatedPrice["^VNINDEX.VN"] = points
+                    updatedPrice["VNINDEX"] = points
+                    updatedWatchlist["^VNINDEX"] = points
+                    updatedWatchlist["^VNINDEX.VN"] = points
+                    updatedWatchlist["VNINDEX"] = points
+                }
+                priceHistory = updatedPrice
+                watchlistHistory = updatedWatchlist
                 priceHistoryFetchedAt[symbol] = Date()
                 if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                     let monthly = PriceHistory.deriveMonthly(from: points)
@@ -2539,10 +2551,18 @@ class StockService: ObservableObject {
         if isCrypto {
             let points = await fetchBinanceKlines(for: symbol)
             if !points.isEmpty {
-                priceHistory[symbol] = points
-                priceHistory[symbol.uppercased()] = points
-                watchlistHistory[symbol] = points
-                watchlistHistory[symbol.uppercased()] = points
+                var updatedPrice = priceHistory
+                var updatedWatchlist = watchlistHistory
+                updatedPrice[symbol] = points
+                if symbol != symbol.uppercased() {
+                    updatedPrice[symbol.uppercased()] = points
+                }
+                updatedWatchlist[symbol] = points
+                if symbol != symbol.uppercased() {
+                    updatedWatchlist[symbol.uppercased()] = points
+                }
+                priceHistory = updatedPrice
+                watchlistHistory = updatedWatchlist
                 priceHistoryFetchedAt[symbol] = Date()
                 if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                     let monthly = PriceHistory.deriveMonthly(from: points)
@@ -2587,11 +2607,7 @@ class StockService: ObservableObject {
         if let at = priceHistoryMaxAt[symbol],
            Date().timeIntervalSince(at) < 21600,
            let points = priceHistoryMax[symbol], !points.isEmpty {
-            if !isJapaneseMutualFund(symbol) && !points.contains(where: { ($0.volume ?? 0) > 0 }) {
-                // proceed to re-fetch max history with volume
-            } else {
-                return
-            }
+            return
         }
 
         if isJapaneseMutualFund(symbol) {

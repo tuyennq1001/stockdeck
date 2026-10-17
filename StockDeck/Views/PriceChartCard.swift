@@ -78,8 +78,30 @@ struct PriceChartCard: View {
         }
     }
 
-    @State private var chartRange: ChartRange = .month
-    @State private var preparedHistory = PreparedHistory(points: [], low: .infinity, high: -.infinity)
+    @State private var chartRange: ChartRange
+    @State private var preparedHistory: PreparedHistory
+
+    init(symbol: String, quote: StockQuote, chartHeight: CGFloat = 280) {
+        self.symbol = symbol
+        self.quote = quote
+        self.chartHeight = chartHeight
+        let initialRange = ChartRange(rawValue: StorageService.shared.lastStockChartRange) ?? .month
+        self._chartRange = State(initialValue: initialRange)
+
+        let stockService = StockService.shared
+        let initialInput = HistoryInput(
+            symbol: symbol,
+            range: initialRange,
+            daily: stockService.priceHistory[symbol] ?? [],
+            watchlist: stockService.watchlistHistory[symbol] ?? [],
+            full: stockService.priceHistoryMax[symbol] ?? [],
+            intraday: stockService.intradayHistory[symbol] ?? []
+        )
+        let initialPoints = Self.computeHistory(initialInput)
+        let initialLow = initialPoints.map(\.close).min() ?? .infinity
+        let initialHigh = initialPoints.map(\.close).max() ?? -.infinity
+        self._preparedHistory = State(initialValue: PreparedHistory(points: initialPoints, low: initialLow, high: initialHigh))
+    }
 
     private var isVi: Bool {
         storageService.appLanguage.lowercased() == "vi"
@@ -239,7 +261,7 @@ struct PriceChartCard: View {
     }
 
     private func nearestClose(for date: Date, in history: [PricePoint]) -> Double? {
-        history.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })?.close
+        PriceHistory.nearestPoint(to: date, in: history)?.close
     }
 
     nonisolated static func computeHistory(_ input: HistoryInput, now: Date = Date()) -> [PricePoint] {
@@ -447,18 +469,13 @@ struct PriceChartCard: View {
             if isEligibleForInsider {
                 await insiderService.ensureTransactions(for: symbol)
             }
-            updateCachedInsiderTrades()
         }
         .task(id: "\(symbol)-\(chartRange.rawValue)") {
             if chartRange == .all || chartRange == .fiveYears || chartRange == .threeYears {
                 await stockService.ensureFullHistoryMax(for: symbol)
             }
-            updateCachedInsiderTrades()
         }
         .onAppear {
-            if let savedRange = ChartRange(rawValue: storageService.lastStockChartRange) {
-                chartRange = savedRange
-            }
             updateCachedInsiderTrades()
         }
         .onChange(of: chartRange) { _, newRange in

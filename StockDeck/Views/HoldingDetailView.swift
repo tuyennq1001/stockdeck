@@ -151,14 +151,16 @@ struct HoldingDetailView: View {
         }
         .navigationTitle(mainTitle)
         .task(id: holding.symbol) {
+            let hasVal = liveQuote.hasValuationData == true
             async let insiderTask: Void = insiderService.ensureTransactions(for: holding.symbol)
             async let earningsTask: Void = EarningsService.shared.ensureEarnings(for: holding.symbol)
-            if liveQuote.hasValuationData != true {
-                await stockService.ensureQuoteValuation(for: holding.symbol)
-            }
-            await stockService.ensureKeyStatistics(for: holding.symbol)
-            await insiderTask
-            await earningsTask
+            async let valTask: Void = {
+                if !hasVal {
+                    await stockService.ensureQuoteValuation(for: holding.symbol)
+                }
+            }()
+            async let statsTask: Void = stockService.ensureKeyStatistics(for: holding.symbol)
+            _ = await (insiderTask, earningsTask, valTask, statsTask)
         }
         .sheet(item: $targetCloseLot) { target in
             CloseHoldingSheet(

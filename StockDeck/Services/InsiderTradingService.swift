@@ -37,12 +37,16 @@ public final class InsiderTradingService: ObservableObject {
 
     nonisolated private let session: URLSession
 
-    private var cacheDirectory: URL {
+    nonisolated private static var cacheDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let dir = appSupport.appendingPathComponent("\(AppEnvironment.appSupportFolderName)/InsiderCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    private var cacheDirectory: URL {
+        Self.cacheDirectory
     }
 
     private init() {
@@ -75,8 +79,15 @@ public final class InsiderTradingService: ObservableObject {
         // Always read disk cache into memory first if not in memory
         var isDiskFresh = false
         if transactions[clean] == nil {
-            let (loaded, fresh) = loadDiskCache(for: clean)
-            isDiskFresh = loaded && fresh
+            let ttl = cacheTTL
+            if let cached = await Task.detached(priority: .userInitiated, operation: {
+                Self.readDiskCache(for: clean, cacheTTL: ttl)
+            }).value {
+                self.transactions[clean] = cached.txs
+                self.sentiment[clean] = computeSentiment(symbol: clean, transactions: cached.txs, lookbackMonths: 60)
+                self.lastFetchDates[clean] = cached.modDate
+                isDiskFresh = cached.isFresh
+            }
         } else if let lastFetch = lastFetchDates[clean] {
             isDiskFresh = Date().timeIntervalSince(lastFetch) < cacheTTL
         }
@@ -581,26 +592,17 @@ public final class InsiderTradingService: ObservableObject {
         ]
 
         let stockService = StockService.shared
-        let calendar = Calendar.current
-        let txDay = calendar.startOfDay(for: tx.transactionDate)
 
         // 1. Check historical price points
         for candidate in candidates {
             let history = (stockService.priceHistory[candidate] ?? stockService.priceHistoryMax[candidate]) ?? []
             if !history.isEmpty {
-                var bestPoint: PricePoint?
-                var minDiff: TimeInterval = .infinity
-                for pt in history {
-                    let ptDay = calendar.startOfDay(for: pt.date)
-                    let diff = abs(ptDay.timeIntervalSince(txDay))
-                    if diff < minDiff {
-                        minDiff = diff
-                        bestPoint = pt
+                if let best = PriceHistory.nearestPoint(to: tx.transactionDate, in: history) {
+                    let diff = abs(best.date.timeIntervalSince(tx.transactionDate))
+                    if diff <= 7 * 86400, best.close > 0 {
+                        let close = best.close
+                        return close < 500 ? close * 1000.0 : close
                     }
-                }
-                if let best = bestPoint, minDiff <= 7 * 86400, best.close > 0 {
-                    let close = best.close
-                    return close < 500 ? close * 1000.0 : close
                 }
             }
         }
@@ -707,12 +709,30 @@ public final class InsiderTradingService: ObservableObject {
 
     // MARK: - Disk Caching
 
-    func cacheFilePath(for symbol: String) -> URL {
+    nonisolated static func cacheFilePath(for symbol: String) -> URL {
         cacheDirectory.appendingPathComponent("\(symbol)_insider.json")
     }
 
-    func saveDiskCache(for symbol: String, txs: [InsiderTransaction], synchronous: Bool = false) {
+    func cacheFilePath(for symbol: String) -> URL {
+        Self.cacheFilePath(for: symbol)
+    }
+
+    nonisolated static func readDiskCache(for symbol: String, cacheTTL: TimeInterval) -> (txs: [InsiderTransaction], modDate: Date, isFresh: Bool)? {
         let path = cacheFilePath(for: symbol)
+        guard FileManager.default.fileExists(atPath: path.path),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: path.path),
+              let modDate = attrs[.modificationDate] as? Date,
+              let data = try? Data(contentsOf: path),
+              let decoded = try? JSONDecoder().decode([InsiderTransaction].self, from: data) else {
+            return nil
+        }
+        let validTxs = decoded.filter { $0.shares > 0 && ($0.price > 0 || $0.isVNDisclosure) }
+        let isFresh = Date().timeIntervalSince(modDate) < cacheTTL
+        return (validTxs, modDate, isFresh)
+    }
+
+    func saveDiskCache(for symbol: String, txs: [InsiderTransaction], synchronous: Bool = false) {
+        let path = Self.cacheFilePath(for: symbol)
         let writeBlock = {
             guard let data = try? JSONEncoder().encode(txs) else { return }
             try? data.write(to: path, options: .atomic)
@@ -728,20 +748,13 @@ public final class InsiderTradingService: ObservableObject {
 
     @discardableResult
     func loadDiskCache(for symbol: String) -> (loaded: Bool, isFresh: Bool) {
-        let path = cacheFilePath(for: symbol)
-        guard FileManager.default.fileExists(atPath: path.path),
-              let attrs = try? FileManager.default.attributesOfItem(atPath: path.path),
-              let modDate = attrs[.modificationDate] as? Date,
-              let data = try? Data(contentsOf: path),
-              let decoded = try? JSONDecoder().decode([InsiderTransaction].self, from: data) else {
+        guard let cached = Self.readDiskCache(for: symbol, cacheTTL: cacheTTL) else {
             return (false, false)
         }
-        let validTxs = decoded.filter { $0.shares > 0 && ($0.price > 0 || $0.isVNDisclosure) }
-        self.transactions[symbol] = validTxs
-        self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: validTxs, lookbackMonths: 60)
-        self.lastFetchDates[symbol] = modDate
-        let isFresh = Date().timeIntervalSince(modDate) < cacheTTL
-        return (true, isFresh)
+        self.transactions[symbol] = cached.txs
+        self.sentiment[symbol] = computeSentiment(symbol: symbol, transactions: cached.txs, lookbackMonths: 60)
+        self.lastFetchDates[symbol] = cached.modDate
+        return (true, cached.isFresh)
     }
 }
 

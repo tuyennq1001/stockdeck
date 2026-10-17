@@ -12,9 +12,28 @@ struct VolumeChartCard: View {
     @ObservedObject private var stockService = StockService.shared
     @ObservedObject private var storageService = StorageService.shared
 
-    @State private var timeframe: Timeframe = .daily
-    @State private var preparedData = PreparedVolumeData(points: [], latestVolume: 0, latestValue: 0, latestMA20: 0, latestRatioVsMA20: nil, isLatestUp: true)
+    @State private var timeframe: Timeframe
+    @State private var preparedData: PreparedVolumeData
     @State private var hoverPoint: VolumePoint?
+
+    init(symbol: String, quote: StockQuote, chartHeight: CGFloat = 145) {
+        self.symbol = symbol
+        self.quote = quote
+        self.chartHeight = chartHeight
+        let initialTimeframe = Timeframe(rawValue: StorageService.shared.lastVolumeChartTimeframe) ?? .daily
+        self._timeframe = State(initialValue: initialTimeframe)
+
+        let stockService = StockService.shared
+        let initialInput = HistoryInput(
+            symbol: symbol,
+            timeframe: initialTimeframe,
+            daily: stockService.priceHistory[symbol] ?? [],
+            watchlist: stockService.watchlistHistory[symbol] ?? [],
+            full: stockService.priceHistoryMax[symbol] ?? [],
+            quoteRegularMarketVolume: quote.regularMarketVolume
+        )
+        self._preparedData = State(initialValue: Self.processVolumeData(input: initialInput))
+    }
 
     enum Timeframe: String, CaseIterable, Identifiable, Sendable {
         case daily = "1D"
@@ -478,11 +497,6 @@ struct VolumeChartCard: View {
         .task(id: "\(symbol)-\(timeframe.rawValue)") {
             if timeframe == .monthly {
                 await stockService.ensureFullHistoryMax(for: symbol)
-            }
-        }
-        .onAppear {
-            if let saved = Timeframe(rawValue: storageService.lastVolumeChartTimeframe) {
-                timeframe = saved
             }
         }
         .onChange(of: timeframe) { _, newTF in

@@ -396,7 +396,7 @@ struct EarningsCard: View {
 
 /// A compact pill badge displayed next to symbols in tables when an earnings report is approaching.
 struct UpcomingEarningsBadge: View {
-    @ObservedObject var earningsService = EarningsService.shared
+    @State private var item: EarningsReportItem?
     @EnvironmentObject var storageService: StorageService
     let symbol: String
 
@@ -409,20 +409,31 @@ struct UpcomingEarningsBadge: View {
     }
 
     var body: some View {
-        if let item = earningsService.getEarnings(for: cleanSym), item.isUpcoming(withinDays: 5) {
-            HStack(spacing: 2.5) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 7.5, weight: .bold))
-                Text(item.countdownText(isVi: isVi).uppercased())
-                    .font(.inter(7.5, weight: .bold, relativeTo: .caption2))
+        Group {
+            if let item = item, item.isUpcoming(withinDays: 5) {
+                HStack(spacing: 2.5) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 7.5, weight: .bold))
+                    Text(item.countdownText(isVi: isVi).uppercased())
+                        .font(.inter(7.5, weight: .bold, relativeTo: .caption2))
+                }
+                .foregroundStyle(item.isToday ? Color.red : Color.orange)
+                .padding(.horizontal, 3.5)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule().fill((item.isToday ? Color.red : Color.orange).opacity(0.12))
+                )
+                .help(isVi ? "Công bố BCTC: \(item.shortDateFormatted(isVi: true))" : "Earnings announcement: \(item.shortDateFormatted(isVi: false))")
             }
-            .foregroundStyle(item.isToday ? Color.red : Color.orange)
-            .padding(.horizontal, 3.5)
-            .padding(.vertical, 1)
-            .background(
-                Capsule().fill((item.isToday ? Color.red : Color.orange).opacity(0.12))
-            )
-            .help(isVi ? "Công bố BCTC: \(item.shortDateFormatted(isVi: true))" : "Earnings announcement: \(item.shortDateFormatted(isVi: false))")
+        }
+        .onAppear {
+            item = EarningsService.shared.getEarnings(for: cleanSym)
+        }
+        .onReceive(EarningsService.shared.$earnings) { earnings in
+            let newItem = earnings[cleanSym]
+            if newItem != item {
+                item = newItem
+            }
         }
     }
 }
