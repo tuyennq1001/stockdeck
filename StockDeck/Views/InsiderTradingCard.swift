@@ -8,13 +8,35 @@ struct InsiderTradingCard: View {
     @EnvironmentObject var storageService: StorageService
     let symbol: String
 
-    @State private var filterOpenMarket: Bool = true
     @State private var showInfoPopover: Bool = false
     private let lookbackMonths: Int = 24
     @State private var isExpanded: Bool = false
 
+    struct GroupedTradeRow: Identifiable {
+        let id: String
+        let date: Date
+        let ownerName: String
+        let displayRole: String
+        let transactionCode: String
+        let isBuy: Bool
+        let isPendingPlan: Bool
+        let isRule10b51: Bool
+        let isVNDisclosure: Bool
+        let count: Int
+        let totalShares: Double
+        let totalValue: Double
+        let effectivePrice: Double
+        let sharesOwnedFollowing: Double
+        let ownershipRatioAfter: Double?
+        let transactionNote: String?
+    }
+
     private var market: InsiderMarket {
         insiderService.market(for: symbol)
+    }
+
+    private var isVi: Bool {
+        storageService.appLanguage.lowercased() == "vi"
     }
 
     private var cleanSym: String {
@@ -29,12 +51,70 @@ struct InsiderTradingCard: View {
         insiderService.transactions[cleanSym] ?? []
     }
 
-    private var transactions: [InsiderTransaction] {
-        filterOpenMarket ? allTransactions.filter(\.isOpenMarket) : allTransactions
+    private var hasRule10b51Trades: Bool {
+        allTransactions.contains(where: \.isRule10b51)
+    }
+
+    private var baseTransactions: [InsiderTransaction] {
+        let pool = storageService.insiderOpenMarketOnly ? allTransactions.filter(\.isOpenMarket) : allTransactions
+        if storageService.excludeInsider10b51 {
+            return pool.filter { !$0.isRule10b51 }
+        }
+        return pool
+    }
+
+    private var groupedTransactions: [GroupedTradeRow] {
+        let df = DateFormatter.secDate
+
+        var groups: [String: [InsiderTransaction]] = [:]
+        var order: [String] = []
+
+        for tx in baseTransactions {
+            let dayStr = df.string(from: tx.transactionDate)
+            let key = "\(tx.ownerName)_\(dayStr)_\(tx.transactionCode)_\(tx.isRule10b51)_\(tx.isPendingPlan)"
+            if groups[key] == nil {
+                order.append(key)
+            }
+            groups[key, default: []].append(tx)
+        }
+
+        return order.compactMap { key -> GroupedTradeRow? in
+            guard let txs = groups[key], let first = txs.first else { return nil }
+            let count = txs.count
+            let totalShares = txs.reduce(0.0) { $0 + $1.shares }
+
+            let totalVal = txs.reduce(0.0) { sum, t in
+                let p = insiderService.resolvedPrice(for: t, rawSymbol: symbol)
+                let v = t.shares * p
+                return sum + (v > 0 ? v : t.totalValue)
+            }
+
+            let effPrice = totalShares > 0 ? (totalVal / totalShares) : (first.price > 0 ? first.price : insiderService.resolvedPrice(for: first, rawSymbol: symbol))
+            let last = txs.last ?? first
+
+            return GroupedTradeRow(
+                id: "\(first.id)_grouped_\(count)",
+                date: first.transactionDate,
+                ownerName: first.ownerName,
+                displayRole: first.displayRole,
+                transactionCode: first.transactionCode,
+                isBuy: first.isBuy,
+                isPendingPlan: first.isPendingPlan,
+                isRule10b51: first.isRule10b51,
+                isVNDisclosure: first.isVNDisclosure,
+                count: count,
+                totalShares: totalShares,
+                totalValue: totalVal,
+                effectivePrice: effPrice,
+                sharesOwnedFollowing: last.sharesOwnedFollowing,
+                ownershipRatioAfter: last.ownershipRatioAfter,
+                transactionNote: first.transactionNote
+            )
+        }
     }
 
     private var activeSummary: InsiderSentimentSummary {
-        let targetPool = transactions.isEmpty ? allTransactions : transactions
+        let targetPool = baseTransactions.isEmpty ? (storageService.excludeInsider10b51 ? allTransactions.filter { !$0.isRule10b51 } : allTransactions) : baseTransactions
         return insiderService.computeSentiment(
             symbol: symbol,
             transactions: targetPool,
@@ -52,7 +132,7 @@ struct InsiderTradingCard: View {
 
                     filterBar
 
-                    if transactions.isEmpty && !allTransactions.isEmpty {
+                    if groupedTransactions.isEmpty && !allTransactions.isEmpty {
                         noOpenMarketNoticeView
                     } else {
                         transactionsListView
@@ -77,12 +157,12 @@ struct InsiderTradingCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(DS.brand)
 
-                Text("Insider Trading")
+                Text(isVi ? "Giao dịch nội bộ" : "Insider Trading")
                     .font(.inter(14, weight: .bold, relativeTo: .subheadline))
                     .foregroundStyle(DS.ink)
 
                 if market == .vn {
-                    Text("CBTT Nội bộ")
+                    Text(isVi ? "CBTT Nội bộ" : "Insider Filing")
                         .font(.inter(10, weight: .semibold, relativeTo: .caption2))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -109,10 +189,11 @@ struct InsiderTradingCard: View {
             .popover(isPresented: $showInfoPopover) {
                 VStack(alignment: .leading, spacing: 6) {
                     if market == .vn {
-                        Text("Giao dịch Cổ đông Nội bộ & Liên quan")
+                        Text(isVi ? "Giao dịch Cổ đông Nội bộ & Liên quan" : "Insider & Affiliated Disclosures")
                             .font(.inter(12, weight: .bold, relativeTo: .caption))
                             .foregroundStyle(DS.ink)
-                        Text("Theo quy định CBTT trên sàn chứng khoán Việt Nam (HOSE/HNX/UPCoM), người nội bộ (HĐQT, Ban Giám đốc, BKS) và người có liên quan phải đăng ký trước khi giao dịch và báo cáo kết quả thực hiện. Tab Open Market lọc các giao dịch trên sàn và đăng ký mới (ẩn ESOP).")
+                        Text(isVi ? "Theo quy định CBTT trên sàn chứng khoán Việt Nam (HOSE/HNX/UPCoM), người nội bộ (HĐQT, Ban Giám đốc, BKS) và người có liên quan phải đăng ký trước khi giao dịch và báo cáo kết quả thực hiện. Chế độ Giao dịch mở lọc các giao dịch khớp lệnh và đăng ký mới (ẩn ESOP)."
+                                  : "Under regulatory disclosure rules on Vietnam stock exchanges (HOSE/HNX/UPCoM), insiders (Board of Directors, Executives, Supervisory Board) and affiliated persons must pre-register before trading and disclose results. Open Market mode filters out ESOP transactions.")
                             .font(.inter(11, weight: .regular, relativeTo: .caption))
                             .foregroundStyle(DS.inkSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -120,7 +201,8 @@ struct InsiderTradingCard: View {
                         Text(verbatim: "About SEC Form 4")
                             .font(.inter(12, weight: .bold, relativeTo: .caption))
                             .foregroundStyle(DS.ink)
-                        Text("Under SEC rules, corporate officers, directors, and >10% owners must report trades within 2 business days. Open-market buys (Code P) reflect direct management investment.")
+                        Text(isVi ? "Theo quy định của SEC, các lãnh đạo doanh nghiệp, thành viên HĐQT và cổ đông sở hữu >10% phải báo cáo giao dịch trong vòng 2 ngày làm việc. Lệnh mua trên sàn (Mã P) phản ánh việc ban lãnh đạo trực tiếp đầu tư vào công ty."
+                                  : "Under SEC rules, corporate officers, directors, and >10% owners must report trades within 2 business days. Open-market buys (Code P) reflect direct management investment.")
                             .font(.inter(11, weight: .regular, relativeTo: .caption))
                             .foregroundStyle(DS.inkSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -141,8 +223,19 @@ struct InsiderTradingCard: View {
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
-            .help(market == .vn ? "Làm mới dữ liệu giao dịch nội bộ" : "Refresh Form 4 filings")
+            .help(isVi ? "Làm mới dữ liệu giao dịch nội bộ" : (market == .vn ? "Refresh disclosure filings" : "Refresh Form 4 filings"))
         }
+    }
+
+    private func sentimentLabel(_ s: InsiderSentimentSummary.Sentiment) -> String {
+        if isVi {
+            switch s {
+            case .netBuying: return "Mua ròng"
+            case .netSelling: return "Bán ròng"
+            case .neutral: return "Trung lập"
+            }
+        }
+        return s.rawValue
     }
 
     private func summaryCardView(_ s: InsiderSentimentSummary) -> some View {
@@ -151,7 +244,7 @@ struct InsiderTradingCard: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
-                Text("2-Year Summary")
+                Text(isVi ? "Tổng quan 2 năm" : "2-Year Summary")
                     .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
                     .foregroundStyle(DS.inkSecondary)
 
@@ -160,7 +253,7 @@ struct InsiderTradingCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: sentimentIcon(s.sentiment))
                         .font(.system(size: 9, weight: .bold))
-                    Text(s.sentiment.rawValue)
+                    Text(sentimentLabel(s.sentiment))
                         .font(.inter(10, weight: .bold, relativeTo: .caption2))
                 }
                 .foregroundStyle(color)
@@ -193,13 +286,13 @@ struct InsiderTradingCard: View {
             // Stat pills
             HStack(spacing: 8) {
                 statPill(
-                    title: "Bought",
+                    title: isVi ? "Mua" : "Bought",
                     value: s.totalBuyValue,
                     count: s.buyCount,
                     color: DS.up
                 )
                 statPill(
-                    title: "Sold",
+                    title: isVi ? "Bán" : "Sold",
                     value: s.totalSellValue,
                     count: s.sellCount,
                     color: DS.down
@@ -243,76 +336,73 @@ struct InsiderTradingCard: View {
     }
 
     private var filterBar: some View {
-        HStack {
-            HStack(spacing: 4) {
-                filterButton(title: "Open Market", active: filterOpenMarket) {
-                    filterOpenMarket = true
-                }
-                filterButton(title: "All Filings", active: !filterOpenMarket) {
-                    filterOpenMarket = false
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                Text(storageService.insiderOpenMarketOnly ? (isVi ? "Giao dịch mở" : "Open market") : (isVi ? "Tất cả hồ sơ" : "All filings"))
+                    .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                    .foregroundStyle(DS.inkSecondary)
+
+                if storageService.excludeInsider10b51 {
+                    Text("•")
+                        .font(.inter(9, relativeTo: .caption))
+                        .foregroundStyle(DS.inkTertiary)
+                    Text(isVi ? "Loại trừ 10b5-1" : "Excl. 10b5-1")
+                        .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.brand)
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .background(
+                Capsule().fill(DS.cardAlt)
+            )
 
             Spacer()
 
-            Text("\(transactions.count) trade\(transactions.count == 1 ? "" : "s")")
+            Text(isVi ? "\(groupedTransactions.count) giao dịch" : "\(groupedTransactions.count) trade\(groupedTransactions.count == 1 ? "" : "s")")
                 .font(.inter(11, weight: .regular, relativeTo: .caption))
                 .foregroundStyle(DS.inkTertiary)
         }
     }
 
-    private func filterButton(title: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.inter(11, weight: active ? .semibold : .regular, relativeTo: .caption))
-                .foregroundStyle(active ? DS.ink : DS.inkTertiary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule().fill(active ? DS.cardAlt : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-    }
-
     private var noOpenMarketNoticeView: some View {
         HStack(spacing: 6) {
-            Text(market == .vn ? "Chỉ có giao dịch ESOP trong 2 năm qua." : "No open-market trades in the past 2 years.")
-                .font(.inter(11, weight: .regular, relativeTo: .caption))
-                .foregroundStyle(DS.inkSecondary)
-            Button("Xem tất cả (\(allTransactions.count))") {
-                filterOpenMarket = false
+            if storageService.excludeInsider10b51 && hasRule10b51Trades {
+                Text(isVi ? "Chỉ có giao dịch theo kế hoạch tự động (đã lọc theo cài đặt)." : "Only Rule 10b5-1 trading plans recorded (excluded by Settings).")
+                    .font(.inter(11, weight: .regular, relativeTo: .caption))
+                    .foregroundStyle(DS.inkSecondary)
+            } else {
+                Text(market == .vn
+                     ? (isVi ? "Chỉ có giao dịch ESOP trong 2 năm qua." : "Only ESOP transactions recorded in the past 2 years.")
+                     : (isVi ? "Không có giao dịch mở nào trong 2 năm qua." : "No open-market trades in the past 2 years."))
+                    .font(.inter(11, weight: .regular, relativeTo: .caption))
+                    .foregroundStyle(DS.inkSecondary)
             }
-            .font(.inter(11, weight: .semibold, relativeTo: .caption))
-            .foregroundStyle(DS.brand)
-            .buttonStyle(.plain)
-            .pointingHandCursor()
         }
         .padding(.vertical, 6)
     }
 
-    private var displayedTransactions: [InsiderTransaction] {
-        isExpanded ? transactions : Array(transactions.prefix(8))
+    private var displayedTransactions: [GroupedTradeRow] {
+        isExpanded ? groupedTransactions : Array(groupedTransactions.prefix(8))
     }
 
     private var transactionsListView: some View {
         VStack(spacing: 6) {
-            ForEach(displayedTransactions) { tx in
-                transactionRow(tx)
-                if tx.id != displayedTransactions.last?.id {
+            ForEach(displayedTransactions) { row in
+                transactionRow(row)
+                if row.id != displayedTransactions.last?.id {
                     Divider().opacity(0.5)
                 }
             }
 
-            if transactions.count > 8 {
+            if groupedTransactions.count > 8 {
                 Button(action: {
                     withAnimation(.easeInOut(duration: 0.18)) {
                         isExpanded.toggle()
                     }
                 }) {
                     HStack(spacing: 4) {
-                        Text(isExpanded ? "Show less" : "Show all \(transactions.count) transactions")
+                        Text(isExpanded ? (isVi ? "Thu gọn" : "Show less") : (isVi ? "Xem tất cả \(groupedTransactions.count) giao dịch" : "Show all \(groupedTransactions.count) transactions"))
                             .font(.inter(11, weight: .semibold, relativeTo: .caption))
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 9, weight: .bold))
@@ -327,17 +417,20 @@ struct InsiderTradingCard: View {
         }
     }
 
-    private func transactionRow(_ tx: InsiderTransaction) -> some View {
-        let badgeColor = tx.isBuy ? DS.up : DS.down
+    private func transactionRow(_ row: GroupedTradeRow) -> some View {
+        let badgeColor = row.isBuy ? DS.up : DS.down
         let badgeLabel: String = {
-            if tx.isPendingPlan {
-                return tx.isBuy ? "ĐK MUA" : "ĐK BÁN"
+            if row.isPendingPlan {
+                return row.isBuy ? (isVi ? "ĐK MUA" : "PLAN BUY") : (isVi ? "ĐK BÁN" : "PLAN SELL")
             }
-            return tx.isBuy ? "BUY" : "SELL"
+            return row.isBuy ? (isVi ? "MUA" : "BUY") : (isVi ? "BÁN" : "SELL")
         }()
 
+        let displayVal = formatDisplayValue(row.totalValue)
+        let subtitle = priceAndOwnershipSubtitle(for: row)
+
         return HStack(alignment: .center, spacing: 8) {
-            // Action badge & Date
+            // Action badge, Date & 10b5-1 badge
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(badgeLabel)
@@ -347,22 +440,21 @@ struct InsiderTradingCard: View {
                         .padding(.vertical, 2)
                         .background(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(badgeColor.opacity(tx.isPendingPlan ? 0.08 : 0.12))
+                                .fill(badgeColor.opacity(row.isPendingPlan ? 0.08 : 0.12))
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .strokeBorder(badgeColor.opacity(tx.isPendingPlan ? 0.45 : 0), lineWidth: 1)
+                                .strokeBorder(badgeColor.opacity(row.isPendingPlan ? 0.45 : 0), lineWidth: 1)
                         )
 
-                    if !tx.isPendingPlan {
-                        Text(tx.transactionCode)
+                    if !row.isPendingPlan {
+                        Text(row.transactionCode)
                             .font(.inter(9, weight: .bold, relativeTo: .caption2))
                             .foregroundStyle(DS.inkTertiary)
-                            .help(tx.codeDescription)
                     }
                 }
 
-                Text(tx.transactionDate.formatted(date: .abbreviated, time: .omitted))
+                Text(row.date.formatted(date: .abbreviated, time: .omitted))
                     .font(.inter(10, weight: .regular, relativeTo: .caption2))
                     .foregroundStyle(DS.inkTertiary)
             }
@@ -370,18 +462,38 @@ struct InsiderTradingCard: View {
 
             // Person details, Role/Relationship & Note
             VStack(alignment: .leading, spacing: 2) {
-                Text(tx.ownerName)
-                    .font(.inter(12, weight: .semibold, relativeTo: .caption))
-                    .foregroundStyle(DS.ink)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(row.ownerName)
+                        .font(.inter(12, weight: .semibold, relativeTo: .caption))
+                        .foregroundStyle(DS.ink)
+                        .lineLimit(1)
 
-                Text(tx.displayRole)
+                    if row.isRule10b51 {
+                        Text("10b5-1")
+                            .font(.inter(8.5, weight: .bold, relativeTo: .caption2))
+                            .foregroundStyle(DS.brand)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(
+                                Capsule().fill(DS.brand.opacity(0.12))
+                            )
+                            .help(isVi ? "Giao dịch tự động định kỳ theo kế hoạch Rule 10b5-1" : "Pre-scheduled automated sale pursuant to a Rule 10b5-1 trading plan")
+                    }
+
+                    if row.count > 1 {
+                        Text(isVi ? "(\(row.count) lệnh)" : "(\(row.count) orders)")
+                            .font(.inter(9.5, weight: .medium, relativeTo: .caption2))
+                            .foregroundStyle(DS.inkTertiary)
+                    }
+                }
+
+                Text(localizedRole(row.displayRole))
                     .font(.inter(10, weight: .regular, relativeTo: .caption2))
                     .foregroundStyle(DS.inkSecondary)
                     .lineLimit(1)
-                    .help(tx.displayRole)
+                    .help(localizedRole(row.displayRole))
 
-                if let note = tx.transactionNote, !note.isEmpty {
+                if let note = row.transactionNote, !note.isEmpty {
                     Text(note)
                         .font(.inter(9.5, weight: .regular, relativeTo: .caption2))
                         .foregroundStyle(DS.inkTertiary)
@@ -392,11 +504,6 @@ struct InsiderTradingCard: View {
             Spacer(minLength: 4)
 
             // Monetary Value & Execution Price / Ownership
-            let resolvedP = insiderService.resolvedPrice(for: tx, rawSymbol: symbol)
-            let totalVal = tx.shares * resolvedP
-            let displayVal = formatDisplayValue(totalVal > 0 ? totalVal : tx.totalValue)
-            let subtitle = priceAndOwnershipSubtitle(for: tx, resolvedPrice: resolvedP)
-
             VStack(alignment: .trailing, spacing: 2) {
                 Text(displayVal)
                     .font(.inter(11.5, weight: .semibold, relativeTo: .caption).monospacedDigit())
@@ -414,21 +521,33 @@ struct InsiderTradingCard: View {
 
     // MARK: - Helpers
 
-    private func priceAndOwnershipSubtitle(for tx: InsiderTransaction, resolvedPrice: Double) -> String? {
+    private func localizedRole(_ role: String) -> String {
+        guard isVi else { return role }
+        switch role {
+        case "Director": return "Thành viên HĐQT"
+        case "Officer": return "Cán bộ quản lý"
+        case "10% Owner": return "Cổ đông lớn (>10%)"
+        case "Insider": return "Người nội bộ"
+        default: return role
+        }
+    }
+
+    private func priceAndOwnershipSubtitle(for row: GroupedTradeRow) -> String? {
         if market == .vn {
-            let priceStr = resolvedPrice > 0 ? "@ \(formatPrice(resolvedPrice))" : ""
-            if let ratio = tx.ownershipRatioAfter, ratio > 0 {
-                let ratioStr = "Sở hữu: \(String(format: "%.2f%%", ratio))"
+            let priceStr = row.effectivePrice > 0 ? "@ \(formatPrice(row.effectivePrice))" : ""
+            if let ratio = row.ownershipRatioAfter, ratio > 0 {
+                let ratioStr = isVi ? "Sở hữu: \(String(format: "%.2f%%", ratio))" : "Holding: \(String(format: "%.2f%%", ratio))"
                 return priceStr.isEmpty ? ratioStr : "\(priceStr) • \(ratioStr)"
             }
-            if tx.isPendingPlan {
-                return priceStr.isEmpty ? "Đang đăng ký" : "\(priceStr) • Đang ĐK"
+            if row.isPendingPlan {
+                let planStr = isVi ? "Đang ĐK" : "Pending"
+                let fullPlanStr = isVi ? "Đang đăng ký" : "Pending"
+                return priceStr.isEmpty ? fullPlanStr : "\(priceStr) • \(planStr)"
             }
             return priceStr.isEmpty ? nil : priceStr
         } else {
-            let effPrice = tx.price > 0 ? tx.price : resolvedPrice
-            if effPrice > 0 {
-                return "@ \(formatPrice(effPrice))"
+            if row.effectivePrice > 0 {
+                return "@ \(formatPrice(row.effectivePrice))"
             }
             return nil
         }

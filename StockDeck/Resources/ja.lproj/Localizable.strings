@@ -29,6 +29,18 @@
 "Show pre-market and after-hours prices" = "プレマーケットおよびアフターアワーの株価を表示します";
 "Extended hours (Pre/Post)" = "時間外取引（プレ／アフター）";
 
+/* Insider Trading */
+"Insider Trading" = "インサイダー取引";
+"Show insider trades on chart" = "チャート上にインサイダー取引を表示";
+"Plot Form 4 buy/sell transactions on historical price charts" = "過去の株価チャート上にForm 4の売買取引をプロットします";
+"Plot buy/sell markers on historical price charts" = "株価チャート上に売買マーカーをプロットします";
+"Exclude Rule 10b5-1 plans" = "Rule 10b5-1計画を除外";
+"Omit pre-scheduled automated sales from charts, sentiment, and trade logs" = "チャート、センチメント、取引履歴から事前スケジュールされた自動売却を除外します";
+"Omit pre-scheduled automated sales from sentiment and logs" = "センチメントおよび履歴から事前スケジュールされた自動売却を除外します";
+"Open-market transactions only" = "市場内取引のみ";
+"Focus on open-market buys and sells; hide stock grants, awards, and option exercises" = "市場内での売買に焦点を当て、株式報酬やオプション行使を非表示にします";
+"Focus on open-market purchases and sales, excluding grants/awards" = "報酬等を除き、市場内での売買に焦点を当てます";
+
 /* Watchlist display */
 "Watchlist Display" = "ウォッチリスト表示";
 "Company name" = "企業名";

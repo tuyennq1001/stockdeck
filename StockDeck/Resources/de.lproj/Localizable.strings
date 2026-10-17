@@ -21,6 +21,18 @@
 "Show extended hours (Pre/Post)" = "Erweiterte Handelszeiten anzeigen (Pre/Post)";
 "Show pre-market and after-hours prices" = "Kurse vor- und nachbörslich anzeigen";
 
+/* Insider Trading */
+"Insider Trading" = "Insiderhandel";
+"Show insider trades on chart" = "Insider-Trades im Chart anzeigen";
+"Plot Form 4 buy/sell transactions on historical price charts" = "Form 4-Kauf-/Verkaufstransaktionen auf historischen Preischarts darstellen";
+"Plot buy/sell markers on historical price charts" = "Kauf-/Verkaufsmarkierungen auf Preischarts darstellen";
+"Exclude Rule 10b5-1 plans" = "Rule 10b5-1-Pläne ausschließen";
+"Omit pre-scheduled automated sales from charts, sentiment, and trade logs" = "Vorgeplante automatische Verkäufe aus Charts, Sentiment und Protokollen ausschließen";
+"Omit pre-scheduled automated sales from sentiment and logs" = "Vorgeplante automatische Verkäufe aus Sentiment und Protokollen ausschließen";
+"Open-market transactions only" = "Nur Open-Market-Transaktionen";
+"Focus on open-market buys and sells; hide stock grants, awards, and option exercises" = "Fokus auf Käufe/Verkäufe am offenen Markt; Aktienprämien und Optionsausübungen ausblenden";
+"Focus on open-market purchases and sales, excluding grants/awards" = "Fokus auf Käufe/Verkäufe am offenen Markt ohne Prämien/Zuteilungen";
+
 /* Watchlist display */
 "Watchlist Display" = "Watchlist-Anzeige";
 "Company name" = "Firmenname";

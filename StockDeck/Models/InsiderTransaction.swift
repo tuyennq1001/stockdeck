@@ -39,6 +39,7 @@ public struct InsiderTransaction: Identifiable, Codable, Equatable, Sendable {
     public let ownershipRatioAfter: Double?
     public let plannedShares: Double?
     public let isVNDisclosure: Bool
+    public let isRule10b51: Bool
 
     public init(
         id: String,
@@ -60,7 +61,8 @@ public struct InsiderTransaction: Identifiable, Codable, Equatable, Sendable {
         transactionNote: String? = nil,
         ownershipRatioAfter: Double? = nil,
         plannedShares: Double? = nil,
-        isVNDisclosure: Bool = false
+        isVNDisclosure: Bool = false,
+        isRule10b51: Bool = false
     ) {
         self.id = id
         self.symbol = symbol
@@ -82,6 +84,7 @@ public struct InsiderTransaction: Identifiable, Codable, Equatable, Sendable {
         self.ownershipRatioAfter = ownershipRatioAfter
         self.plannedShares = plannedShares
         self.isVNDisclosure = isVNDisclosure
+        self.isRule10b51 = isRule10b51
     }
 
     public init(from decoder: Decoder) throws {
@@ -106,6 +109,7 @@ public struct InsiderTransaction: Identifiable, Codable, Equatable, Sendable {
         self.ownershipRatioAfter = try c.decodeIfPresent(Double.self, forKey: .ownershipRatioAfter)
         self.plannedShares = try c.decodeIfPresent(Double.self, forKey: .plannedShares)
         self.isVNDisclosure = try c.decodeIfPresent(Bool.self, forKey: .isVNDisclosure) ?? false
+        self.isRule10b51 = try c.decodeIfPresent(Bool.self, forKey: .isRule10b51) ?? false
     }
 
     /// Whether this transaction represents an acquisition/purchase of shares

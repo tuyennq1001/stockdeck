@@ -687,6 +687,16 @@ public final class Form4XMLParser: NSObject, XMLParserDelegate {
     private var txPrice = 0.0
     private var txAcqDisp = ""
     private var txPostShares = 0.0
+    private var txIsRule10b51 = false
+    private var txFootnoteIds: Set<String> = []
+
+    // Footnotes & Document-level 10b5-1
+    private var inFootnotes = false
+    private var currentFootnoteId = ""
+    private var currentFootnoteText = ""
+    private var footnoteMap: [String: String] = [:]
+    private var docIsRule10b51 = false
+    private var transactionFootnoteIds: [Int: Set<String>] = [:]
 
     private var parsedTransactions: [InsiderTransaction] = []
     private var txIndex = 0
@@ -720,14 +730,47 @@ public final class Form4XMLParser: NSObject, XMLParserDelegate {
             txPrice = 0.0
             txAcqDisp = ""
             txPostShares = 0.0
+            txIsRule10b51 = false
+            txFootnoteIds = []
+        } else if elementName == "footnote" {
+            inFootnotes = true
+            currentFootnoteId = attributeDict["id"] ?? ""
+            currentFootnoteText = ""
+        } else if elementName == "footnoteId" {
+            if let fId = attributeDict["id"] {
+                txFootnoteIds.insert(fId)
+            }
         }
     }
 
     public func parser(_ parser: XMLParser, foundCharacters string: String) {
-        currentValue += string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if inFootnotes {
+            currentFootnoteText += string
+        } else {
+            currentValue += string.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     public func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        if inFootnotes && elementName == "footnote" {
+            inFootnotes = false
+            if !currentFootnoteId.isEmpty {
+                footnoteMap[currentFootnoteId] = currentFootnoteText
+            }
+        }
+
+        let lowerTag = elementName.lowercased()
+        if lowerTag == "rule10b5-1checked" || lowerTag == "rule10b51checked" || lowerTag == "affirmativedefenseconditions" {
+            let v = currentValue.lowercased()
+            if v == "1" || v == "true" || v == "y" {
+                if inNonDerivativeTransaction {
+                    txIsRule10b51 = true
+                } else {
+                    docIsRule10b51 = true
+                }
+            }
+        }
+
         if inReportingOwner {
             switch elementName {
             case "rptOwnerName":
@@ -783,14 +826,63 @@ public final class Form4XMLParser: NSObject, XMLParserDelegate {
                     acquiredDisposed: txAcqDisp.isEmpty ? "D" : txAcqDisp,
                     shares: txShares,
                     price: txPrice,
-                    sharesOwnedFollowing: txPostShares
+                    sharesOwnedFollowing: txPostShares,
+                    isRule10b51: txIsRule10b51 || docIsRule10b51
                 )
                 // Discard grants, awards, gifts or transactions with price <= 0
                 if tx.shares > 0 && tx.price > 0 {
+                    transactionFootnoteIds[parsedTransactions.count] = txFootnoteIds
                     parsedTransactions.append(tx)
                 }
             default:
                 break
+            }
+        }
+    }
+
+    public func parserDidEndDocument(_ parser: XMLParser) {
+        let filingHas10b51Footnote = footnoteMap.values.contains {
+            $0.localizedCaseInsensitiveContains("10b5-1") || $0.localizedCaseInsensitiveContains("10b51")
+        }
+
+        for i in 0..<parsedTransactions.count {
+            if parsedTransactions[i].isRule10b51 { continue }
+            let fIds = transactionFootnoteIds[i] ?? []
+            var is10b51 = docIsRule10b51
+            for fId in fIds {
+                if let text = footnoteMap[fId], text.localizedCaseInsensitiveContains("10b5-1") || text.localizedCaseInsensitiveContains("10b51") {
+                    is10b51 = true
+                    break
+                }
+            }
+            if !is10b51 && filingHas10b51Footnote && parsedTransactions[i].transactionCode == "S" {
+                is10b51 = true
+            }
+            if is10b51 {
+                let old = parsedTransactions[i]
+                parsedTransactions[i] = InsiderTransaction(
+                    id: old.id,
+                    symbol: old.symbol,
+                    ownerName: old.ownerName,
+                    officerTitle: old.officerTitle,
+                    isDirector: old.isDirector,
+                    isOfficer: old.isOfficer,
+                    isTenPercentOwner: old.isTenPercentOwner,
+                    transactionDate: old.transactionDate,
+                    filingDate: old.filingDate,
+                    transactionCode: old.transactionCode,
+                    acquiredDisposed: old.acquiredDisposed,
+                    shares: old.shares,
+                    price: old.price,
+                    sharesOwnedFollowing: old.sharesOwnedFollowing,
+                    relatedPersonName: old.relatedPersonName,
+                    relatedPersonTitle: old.relatedPersonTitle,
+                    transactionNote: old.transactionNote,
+                    ownershipRatioAfter: old.ownershipRatioAfter,
+                    plannedShares: old.plannedShares,
+                    isVNDisclosure: old.isVNDisclosure,
+                    isRule10b51: true
+                )
             }
         }
     }

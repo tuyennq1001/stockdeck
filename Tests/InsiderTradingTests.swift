@@ -521,4 +521,108 @@ final class InsiderTradingTests: XCTestCase {
         XCTAssertEqual(summary.buyValueRatio, 1.0, accuracy: 1e-4)
         XCTAssertEqual(summary.sentiment, .netBuying)
     }
+
+    @MainActor
+    func testRule10b51DetectionAndExclusion() {
+        let meta10b51XML = """
+        <?xml version="1.0"?>
+        <ownershipDocument>
+            <periodOfReport>2026-10-12</periodOfReport>
+            <issuer>
+                <issuerTradingSymbol>META</issuerTradingSymbol>
+            </issuer>
+            <reportingOwner>
+                <reportingOwnerId>
+                    <rptOwnerName>Olivan Javier</rptOwnerName>
+                </reportingOwnerId>
+                <reportingOwnerRelationship>
+                    <isOfficer>1</isOfficer>
+                    <officerTitle>Chief Operating Officer</officerTitle>
+                </reportingOwnerRelationship>
+            </reportingOwner>
+            <nonDerivativeTransaction>
+                <securityTitle><value>Class A Common Stock</value></securityTitle>
+                <transactionDate><value>2026-10-12</value></transactionDate>
+                <transactionCoding>
+                    <transactionCode>S</transactionCode>
+                    <rule10b5-1Checked>1</rule10b5-1Checked>
+                    <footnoteId id="F1"/>
+                </transactionCoding>
+                <transactionAmounts>
+                    <transactionShares><value>946</value></transactionShares>
+                    <transactionPricePerShare><value>728.10</value></transactionPricePerShare>
+                    <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+                </transactionAmounts>
+                <postTransactionAmounts>
+                    <sharesOwnedFollowingTransaction><value>17540</value></sharesOwnedFollowingTransaction>
+                </postTransactionAmounts>
+            </nonDerivativeTransaction>
+            <footnotes>
+                <footnote id="F1">The sales reported were effected pursuant to a Rule 10b5-1 trading plan adopted on May 10, 2026.</footnote>
+            </footnotes>
+        </ownershipDocument>
+        """
+
+        guard let data = meta10b51XML.data(using: .utf8) else {
+            XCTFail("Failed to encode meta10b51XML")
+            return
+        }
+
+        let parsed = Form4XMLParser.parse(data: data, symbol: "META", filingId: "0001326801-26-000085", filingDate: Date())
+        XCTAssertEqual(parsed.count, 1)
+        let tx = parsed[0]
+        XCTAssertEqual(tx.symbol, "META")
+        XCTAssertEqual(tx.ownerName, "Olivan Javier")
+        XCTAssertEqual(tx.shares, 946)
+        XCTAssertEqual(tx.price, 728.10, accuracy: 1e-4)
+        XCTAssertTrue(tx.isRule10b51, "Transaction should be recognized as Rule 10b5-1")
+
+        // Discretionary trade has isRule10b51 == false
+        let discretionaryBuy = InsiderTransaction(
+            id: "disc1",
+            symbol: "META",
+            ownerName: "Zuckerberg Mark",
+            transactionDate: Date(),
+            transactionCode: "P",
+            acquiredDisposed: "A",
+            shares: 10_000,
+            price: 700.0,
+            sharesOwnedFollowing: 100_000_000,
+            isRule10b51: false
+        )
+        XCTAssertFalse(discretionaryBuy.isRule10b51)
+
+        // Exclude 10b5-1 filter test
+        let allTrades = [tx, discretionaryBuy]
+        let excluded10b51 = allTrades.filter { !$0.isRule10b51 }
+        XCTAssertEqual(excluded10b51.count, 1)
+        XCTAssertEqual(excluded10b51.first?.ownerName, "Zuckerberg Mark")
+
+        // Sentiment without 10b5-1 reflects only discretionary buy
+        let sentiment = InsiderTradingService.shared.computeSentiment(symbol: "META", transactions: excluded10b51, lookbackMonths: 24)
+        XCTAssertEqual(sentiment.sentiment, .netBuying)
+        XCTAssertEqual(sentiment.totalSellValue, 0)
+        XCTAssertEqual(sentiment.totalBuyValue, 7_000_000)
+    }
+
+    @MainActor func testStorageServiceInsiderSettings() {
+        let storage = StorageService()
+        XCTAssertTrue(storage.showInsiderMarkers)
+        XCTAssertTrue(storage.excludeInsider10b51)
+        XCTAssertTrue(storage.insiderOpenMarketOnly)
+
+        storage.showInsiderMarkers = false
+        storage.excludeInsider10b51 = false
+        storage.insiderOpenMarketOnly = false
+
+        let exported = storage.exportAppData()
+        XCTAssertEqual(exported.showInsiderMarkers, false)
+        XCTAssertEqual(exported.excludeInsider10b51, false)
+        XCTAssertEqual(exported.insiderOpenMarketOnly, false)
+
+        storage.resetToDefaults()
+        XCTAssertTrue(storage.showInsiderMarkers)
+        XCTAssertTrue(storage.excludeInsider10b51)
+        XCTAssertTrue(storage.insiderOpenMarketOnly)
+    }
 }
