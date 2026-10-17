@@ -611,10 +611,13 @@ class StorageService: ObservableObject {
         didSet { scheduleSave() }
     }
 
-    /// Known OpenAI-compatible provider presets.
+    /// Known OpenAI-compatible and OAuth provider presets.
     static let aiProviders: [(id: String, label: String)] = [
-        ("openai", "OpenAI"),
+        ("gemini_oauth", "Google Gemini"),
+        ("claude_oauth", "Claude"),
+        ("codex_oauth", "OpenAI Codex"),
         ("gemini", "Google Gemini"),
+        ("openai", "OpenAI"),
         ("deepseek", "DeepSeek"),
         ("groq", "Groq"),
         ("openrouter", "OpenRouter"),
@@ -623,6 +626,9 @@ class StorageService: ObservableObject {
 
     /// Sensible default models for the preset providers.
     static let aiProviderDefaults: [String: String] = [
+        "gemini_oauth": "gemini-4-argon",
+        "claude_oauth": "claude-3-7-sonnet-20250219",
+        "codex_oauth": "gpt-4o",
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
         "deepseek": "deepseek-v4-flash",
@@ -632,6 +638,31 @@ class StorageService: ObservableObject {
 
     /// Preset standard models per provider (used when server list is not yet loaded).
     static let providerPresetModels: [String: [String]] = [
+        "gemini_oauth": [
+            "gemini-4-argon",
+            "gemini-3.8-flash-high",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-low",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-pro-high",
+            "gemini-3-flash-agent",
+            "gemini-3-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash"
+        ],
+        "claude_oauth": [
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229"
+        ],
+        "codex_oauth": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "o3-mini",
+            "o1"
+        ],
         "openai": [
             "gpt-4o-mini",
             "gpt-4o",
@@ -641,12 +672,15 @@ class StorageService: ObservableObject {
             "o1"
         ],
         "gemini": [
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
+            "gemini-4-argon",
+            "gemini-3.8-flash-high",
+            "gemini-3.5-flash-lite",
+            "gemini-3-flash",
             "gemini-2.5-pro",
-            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
             "gemini-1.5-pro",
-            "gemini-2.0-flash-lite"
+            "gemini-1.5-flash"
         ],
         "deepseek": [
             "deepseek-v4-flash",
@@ -669,6 +703,9 @@ class StorageService: ObservableObject {
 
     /// Base URL for the preset providers (without trailing slash).
     static let aiProviderBaseURLs: [String: String] = [
+        "gemini_oauth": "https://daily-cloudcode-pa.googleapis.com",
+        "claude_oauth": "https://api.anthropic.com/v1",
+        "codex_oauth": "https://api.openai.com/v1",
         "openai": "https://api.openai.com/v1",
         "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
         "deepseek": "https://api.deepseek.com/v1",
@@ -708,7 +745,10 @@ class StorageService: ObservableObject {
     }
 
     var hasAIConfiguration: Bool {
-        !aiApiKey.isEmpty && !aiBaseURL.isEmpty
+        if let opt = AIProviderOption(rawValue: aiProvider), opt.isOAuth {
+            return AIOAuthService.shared.isAuthenticated(for: aiProvider)
+        }
+        return !aiApiKey.isEmpty && !aiBaseURL.isEmpty
     }
 
     /// Auto-detects AI provider based on known API key patterns.
@@ -731,6 +771,11 @@ class StorageService: ObservableObject {
         var list: [String] = []
         if let cached = cachedModelsByProvider[provider], !cached.isEmpty {
             list = cached
+            if let presets = Self.providerPresetModels[provider] {
+                for p in presets {
+                    if !list.contains(p) { list.append(p) }
+                }
+            }
         } else if let presets = Self.providerPresetModels[provider] {
             list = presets
         }

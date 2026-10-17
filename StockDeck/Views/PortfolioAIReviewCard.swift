@@ -653,8 +653,8 @@ struct PortfolioAIReviewCard: View {
     }
 
     private func sendUserMessage(text: String, imageData: Data? = nil) {
-        guard !storageService.aiApiKey.isEmpty else {
-            errorMessage = "Vui lòng nhập API key trong Settings → AI Review trước."
+        guard storageService.hasAIConfiguration else {
+            errorMessage = "Vui lòng cấu hình hoặc đăng nhập AI trong Settings → AI Review trước."
             return
         }
 
@@ -694,7 +694,8 @@ struct PortfolioAIReviewCard: View {
                 model: storageService.aiModel,
                 systemContext: context.contextText,
                 messages: apiMsgs,
-                thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil
+                thinking: storageService.aiProvider == "deepseek" ? storageService.aiDeepseekThinking : nil,
+                provider: storageService.aiProvider
             )
 
             do {

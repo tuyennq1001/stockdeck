@@ -283,4 +283,30 @@ final class AIReviewTests: XCTestCase {
         let loaded = KeychainService.loadString(forKey: testKey)
         XCTAssertEqual(loaded, testValue, "Loaded key should match saved key")
     }
+
+    func testAIProviderAuthModeSplittingAndGemini4Presets() {
+        XCTAssertEqual(AIProviderOption.oauthProviders, [.geminiOAuth, .claudeOAuth, .codexOAuth])
+        XCTAssertEqual(AIProviderOption.apiKeyProviders, [.gemini, .openai, .deepseek, .groq, .openrouter, .custom])
+
+        // Toggling between OAuth and API Key preserves matching vendor when possible
+        XCTAssertEqual(AIProviderOption.geminiOAuth.toggledAuthMode(toOAuth: false), .gemini)
+        XCTAssertEqual(AIProviderOption.gemini.toggledAuthMode(toOAuth: true), .geminiOAuth)
+        XCTAssertEqual(AIProviderOption.codexOAuth.toggledAuthMode(toOAuth: false), .openai)
+        XCTAssertEqual(AIProviderOption.openai.toggledAuthMode(toOAuth: true), .codexOAuth)
+        XCTAssertEqual(AIProviderOption.deepseek.toggledAuthMode(toOAuth: true), .geminiOAuth)
+
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let storage = StorageService(fileURL: tempURL)
+
+        storage.applyAIPreset("gemini_oauth")
+        XCTAssertEqual(storage.aiModel, "gemini-4-argon")
+
+        let oauthModels = storage.availableModels(for: "gemini_oauth")
+        XCTAssertTrue(oauthModels.contains("gemini-4-argon"))
+        XCTAssertTrue(oauthModels.contains("gemini-3.8-flash-high"))
+        XCTAssertTrue(oauthModels.contains("gemini-3.5-flash-lite"))
+        XCTAssertTrue(AIOAuthService.antigravityClientId.hasPrefix("1071006060591-"))
+        XCTAssertTrue(AIOAuthService.antigravityClientId.hasSuffix("googleusercontent.com"))
+    }
 }
