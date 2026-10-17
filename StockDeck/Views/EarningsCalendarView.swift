@@ -24,9 +24,14 @@ struct EarningsCalendarView: View {
         }
     }
 
-    @State private var selectedFilter: SourceFilter = .all
-    @State private var selectedSymbol: String? = nil
+    @AppStorage("earnings_calendar_source_filter") private var selectedFilter: SourceFilter = .all
+    @AppStorage("earnings_calendar_selected_symbol") private var selectedSymbolRaw: String = ""
     @State private var isRefreshing: Bool = false
+
+    private var selectedSymbol: String? {
+        get { selectedSymbolRaw.isEmpty ? nil : selectedSymbolRaw }
+        nonmutating set { selectedSymbolRaw = newValue ?? "" }
+    }
 
     private var isVi: Bool {
         storageService.appLanguage.lowercased() == "vi"

@@ -364,6 +364,26 @@ final class EarningsTests: XCTestCase {
             XCTAssertEqual(futureItem.countdownText(isVi: false), "In 5d")
         }
     }
+
+    func testEarningsCalendarSourceFilterPersistence() {
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.all.rawValue, "All")
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.portfolios.rawValue, "Portfolios")
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.watchlists.rawValue, "Watchlists")
+
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.all.title(isVi: true), "Tất cả")
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.portfolios.title(isVi: true), "Danh mục")
+        XCTAssertEqual(EarningsCalendarView.SourceFilter.watchlists.title(isVi: true), "Watchlist")
+
+        // Test roundtrip through UserDefaults (underlying @AppStorage)
+        let key = "earnings_calendar_source_filter"
+        UserDefaults.standard.set(EarningsCalendarView.SourceFilter.portfolios.rawValue, forKey: key)
+        let stored = UserDefaults.standard.string(forKey: key)
+        let restored = stored.flatMap { EarningsCalendarView.SourceFilter(rawValue: $0) }
+        XCTAssertEqual(restored, .portfolios)
+
+        // Reset
+        UserDefaults.standard.removeObject(forKey: key)
+    }
 }
 
 
