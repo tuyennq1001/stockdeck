@@ -1260,35 +1260,34 @@ struct NavRow: View {
     @State private var hover = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .medium)).frame(width: 18)
-                    .foregroundStyle(selected ? DS.brand : DS.inkSecondary)
-                Text(LocalizedStringKey(title))
-                    .font(.inter(12.5, weight: selected ? .semibold : .regular, relativeTo: .body))
-                    .foregroundStyle(DS.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if let trailing {
-                    Text(trailing)
-                        .font(.inter(10.5, weight: .medium, relativeTo: .caption2).monospacedDigit())
-                        .foregroundStyle(trailingTint)
-                        .contentTransition(.numericText())
-                }
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium)).frame(width: 18)
+                .foregroundStyle(selected ? DS.brand : DS.inkSecondary)
+            Text(LocalizedStringKey(title))
+                .font(.inter(12.5, weight: selected ? .semibold : .regular, relativeTo: .body))
+                .foregroundStyle(DS.ink)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if let trailing {
+                Text(trailing)
+                    .font(.inter(10.5, weight: .medium, relativeTo: .caption2).monospacedDigit())
+                    .foregroundStyle(trailingTint)
+                    .contentTransition(.numericText())
             }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .background {
-                if selected {
-                    selectionPill
-                } else if hover {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.045))
-                }
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background {
+            if selected {
+                selectionPill
+            } else if hover {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .accessibilityAddTraits(.isButton)
         .pointingHandCursor()
         .onHover { hover = $0 }
         .help(helpText ?? title)

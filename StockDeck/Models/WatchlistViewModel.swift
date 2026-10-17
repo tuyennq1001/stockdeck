@@ -98,6 +98,21 @@ final class WatchlistViewModel {
         }
     }
 
+    /// Immediately updates `snapshot.visibleRows` and `snapshot.displaySymbols`
+    /// in-memory after a manual drag-drop reorder so the UI reflects the new
+    /// order on the exact same frame without waiting for the 200ms throttle.
+    func applyManualOrder(_ orderedSymbols: [String]) {
+        guard !orderedSymbols.isEmpty,
+              orderedSymbols.count == snapshot.displaySymbols.count else { return }
+        let reorderedRows = orderedSymbols.compactMap { snapshot.rowsBySymbol[$0] }
+        guard reorderedRows.count == orderedSymbols.count else { return }
+        var next = snapshot
+        next.rows = reorderedRows
+        next.visibleRows = reorderedRows
+        next.displaySymbols = orderedSymbols
+        snapshot = next
+    }
+
     private func invalidate() {
         guard active else { return }
         generation &+= 1

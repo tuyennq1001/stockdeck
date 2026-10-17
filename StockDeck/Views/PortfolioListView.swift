@@ -65,8 +65,6 @@ struct PortfolioListView: View {
     @State private var renamingPortfolio: Portfolio? = nil
     @State private var renamePortfolioName = ""
     @State private var selectedPortfolioId: UUID? = nil
-    @State private var draggingPortfolioId: UUID? = nil
-    @State private var previewPortfolioIds: [UUID] = []
 
     @State private var addToPortfolio: (symbol: String, portfolioId: UUID)? = nil
     struct TargetSheetItem: Identifiable { let symbol: String; var id: String { symbol } }
@@ -329,7 +327,22 @@ struct PortfolioListView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    portfolioPickerBar
+                    PortfolioTabPickerBar(
+                        storageService: storageService,
+                        selectedPortfolioId: $selectedPortfolioId,
+                        onAddHolding: { pId in addHoldingAction.perform(pId) },
+                        onNewPortfolio: {
+                            newPortfolioName = ""
+                            showNewPortfolio = true
+                        },
+                        onRename: { p in
+                            renamingPortfolio = p
+                            renamePortfolioName = p.name
+                        },
+                        onDelete: { p in
+                            confirmDeletePortfolio = p
+                        }
+                    )
 
                     Divider().overlay(DS.hairline)
 
@@ -437,9 +450,6 @@ struct PortfolioListView: View {
                     await stockService.ensureQuoteValuation(for: sym)
                 }
             }
-        }
-        .onChange(of: draggingPortfolioId) { _, newValue in
-            if newValue == nil { previewPortfolioIds = [] }
         }
         .sheet(isPresented: $showBinanceSheet) {
             AddBinancePortfolioSheet(storageService: storageService)
@@ -820,10 +830,33 @@ struct PortfolioListView: View {
         }
     }
 
-    private var portfolioPickerBar: some View {
+    private func createPortfolio() {
+        guard !newPortfolioName.isEmpty else { return }
+        storageService.addPortfolio(name: newPortfolioName)
+        newPortfolioName = ""
+        showNewPortfolio = false
+    }
+}
+
+/// Isolated horizontal tab bar for Portfolio selection & drag-and-drop reordering in the popover.
+/// Keeps drag hover / drop-indicator state isolated from the portfolio positions table below.
+private struct PortfolioTabPickerBar: View {
+    @ObservedObject var storageService: StorageService
+    @Binding var selectedPortfolioId: UUID?
+    let onAddHolding: (UUID) -> Void
+    let onNewPortfolio: () -> Void
+    let onRename: (Portfolio) -> Void
+    let onDelete: (Portfolio) -> Void
+
+    @State private var draggingPortfolioId: UUID? = nil
+    @State private var dropIndicator: DropIndicator<UUID>? = nil
+
+    var body: some View {
+        let portfolios = storageService.portfolios
+        let canDrag = portfolios.count > 1
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 0) {
                     let isAllSelected = selectedPortfolioId == nil
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -844,79 +877,82 @@ struct PortfolioListView: View {
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
+                    .padding(.trailing, 3)
                     .id("all_portfolios_tab")
 
-                    ForEach(displayedPortfolios) { p in
+                    ForEach(portfolios) { p in
                         let selected = p.id == selectedPortfolioId
                         ReorderRow(
                             id: p.id,
                             draggingId: $draggingPortfolioId,
+                            dropIndicator: $dropIndicator,
                             isHorizontal: true,
+                            attachDragToContent: canDrag,
                             makeDragItem: {
-                                if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
+                                DispatchQueue.main.async {
+                                    draggingPortfolioId = p.id
+                                }
                                 return NSItemProvider(object: p.id.uuidString as NSString)
                             },
                             onMove: { srcId, tgtId, placement in
-                                movePortfolioInPreview(srcId, relativeTo: tgtId, placement: placement)
+                                storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
                             },
-                            onCommit: { commitPortfolioPreview() }
+                            onCommit: {}
                         ) {
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    selectedPortfolioId = p.id
-                                    proxy.scrollTo(p.id, anchor: .center)
+                            Text(p.name)
+                                .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                                .foregroundColor(selected ? .white : DS.ink)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(selected ? DS.brand : Color.primary.opacity(0.06))
+                                )
+                                .contentShape(Capsule())
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        selectedPortfolioId = p.id
+                                        proxy.scrollTo(p.id, anchor: .center)
+                                    }
                                 }
-                            }) {
-                                Text(p.name)
-                                    .font(.inter(11.5, weight: selected ? .semibold : .medium, relativeTo: .caption))
-                                    .foregroundColor(selected ? .white : DS.ink)
-                                    .padding(.horizontal, 11)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        Capsule()
-                                            .fill(selected ? DS.brand : Color.primary.opacity(0.06))
-                                    )
-                                    .contentShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .pointingHandCursor()
-                            .contextMenu {
-                                if !p.isReadOnly {
-                                    Button("Add Holding…") {
-                                        addHoldingAction.perform(p.id)
+                                .accessibilityAddTraits(.isButton)
+                                .pointingHandCursor()
+                                .padding(.horizontal, 3)
+                                .id(p.id)
+                                .help("Select “\(p.name)” · Drag to reorder")
+                                .contextMenu {
+                                    if !p.isReadOnly {
+                                        Button("Add Holding…") {
+                                            onAddHolding(p.id)
+                                        }
+                                        Divider()
+                                    }
+                                    Button("Rename…") {
+                                        onRename(p)
+                                    }
+                                    if let idx = portfolios.firstIndex(where: { $0.id == p.id }) {
+                                        if idx > 0 {
+                                            Button("Move Left") {
+                                                let prevId = portfolios[idx - 1].id
+                                                storageService.movePortfolio(from: p.id, beforeOrAfter: prevId)
+                                            }
+                                        }
+                                        if idx < portfolios.count - 1 {
+                                            Button("Move Right") {
+                                                let nextId = portfolios[idx + 1].id
+                                                storageService.movePortfolio(from: nextId, beforeOrAfter: p.id)
+                                            }
+                                        }
                                     }
                                     Divider()
-                                }
-                                Button("Rename…") {
-                                    renamingPortfolio = p
-                                    renamePortfolioName = p.name
-                                }
-                                if let idx = storageService.portfolios.firstIndex(where: { $0.id == p.id }) {
-                                    if idx > 0 {
-                                        Button("Move Left") {
-                                            let prevId = storageService.portfolios[idx - 1].id
-                                            storageService.movePortfolio(from: p.id, beforeOrAfter: prevId)
-                                        }
-                                    }
-                                    if idx < storageService.portfolios.count - 1 {
-                                        Button("Move Right") {
-                                            let nextId = storageService.portfolios[idx + 1].id
-                                            storageService.movePortfolio(from: nextId, beforeOrAfter: p.id)
-                                        }
+                                    Button("Delete Portfolio", role: .destructive) {
+                                        onDelete(p)
                                     }
                                 }
-                                Divider()
-                                Button("Delete Portfolio", role: .destructive) {
-                                    confirmDeletePortfolio = p
-                                }
-                            }
                         }
                     }
 
-                    Button(action: {
-                        newPortfolioName = ""
-                        showNewPortfolio = true
-                    }) {
+                    Button(action: onNewPortfolio) {
                         Image(systemName: "plus")
                             .font(.inter(10, weight: .bold, relativeTo: .caption))
                             .foregroundColor(DS.brand)
@@ -927,11 +963,20 @@ struct PortfolioListView: View {
                     }
                     .buttonStyle(.plain)
                     .pointingHandCursor()
+                    .padding(.leading, 3)
                     .help("New portfolio")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
+                .onDrop(of: [.text], delegate: ReorderContainerDropDelegate(
+                    draggingId: $draggingPortfolioId,
+                    dropIndicator: $dropIndicator,
+                    onMove: { srcId, tgtId, placement in
+                        storageService.movePortfolio(from: srcId, relativeTo: tgtId, placement: placement)
+                    }
+                ))
             }
+            .cleanupDragSession(draggingId: $draggingPortfolioId, dropIndicator: $dropIndicator)
             .onAppear {
                 DispatchQueue.main.async {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -955,44 +1000,6 @@ struct PortfolioListView: View {
                 }
             }
         }
-    }
-
-    private var displayedPortfolios: [Portfolio] {
-        if draggingPortfolioId != nil, !previewPortfolioIds.isEmpty {
-            let byId = Dictionary(uniqueKeysWithValues: storageService.portfolios.map { ($0.id, $0) })
-            return previewPortfolioIds.compactMap { byId[$0] }
-        }
-        return storageService.portfolios
-    }
-
-    private func movePortfolioInPreview(_ sourceId: UUID, relativeTo targetId: UUID, placement: InsertPlacement) {
-        if previewPortfolioIds.isEmpty { previewPortfolioIds = storageService.portfolios.map(\.id) }
-        guard sourceId != targetId,
-              let srcIndex = previewPortfolioIds.firstIndex(of: sourceId),
-              let tgtIndex = previewPortfolioIds.firstIndex(of: targetId) else { return }
-        let item = previewPortfolioIds.remove(at: srcIndex)
-        let newTargetIndex = previewPortfolioIds.firstIndex(of: targetId) ?? tgtIndex
-        let insertIndex = placement == .before ? newTargetIndex : newTargetIndex + 1
-        guard insertIndex >= 0, insertIndex <= previewPortfolioIds.count else { return }
-        previewPortfolioIds.insert(item, at: insertIndex)
-    }
-
-    private func commitPortfolioPreview() {
-        guard !previewPortfolioIds.isEmpty else {
-            draggingPortfolioId = nil
-            return
-        }
-        let final = previewPortfolioIds
-        previewPortfolioIds = []
-        draggingPortfolioId = nil
-        storageService.commitPortfolioOrder(final)
-    }
-
-    private func createPortfolio() {
-        guard !newPortfolioName.isEmpty else { return }
-        storageService.addPortfolio(name: newPortfolioName)
-        newPortfolioName = ""
-        showNewPortfolio = false
     }
 }
 
