@@ -6,24 +6,24 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.14</title>
-            <pubDate>Sat, 17 Oct 2026 20:16:10 +0900</pubDate>
-            <sparkle:version>17</sparkle:version>
-            <sparkle:shortVersionString>1.1.14</sparkle:shortVersionString>
+            <title>Version 1.1.15</title>
+            <pubDate>Sat, 17 Oct 2026 21:38:25 +0900</pubDate>
+            <sparkle:version>18</sparkle:version>
+            <sparkle:shortVersionString>1.1.15</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.14</h2>
+<h2>What's New in StockDeck 1.1.15</h2>
 <ul>
-    <li><strong>Watchlist &amp; Portfolio Drag-and-Drop:</strong> Reorder Watchlists, Portfolios, and Watchlist symbols across the Desktop Sidebar and Menu Bar Popover with a zero-lag stationary drop indicator and commit-on-drop architecture.</li>
-    <li><strong>Native AI Sign-In &amp; Dynamic Models:</strong> Added OAuth PKCE sign-in for Gemini and OpenAI alongside dynamic model list loading.</li>
-    <li><strong>Earnings Calendar &amp; Guidance:</strong> Added upcoming earnings calendar, management guidance outlook, and net income tracking.</li>
-    <li><strong>5-Year Insider Trading Archive:</strong> Added incremental 5-year insider transaction history, daily transaction grouping, and 10b5-1 plan filtering.</li>
+    <li><strong>Earnings Calendar State Persistence:</strong> Automatically remembers your selected filter (All, Portfolios, Watchlists) and active inspector symbol across tab switches and app relaunches.</li>
+    <li><strong>Refined Earnings Layout &amp; Metrics:</strong> Dedicated Net Income and profit margin column, flexible table widths to eliminate right-edge clipping, and clear EPS Actual vs Estimate consensus labels.</li>
+    <li><strong>Comprehensive Localization &amp; Terminology:</strong> Unified Buy Target indicators and completed full Vietnamese localization across Earnings, Sidebar, and Settings.</li>
+    <li><strong>Watchlist &amp; Detail Performance:</strong> Optimized symbol detail sheet opening and background data fetching for instantaneous response.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.14/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.15/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="oNRiC/2w7m669iSEp4HsVR7Z6qQQ+GviKr/eS9r8PAFuyfiAhFHUlI7JN+tFMsxcqKOPcC+58T8xZqDWVSfnBA=="
-                       length="9741747"/>
+                       sparkle:edSignature="GIvArgGRMy2lYsNiZt/l+Ld+9HZf9pyqBkfc2bd1q30tO9BZDD5HOfg6TqObgiQtbCuM63iLHfqheol2Uk0DDg=="
+                       length="9758697"/>
         </item>
     </channel>
 </rss>
