@@ -6,23 +6,24 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.13</title>
-            <pubDate>Fri, 16 Oct 2026 16:15:30 +0900</pubDate>
-            <sparkle:version>16</sparkle:version>
-            <sparkle:shortVersionString>1.1.13</sparkle:shortVersionString>
+            <title>Version 1.1.14</title>
+            <pubDate>Sat, 17 Oct 2026 20:16:10 +0900</pubDate>
+            <sparkle:version>17</sparkle:version>
+            <sparkle:shortVersionString>1.1.14</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.13</h2>
+<h2>What's New in StockDeck 1.1.14</h2>
 <ul>
-    <li><strong>Menu Bar Portfolio Table Upgrade:</strong> Pinned the Symbol column and enabled 2D horizontal scrolling across all customized Desktop Portfolio columns with synchronized row hover highlights.</li>
-    <li><strong>Sortable Columns &amp; Rich Context Menu:</strong> Added clickable column header sorting synced with the Desktop window, Buy Target (🎯 MUA) indicators, and full right-click actions (Watchlist, Portfolio, Price Alert, Buy Target, Close/Sell, Delete).</li>
-    <li><strong>Cleaner Metrics &amp; Faster Actions:</strong> Removed duplicate percentage display under Today PnL and streamlined symbol removal in the Menu Bar popover without confirmation dialogs.</li>
+    <li><strong>Watchlist &amp; Portfolio Drag-and-Drop:</strong> Reorder Watchlists, Portfolios, and Watchlist symbols across the Desktop Sidebar and Menu Bar Popover with a zero-lag stationary drop indicator and commit-on-drop architecture.</li>
+    <li><strong>Native AI Sign-In &amp; Dynamic Models:</strong> Added OAuth PKCE sign-in for Gemini and OpenAI alongside dynamic model list loading.</li>
+    <li><strong>Earnings Calendar &amp; Guidance:</strong> Added upcoming earnings calendar, management guidance outlook, and net income tracking.</li>
+    <li><strong>5-Year Insider Trading Archive:</strong> Added incremental 5-year insider transaction history, daily transaction grouping, and 10b5-1 plan filtering.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.13/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.14/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="hZgJyr+UeisNpyGfrEPNau8APPJktPQKyrhCnyCLych4TMxz4IwUaUPss2XUOP55GHLvX41nu9MlpLGYPgwZCQ=="
-                       length="9226885"/>
+                       sparkle:edSignature="oNRiC/2w7m669iSEp4HsVR7Z6qQQ+GviKr/eS9r8PAFuyfiAhFHUlI7JN+tFMsxcqKOPcC+58T8xZqDWVSfnBA=="
+                       length="9741747"/>
         </item>
     </channel>
 </rss>
