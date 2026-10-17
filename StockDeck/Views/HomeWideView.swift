@@ -23,11 +23,12 @@ struct HomeWideView: View {
     private let insightColumns = [GridItem(.adaptive(minimum: 340, maximum: .infinity), spacing: DS.gap)]
 
     /// Filters news by free text — matches the headline, the tickers (source +
-    /// related), and the publisher — so you can search by name or by stock.
+    /// related), and the publisher, sorted newest first.
     private var filteredNews: [NewsArticle] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return stockService.news }
-        return stockService.news.filter { a in
+        let sorted = stockService.news.sorted { $0.publishTime > $1.publishTime }
+        guard !q.isEmpty else { return sorted }
+        return sorted.filter { a in
             a.title.lowercased().contains(q)
             || a.publisher.lowercased().contains(q)
             || (a.sourceSymbol?.lowercased().contains(q) ?? false)

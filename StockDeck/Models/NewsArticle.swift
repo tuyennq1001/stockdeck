@@ -228,12 +228,45 @@ enum GoogleNewsRSSParser {
             currentElement = ""
         }
 
-        /// Parses an RSS pubDate (RFC 822, e.g. "Tue, 11 Aug 2026 17:10:15 GMT").
-        private static func unixTime(from rfc822: String) -> Int {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "en_US_POSIX")
-            f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-            return f.date(from: rfc822).map { Int($0.timeIntervalSince1970) } ?? 0
+        private static let rfcFormats = [
+            "EEE, dd MMM yyyy HH:mm:ss zzz",
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+            "dd MMM yyyy HH:mm:ss zzz",
+            "dd MMM yyyy HH:mm:ss Z",
+            "EEE, dd MMM yyyy HH:mm zzz",
+            "EEE, dd MMM yyyy HH:mm Z",
+            "dd MMM yyyy HH:mm zzz",
+            "dd MMM yyyy HH:mm Z"
+        ]
+
+        private static let formatters: [DateFormatter] = {
+            rfcFormats.map { fmt in
+                let f = DateFormatter()
+                f.locale = Locale(identifier: "en_US_POSIX")
+                f.timeZone = TimeZone(secondsFromGMT: 0)
+                f.dateFormat = fmt
+                return f
+            }
+        }()
+
+        private static let isoFormatter = ISO8601DateFormatter()
+
+        /// Parses an RSS pubDate into Unix epoch seconds.
+        /// Supports standard RFC 822 / RFC 2822 variations (with/without day-of-week,
+        /// with/without seconds, named/numeric timezones) and ISO 8601.
+        /// Reuses pre-allocated formatters to optimize allocations and throughput.
+        static func unixTime(from dateString: String) -> Int {
+            let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return 0 }
+            for f in formatters {
+                if let date = f.date(from: trimmed) {
+                    return Int(date.timeIntervalSince1970)
+                }
+            }
+            if let date = isoFormatter.date(from: trimmed) {
+                return Int(date.timeIntervalSince1970)
+            }
+            return 0
         }
     }
 }

@@ -4402,12 +4402,12 @@ class StockService: ObservableObject {
         }
 
         var scored = allArticles.map { (article: $0, score: score(article: $0)) }
-        // Sort by relevance score descending, then by publishTime descending
+        // Sort by newest publishTime descending, then by relevance score descending
         scored.sort { a, b in
-            if a.score != b.score {
-                return a.score > b.score
+            if a.article.publishTime != b.article.publishTime {
+                return a.article.publishTime > b.article.publishTime
             }
-            return a.article.publishTime > b.article.publishTime
+            return a.score > b.score
         }
 
         var seen = Set<String>()

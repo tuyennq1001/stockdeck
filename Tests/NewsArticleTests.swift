@@ -76,4 +76,54 @@ final class NewsArticleTests: XCTestCase {
         """.data(using: .utf8)!
         XCTAssertTrue(GoogleNewsRSSParser.parse(malformed).isEmpty)
     }
+
+    func testParseMultiFormatDates() {
+        let multiFormatRSS = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>RFC822 GMT</title>
+            <link>https://example.com/1</link>
+            <pubDate>Tue, 11 Aug 2026 17:10:15 GMT</pubDate>
+          </item>
+          <item>
+            <title>RFC822 Numeric</title>
+            <link>https://example.com/2</link>
+            <pubDate>Tue, 11 Aug 2026 17:10:15 +0000</pubDate>
+          </item>
+          <item>
+            <title>No Day-of-Week</title>
+            <link>https://example.com/3</link>
+            <pubDate>11 Aug 2026 17:10:15 GMT</pubDate>
+          </item>
+          <item>
+            <title>No Seconds</title>
+            <link>https://example.com/4</link>
+            <pubDate>Tue, 11 Aug 2026 17:10 GMT</pubDate>
+          </item>
+          <item>
+            <title>ISO8601</title>
+            <link>https://example.com/5</link>
+            <pubDate>2026-08-11T17:10:15Z</pubDate>
+          </item>
+        </channel></rss>
+        """.data(using: .utf8)!
+
+        let articles = GoogleNewsRSSParser.parse(multiFormatRSS)
+        XCTAssertEqual(articles.count, 5)
+        XCTAssertEqual(articles[0].publishTime, 1786468215)
+        XCTAssertEqual(articles[1].publishTime, 1786468215)
+        XCTAssertEqual(articles[2].publishTime, 1786468215)
+        XCTAssertEqual(articles[3].publishTime, 1786468200)
+        XCTAssertEqual(articles[4].publishTime, 1786468215)
+    }
+
+    func testSortingNewestFirst() {
+        let itemOld = NewsArticle(id: "1", title: "Old", publisher: "", link: "https://example.com/1", publishTime: 1000, thumbnailURL: nil, relatedTickers: [])
+        let itemNew = NewsArticle(id: "2", title: "New", publisher: "", link: "https://example.com/2", publishTime: 3000, thumbnailURL: nil, relatedTickers: [])
+        let itemMid = NewsArticle(id: "3", title: "Mid", publisher: "", link: "https://example.com/3", publishTime: 2000, thumbnailURL: nil, relatedTickers: [])
+
+        let sorted = [itemOld, itemNew, itemMid].sorted { $0.publishTime > $1.publishTime }
+        XCTAssertEqual(sorted.map(\.id), ["2", "3", "1"])
+    }
 }
