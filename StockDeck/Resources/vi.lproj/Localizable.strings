@@ -476,3 +476,104 @@
 "Set Buy Target…" = "Đặt giá mua mục tiêu…";
 "Edit Buy Target…" = "Sửa giá mua mục tiêu…";
 "Remove Buy Target" = "Xóa giá mua mục tiêu";
+"Target" = "Giá mục tiêu";
+"Buy Zone" = "Vùng mua";
+
+/* Sidebar & Navigation */
+"Earnings" = "Lịch BCTC";
+"AI Review" = "Đánh giá AI";
+"Alerts" = "Cảnh báo giá";
+"Import / Export" = "Nhập / Xuất dữ liệu";
+"Star" = "Thả sao";
+
+/* Settings (Desktop & Menu Bar) */
+"Secondary currency" = "Tiền tệ phụ";
+"Shows converted total (e.g. ≈ ₫) under portfolio totals" = "Hiển thị tổng quy đổi phụ (VD: ≈ ₫) bên dưới tổng danh mục";
+"None" = "Không dùng";
+"Launch at login" = "Khởi động cùng máy Mac";
+"Automatically start StockDeck when you log into your Mac" = "Tự động mở StockDeck khi bạn đăng nhập vào macOS";
+
+/* Settings - AI Review */
+"Auth method" = "Phương thức xác thực";
+"Sign in with your AI subscription or use an API key" = "Đăng nhập bằng gói đăng ký AI hoặc dùng mã API Key";
+"OAuth (Subscription)" = "OAuth (Gói đăng ký)";
+"API Key" = "Mã API Key";
+"Provider" = "Nhà cung cấp";
+"Account" = "Tài khoản";
+"Sign in with your subscription without needing an API key" = "Đăng nhập trực tiếp bằng tài khoản mà không cần tạo API Key";
+"Signed in" = "Đã đăng nhập";
+"Sign out" = "Đăng xuất";
+"Signing in…" = "Đang đăng nhập…";
+"Sign in with %@" = "Đăng nhập với %@";
+"API key" = "Mã API Key";
+"Stored in the Keychain, never in plaintext files" = "Lưu an toàn trong Keychain của macOS, không lưu dạng văn bản thuần";
+"Get free key ↗" = "Lấy key miễn phí ↗";
+"Model" = "Mô hình (Model)";
+"Load" = "Tải danh sách";
+"Thinking mode (V4)" = "Chế độ suy luận sâu (Thinking V4)";
+"DeepSeek V4 defaults to thinking on. Turn off for fast chat (like the retired deepseek-chat)." = "DeepSeek V4 mặc định bật suy luận sâu. Tắt đi nếu muốn phản hồi nhanh.";
+"Workspace folder" = "Thư mục làm việc (Workspace)";
+"Reads & writes ai-context.md (valuation templates, persistent notes)" = "Đọc & ghi file ai-context.md (lưu trữ khẩu vị đầu tư và ghi chú dài hạn)";
+"Not set" = "Chưa chọn";
+"Choose…" = "Chọn…";
+"Remove" = "Gỡ bỏ";
+"Testing…" = "Đang kiểm tra…";
+"Test connection" = "Kiểm tra kết nối";
+
+/* Settings - Investor Profile */
+"Investor Profile & Goals" = "Hồ sơ & Mục tiêu Đầu tư";
+"Summary" = "Tóm tắt hồ sơ";
+"Used by AI Review for customized portfolio advice" = "Được Đánh giá AI sử dụng để cá nhân hóa khuyến nghị danh mục";
+"Primary goal" = "Mục tiêu chính";
+"Reset profile" = "Đặt lại hồ sơ";
+"Edit profile…" = "Sửa hồ sơ…";
+"Status" = "Trạng thái";
+"Not configured yet. Set up your profile to receive tailored advice." = "Chưa thiết lập. Hãy cài đặt hồ sơ để nhận tư vấn sát với nhu cầu của bạn.";
+"Set up profile…" = "Thiết lập hồ sơ…";
+
+/* Settings - Menu Bar & Shortcuts */
+"Today (+321.09€ +1.2%)" = "Hôm nay (+321.09€ +1.2%)";
+"Uses regular-market prices. Crypto Today resets at 00:00 UTC." = "Tính theo giá phiên chính. Biến động ngày của Crypto đặt lại lúc 00:00 UTC.";
+"Percentage decimals" = "Số lẻ thập phân phần trăm (%)";
+"Digits after the decimal point (e.g. +2.34%)" = "Số chữ số sau dấu phẩy cho phần trăm (VD: +2.34%)";
+"Value decimals" = "Số lẻ thập phân giá & tiền";
+"Prices & amounts. Auto = extra precision for forex / sub-dollar" = "Áp dụng cho giá & số tiền. Tự động = tăng độ chính xác cho tỷ giá / thị giá nhỏ";
+"Auto" = "Tự động";
+"Hide percentage change" = "Ẩn phần trăm biến động";
+"Show only price / value, no % in the menu bar" = "Chỉ hiện giá hoặc tổng tiền trên thanh menu, ẩn %";
+"\"S&P 500\" instead of \"^GSPC\"" = "Hiện \"S&P 500\" thay vì \"^GSPC\"";
+"Menu bar shortcut" = "Phím tắt mở Menu Bar";
+"Press anywhere on macOS to open or close the menu bar popup" = "Nhấn tổ hợp phím ở bất kỳ đâu trên macOS để bật/tắt cửa sổ nhỏ trên thanh menu";
+"Desktop app shortcut" = "Phím tắt mở cửa sổ chính";
+"Press anywhere on macOS to open or close the desktop app window" = "Nhấn tổ hợp phím ở bất kỳ đâu trên macOS để bật/tắt cửa sổ ứng dụng chính";
+"Record shortcut…" = "Gán phím tắt…";
+"Record Shortcut" = "Gán phím tắt";
+"Type shortcut…" = "Nhấn tổ hợp phím…";
+"Press keys…" = "Nhấn tổ hợp phím…";
+"Clear shortcut" = "Xóa phím tắt";
+"Applies across the whole app — menu bar, watchlist and portfolios" = "Áp dụng đồng bộ trên toàn ứng dụng — thanh menu, danh sách theo dõi và danh mục";
+
+/* Settings - Appearance */
+"Theme" = "Chủ đề giao diện";
+"System" = "Theo hệ thống";
+"Light" = "Sáng";
+"Dark" = "Tối";
+
+/* Settings - Developer & About */
+"Developer Environment" = "Môi trường Phát triển (DEV)";
+"Data Sandbox" = "Vùng dữ liệu cô lập";
+"Clone from Production" = "Sao chép từ bản chính (Production)";
+"Copy current Production data to Dev for testing. Overwrites Dev data." = "Chép dữ liệu hiện tại từ bản Production sang bản Dev để kiểm thử (ghi đè dữ liệu Dev).";
+"Copy Prod Data" = "Chép dữ liệu Prod";
+"Copy Production Data to Dev" = "Chép dữ liệu Production sang Dev";
+"This will overwrite your Dev data with a fresh snapshot from Production. Production data will NOT be modified." = "Thao tác này sẽ ghi đè dữ liệu Dev bằng bản sao mới nhất từ Production. Dữ liệu Production hoàn toàn KHÔNG bị ảnh hưởng.";
+"Copy Snapshot" = "Chép dữ liệu";
+"Open Dev Data Folder" = "Mở thư mục dữ liệu Dev";
+"Reveal in Finder" = "Mở trong Finder";
+"Reset Dev Data" = "Đặt lại dữ liệu Dev";
+"Clear all Dev portfolios and watchlists back to clean default" = "Xóa toàn bộ danh mục và danh sách theo dõi trên bản Dev về mặc định ban đầu";
+"Reset Dev Data…" = "Đặt lại dữ liệu Dev…";
+"This will reset all Dev portfolios and watchlists to default clean state. Production data is NOT affected." = "Thao tác này sẽ xóa dữ liệu danh mục và theo dõi trên bản Dev về mặc định. Dữ liệu Production KHÔNG bị ảnh hưởng.";
+"Reset Dev" = "Đặt lại Dev";
+"If you'd like to support me, become a sponsor — or simply star the repo. Both help, and every feature stays free." = "Nếu bạn muốn ủng hộ tác giả, hãy trở thành nhà tài trợ hoặc thả sao trên GitHub. Mọi tính năng đều hoàn toàn miễn phí.";
+"Portfolios and watchlist are not affected" = "Danh mục đầu tư và danh sách theo dõi không bị ảnh hưởng";

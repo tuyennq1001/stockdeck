@@ -60,22 +60,30 @@ struct PriceChartCard: View {
         var isIntraday: Bool { false }
 
         var changeLabel: String {
+            changeLabel(isVi: false)
+        }
+
+        func changeLabel(isVi: Bool) -> String {
             switch self {
-            case .week: return "past 7d"
-            case .month: return "past 1M"
-            case .threeMonths: return "past 3M"
-            case .sixMonths: return "past 6M"
+            case .week: return isVi ? "7 ngày qua" : "past 7d"
+            case .month: return isVi ? "1 tháng qua" : "past 1M"
+            case .threeMonths: return isVi ? "3 tháng qua" : "past 3M"
+            case .sixMonths: return isVi ? "6 tháng qua" : "past 6M"
             case .ytd: return "YTD"
-            case .year: return "past 1Y"
-            case .threeYears: return "past 3Y"
-            case .fiveYears: return "past 5Y"
-            case .all: return "all-time"
+            case .year: return isVi ? "1 năm qua" : "past 1Y"
+            case .threeYears: return isVi ? "3 năm qua" : "past 3Y"
+            case .fiveYears: return isVi ? "5 năm qua" : "past 5Y"
+            case .all: return isVi ? "Toàn thời gian" : "all-time"
             }
         }
     }
 
     @State private var chartRange: ChartRange = .month
     @State private var preparedHistory = PreparedHistory(points: [], low: .infinity, high: -.infinity)
+
+    private var isVi: Bool {
+        storageService.appLanguage.lowercased() == "vi"
+    }
 
     struct HistoryInput: Equatable, Sendable {
         let symbol: String
@@ -121,14 +129,15 @@ struct PriceChartCard: View {
 
     private func displayedPriceInfo(using history: [PricePoint]) -> (price: Double, diff: Double, diffPct: Double, label: String) {
         let basePrice = quote.displayPrice(extendedHours: storageService.showExtendedHours)
+        let label = chartRange.changeLabel(isVi: isVi)
         guard history.count >= 2, let firstPrice = history.first?.close, firstPrice > 0 else {
-            return (basePrice, quote.change, quote.changePercent, chartRange.changeLabel)
+            return (basePrice, quote.change, quote.changePercent, label)
         }
 
         let lastPrice = basePrice > 0 ? basePrice : (history.last?.close ?? basePrice)
         let diff = lastPrice - firstPrice
         let diffPct = (diff / firstPrice) * 100
-        return (lastPrice, diff, diffPct, chartRange.changeLabel)
+        return (lastPrice, diff, diffPct, label)
     }
 
     // MARK: - Insider Trades Data
@@ -340,13 +349,14 @@ struct PriceChartCard: View {
                         SectionLabel("Last price")
                         if let buyTarget = storageService.buyTarget(for: symbol) {
                             let inZone = buyTarget.isInBuyZone(currentPrice: quote.effectivePrice)
+                            let targetPriceStr = "\(priceSymbol)\(StorageService.formatCompactNumber(buyTarget.targetPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: buyTarget.targetPrice)))"
                             HStack(spacing: 3) {
                                 Image(systemName: "target")
                                     .font(.system(size: 9, weight: .bold))
-                                Text("Buy Target: \(priceSymbol)\(StorageService.formatCompactNumber(buyTarget.targetPrice, decimals: storageService.resolvedPriceDecimals(symbol: symbol, price: buyTarget.targetPrice)))")
+                                Text(isVi ? "Giá mua mục tiêu: \(targetPriceStr)" : "Buy Target: \(targetPriceStr)")
                                     .font(.inter(10, weight: .semibold, relativeTo: .caption2).monospacedDigit())
                                 if inZone {
-                                    Text("• IN ZONE")
+                                    Text(isVi ? "• VÙNG MUA" : "• IN ZONE")
                                         .font(.system(size: 8.5, weight: .bold))
                                 } else if let dist = buyTarget.percentDistance(from: quote.effectivePrice) {
                                     Text(String(format: "(%+.1f%%)", dist))

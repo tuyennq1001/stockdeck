@@ -340,6 +340,30 @@ final class EarningsTests: XCTestCase {
         XCTAssertEqual(q1?.period, "+1q")
         XCTAssertEqual(q1?.epsEstimate, 6.80)
         XCTAssertEqual(q1?.revenueEstimate, 58300000000)
+        XCTAssertEqual(q0?.formattedEndDate(isVi: true), "30/09/2026")
+    }
+
+    func testVietnameseLocalizationFormatters() {
+        XCTAssertEqual(EarningsSession.bmo.title(isVi: true), "Trước phiên")
+        XCTAssertEqual(EarningsSession.amc.title(isVi: true), "Sau phiên")
+        XCTAssertEqual(EarningsSession.bmo.title(isVi: false), "Before Open")
+        XCTAssertEqual(EarningsSession.amc.title(isVi: false), "After Close")
+
+        XCTAssertEqual(BeatMissStatus.beat.title(isVi: true), "Vượt")
+        XCTAssertEqual(BeatMissStatus.miss.title(isVi: true), "Hụt")
+        XCTAssertEqual(BeatMissStatus.inLine.title(isVi: true), "Đúng dự báo")
+
+        let today = Date()
+        let todayItem = EarningsReportItem(symbol: "V", nextDate: today, session: .bmo)
+        XCTAssertEqual(todayItem.countdownText(isVi: true), "Hôm nay")
+        XCTAssertEqual(todayItem.countdownText(isVi: false), "Today")
+
+        if let inFiveDays = Calendar.current.date(byAdding: .day, value: 5, to: today) {
+            let futureItem = EarningsReportItem(symbol: "MA", nextDate: inFiveDays, session: .amc)
+            XCTAssertEqual(futureItem.countdownText(isVi: true), "Còn 5 ngày")
+            XCTAssertEqual(futureItem.countdownText(isVi: false), "In 5d")
+        }
     }
 }
+
 

@@ -7,10 +7,14 @@ public enum EarningsSession: String, Codable, Sendable, Equatable {
     case unspecified = "TBD"
 
     public var title: String {
+        title(isVi: false)
+    }
+
+    public func title(isVi: Bool) -> String {
         switch self {
-        case .bmo: return "Before Open"
-        case .amc: return "After Close"
-        case .unspecified: return "Time TBD"
+        case .bmo: return isVi ? "Trước phiên" : "Before Open"
+        case .amc: return isVi ? "Sau phiên" : "After Close"
+        case .unspecified: return isVi ? "Chưa rõ giờ" : "Time TBD"
         }
     }
 
@@ -31,10 +35,14 @@ public enum BeatMissStatus: String, Codable, Sendable, Equatable {
     case unknown
 
     public var title: String {
+        title(isVi: false)
+    }
+
+    public func title(isVi: Bool) -> String {
         switch self {
-        case .beat: return "Beat"
-        case .miss: return "Miss"
-        case .inLine: return "In-Line"
+        case .beat: return isVi ? "Vượt" : "Beat"
+        case .miss: return isVi ? "Hụt" : "Miss"
+        case .inLine: return isVi ? "Đúng dự báo" : "In-Line"
         case .unknown: return "—"
         }
     }
@@ -164,10 +172,49 @@ public struct EarningsTrendItem: Codable, Sendable, Equatable, Identifiable {
         default: return period.uppercased()
         }
     }
+
+    public func formattedEndDate(isVi: Bool) -> String? {
+        guard let endDate, !endDate.isEmpty else { return nil }
+        if isVi {
+            let parts = endDate.split(separator: "-")
+            if parts.count == 3 {
+                return "\(parts[2])/\(parts[1])/\(parts[0])"
+            }
+        }
+        return endDate
+    }
 }
 
 /// Comprehensive earnings item for a single ticker.
 public struct EarningsReportItem: Codable, Sendable, Equatable, Identifiable {
+    private static let enFullFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
+
+    private static let enShortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    private static let viFullFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "vi_VN")
+        f.dateFormat = "dd/MM/yyyy"
+        return f
+    }()
+
+    private static let viShortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "vi_VN")
+        f.dateFormat = "dd/MM"
+        return f
+    }()
+
     public var id: String { symbol }
     public let symbol: String
     public let companyName: String?
@@ -294,41 +341,47 @@ public struct EarningsReportItem: Codable, Sendable, Equatable, Identifiable {
 
     /// Formatted countdown text for cards/badges
     public var countdownText: String {
-        guard let days = daysUntilNextEarnings else { return "TBD" }
+        countdownText(isVi: false)
+    }
+
+    public func countdownText(isVi: Bool) -> String {
+        guard let days = daysUntilNextEarnings else { return isVi ? "Chưa rõ" : "TBD" }
         if days < 0 {
-            return "Reported"
+            return isVi ? "Đã công bố" : "Reported"
         } else if days == 0 {
-            return "Today"
+            return isVi ? "Hôm nay" : "Today"
         } else if days == 1 {
-            return "Tomorrow"
+            return isVi ? "Ngày mai" : "Tomorrow"
         } else {
-            return "In \(days)d"
+            return isVi ? "Còn \(days) ngày" : "In \(days)d"
         }
     }
 
     /// Formatted date string, e.g. "Oct 29, 2026" or "Oct 29 – Nov 02, 2026"
     public var formattedDateRange: String {
-        guard let start = nextDate else { return "Date TBD" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d, yyyy"
-
-        if let end = nextDateEnd, Calendar.current.isDate(start, inSameDayAs: end) == false {
-            let startFmt = DateFormatter()
-            startFmt.locale = Locale(identifier: "en_US_POSIX")
-            startFmt.dateFormat = "MMM d"
-            return "\(startFmt.string(from: start)) – \(formatter.string(from: end))"
-        }
-
-        return formatter.string(from: start)
+        formattedDateRange(isVi: false)
     }
 
-    /// Short formatted date for timeline lists, e.g. "Oct 29"
+    public func formattedDateRange(isVi: Bool) -> String {
+        guard let start = nextDate else { return isVi ? "Chưa có lịch" : "Date TBD" }
+        let fullFmt = isVi ? Self.viFullFormatter : Self.enFullFormatter
+        let shortFmt = isVi ? Self.viShortFormatter : Self.enShortFormatter
+
+        if let end = nextDateEnd, Calendar.current.isDate(start, inSameDayAs: end) == false {
+            return "\(shortFmt.string(from: start)) – \(fullFmt.string(from: end))"
+        }
+
+        return fullFmt.string(from: start)
+    }
+
+    /// Short formatted date for timeline lists, e.g. "Oct 29" or "29/10"
     public var shortDateFormatted: String {
-        guard let start = nextDate else { return "TBD" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: start)
+        shortDateFormatted(isVi: false)
+    }
+
+    public func shortDateFormatted(isVi: Bool) -> String {
+        guard let start = nextDate else { return isVi ? "Chưa rõ" : "TBD" }
+        let shortFmt = isVi ? Self.viShortFormatter : Self.enShortFormatter
+        return shortFmt.string(from: start)
     }
 }

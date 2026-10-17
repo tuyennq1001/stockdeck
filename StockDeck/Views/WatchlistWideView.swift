@@ -296,7 +296,7 @@ struct WatchlistWideView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "target").font(.system(size: 10, weight: .bold))
                         if let target = storageService.buyTarget(for: symbol) {
-                            Text(target.isInBuyZone(currentPrice: quote.effectivePrice) ? "Buy Zone" : "Target")
+                            Text(target.isInBuyZone(currentPrice: quote.effectivePrice) ? "Buy Zone" : "Buy Target")
                                 .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
                         } else {
                             Text("Buy Target")
