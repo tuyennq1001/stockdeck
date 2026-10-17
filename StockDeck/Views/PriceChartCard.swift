@@ -136,7 +136,8 @@ struct PriceChartCard: View {
     struct GroupedInsiderTrade: Identifiable, Equatable {
         let id: String
         let date: Date
-        let price: Double
+        let price: Double // Chart plot price mapped to split-adjusted closing line
+        let executionPrice: Double // Actual historical execution price per share (e.g. pre-split $1200)
         let isBuy: Bool
         let trades: [InsiderTransaction]
 
@@ -146,7 +147,7 @@ struct PriceChartCard: View {
                 if tx.price > 0 {
                     return sum + tx.totalValue
                 } else {
-                    return sum + (tx.shares * price)
+                    return sum + (tx.shares * executionPrice)
                 }
             }
         }
@@ -214,13 +215,14 @@ struct PriceChartCard: View {
             let pricedTrades = groupTrades.filter { $0.price > 0 }
             let pricedShares = pricedTrades.reduce(0.0) { $0 + $1.shares }
             let weightedPrice = pricedShares > 0 ? (pricedTrades.reduce(0.0) { $0 + $1.price * $1.shares } / pricedShares) : 0
-            let fallbackPrice = nearestClose(for: first.transactionDate, in: currentHistory) ?? (currentHistory.last?.close ?? 0)
-            let finalPrice = weightedPrice > 0 ? weightedPrice : fallbackPrice
-            guard finalPrice > 0 else { return nil }
+            let closeOnDate = nearestClose(for: first.transactionDate, in: currentHistory) ?? (currentHistory.last?.close ?? 0)
+            guard closeOnDate > 0 else { return nil }
+            let execPrice = weightedPrice > 0 ? weightedPrice : closeOnDate
             return GroupedInsiderTrade(
                 id: key,
                 date: first.transactionDate,
-                price: finalPrice,
+                price: closeOnDate,
+                executionPrice: execPrice,
                 isBuy: first.isBuy,
                 trades: groupTrades
             )

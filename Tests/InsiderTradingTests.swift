@@ -625,4 +625,94 @@ final class InsiderTradingTests: XCTestCase {
         XCTAssertTrue(storage.excludeInsider10b51)
         XCTAssertTrue(storage.insiderOpenMarketOnly)
     }
+
+    @MainActor func testIncrementalDiskCacheAndFiveYearArchiving() {
+        let service = InsiderTradingService.shared
+        let testSym = "TEST_INC"
+        let file = service.cacheFilePath(for: testSym)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let calendar = Calendar.current
+        let now = Date()
+        let fourYearsAgo = calendar.date(byAdding: .year, value: -4, to: now)!
+        let sixMonthsAgo = calendar.date(byAdding: .month, value: -6, to: now)!
+
+        let oldTx = InsiderTransaction(
+            id: "tx_old",
+            symbol: testSym,
+            ownerName: "Veteran Officer",
+            transactionDate: fourYearsAgo,
+            transactionCode: "P",
+            acquiredDisposed: "A",
+            shares: 5000,
+            price: 150.0,
+            sharesOwnedFollowing: 50000
+        )
+
+        let recentTx = InsiderTransaction(
+            id: "tx_recent",
+            symbol: testSym,
+            ownerName: "New Officer",
+            transactionDate: sixMonthsAgo,
+            transactionCode: "P",
+            acquiredDisposed: "A",
+            shares: 1000,
+            price: 200.0,
+            sharesOwnedFollowing: 10000
+        )
+
+        // 1. Save synchronously to disk
+        service.saveDiskCache(for: testSym, txs: [oldTx, recentTx], synchronous: true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        // 2. Artificially set file modification date to 24 hours ago (stale cache)
+        let staleDate = calendar.date(byAdding: .hour, value: -24, to: now)!
+        try? FileManager.default.setAttributes([.modificationDate: staleDate], ofItemAtPath: file.path)
+
+        // 3. Load from disk cache: data MUST be preserved in memory even when stale!
+        let result = service.loadDiskCache(for: testSym)
+        XCTAssertTrue(result.loaded, "Disk cache must load even if stale")
+        XCTAssertFalse(result.isFresh, "Cache modified 24h ago should not be considered fresh")
+
+        let loadedTxs = service.transactions[testSym] ?? []
+        XCTAssertEqual(loadedTxs.count, 2)
+        XCTAssertTrue(loadedTxs.contains(where: { $0.id == "tx_old" }), "4-year old transaction must be preserved")
+        XCTAssertTrue(loadedTxs.contains(where: { $0.id == "tx_recent" }))
+
+        // 4. Default sentiment lookback is 60 months (5 years), so both trades are included!
+        let summary = service.sentiment[testSym]
+        XCTAssertNotNil(summary)
+        XCTAssertEqual(summary?.lookbackMonths, 60)
+        XCTAssertEqual(summary?.buyCount, 2)
+        XCTAssertEqual(summary?.totalBuyShares, 6000)
+    }
+
+    func testGroupedInsiderTradeSplitAdjustedChartPrice() {
+        let preSplitTx = InsiderTransaction(
+            id: "tx_presplit",
+            symbol: "NVDA",
+            ownerName: "Jensen Huang",
+            transactionDate: Date(),
+            transactionCode: "S",
+            acquiredDisposed: "D",
+            shares: 10_000,
+            price: 1200.0,
+            sharesOwnedFollowing: 1_000_000
+        )
+
+        let trade = PriceChartCard.GroupedInsiderTrade(
+            id: "grp_1",
+            date: preSplitTx.transactionDate,
+            price: 120.0,
+            executionPrice: 1200.0,
+            isBuy: false,
+            trades: [preSplitTx]
+        )
+
+        // Chart plot price MUST align with split-adjusted line ($120), not blow up Y scale to $1200
+        XCTAssertEqual(trade.price, 120.0)
+        XCTAssertEqual(trade.executionPrice, 1200.0)
+        // Monetary total value remains authentic $12,000,000
+        XCTAssertEqual(trade.totalValue, 12_000_000.0)
+    }
 }
