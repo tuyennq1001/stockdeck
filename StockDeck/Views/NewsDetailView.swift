@@ -59,6 +59,30 @@ struct NewsDetailView: View {
         return nil
     }
 
+    private var externalURL: URL? {
+        if let canonical = crawledArticle?.canonicalURL,
+           let u = URL(string: canonical),
+           !canonical.contains("news.google.com") {
+            return u
+        }
+        return article.url
+    }
+
+    private var shouldShowHighlights: Bool {
+        let content = article.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return false }
+        let lowerContent = content.lowercased()
+        let lowerPub = displayPublisher.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let lowerArticlePub = article.publisher.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lowerContent == lowerPub || lowerContent == lowerArticlePub {
+            return false
+        }
+        if content.count < 30 && (lowerPub.contains(lowerContent) || lowerArticlePub.contains(lowerContent)) {
+            return false
+        }
+        return true
+    }
+
     private var bodyParagraphs: [String] {
         guard let crawled = crawledArticle else { return [] }
         let cleanTitle = displayTitle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -143,7 +167,7 @@ struct NewsDetailView: View {
                     }
 
                     // Key Summary / Highlights card
-                    if !article.content.isEmpty {
+                    if shouldShowHighlights {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 5) {
                                 Image(systemName: "text.quote")
@@ -183,7 +207,7 @@ struct NewsDetailView: View {
                             }
                         }
                         .padding(.top, 4)
-                    } else if isLoadingBody {
+                    } else if isLoadingBody || crawledArticle == nil {
                         HStack(spacing: 8) {
                             DSSpinner(size: 11)
                             Text("Loading complete story…")
@@ -191,6 +215,34 @@ struct NewsDetailView: View {
                                 .foregroundStyle(DS.inkTertiary)
                         }
                         .padding(.vertical, 8)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Full article text is unavailable for direct in-app preview. Tap below to read the complete story on \(displayPublisher).")
+                                .font(.inter(12, weight: .regular, relativeTo: .caption))
+                                .foregroundStyle(DS.inkTertiary)
+                                .lineSpacing(2)
+
+                            Button(action: {
+                                Task { await loadCrawledContent(force: true) }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 10, weight: .semibold))
+                                    Text("Retry")
+                                        .font(.inter(11, weight: .medium, relativeTo: .caption))
+                                }
+                                .foregroundStyle(DS.brand)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(DS.brand.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .pointingHandCursor()
+                        }
+                        .padding(.vertical, 6)
                     }
 
                     // Footer action to open original link in browser
@@ -233,7 +285,7 @@ struct NewsDetailView: View {
 
             Spacer(minLength: 4)
 
-            if let url = article.url {
+            if let url = externalURL {
                 Button(action: {
                     openInBrowser(url)
                 }) {
@@ -314,7 +366,7 @@ struct NewsDetailView: View {
     private var externalSourceFooter: some View {
         VStack(spacing: 8) {
             Divider().overlay(DS.hairline.opacity(0.8))
-            if let url = article.url {
+            if let url = externalURL {
                 Button(action: {
                     openInBrowser(url)
                 }) {
@@ -339,8 +391,12 @@ struct NewsDetailView: View {
         NSWorkspace.shared.open(url)
     }
 
-    private func loadCrawledContent() async {
+    private func loadCrawledContent(force: Bool = false) async {
         guard !article.link.isEmpty else { return }
+        if force {
+            await ArticleCrawlerService.shared.evictCache(for: article.link)
+            crawledArticle = nil
+        }
         isLoadingBody = true
         let result = await ArticleCrawlerService.shared.fetchArticle(
             for: article.link,

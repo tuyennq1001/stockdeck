@@ -94,13 +94,33 @@ enum GoogleNewsRSSParser {
             }
         }
 
+        let lowerPub = publisher.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        func isPublisherOrWrapper(_ text: String) -> Bool {
+            let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !lower.isEmpty else { return true }
+            if !lowerPub.isEmpty {
+                if lower == lowerPub || lower == "- \(lowerPub)" || lower == "– \(lowerPub)" || lower == "— \(lowerPub)" || lower == "| \(lowerPub)" {
+                    return true
+                }
+                if lower.count <= lowerPub.count + 4 && lower.contains(lowerPub) {
+                    return true
+                }
+            }
+            return false
+        }
+
         // If description has substantive text that is different from title and publisher
-        if !cleanDesc.isEmpty && cleanDesc != title && cleanDesc != publisher {
+        if !cleanDesc.isEmpty && cleanDesc != title && !isPublisherOrWrapper(cleanDesc) {
             if !cleanDesc.hasPrefix(title) {
                 return (title, cleanDesc)
             } else if cleanDesc.count > title.count + 5 {
-                let remaining = String(cleanDesc.dropFirst(title.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !remaining.isEmpty {
+                var remaining = String(cleanDesc.dropFirst(title.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                for prefix in ["- ", "– ", "— ", "| "] {
+                    if remaining.hasPrefix(prefix) {
+                        remaining = String(remaining.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+                if !remaining.isEmpty && !isPublisherOrWrapper(remaining) {
                     return (title, remaining)
                 }
             }
@@ -118,14 +138,12 @@ enum GoogleNewsRSSParser {
             }
         }
 
-        // Colon split: e.g. "Exclusive: Apple signs major AI deal" or "Apple AI: Why Wall Street is bullish"
+        // Colon split: e.g. "BREAKING: Apple signs major AI deal"
         if let range = title.range(of: ": ") {
             let prefix = String(title[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             let suffix = String(title[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
             if prefix.count <= 15 && prefix.allSatisfy({ $0.isUppercase || $0.isWhitespace }) {
                 return (suffix, "\(prefix): Latest market coverage and insights.")
-            } else if prefix.count >= 12 && suffix.count >= 12 {
-                return (prefix, suffix)
             }
         }
 
@@ -134,14 +152,37 @@ enum GoogleNewsRSSParser {
             if let range = title.range(of: dash) {
                 let firstPart = String(title[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
                 let secondPart = String(title[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if firstPart.count >= 12 && secondPart.count >= 12 {
+                if firstPart.count >= 12 && secondPart.count >= 12 && !isPublisherOrWrapper(secondPart) {
                     return (firstPart, secondPart)
                 }
             }
         }
 
         // Single headline
-        return (title, cleanDesc.isEmpty || cleanDesc == title ? "" : cleanDesc)
+        let isRedundantDesc = cleanDesc.isEmpty || cleanDesc == title || isPublisherOrWrapper(cleanDesc) || cleanDesc.lowercased() == "\(title.lowercased()) \(lowerPub)"
+        return (title, isRedundantDesc ? "" : cleanDesc)
+    }
+
+    /// Detects automated financial instruments, option chains, and quote pages indexed by search engines
+    /// (e.g. "INTC Sep 2027 160.000 call (INTC270917C00160000) stock price, news, quote and history")
+    /// which contain zero news article content and are pure automated quote search results.
+    public static func isAutomatedQuoteOrInstrument(title: String, description: String = "", link: String = "") -> Bool {
+        let lowerTitle = title.lowercased()
+        let lowerDesc = description.lowercased()
+
+        if lowerTitle.contains("stock price, news, quote and history") ||
+           lowerTitle.contains("interactive stock chart") ||
+           lowerDesc.contains("stock quote, history, news and other vital information") ||
+           (lowerDesc.contains("find the latest") && lowerDesc.contains("stock quote")) {
+            return true
+        }
+
+        // Option contracts notation: e.g. "160.000 call (INTC270917C00160000)" or "put (INTC261014P00130000)"
+        if lowerTitle.range(of: #"(?i)\b(?:call|put)\s*\([A-Z0-9_]+\)"#, options: .regularExpression) != nil {
+            return true
+        }
+
+        return false
     }
 
     private final class ParserDelegate: NSObject, XMLParserDelegate {
@@ -188,6 +229,13 @@ enum GoogleNewsRSSParser {
             case "item":
                 defer { inItem = false }
                 guard !itemTitle.isEmpty, !itemLink.isEmpty else { return }
+                guard !GoogleNewsRSSParser.isAutomatedQuoteOrInstrument(
+                    title: itemTitle,
+                    description: itemDescription,
+                    link: itemLink
+                ) else {
+                    return
+                }
                 var publisher = itemSource
                 if publisher.isEmpty {
                     if let u = URL(string: itemLink), let host = u.host {
@@ -205,6 +253,14 @@ enum GoogleNewsRSSParser {
                         else if cleanHost.contains("barrons.com") { publisher = "Barron's" }
                         else if cleanHost.contains("stocktwits.com") { publisher = "Stocktwits" }
                         else if cleanHost.contains("forbes.com") { publisher = "Forbes" }
+                        else if cleanHost.contains("barchart.com") { publisher = "Barchart" }
+                        else if cleanHost.contains("247wallst.com") { publisher = "24/7 Wall St." }
+                        else if cleanHost.contains("marketbeat.com") { publisher = "MarketBeat" }
+                        else if cleanHost.contains("gurufocus.com") { publisher = "GuruFocus" }
+                        else if cleanHost.contains("zacks.com") { publisher = "Zacks" }
+                        else if cleanHost.contains("seekingalpha.com") { publisher = "Seeking Alpha" }
+                        else if cleanHost.contains("investing.com") { publisher = "Investing.com" }
+                        else if cleanHost.contains("tipranks.com") { publisher = "TipRanks" }
                         else { publisher = cleanHost }
                     }
                 }

@@ -37,7 +37,11 @@ struct HomeWideView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack {
+            homeContent
+                .disabled(selectedNewsArticle != nil)
+                .allowsHitTesting(selectedNewsArticle == nil)
+
             if let article = selectedNewsArticle {
                 NewsDetailView(
                     article: article,
@@ -51,8 +55,7 @@ struct HomeWideView: View {
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .trailing).combined(with: .opacity)
                 ))
-            } else {
-                homeContent
+                .zIndex(1)
             }
         }
         .navigationTitle("Home")

@@ -16,7 +16,11 @@ struct SymbolDetailView: View {
     private var quote: StockQuote? { stockService.quotes[symbol] }
 
     var body: some View {
-        Group {
+        ZStack {
+            detailContent
+                .disabled(selectedNewsArticle != nil)
+                .allowsHitTesting(selectedNewsArticle == nil)
+
             if let article = selectedNewsArticle {
                 NewsDetailView(
                     article: article,
@@ -30,8 +34,7 @@ struct SymbolDetailView: View {
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .trailing).combined(with: .opacity)
                 ))
-            } else {
-                detailContent
+                .zIndex(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -122,7 +125,7 @@ struct SymbolDetailView: View {
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
-            .keyboardShortcut(.cancelAction)
+            .keyboardShortcut(selectedNewsArticle == nil ? .cancelAction : nil)
 
             Divider().frame(height: 14)
 

@@ -42,8 +42,8 @@ public actor ArticleCrawlerService {
             self.session = session
         } else {
             let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = 6.0
-            config.timeoutIntervalForResource = 10.0
+            config.timeoutIntervalForRequest = 10.0
+            config.timeoutIntervalForResource = 15.0
             config.httpAdditionalHeaders = [
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -51,6 +51,80 @@ public actor ArticleCrawlerService {
             ]
             self.session = URLSession(configuration: config)
         }
+    }
+
+    /// Resolves a Google News redirect URL (`news.google.com/rss/articles/...`) to the publisher's actual web page URL.
+    /// Extracts `data-n-a-id`, `data-n-a-ts`, `data-n-a-sg` from the intermediate Google News page and calls
+    /// Google's `batchexecute` RPC (`Fbv4je`) to obtain the direct publisher URL (`garturlres`).
+    public func resolveGoogleNewsURL(_ gnURLString: String) async -> String? {
+        guard let url = URL(string: gnURLString) else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8.0
+        guard let (data, response) = try? await session.data(for: req) else { return nil }
+
+        // If HTTP redirect already led away from news.google.com
+        if let http = response as? HTTPURLResponse,
+           let respURL = http.url,
+           let host = respURL.host,
+           !host.contains("news.google.com") {
+            return respURL.absoluteString
+        }
+
+        let html = String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? String(decoding: data, as: UTF8.self)
+
+        func extractAttr(_ name: String) -> String? {
+            guard let regex = try? NSRegularExpression(pattern: "\(name)=\"([^\"]+)\"") else { return nil }
+            let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+            guard let match = regex.firstMatch(in: html, range: nsRange),
+                  let r = Range(match.range(at: 1), in: html) else { return nil }
+            return String(html[r])
+        }
+
+        guard let articleId = extractAttr("data-n-a-id"),
+              let ts = extractAttr("data-n-a-ts"),
+              let sg = extractAttr("data-n-a-sg") else {
+            return nil
+        }
+
+        let innerPayload = "[\"garturlreq\",[[\"X\",\"X\",[\"X\",\"X\"],null,null,1,1,\"US:en\",null,1,null,null,null,null,null,0,1],\"X\",\"X\",1,[1,1,1],1,1,null,0,0,null,0],\"\(articleId)\",\(ts),\"\(sg)\"]"
+        let escapedInner = innerPayload
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let freq = "[[[\"Fbv4je\",\"\(escapedInner)\",null,\"generic\"]]]"
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        let bodyString = "f.req=" + (freq.addingPercentEncoding(withAllowedCharacters: allowed) ?? freq)
+
+        guard let batchURL = URL(string: "https://news.google.com/_/DotsSplashUi/data/batchexecute?rpcids=Fbv4je") else { return nil }
+        var postReq = URLRequest(url: batchURL)
+        postReq.httpMethod = "POST"
+        postReq.timeoutInterval = 8.0
+        postReq.setValue("application/x-www-form-urlencoded;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        postReq.httpBody = bodyString.data(using: .utf8)
+
+        guard let (respData, _) = try? await session.data(for: postReq),
+              let respStr = String(data: respData, encoding: .utf8) else { return nil }
+
+        let pattern = "\\[\"garturlres\",\"([^\"]+)\""
+        let unescaped = respStr.replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\/", with: "/")
+        if let regex = try? NSRegularExpression(pattern: pattern),
+           let match = regex.firstMatch(in: unescaped, range: NSRange(unescaped.startIndex..<unescaped.endIndex, in: unescaped)),
+           let r = Range(match.range(at: 1), in: unescaped) {
+            let res = String(unescaped[r])
+            if res.hasPrefix("http") {
+                return res
+            }
+        }
+        return nil
+    }
+
+    /// Removes an article from cache to allow re-fetching on retry.
+    public func evictCache(for urlString: String) {
+        let key = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        cache.removeValue(forKey: key)
     }
 
     /// Fetches article content from a web URL or Google News redirect URL.
@@ -65,41 +139,116 @@ public actor ArticleCrawlerService {
             return cached
         }
 
-        guard let url = URL(string: key) else {
+        var effectiveURLString = key
+        if key.contains("news.google.com") {
+            if let resolved = await resolveGoogleNewsURL(key) {
+                effectiveURLString = resolved
+                if let cached = cache[effectiveURLString] {
+                    cache[key] = cached
+                    return cached
+                }
+            }
+        }
+
+        guard let url = URL(string: effectiveURLString) else {
             return CrawledArticle(url: key, title: fallbackTitle, publisher: fallbackPublisher)
         }
 
         do {
             var request = URLRequest(url: url)
-            request.timeoutInterval = 6.0
+            request.timeoutInterval = 10.0
 
             let (data, response) = try await session.data(for: request)
-            let finalURL = (response as? HTTPURLResponse)?.url?.absoluteString ?? key
+            let http = response as? HTTPURLResponse
+            let statusCode = http?.statusCode ?? 200
+            let finalURL = http?.url?.absoluteString ?? effectiveURLString
+            let isWAF = statusCode == 202 || statusCode == 403 || (http?.allHeaderFields["x-amzn-waf-action"] != nil)
 
-            let html = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .isoLatin1)
-                ?? String(decoding: data, as: UTF8.self)
+            if !isWAF && statusCode == 200 {
+                let html = String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .isoLatin1)
+                    ?? String(decoding: data, as: UTF8.self)
 
-            let extracted = Self.parseHTML(
-                html,
-                sourceURL: key,
-                finalURL: finalURL,
-                fallbackTitle: fallbackTitle,
-                fallbackPublisher: fallbackPublisher
-            )
+                let extracted = Self.parseHTML(
+                    html,
+                    sourceURL: key,
+                    finalURL: finalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher
+                )
 
-            cache[key] = extracted
-            if finalURL != key {
-                cache[finalURL] = extracted
+                if !extracted.paragraphs.isEmpty {
+                    cache[key] = extracted
+                    if finalURL != key {
+                        cache[finalURL] = extracted
+                    }
+                    if effectiveURLString != key && effectiveURLString != finalURL {
+                        cache[effectiveURLString] = extracted
+                    }
+                    return extracted
+                }
             }
-            return extracted
+
+            // Resilient fallback: Headless WebKit if URLSession was challenged by WAF or yielded 0 paragraphs
+            if let webKitRes = await HeadlessWebKitFetcher.shared.fetchHTML(url: url), !webKitRes.html.isEmpty {
+                let resolvedFinalURL = webKitRes.finalURL ?? finalURL
+                let extracted = Self.parseHTML(
+                    webKitRes.html,
+                    sourceURL: key,
+                    finalURL: resolvedFinalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher
+                )
+
+                if !extracted.paragraphs.isEmpty {
+                    cache[key] = extracted
+                    if resolvedFinalURL != key {
+                        cache[resolvedFinalURL] = extracted
+                    }
+                    if effectiveURLString != key && effectiveURLString != resolvedFinalURL {
+                        cache[effectiveURLString] = extracted
+                    }
+                    return extracted
+                }
+            }
+
+            return CrawledArticle(
+                url: key,
+                title: fallbackTitle.isEmpty ? nil : fallbackTitle,
+                publisher: fallbackPublisher.isEmpty ? nil : fallbackPublisher,
+                canonicalURL: effectiveURLString != key ? effectiveURLString : nil
+            )
         } catch {
+            // Resilient fallback: Headless WebKit if URLSession failed due to network / SSL / WAF block
+            if let webKitRes = await HeadlessWebKitFetcher.shared.fetchHTML(url: url), !webKitRes.html.isEmpty {
+                let resolvedFinalURL = webKitRes.finalURL ?? effectiveURLString
+                let extracted = Self.parseHTML(
+                    webKitRes.html,
+                    sourceURL: key,
+                    finalURL: resolvedFinalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher
+                )
+
+                if !extracted.paragraphs.isEmpty {
+                    cache[key] = extracted
+                    if resolvedFinalURL != key {
+                        cache[resolvedFinalURL] = extracted
+                    }
+                    if effectiveURLString != key && effectiveURLString != resolvedFinalURL {
+                        cache[effectiveURLString] = extracted
+                    }
+                    return extracted
+                }
+            }
+
             let fallback = CrawledArticle(
                 url: key,
                 title: fallbackTitle.isEmpty ? nil : fallbackTitle,
-                publisher: fallbackPublisher.isEmpty ? nil : fallbackPublisher
+                publisher: fallbackPublisher.isEmpty ? nil : fallbackPublisher,
+                canonicalURL: effectiveURLString != key ? effectiveURLString : nil
             )
-            cache[key] = fallback
+            // Do not cache failures or fallbacks so retry attempts can succeed
             return fallback
         }
     }
@@ -116,7 +265,8 @@ public actor ArticleCrawlerService {
             return CrawledArticle(url: sourceURL, title: fallbackTitle, publisher: fallbackPublisher)
         }
 
-        let isGoogleNewsHost = sourceURL.contains("news.google.com") || (finalURL?.contains("news.google.com") ?? false)
+        let effectiveURL = finalURL ?? sourceURL
+        let isGoogleNewsHost = effectiveURL.contains("news.google.com")
 
         // 1. Extract og:image or twitter:image
         var leadImage = extractMetaContent(html: html, properties: ["og:image", "twitter:image", "twitter:image:src"])
@@ -161,6 +311,7 @@ public actor ArticleCrawlerService {
         var seenParagraphs = Set<String>()
 
         if !isGoogleNewsHost {
+            let jsonLDParagraphs = extractJSONLDParagraphs(html: html)
             let isolatedHTML = isolateArticleContainer(html)
             let sanitizedHTML = sanitizeHTML(isolatedHTML)
 
@@ -169,7 +320,16 @@ public actor ArticleCrawlerService {
             let rawParagraphs = matchRegex(html: sanitizedHTML, pattern: pPattern)
 
             for rawP in rawParagraphs {
-                let cleanP = cleanText(rawP)
+                var cleanP = cleanText(rawP)
+                if let title = resolvedTitle, cleanP.hasPrefix(title) {
+                    let rest = String(cleanP.dropFirst(title.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let quickReadRange = rest.range(of: "Quick Read", options: .caseInsensitive) {
+                        let afterQuickRead = String(rest[quickReadRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !afterQuickRead.isEmpty && afterQuickRead.count >= 25 {
+                            cleanP = afterQuickRead
+                        }
+                    }
+                }
                 if isValidParagraph(cleanP, articleTitle: resolvedTitle) && seenParagraphs.insert(cleanP).inserted {
                     paragraphs.append(cleanP)
                 }
@@ -187,7 +347,16 @@ public actor ArticleCrawlerService {
                 }
             }
 
-            // If still no <p> tags met the threshold, fallback to meta description
+            // If still no paragraphs, use JSON-LD articleBody if available
+            if paragraphs.isEmpty && !jsonLDParagraphs.isEmpty {
+                for p in jsonLDParagraphs {
+                    if isValidParagraph(p, articleTitle: resolvedTitle) && seenParagraphs.insert(p).inserted {
+                        paragraphs.append(p)
+                    }
+                }
+            }
+
+            // If still no paragraphs, fallback to meta description
             if paragraphs.isEmpty {
                 let metaDesc = extractMetaContent(html: html, properties: ["og:description", "description", "twitter:description"])
                 if let desc = metaDesc, !desc.isEmpty {
@@ -211,6 +380,46 @@ public actor ArticleCrawlerService {
     }
 
     // MARK: - HTML Extraction & Sanitization Helpers
+
+    /// Extracts articleBody paragraphs from schema.org JSON-LD scripts.
+    private static func extractJSONLDParagraphs(html: String) -> [String] {
+        let pattern = "(?i)<script[^>]+type=[\"']application/ld\\+json[\"'][^>]*>([\\s\\S]*?)</script>"
+        let scripts = matchRegex(html: html, pattern: pattern)
+        for rawJSON in scripts {
+            let trimmed = rawJSON.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                continue
+            }
+
+            func findArticleBody(in obj: Any) -> String? {
+                if let dict = obj as? [String: Any] {
+                    if let body = dict["articleBody"] as? String, !body.isEmpty {
+                        return body
+                    }
+                    if let graph = dict["@graph"] as? [Any] {
+                        for item in graph {
+                            if let body = findArticleBody(in: item) { return body }
+                        }
+                    }
+                } else if let arr = obj as? [Any] {
+                    for item in arr {
+                        if let body = findArticleBody(in: item) { return body }
+                    }
+                }
+                return nil
+            }
+
+            if let body = findArticleBody(in: json) {
+                let cleaned = decodeHTMLEntities(body)
+                let rawParts = cleaned.components(separatedBy: "\n").map { cleanText($0) }.filter { $0.count >= 25 }
+                if !rawParts.isEmpty {
+                    return rawParts
+                }
+            }
+        }
+        return []
+    }
 
     /// Isolates primary article container from full HTML page to prevent capturing site headers, menus, sidebars, or footers.
     private static func isolateArticleContainer(_ html: String) -> String {
@@ -475,7 +684,18 @@ public actor ArticleCrawlerService {
            lower.contains("the author has no position in") ||
            lower.contains("the author owns shares in") ||
            lower.contains("the author holds shares in") ||
-           lower.contains("has a position in any stock mentioned") {
+           lower.contains("has a position in any stock mentioned") ||
+           lower.contains("ten best stocks to buy right now") ||
+           lower.contains("10 best stocks to buy now") ||
+           (lower.contains("our analysts") && lower.contains("enter your email")) {
+            return true
+        }
+
+        // Automated option chain / financial instrument SEO quotes & charts
+        if lower.contains("stock quote, history, news and other vital information") ||
+           lower.contains("stock price, news, quote and history") ||
+           lower.contains("interactive stock chart") ||
+           (lower.contains("find the latest") && lower.contains("stock quote")) {
             return true
         }
 
