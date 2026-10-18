@@ -121,22 +121,6 @@ struct HoldingDetailView: View {
                     closedTradesForSymbolCard
                     transactionsForSymbolCard
                     if storageService.show52WeekBar { fiftyTwoWeekCard.frame(maxWidth: .infinity) }
-                    if liveQuote.hasValuationData {
-                        let keyStats = stockService.keyStatistics[holding.symbol]
-                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(holding.symbol)
-                        ValuationCard(quote: liveQuote, keyStats: keyStats, isLoadingStats: isLoadingStats)
-                            .frame(maxWidth: .infinity)
-                        if !StockService.isIndexSymbol(holding.symbol) {
-                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    EarningsCard(symbol: holding.symbol)
-                        .frame(maxWidth: .infinity)
-                    if insiderService.shouldShowCard(for: holding.symbol) {
-                        InsiderTradingCard(symbol: holding.symbol)
-                    }
-                    SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                     SymbolNewsCard(
                         stockService: stockService,
                         symbol: holding.symbol,
@@ -147,6 +131,22 @@ struct HoldingDetailView: View {
                         }
                     )
                     .id("news-\(holding.symbol)")
+                    EarningsCard(symbol: holding.symbol)
+                        .frame(maxWidth: .infinity)
+                    if liveQuote.hasValuationData {
+                        let keyStats = stockService.keyStatistics[holding.symbol]
+                        let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(holding.symbol)
+                        ValuationCard(quote: liveQuote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            .frame(maxWidth: .infinity)
+                        if !StockService.isIndexSymbol(holding.symbol) {
+                            ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    if insiderService.shouldShowCard(for: holding.symbol) {
+                        InsiderTradingCard(symbol: holding.symbol)
+                    }
+                    SymbolNotesCard(storageService: storageService, symbol: holding.symbol)
                 }
                 .pageColumn()
                 .padding(.top, 4)

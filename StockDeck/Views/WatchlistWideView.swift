@@ -1255,6 +1255,9 @@ private struct WatchlistSideDetailPane: View {
                     VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
                         .id("volume-\(symbol)")
                     if storageService.show52WeekBar { fiftyTwoWeekCard(quote) }
+                    SymbolNewsCard(stockService: stockService, symbol: symbol)
+                        .id("news-\(symbol)")
+                    EarningsCard(symbol: symbol)
                     if quote.hasValuationData {
                         let keyStats = stockService.keyStatistics[symbol]
                         let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
@@ -1263,12 +1266,9 @@ private struct WatchlistSideDetailPane: View {
                             ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
                         }
                     }
-                    EarningsCard(symbol: symbol)
                     InsiderTradingCard(symbol: symbol)
                     SymbolNotesCard(storageService: storageService, symbol: symbol)
                         .id("notes-\(symbol)")
-                    SymbolNewsCard(stockService: stockService, symbol: symbol)
-                        .id("news-\(symbol)")
                 }
                 .padding(16)
             }

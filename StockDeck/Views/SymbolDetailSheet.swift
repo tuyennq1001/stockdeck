@@ -69,19 +69,6 @@ struct SymbolDetailView: View {
                         if storageService.show52WeekBar {
                             fiftyTwoWeekCard(quote)
                         }
-                        if quote.hasValuationData {
-                            let keyStats = stockService.keyStatistics[symbol]
-                            let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
-                            ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
-                            if !StockService.isIndexSymbol(symbol) {
-                                ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
-                            }
-                        }
-                        EarningsCard(symbol: symbol)
-                        if insiderService.shouldShowCard(for: symbol) {
-                            InsiderTradingCard(symbol: symbol)
-                        }
-                        SymbolNotesCard(storageService: storageService, symbol: symbol)
                         SymbolNewsCard(
                             stockService: stockService,
                             symbol: symbol,
@@ -92,6 +79,19 @@ struct SymbolDetailView: View {
                             }
                         )
                         .id("news-\(symbol)")
+                        EarningsCard(symbol: symbol)
+                        if quote.hasValuationData {
+                            let keyStats = stockService.keyStatistics[symbol]
+                            let isLoadingStats = stockService.loadingKeyStatsSymbols.contains(symbol)
+                            ValuationCard(quote: quote, keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            if !StockService.isIndexSymbol(symbol) {
+                                ProfitabilityRiskCard(keyStats: keyStats, isLoadingStats: isLoadingStats)
+                            }
+                        }
+                        if insiderService.shouldShowCard(for: symbol) {
+                            InsiderTradingCard(symbol: symbol)
+                        }
+                        SymbolNotesCard(storageService: storageService, symbol: symbol)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
