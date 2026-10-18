@@ -90,16 +90,29 @@ struct PriceChartCard: View {
         self.quote = quote
         self.chartHeight = chartHeight
         let initialRange = ChartRange(rawValue: StorageService.shared.lastStockChartRange) ?? .month
-        self._chartRange = State(initialValue: initialRange)
 
         let stockService = StockService.shared
+        let daily = stockService.priceHistory[symbol] ?? []
+        let watchlist = stockService.watchlistHistory[symbol] ?? []
+        let full = stockService.priceHistoryMax[symbol] ?? []
+        let intraday = stockService.intradayHistory[symbol] ?? []
+
+        let resolvedRange: ChartRange
+        if Self.isRangeAvailable(initialRange, daily: daily, watchlist: watchlist, full: full) {
+            resolvedRange = initialRange
+        } else {
+            let candidates: [ChartRange] = [.threeMonths, .month, .all]
+            resolvedRange = candidates.first(where: { Self.isRangeAvailable($0, daily: daily, watchlist: watchlist, full: full) }) ?? .all
+        }
+        self._chartRange = State(initialValue: resolvedRange)
+
         let initialInput = HistoryInput(
             symbol: symbol,
-            range: initialRange,
-            daily: stockService.priceHistory[symbol] ?? [],
-            watchlist: stockService.watchlistHistory[symbol] ?? [],
-            full: stockService.priceHistoryMax[symbol] ?? [],
-            intraday: stockService.intradayHistory[symbol] ?? []
+            range: resolvedRange,
+            daily: daily,
+            watchlist: watchlist,
+            full: full,
+            intraday: intraday
         )
         let initialPoints = Self.computeHistory(initialInput)
         let initialLow = initialPoints.map(\.close).min() ?? .infinity
@@ -304,10 +317,10 @@ struct PriceChartCard: View {
         
         if chartRange == .all {
             if !maxPoints.isEmpty {
-                // If maxPoints spans further back than daily, or daily is missing, prefer full history
+                // If maxPoints genuinely spans further back than daily, or daily is missing, prefer full history
                 if let maxEarliest = maxPoints.first?.date,
                    let dailyEarliest = daily.first?.date {
-                    if maxEarliest < dailyEarliest {
+                    if dailyEarliest.timeIntervalSince(maxEarliest) > 35 * 86400 {
                         return maxPoints
                     }
                 } else if daily.isEmpty {
@@ -333,17 +346,30 @@ struct PriceChartCard: View {
         
         let filteredDaily = prepareSeries(daily)
         
-        // If daily data goes back to cutoff (or earlier via baseline)
-        if let dailyFirst = daily.first?.date, dailyFirst <= cutoff {
-            return filteredDaily
+        // For short/medium ranges (<= 1Y), daily data is always the highest resolution available.
+        // Even for newly listed/IPO stocks where daily data starts after cutoff, keeping all daily
+        // points preserves natural price volatility and jagged line charts.
+        switch chartRange {
+        case .month, .threeMonths, .sixMonths, .ytd, .year:
+            if !filteredDaily.isEmpty {
+                return filteredDaily
+            }
+        default:
+            // If daily data goes back to cutoff (or earlier via baseline)
+            if let dailyFirst = daily.first?.date, dailyFirst <= cutoff {
+                return filteredDaily
+            }
         }
         
-        // If daily doesn't reach back to cutoff, but maxPoints has older data that extends further
+        // For multi-year ranges (> 1Y) or when daily history is missing:
         if !maxPoints.isEmpty {
             let filteredMax = prepareSeries(maxPoints)
+            if filteredDaily.isEmpty {
+                return filteredMax
+            }
             if let maxFirst = filteredMax.first?.date,
                let dailyFirst = filteredDaily.first?.date,
-               maxFirst < dailyFirst {
+               dailyFirst.timeIntervalSince(maxFirst) > 35 * 86400 {
                 return filteredMax
             }
         }
@@ -362,25 +388,45 @@ struct PriceChartCard: View {
         }
     }
 
+    nonisolated static func isRangeAvailable(
+        _ range: ChartRange,
+        daily: [PricePoint],
+        watchlist: [PricePoint],
+        full: [PricePoint],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        if range == .all { return true }
+        guard let cutoff = range.startDate(from: now, calendar: calendar) else { return true }
+        let dailyFirst = (daily.isEmpty ? watchlist : daily).first?.date
+        let maxFirst = full.first?.date
+        let earliestDate: Date?
+        if let d = dailyFirst, let m = maxFirst {
+            earliestDate = d.timeIntervalSince(m) > 35 * 86400 ? m : d
+        } else {
+            earliestDate = dailyFirst ?? maxFirst
+        }
+        guard let earliest = earliestDate else { return true }
+        let tolerance: TimeInterval = 15 * 86400
+        return earliest.timeIntervalSince(cutoff) <= tolerance
+    }
+
     private func isRangeAvailable(_ range: ChartRange) -> Bool {
-        switch range {
-        case .month, .threeMonths, .sixMonths, .ytd:
-            return true
-        case .year, .threeYears, .fiveYears, .sevenYears, .tenYears:
-            guard let cutoff = range.startDate() else { return true }
-            let dailyFirst = (stockService.priceHistory[symbol] ?? stockService.watchlistHistory[symbol])?.first?.date
-            let maxFirst = stockService.priceHistoryMax[symbol]?.first?.date
-            let earliestDate: Date?
-            if let d = dailyFirst, let m = maxFirst {
-                earliestDate = min(d, m)
-            } else {
-                earliestDate = dailyFirst ?? maxFirst
-            }
-            guard let earliest = earliestDate else { return true }
-            let tolerance: TimeInterval = 15 * 86400
-            return earliest.timeIntervalSince(cutoff) <= tolerance
-        case .all:
-            return true
+        Self.isRangeAvailable(
+            range,
+            daily: stockService.priceHistory[symbol] ?? [],
+            watchlist: stockService.watchlistHistory[symbol] ?? [],
+            full: stockService.priceHistoryMax[symbol] ?? []
+        )
+    }
+
+    private func clampRangeIfNeeded() {
+        guard !isRangeAvailable(chartRange) else { return }
+        let candidates: [ChartRange] = [.threeMonths, .month, .all]
+        if let fallback = candidates.first(where: { isRangeAvailable($0) }) {
+            chartRange = fallback
+        } else {
+            chartRange = .all
         }
     }
 
@@ -502,11 +548,20 @@ struct PriceChartCard: View {
             }
         }
         .onAppear {
+            clampRangeIfNeeded()
             updateCachedInsiderTrades()
         }
         .onChange(of: chartRange) { _, newRange in
-            storageService.lastStockChartRange = newRange.rawValue
+            if isRangeAvailable(newRange) {
+                storageService.lastStockChartRange = newRange.rawValue
+            }
             updateCachedInsiderTrades()
+        }
+        .onChange(of: stockService.priceHistory[symbol]?.count) { _, _ in
+            clampRangeIfNeeded()
+        }
+        .onChange(of: stockService.watchlistHistory[symbol]?.count) { _, _ in
+            clampRangeIfNeeded()
         }
         .onChange(of: storageService.showInsiderMarkers) { _, _ in
             updateCachedInsiderTrades()
