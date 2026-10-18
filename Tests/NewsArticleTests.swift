@@ -126,4 +126,47 @@ final class NewsArticleTests: XCTestCase {
         let sorted = [itemOld, itemNew, itemMid].sorted { $0.publishTime > $1.publishTime }
         XCTAssertEqual(sorted.map(\.id), ["2", "3", "1"])
     }
+
+    func testSplitTitleAndContentStripsPublisherFromContent() {
+        let rawTitle = "Dow Jones Futures: What To Do After S&P 500, Nasdaq Break Support; Will Meta Earnings Save AI? - Investor's Business Daily"
+        let rawDescription = "<a href=\"https://news.google.com/123\">Dow Jones Futures: What To Do After S&amp;P 500, Nasdaq Break Support; Will Meta Earnings Save AI?</a>&nbsp;&nbsp;<font color=\"#6f6f6f\">Investor's Business Daily</font>"
+        let publisher = "Investor's Business Daily"
+
+        let (title, content) = GoogleNewsRSSParser.splitTitleAndContent(
+            rawTitle: rawTitle,
+            rawDescription: rawDescription,
+            publisher: publisher
+        )
+
+        XCTAssertEqual(title, "Dow Jones Futures: What To Do After S&P 500, Nasdaq Break Support; Will Meta Earnings Save AI?")
+        XCTAssertEqual(content, "", "Publisher name must not leak into content")
+    }
+
+    func testFiltersAutomatedOptionQuoteSpam() {
+        let optionItemRSS = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>INTC Sep 2027 160.000 call (INTC270917C00160000) stock price, news, quote and history - Yahoo Finance</title>
+            <link>https://news.google.com/rss/articles/123</link>
+            <description>Find the latest INTC Sep 2027 160.000 call (INTC270917C00160000) stock quote, history, news and other vital information</description>
+            <source url="https://finance.yahoo.com">Yahoo Finance</source>
+          </item>
+          <item>
+            <title>INTC Oct 2026 130.000 put (INTC261014P00130000) interactive stock chart - Yahoo Finance UK</title>
+            <link>https://news.google.com/rss/articles/456</link>
+            <source url="https://uk.finance.yahoo.com">Yahoo Finance UK</source>
+          </item>
+          <item>
+            <title>Intel rides AI boom to fastest revenue growth in almost 15 years, but shares sink - CNBC</title>
+            <link>https://news.google.com/rss/articles/789</link>
+            <source url="https://www.cnbc.com">CNBC</source>
+          </item>
+        </channel></rss>
+        """.data(using: .utf8)!
+
+        let articles = GoogleNewsRSSParser.parse(optionItemRSS)
+        XCTAssertEqual(articles.count, 1, "Only real news article should be parsed, option quotes must be filtered")
+        XCTAssertEqual(articles.first?.title, "Intel rides AI boom to fastest revenue growth in almost 15 years, but shares sink")
+    }
 }

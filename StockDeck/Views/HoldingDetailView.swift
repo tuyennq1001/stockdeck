@@ -52,7 +52,11 @@ struct HoldingDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Group {
+        ZStack {
+            holdingContent
+                .disabled(selectedNewsArticle != nil)
+                .allowsHitTesting(selectedNewsArticle == nil)
+
             if let article = selectedNewsArticle {
                 NewsDetailView(
                     article: article,
@@ -66,8 +70,7 @@ struct HoldingDetailView: View {
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .trailing).combined(with: .opacity)
                 ))
-            } else {
-                holdingContent
+                .zIndex(1)
             }
         }
     }

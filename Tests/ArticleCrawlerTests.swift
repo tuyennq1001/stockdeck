@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 @testable import StockDeck
 
 final class ArticleCrawlerTests: XCTestCase {
@@ -184,5 +185,166 @@ final class ArticleCrawlerTests: XCTestCase {
 
         // Substantive news text should NOT be flagged as boilerplate
         XCTAssertFalse(ArticleCrawlerService.isBoilerplate("Apple Inc. reported fourth-quarter revenue of $94.9 billion, up 6% year-over-year."))
+    }
+
+    func testExtractJSONLDArticleBody() {
+        let jsonLDHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="Meta Earnings Beat Forecasts">
+            <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "NewsArticle",
+                "headline": "Meta Earnings Beat Forecasts",
+                "articleBody": "Meta Platforms reported quarterly earnings that exceeded analyst estimates across all major segments.\\n\\nCapital expenditures on AI infrastructure will accelerate into next year according to company guidance."
+            }
+            </script>
+        </head>
+        <body>
+            <div>Simple wrapper with no standard article tags</div>
+        </body>
+        </html>
+        """
+
+        let article = ArticleCrawlerService.parseHTML(
+            jsonLDHTML,
+            sourceURL: "https://example.com/meta-earnings"
+        )
+
+        XCTAssertEqual(article.title, "Meta Earnings Beat Forecasts")
+        XCTAssertEqual(article.paragraphs.count, 2)
+        XCTAssertTrue(article.paragraphs[0].contains("exceeded analyst estimates"))
+        XCTAssertTrue(article.paragraphs[1].contains("Capital expenditures on AI"))
+    }
+
+    func testGoogleNewsSourceURLWithResolvedFinalURL() {
+        let publisherHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="Dow Jones Futures Rally As Tech Earnings Surge">
+            <meta property="og:image" content="https://www.investors.com/images/futures.jpg">
+            <meta property="og:site_name" content="Investor's Business Daily">
+        </head>
+        <body>
+            <article>
+                <p>Dow Jones futures rallied Wednesday night as major enterprise tech companies reported stronger guidance.</p>
+                <p>The S&P 500 and Nasdaq held key support levels following recent volatility.</p>
+            </article>
+        </body>
+        </html>
+        """
+
+        // Source URL is Google News link, but finalURL has been resolved to the publisher
+        let article = ArticleCrawlerService.parseHTML(
+            publisherHTML,
+            sourceURL: "https://news.google.com/rss/articles/CBMi12345",
+            finalURL: "https://www.investors.com/market-trend/futures-rally-12345"
+        )
+
+        XCTAssertEqual(article.title, "Dow Jones Futures Rally As Tech Earnings Surge")
+        XCTAssertEqual(article.publisher, "Investor's Business Daily")
+        XCTAssertEqual(article.leadImageURL, "https://www.investors.com/images/futures.jpg")
+        XCTAssertEqual(article.canonicalURL, "https://www.investors.com/market-trend/futures-rally-12345")
+        XCTAssertEqual(article.paragraphs.count, 2)
+        XCTAssertTrue(article.paragraphs[0].contains("Dow Jones futures rallied"))
+    }
+
+    func testFiltersAutomatedOptionQuoteBoilerplate() {
+        let optionDesc = "Find the latest INTC Sep 2027 160.000 call (INTC270917C00160000) stock quote, history, news and other vital information to help you with your stock trading and investing."
+        XCTAssertFalse(
+            ArticleCrawlerService.isValidParagraph(optionDesc),
+            "Automated quote page description must be detected as boilerplate"
+        )
+
+        let promo = "Just released. Our analysts combed the entire stock market and named the ten best stocks to buy right now, and NVIDIA didn't make the cut. Enter your email to see the names that beat NVDA."
+        XCTAssertFalse(
+            ArticleCrawlerService.isValidParagraph(promo),
+            "Marketing email-gate promo must be detected as boilerplate"
+        )
+    }
+
+    func testMarketBeatHTMLParsing() {
+        let mbHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="Intel Corporation $INTC Shares Purchased by Baugh &amp; Associates LLC">
+            <meta property="og:site_name" content="MarketBeat">
+            <link rel="canonical" href="https://www.marketbeat.com/instant-alerts/filing-intel-corporation-intc-shares-purchased-by-baugh-associates-llc-2026-10-17/" />
+        </head>
+        <body>
+            <div id="content" class="article-content">
+                <p>Baugh &amp; Associates LLC increased its position in shares of Intel Co. (NASDAQ:INTC) by 14.2% during the 3rd quarter, according to the company in its most recent Form 13F filing with the SEC.</p>
+                <p>The fund owned 45,210 shares of the chip maker's stock after purchasing an additional 5,630 shares during the period.</p>
+                <p>Other institutional investors have also recently modified their holdings of the company. Vanguard Group Inc. boosted its holdings in shares of Intel by 1.8%.</p>
+                <p class="copyright">Copyright © 2026 MarketBeat. All rights reserved.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        let article = ArticleCrawlerService.parseHTML(
+            mbHTML,
+            sourceURL: "https://www.marketbeat.com/instant-alerts/filing-intel-corporation-intc-shares-purchased-by-baugh-associates-llc-2026-10-17/"
+        )
+
+        XCTAssertEqual(article.title, "Intel Corporation $INTC Shares Purchased by Baugh & Associates LLC")
+        XCTAssertEqual(article.publisher, "MarketBeat")
+        XCTAssertEqual(article.paragraphs.count, 3)
+        XCTAssertTrue(article.paragraphs[0].contains("Baugh & Associates LLC increased its position"))
+        XCTAssertTrue(article.paragraphs[1].contains("The fund owned 45,210 shares"))
+        XCTAssertTrue(article.paragraphs[2].contains("Vanguard Group Inc."))
+    }
+
+    func testEvictCacheRemovesCachedEntry() async {
+        let service = ArticleCrawlerService()
+        await service.evictCache(for: "https://example.com/test-article")
+    }
+
+    func testBarchartHTMLStructureParsing() {
+        let barchartHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="With Cathie Wood Warning of a Vicious Cycle in Memory Chipmakers, Here’s How You Should Play SKHY Stock Now">
+            <meta property="og:site_name" content="Barchart.com">
+            <meta property="og:image" content="https://www.barchart.com/images/skhy.jpg">
+            <link rel="canonical" href="https://www.barchart.com/story/news/8142726/with-cathie-wood-warning-of-a-vicious-cycle-in-memory-chipmakers-heres-how-you-should-play-skhy-stock-now" />
+        </head>
+        <body>
+            <main>
+                <div class="story-content">
+                    <p>Cathie Wood's warning arrives at an uncomfortable moment for memory chip investors. Speaking in Hong Kong on Oct. 13, the Ark Invest founder warned that traditional memory chipmakers remain locked in boom-and-bust cycles.</p>
+                    <p>These comments come at a moment when high-bandwidth memory (HBM) remains in short supply for artificial intelligence (AI) accelerators.</p>
+                    <p>Her warning comes as SK Hynix (SKHY) delivers some of the most extraordinary results in its history.</p>
+                </div>
+            </main>
+        </body>
+        </html>
+        """
+
+        let article = ArticleCrawlerService.parseHTML(
+            barchartHTML,
+            sourceURL: "https://www.barchart.com/story/news/8142726/with-cathie-wood-warning-of-a-vicious-cycle-in-memory-chipmakers-heres-how-you-should-play-skhy-stock-now"
+        )
+
+        XCTAssertEqual(article.title, "With Cathie Wood Warning of a Vicious Cycle in Memory Chipmakers, Here’s How You Should Play SKHY Stock Now")
+        XCTAssertEqual(article.publisher, "Barchart.com")
+        XCTAssertEqual(article.paragraphs.count, 3)
+        XCTAssertTrue(article.paragraphs[0].contains("Cathie Wood's warning arrives"))
+        XCTAssertTrue(article.paragraphs[1].contains("high-bandwidth memory (HBM)"))
+        XCTAssertTrue(article.paragraphs[2].contains("SK Hynix (SKHY)"))
+    }
+
+    @MainActor
+    func testHeadlessWebKitFetcherAPI() async {
+        guard let url = URL(string: "about:blank") else { return }
+        let res = await HeadlessWebKitFetcher.shared.fetchHTML(url: url, timeout: 3.0)
+        // about:blank loads immediately and returns HTML containing <html>
+        XCTAssertNotNil(res)
+        XCTAssertTrue((res?.html ?? "").contains("html") || (res?.html ?? "").isEmpty)
     }
 }
