@@ -55,4 +55,58 @@ final class DetailChartHistoryTests: XCTestCase {
             XCTAssertEqual(PriceHistory.nearestPoint(to: date, in: points), expected)
         }
     }
+
+    func testRecentIPOHistoryPrefersDailyOverDerivedMonthlyForSixMonthsAndAll() {
+        // Stock listed 70 days ago (e.g. SKHY). Daily has 70 points.
+        var dailyPoints: [PricePoint] = []
+        for i in (0...70).reversed() {
+            dailyPoints.append(point(Double(i), Double(100 + i)))
+        }
+        // Derived monthly has 3 points; due to calendar month-start, the earliest point is 78 days ago.
+        let derivedMonthly = [point(78, 100), point(48, 120), point(18, 150), point(0, 170)]
+
+        // 6M: cutoff is ~180 days ago. Daily has 70 days.
+        // Should keep all 71 daily points, NOT fall back to 4 monthly points.
+        let input6M = PriceChartCard.HistoryInput(symbol: "SKHY", range: .sixMonths,
+            daily: dailyPoints, watchlist: [], full: derivedMonthly, intraday: [])
+        let history6M = PriceChartCard.computeHistory(input6M, now: now)
+        XCTAssertEqual(history6M.count, dailyPoints.count)
+        XCTAssertEqual(history6M.first?.date, dailyPoints.first?.date)
+
+        // All: Derived monthly does NOT extend > 35 days further back than daily.
+        // Should keep high-resolution daily points.
+        let inputAll = PriceChartCard.HistoryInput(symbol: "SKHY", range: .all,
+            daily: dailyPoints, watchlist: [], full: derivedMonthly, intraday: [])
+        let historyAll = PriceChartCard.computeHistory(inputAll, now: now)
+        XCTAssertEqual(historyAll.count, dailyPoints.count)
+        XCTAssertEqual(historyAll.first?.date, dailyPoints.first?.date)
+    }
+
+    func testMissingDailyFallsBackToFull() {
+        let full = [point(300, 50), point(150, 75), point(0, 100)]
+        let input = PriceChartCard.HistoryInput(symbol: "OLD", range: .sixMonths,
+            daily: [], watchlist: [], full: full, intraday: [])
+        let history = PriceChartCard.computeHistory(input, now: now)
+        XCTAssertEqual(history.count, 3) // Baseline inserted if cutoff is within
+    }
+
+    func testIsRangeAvailableDisablesInsufficientHistoryForRecentIPO() {
+        // Stock listed 98 calendar days ago (approx. 70 trading days, e.g. SKHY).
+        var dailyPoints: [PricePoint] = []
+        for i in (0...98).reversed() {
+            dailyPoints.append(point(Double(i), Double(100 + i)))
+        }
+        let derivedMonthly = [point(98, 100), point(68, 120), point(38, 150), point(0, 170)]
+
+        XCTAssertTrue(PriceChartCard.isRangeAvailable(.month, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertTrue(PriceChartCard.isRangeAvailable(.threeMonths, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.sixMonths, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.ytd, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.year, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.threeYears, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.fiveYears, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.sevenYears, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertFalse(PriceChartCard.isRangeAvailable(.tenYears, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+        XCTAssertTrue(PriceChartCard.isRangeAvailable(.all, daily: dailyPoints, watchlist: [], full: derivedMonthly, now: now))
+    }
 }
