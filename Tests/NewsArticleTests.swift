@@ -169,4 +169,141 @@ final class NewsArticleTests: XCTestCase {
         XCTAssertEqual(articles.count, 1, "Only real news article should be parsed, option quotes must be filtered")
         XCTAssertEqual(articles.first?.title, "Intel rides AI boom to fastest revenue growth in almost 15 years, but shares sink")
     }
+
+    func testFiltersJapaneseQuoteAndForumSpam() {
+        let jpSpamRSS = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>(NEXT FUNDS)日経平均高配当株50指数連動型ETF【1489】：株価・株式情報（夜間PTS含む） - Yahoo!ファイナンス</title>
+            <link>https://finance.yahoo.co.jp/quote/1489.T</link>
+            <source url="https://finance.yahoo.co.jp">Yahoo!ファイナンス</source>
+          </item>
+          <item>
+            <title>(NEXT FUNDS)金融(除く銀行)上場投信【1632】：掲示板 - Yahoo!ファイナンス</title>
+            <link>https://finance.yahoo.co.jp/quote/1632.T/forum</link>
+            <source url="https://finance.yahoo.co.jp">Yahoo!ファイナンス</source>
+          </item>
+          <item>
+            <title>トヨタ自動車、今期営業利益4兆円超へ 過去最高を更新 - 日本経済新聞</title>
+            <link>https://news.google.com/rss/articles/789</link>
+            <source url="https://www.nikkei.com">日本経済新聞</source>
+          </item>
+        </channel></rss>
+        """.data(using: .utf8)!
+
+        let articles = GoogleNewsRSSParser.parse(jpSpamRSS)
+        XCTAssertEqual(articles.count, 1, "Only real Japanese news article should be parsed, quote and forum pages must be filtered")
+        XCTAssertEqual(articles.first?.title, "トヨタ自動車、今期営業利益4兆円超へ 過去最高を更新")
+    }
+
+    func testFiltersNumericTickerFalseMatches() {
+        // "焼きサンマ1万1489匹" should be rejected for 1489.T
+        let falseMatchTitle = "焼きサンマ1万1489匹、ギネス認定 宮城・女川で8時間の挑戦"
+        XCTAssertFalse(
+            GoogleNewsRSSParser.isRelevantForNumericTicker(ticker: "1489.T", title: falseMatchTitle),
+            "Quantity counter in Japanese (1万1489匹) must not be matched to 1489.T"
+        )
+
+        // Real news for 1489.T
+        let realTitle = "ＮＥＸＴ ＦＵＮＤＳ 日経平均高配当株５０指数連動型上場投信[1489]：ETFの収益分配のお知らせ"
+        XCTAssertTrue(
+            GoogleNewsRSSParser.isRelevantForNumericTicker(ticker: "1489.T", title: realTitle),
+            "Genuine financial ETF story must be accepted"
+        )
+    }
+
+    func testNormalizedTitleKeyDeduplication() {
+        let title1 = "焼きサンマ1万1489匹、ギネス認定 宮城・女川で8時間の挑戦 [宮城県]"
+        let title2 = "焼きサンマ1万1489匹、ギネス認定 宮城・女川で8時間の挑戦（朝日新聞）"
+        let title3 = "焼きサンマ1万1489匹、ギネス認定 宮城・女川で8時間の挑戦 - Yahoo!ニュース"
+
+        let key1 = GoogleNewsRSSParser.normalizedTitleKey(title1)
+        let key2 = GoogleNewsRSSParser.normalizedTitleKey(title2)
+        let key3 = GoogleNewsRSSParser.normalizedTitleKey(title3)
+
+        XCTAssertEqual(key1, key2)
+        XCTAssertEqual(key2, key3)
+    }
+
+    @MainActor
+    func testCollectPrioritizedSymbols() {
+        let storage = StorageService()
+        storage.portfolios = [
+            Portfolio(name: "Test", holdings: [
+                Holding(symbol: "NVDA", quantity: 10, avgPrice: 100),
+                Holding(symbol: "AAPL", quantity: 5, avgPrice: 150)
+            ])
+        ]
+        storage.watchlists = [
+            Watchlist(name: "Favorite", symbols: ["FPT", "NVDA", "VIC"]),
+            Watchlist(name: "Tech", symbols: ["MSFT", "AAPL", "GOOG"])
+        ]
+
+        let prioritized = StockService.collectPrioritizedSymbols(storageService: storage)
+
+        // Portfolio holdings first
+        XCTAssertEqual(Array(prioritized.prefix(2)), ["NVDA", "AAPL"])
+        // First watchlist next (excluding duplicates already added)
+        XCTAssertTrue(prioritized.contains("FPT"))
+        XCTAssertTrue(prioritized.contains("VIC"))
+        // Other watchlists next
+        XCTAssertTrue(prioritized.contains("MSFT"))
+        XCTAssertTrue(prioritized.contains("GOOG"))
+        // Deduplicated
+        XCTAssertEqual(prioritized.count, Set(prioritized.map { $0.uppercased() }).count)
+    }
+
+    func testNewsTranslationHelpers() {
+        // Vietnamese text detection
+        XCTAssertTrue(NewsTranslationService.isVietnameseText("Cổ phiếu VinFast tăng mạnh phiên đầu tuần"))
+        XCTAssertTrue(NewsTranslationService.isVietnameseText("Thị trường chứng khoán hôm nay"))
+        XCTAssertFalse(NewsTranslationService.isVietnameseText("Apple unveils new M4 chip with AI boost"))
+
+        // Target language names
+        XCTAssertEqual(NewsTranslationService.targetLanguageName(for: "vi"), "Vietnamese")
+        XCTAssertEqual(NewsTranslationService.targetLanguageName(for: "ja"), "Japanese")
+        XCTAssertEqual(NewsTranslationService.targetLanguageName(for: "en"), "English")
+
+        // JSON Dictionary parsing for headlines
+        let sampleDict = """
+        ```json
+        {
+          "0": "Nvidia công bố chip AI mới",
+          "1": "Cổ phiếu Apple lập đỉnh"
+        }
+        ```
+        """
+        let parsedDict = NewsTranslationService.parseJSONDictionary(from: sampleDict)
+        XCTAssertEqual(parsedDict?["0"], "Nvidia công bố chip AI mới")
+        XCTAssertEqual(parsedDict?["1"], "Cổ phiếu Apple lập đỉnh")
+
+        // JSON Article parsing
+        let sampleArticle = """
+        {
+          "title": "Nvidia dẫn đầu làn sóng AI",
+          "paragraphs": [
+            "Doanh thu quý 3 của Nvidia vượt dự báo.",
+            "CEO Jensen Huang nhấn mạnh nhu cầu chip GPU vẫn rất lớn."
+          ]
+        }
+        """
+        let parsedArticle = NewsTranslationService.parseArticleJSON(from: sampleArticle)
+        XCTAssertEqual(parsedArticle?.title, "Nvidia dẫn đầu làn sóng AI")
+        XCTAssertEqual(parsedArticle?.paragraphs.count, 2)
+    }
+
+    @MainActor
+    func testAutoTranslateNewsStoragePersistence() {
+        let storage = StorageService()
+        XCTAssertTrue(storage.autoTranslateNews, "Default autoTranslateNews must be true")
+
+        storage.autoTranslateNews = false
+        let exported = storage.exportAppData()
+        XCTAssertEqual(exported.autoTranslateNews, false)
+
+        let newStorage = StorageService()
+        newStorage.applyAppData(exported)
+        XCTAssertFalse(newStorage.autoTranslateNews)
+    }
 }

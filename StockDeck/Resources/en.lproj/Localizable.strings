@@ -457,3 +457,41 @@
 "Set Buy Target…" = "Set Buy Target…";
 "Edit Buy Target…" = "Edit Buy Target…";
 "Remove Buy Target" = "Remove Buy Target";
+
+/* Auto-translate news */
+"Auto-translate foreign news" = "Auto-translate foreign news";
+"Automatically translate foreign news headlines and articles into your selected language using AI." = "Automatically translate foreign news headlines and articles into your selected language using AI.";
+
+/* News Reader Mode & Translations */
+"Show Translation" = "Show Translation";
+"Show Original" = "Show Original";
+"Translating…" = "Translating…";
+"Full article text is unavailable for direct in-app preview. Tap below to read the complete story on %@." = "Full article text is unavailable for direct in-app preview. Tap below to read the complete story on %@.";
+"Retry" = "Retry";
+"No recent news" = "No recent news";
+
+/* Settings SubHeaders & Options */
+"Startup" = "Startup";
+"AI Custom Prompt" = "AI Custom Prompt";
+"Connection Diagnostic" = "Connection Diagnostic";
+"Current Profile" = "Current Profile";
+"Primary Goal" = "Primary Goal";
+"Global shortcuts" = "Global shortcuts";
+"Colors" = "Colors";
+"Environment" = "Environment";
+"Production Data" = "Production Data";
+"Base URL" = "Base URL";
+"Not synced yet" = "Not synced yet";
+"Toggle desktop app" = "Toggle desktop app";
+"Toggle menu bar" = "Toggle menu bar";
+"iCloud not signed in on this device. Please sign in to Apple ID in System Settings." = "iCloud not signed in on this device. Please sign in to Apple ID in System Settings.";
+
+"Translating headlines…" = "Translating headlines…";
+"Translation quota exceeded" = "Translation quota exceeded";
+"Quota exceeded" = "Quota exceeded";
+"AI translation quota reached. Showing original content." = "AI translation quota reached. Showing original content.";
+"AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings." = "AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings.";
+
+"Read original story on %@" = "Read original story on %@";
+"Article excerpt from partner source." = "Article excerpt from partner source.";
+"Open original story to view complete details." = "Open original story to view complete details.";

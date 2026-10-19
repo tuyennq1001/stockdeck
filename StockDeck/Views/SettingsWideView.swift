@@ -231,6 +231,12 @@ private struct SettingsContentView: View {
                          selection: $storageService.appLanguage, width: 200)
             }
             SettingDivider()
+            SettingRow("Auto-translate foreign news", caption: "Automatically translate foreign news headlines and articles into your selected language using AI.") {
+                Toggle("", isOn: $storageService.autoTranslateNews)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            SettingDivider()
             SettingRow("Stock price currency", caption: "How individual quotes are shown") {
                 DSPicker(options: [("", "Original")] + StorageService.supportedCurrencies.map { ($0, "\(StorageService.currencySymbol(for: $0)) \($0)") },
                          selection: $storageService.stockPriceCurrency, width: 200)

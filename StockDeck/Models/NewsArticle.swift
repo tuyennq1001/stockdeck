@@ -47,9 +47,16 @@ enum GoogleNewsRSSParser {
     }
 
     /// Parses the feed and tags each story with the tracked symbol it was
-    /// fetched for (the "reference stock"), mirroring the old Yahoo flow.
+    /// fetched for (the "reference stock"), filtering out false-positive numeric matches.
     static func parse(_ data: Data, sourceSymbol: String) -> [NewsArticle] {
-        parse(data).map { var a = $0; a.sourceSymbol = sourceSymbol; return a }
+        parse(data).compactMap { a in
+            guard isRelevantForNumericTicker(ticker: sourceSymbol, title: a.title, content: a.content) else {
+                return nil
+            }
+            var tagged = a
+            tagged.sourceSymbol = sourceSymbol
+            return tagged
+        }
     }
 
     /// Strips HTML tags and decodes common HTML entities from description text.
@@ -169,11 +176,28 @@ enum GoogleNewsRSSParser {
     public static func isAutomatedQuoteOrInstrument(title: String, description: String = "", link: String = "") -> Bool {
         let lowerTitle = title.lowercased()
         let lowerDesc = description.lowercased()
+        let lowerLink = link.lowercased()
 
+        // 1. General automated quote engines & SEO instrument pages
         if lowerTitle.contains("stock price, news, quote and history") ||
            lowerTitle.contains("interactive stock chart") ||
            lowerDesc.contains("stock quote, history, news and other vital information") ||
            (lowerDesc.contains("find the latest") && lowerDesc.contains("stock quote")) {
+            return true
+        }
+
+        // 2. Japanese stock quote pages, forums, and time-series data (e.g. Yahoo Finance JP /quote/ pages)
+        if lowerTitle.contains("：株価・株式情報") ||
+           lowerTitle.contains("：掲示板") ||
+           lowerTitle.contains("：時系列") ||
+           lowerTitle.contains("：チャート") ||
+           lowerTitle.contains(": 掲示板") ||
+           lowerTitle.contains(": 株価・株式情報") {
+            return true
+        }
+
+        // Check if link points directly to a quote or forum page rather than a news article
+        if lowerLink.contains("finance.yahoo.co.jp/quote/") && !lowerLink.contains("/news/") {
             return true
         }
 
@@ -183,6 +207,66 @@ enum GoogleNewsRSSParser {
         }
 
         return false
+    }
+
+    /// Checks if a purely numeric ticker (like Japanese 4-digit codes "1489", "7203")
+    /// is actually mentioned in a genuine financial context rather than as an arbitrary number/quantity
+    /// (e.g. "焼きサンマ1万1489匹" which is 11,489 fish).
+    public static func isRelevantForNumericTicker(ticker: String, title: String, content: String = "") -> Bool {
+        let cleanTicker = ticker.replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".JP", with: "")
+        // If ticker is not purely numeric (e.g. "AAPL", "285A"), it's not a numeric collision issue
+        guard !cleanTicker.isEmpty, cleanTicker.allSatisfy({ $0.isNumber }) else {
+            return true
+        }
+
+        let combined = "\(title) \(content)"
+
+        // Check for common quantity counters in Japanese preceding or succeeding the number
+        // Preceded by 万 or 千 (e.g. 1万1489, 5千1489)
+        if combined.contains("万\(cleanTicker)") || combined.contains("千\(cleanTicker)") {
+            return false
+        }
+
+        // Succeeded by typical non-financial quantity counters: 匹 (animals/fish), 人 (people), 台 (machines), 冊 (books), 名 (persons), 羽, 頭
+        let nonFinancialCounters = ["匹", "人", "台", "冊", "名", "羽", "頭", "個", "件", "本"]
+        for counter in nonFinancialCounters {
+            if combined.contains("\(cleanTicker)\(counter)") {
+                return false
+            }
+        }
+
+        // If ticker is 4 digits, check if it has financial markers or boundaries
+        // Financial markers: 【1489】, (1489), 1489.T, [1489], コード1489, or financial keywords in title/content
+        let financialKeywords = ["株", "銘柄", "決算", "業績", "ETF", "投信", "ファンド", "配当", "証券", "市場", "上場", "日経", "東証", "指数"]
+        let hasFinancialContext = financialKeywords.contains { combined.contains($0) }
+        if !hasFinancialContext {
+            // Also check if ticker has boundary or brackets
+            let hasBrackets = combined.contains("【\(cleanTicker)】") || combined.contains("(\(cleanTicker))") || combined.contains("[\(cleanTicker)]") || combined.contains("\(cleanTicker).T")
+            if !hasBrackets {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    /// Normalizes a headline for syndication deduplication:
+    /// Strips trailing syndication wrappers like "（朝日新聞）", "[宮城県]", " - Yahoo!ニュース",
+    /// punctuation, and normalized whitespaces so syndicated copies collapse to the same key.
+    public static func normalizedTitleKey(_ title: String) -> String {
+        var t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip trailing brackets/parens often added by syndication: e.g. （朝日新聞）, [宮城県], (Bloomberg)
+        let patterns = [
+            #"\s*[\(（\[【][^\)）\]】]+[\)）\]】]\s*$"#, // Trailing parens / brackets like （朝日新聞） or [宮城県]
+            #"\s*-\s*[^-]+$"# // Trailing " - Publisher"
+        ]
+        for p in patterns {
+            if let regex = try? NSRegularExpression(pattern: p, options: []) {
+                let range = NSRange(t.startIndex..<t.endIndex, in: t)
+                t = regex.stringByReplacingMatches(in: t, options: [], range: range, withTemplate: "")
+            }
+        }
+        return t.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     private final class ParserDelegate: NSObject, XMLParserDelegate {

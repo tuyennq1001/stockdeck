@@ -7,19 +7,22 @@ struct HomeWideView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
 
-    @State private var mode: HomeViewMode = .insights
+    @State private var mode: HomeViewMode
+    private let showModePicker: Bool
     @State private var query = ""
     @State private var selectedNewsArticle: NewsArticle?
     @State private var isLoadingInsight = false
     @State private var insightError: String? = nil
+    @ObservedObject private var translationService = NewsTranslationService.shared
 
     let onOpenSettings: () -> Void
 
-    init(onOpenSettings: @escaping () -> Void = {}) {
+    init(mode: HomeViewMode = .insights, showModePicker: Bool = true, onOpenSettings: @escaping () -> Void = {}) {
+        self._mode = State(initialValue: mode)
+        self.showModePicker = showModePicker
         self.onOpenSettings = onOpenSettings
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 320, maximum: 420), spacing: DS.gap)]
     private let insightColumns = [GridItem(.adaptive(minimum: 340, maximum: .infinity), spacing: DS.gap)]
 
     /// Filters news by free text — matches the headline, the tickers (source +
@@ -45,6 +48,7 @@ struct HomeWideView: View {
             if let article = selectedNewsArticle {
                 NewsDetailView(
                     article: article,
+                    isWide: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.18)) {
                             selectedNewsArticle = nil
@@ -58,14 +62,26 @@ struct HomeWideView: View {
                 .zIndex(1)
             }
         }
-        .navigationTitle("Home")
+        .navigationTitle(showModePicker ? "Home" : (mode == .insights ? "AI Insights" : "News"))
         .task {
-            _ = storageService.loadDailyAIInsight()
-            await stockService.fetchFearGreedIndex()
-            if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date) || (storageService.dailyAIInsight?.language != nil && storageService.dailyAIInsight?.language != storageService.appLanguage)) {
-                refreshInsights(force: false)
+            if mode == .news {
+                if !stockService.news.isEmpty {
+                    NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: stockService.news, storageService: storageService)
+                }
+                await stockService.refreshNews(storageService: storageService)
+                NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: stockService.news, storageService: storageService)
+            } else {
+                _ = storageService.loadDailyAIInsight()
+                await stockService.fetchFearGreedIndex()
+                if storageService.hasAIConfiguration && (storageService.dailyAIInsight == nil || !Calendar.current.isDateInToday(storageService.dailyAIInsight!.date) || (storageService.dailyAIInsight?.language != nil && storageService.dailyAIInsight?.language != storageService.appLanguage)) {
+                    refreshInsights(force: false)
+                }
+                await stockService.refreshNews(storageService: storageService)
+                NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: stockService.news, storageService: storageService)
             }
-            await stockService.refreshNews(storageService: storageService)
+        }
+        .onChange(of: stockService.news) { _, newArticles in
+            NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: newArticles, storageService: storageService)
         }
         .onChange(of: storageService.appLanguage) { _, newLang in
             if storageService.hasAIConfiguration && storageService.dailyAIInsight?.language != newLang {
@@ -73,15 +89,47 @@ struct HomeWideView: View {
             }
             Task {
                 await stockService.refreshNews(storageService: storageService, force: true)
+                NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: stockService.news, storageService: storageService)
+            }
+        }
+        .onChange(of: storageService.autoTranslateNews) { _, isAuto in
+            if isAuto {
+                NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: stockService.news, storageService: storageService)
             }
         }
     }
 
+    private var pageTitleKey: LocalizedStringKey {
+        mode == .insights ? "AI Insights" : "News"
+    }
+
     private var homeContent: some View {
-        PageScaffold("Home", caption: headerCaptionKey) {
+        PageScaffold(showModePicker ? "Home" : pageTitleKey, caption: headerCaptionKey) {
             HStack(spacing: 12) {
-                modePicker
+                if showModePicker {
+                    modePicker
+                }
                 if mode == .news {
+                    if storageService.autoTranslateNews && translationService.isTranslatingHeadlines {
+                        HStack(spacing: 5) {
+                            DSSpinner(size: 11)
+                            Text("Translating headlines…")
+                                .font(DS.caption)
+                                .foregroundStyle(DS.inkTertiary)
+                        }
+                        .padding(.trailing, 4)
+                    } else if storageService.autoTranslateNews && translationService.isQuotaExhausted {
+                        HStack(spacing: 5) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.orange)
+                            Text("Translation quota exceeded")
+                                .font(DS.caption)
+                                .foregroundStyle(Color.orange)
+                        }
+                        .padding(.trailing, 4)
+                        .help(String(localized: "AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings."))
+                    }
                     searchField
                 }
                 RefreshButton(isLoading: mode == .insights ? isLoadingInsight : stockService.isLoadingNews) {
@@ -292,18 +340,18 @@ struct HomeWideView: View {
             } else {
                 ScrollView {
                     VStack(spacing: DS.gap) {
-                        if let featured = news.first {
-                            FeaturedNewsCard(article: featured) { selected in
-                                withAnimation(.easeInOut(duration: 0.18)) {
-                                    selectedNewsArticle = selected
-                                }
-                            }
-                        }
-                        LazyVGrid(columns: columns, spacing: DS.gap) {
-                            ForEach(news.dropFirst()) { article in
-                                NewsCard(article: article) { selected in
-                                    withAnimation(.easeInOut(duration: 0.18)) {
-                                        selectedNewsArticle = selected
+                        Card {
+                            LazyVStack(spacing: 0) {
+                                ForEach(news) { article in
+                                    HomeWideNewsRow(article: article) { selected in
+                                        withAnimation(.easeInOut(duration: 0.18)) {
+                                            selectedNewsArticle = selected
+                                        }
+                                    }
+                                    if article.id != news.last?.id {
+                                        Divider()
+                                            .overlay(DS.hairline.opacity(0.6))
+                                            .padding(.horizontal, 4)
                                     }
                                 }
                             }
@@ -361,232 +409,117 @@ struct HomeWideView: View {
     }
 }
 
-// MARK: - Featured
+// MARK: - News Row (Isolated Hover State)
 
-/// The lead story: a wide two-pane card — image fused into the text pane via a
-/// soft gradient seam, gold FEATURED label, Craft-style image zoom on hover.
-private struct FeaturedNewsCard: View {
+private struct HomeWideNewsRow: View {
     let article: NewsArticle
     let onSelect: (NewsArticle) -> Void
+    @EnvironmentObject private var storageService: StorageService
+    @ObservedObject private var translationService = NewsTranslationService.shared
     @Environment(\.locale) private var locale
     @State private var hovered = false
 
     private var relativeTime: String {
         guard article.publishTime > 0 else { return "" }
-        let f = RelativeDateTimeFormatter(); f.locale = locale; f.unitsStyle = .abbreviated
+        let f = RelativeDateTimeFormatter()
+        f.locale = locale
+        f.unitsStyle = .abbreviated
         return f.localizedString(for: article.publishedAt, relativeTo: Date())
     }
-    private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
 
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        Button {
-            onSelect(article)
-        } label: {
-            GeometryReader { geo in
-                HStack(spacing: 0) {
-                    thumbnail
-                        .frame(width: geo.size.width * 0.44)
-                        .frame(maxHeight: .infinity)
-                        .clipped()
-                        .overlay(alignment: .trailing) {
-                            LinearGradient(colors: [.clear, DS.card],
-                                           startPoint: .leading, endPoint: .trailing)
-                                .frame(width: 40)
-                        }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 6) {
-                            Text("FEATURED")
-                                .font(.inter(9.5, weight: .bold, relativeTo: .caption2))
-                                .tracking(1.2)
-                                .foregroundStyle(DS.gold)
-                            if !relativeTime.isEmpty {
-                                Text("· \(relativeTime)").font(DS.micro).foregroundStyle(DS.inkTertiary)
-                            }
-                        }
-                        Text(article.title)
-                            .font(.inter(20, weight: .bold, relativeTo: .title3))
-                            .foregroundStyle(DS.ink)
-                            .lineSpacing(2)
-                            .lineLimit(2).multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        if !article.content.isEmpty {
-                            Text(article.content)
-                                .font(DS.body)
-                                .foregroundStyle(DS.inkSecondary)
-                                .lineSpacing(2)
-                                .lineLimit(3)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        Spacer(minLength: 0)
-                        HStack(spacing: 6) {
-                            if let ref = referenceTicker { TickerChipWide(text: ref, emphasized: true) }
-                            ForEach(article.relatedTickers.filter { $0 != referenceTicker }.prefix(3), id: \.self) {
-                                TickerChipWide(text: $0, emphasized: false)
-                            }
-                            Spacer()
-                            if !article.publisher.isEmpty {
-                                Text(article.publisher).font(DS.micro).foregroundStyle(DS.inkTertiary)
-                            }
-                        }
-                    }
-                    .padding(DS.pad)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .frame(height: 250)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .premiumCard(elevated: hovered)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { inside in
-            hovered = inside
-        }
-        .help(article.title)
-    }
-
-    @ViewBuilder private var thumbnail: some View {
-        if let thumb = article.thumbnailURL, let url = URL(string: thumb) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                        .scaleEffect(hovered ? 1.03 : 1)
-                        .animation(.easeOut(duration: 0.3), value: hovered)
-                case .failure: NewsPlaceholder(publisher: article.publisher)
-                default: Rectangle().fill(DS.cardAlt)
-                }
-            }
-        } else {
-            NewsPlaceholder(publisher: article.publisher)
-        }
-    }
-}
-
-// MARK: - Grid card
-
-private struct NewsCard: View {
-    let article: NewsArticle
-    let onSelect: (NewsArticle) -> Void
-    @Environment(\.locale) private var locale
-    @State private var hovered = false
-
-    private var relativeTime: String {
-        guard article.publishTime > 0 else { return "" }
-        let f = RelativeDateTimeFormatter(); f.locale = locale; f.unitsStyle = .abbreviated
-        return f.localizedString(for: article.publishedAt, relativeTo: Date())
-    }
     private var referenceTicker: String? { article.sourceSymbol ?? article.relatedTickers.first }
     private var otherTickers: [String] { Array(article.relatedTickers.filter { $0 != referenceTicker }.prefix(2)) }
 
-    @Environment(\.openURL) private var openURL
-
     var body: some View {
         Button {
             onSelect(article)
         } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                thumbnail
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(article.title)
-                        .font(.inter(13, weight: .bold, relativeTo: .body))
-                        .foregroundStyle(DS.ink)
-                        .lineSpacing(1.5)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-
-                    if !article.content.isEmpty {
-                        Text(article.content)
-                            .font(DS.caption)
-                            .foregroundStyle(DS.inkSecondary)
-                            .lineSpacing(1.5)
-                            .lineLimit(3)
-                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 0)
-                    HStack(spacing: 6) {
-                        if let ref = referenceTicker {
-                            TickerChipWide(text: ref, emphasized: true)
-                            ForEach(otherTickers, id: \.self) { TickerChipWide(text: $0, emphasized: false) }
-                        }
-                        Spacer()
-                        if !article.publisher.isEmpty {
-                            Text(article.publisher).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                        }
-                    }
-                }
-                .padding(14)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 264)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .premiumCard(elevated: hovered)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointingHandCursor()
-        .onHover { inside in
-            hovered = inside
-        }
-        .help(article.title)
-    }
-
-    @ViewBuilder private var thumbnail: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
+            HStack(alignment: .top, spacing: 12) {
                 if let thumb = article.thumbnailURL, let url = URL(string: thumb) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fill)
-                                .scaleEffect(hovered ? 1.02 : 1)
-                                .animation(.easeOut(duration: 0.3), value: hovered)
-                        case .failure: NewsPlaceholder(publisher: article.publisher)
-                        default: Rectangle().fill(DS.cardAlt)
+                            image.resizable().scaledToFill()
+                        default:
+                            Color.clear
                         }
                     }
-                } else { NewsPlaceholder(publisher: article.publisher) }
-            }
-            .frame(height: 120).frame(maxWidth: .infinity).clipped()
+                    .frame(width: 56, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(DS.hairline, lineWidth: 1))
+                }
 
-            // Scrim keeps the timestamp legible over any image.
-            LinearGradient(colors: [.clear, .black.opacity(0.25)],
-                           startPoint: .center, endPoint: .bottom)
-                .frame(height: 120)
-                .allowsHitTesting(false)
+                VStack(alignment: .leading, spacing: 5) {
+                    let translated = storageService.autoTranslateNews ? translationService.translatedTitle(for: article) : nil
+                    let mainTitle = translated ?? article.title
 
-            if !relativeTime.isEmpty {
-                Text(relativeTime)
-                    .font(DS.micro).foregroundStyle(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .padding(8)
-            }
-        }
-        .frame(height: 120)
-    }
-}
+                    Text(verbatim: mainTitle)
+                        .font(.inter(13.5, weight: .semibold, relativeTo: .body))
+                        .foregroundStyle(DS.ink)
+                        .lineLimit(3)
+                        .lineSpacing(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .animation(.easeInOut(duration: 0.2), value: translated)
 
-/// A named placeholder reads intentional; a lone glyph reads broken.
-private struct NewsPlaceholder: View {
-    let publisher: String
-    var body: some View {
-        Rectangle().fill(DS.cardAlt)
-            .overlay(
-                VStack(spacing: 5) {
-                    Image(systemName: "newspaper").font(.system(size: 20)).foregroundStyle(DS.inkTertiary)
-                    if !publisher.isEmpty {
-                        Text(publisher).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                    HStack(spacing: 6) {
+                        if let ref = referenceTicker {
+                            TickerChipWide(text: ref, emphasized: true)
+                            ForEach(otherTickers, id: \.self) {
+                                TickerChipWide(text: $0, emphasized: false)
+                            }
+                        }
+
+                        if !article.publisher.isEmpty {
+                            Text(verbatim: article.publisher)
+                                .font(.inter(10.5, weight: .medium, relativeTo: .caption2))
+                                .foregroundStyle(DS.inkSecondary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(Color.primary.opacity(0.06))
+                                )
+                        }
+
+                        if !relativeTime.isEmpty {
+                            Text("·")
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                            Text(relativeTime)
+                                .font(DS.micro)
+                                .foregroundStyle(DS.inkTertiary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(hovered ? DS.inkSecondary : DS.inkTertiary.opacity(0.5))
                     }
                 }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(hovered ? Color.primary.opacity(0.05) : Color.clear)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .onHover { inside in
+            hovered = inside
+        }
+        .onAppear {
+            if storageService.autoTranslateNews {
+                NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: [article], storageService: storageService)
+            }
+        }
+        .help(article.title)
     }
 }
 
@@ -595,7 +528,7 @@ private struct TickerChipWide: View {
     var body: some View {
         HStack(spacing: 3) {
             SymbolLogo(symbol: text, size: 14)
-            Text(text).font(DS.micro)
+            Text(verbatim: text).font(DS.micro)
         }
             .foregroundStyle(emphasized ? Color.white : DS.brand)
             .padding(.horizontal, 6).padding(.vertical, 2)

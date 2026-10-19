@@ -321,6 +321,10 @@ struct SettingsView: View {
                     .pickerStyle(.menu)
                     caption("Choose the app's language. Default is English.")
 
+                    Toggle("Auto-translate foreign news", isOn: $storageService.autoTranslateNews)
+                        .toggleStyle(.switch)
+                    caption("Automatically translate foreign news headlines and articles into your selected language using AI.")
+
                     subHeader("Appearance")
                     Picker("Theme", selection: Binding(
                         get: { storageService.appearanceMode },

@@ -12,18 +12,35 @@ struct NewsDetailView: View {
     @Environment(\.locale) private var locale
 
     let article: NewsArticle
+    var isWide: Bool = false
     let onBack: () -> Void
+
+    @ObservedObject private var translationService = NewsTranslationService.shared
+    static let articleReaderMaxWidth: CGFloat = 680
 
     @State private var crawledArticle: CrawledArticle?
     @State private var isLoadingBody = false
+    @State private var translatedArticle: TranslatedArticle?
+    @State private var isTranslating = false
+    @State private var showOriginal = false
 
     private var displayTitle: String {
+        if !showOriginal, let t = translatedArticle?.title, !t.isEmpty {
+            return t
+        }
         if let crawledTitle = crawledArticle?.title, !crawledTitle.isEmpty,
            !crawledTitle.lowercased().contains("google news"),
            !crawledTitle.lowercased().contains("google tin tức") {
             return crawledTitle
         }
         return article.title
+    }
+
+    private var activeParagraphs: [String] {
+        if !showOriginal, let t = translatedArticle, !t.paragraphs.isEmpty {
+            return t.paragraphs
+        }
+        return bodyParagraphs
     }
 
     private var displayPublisher: String {
@@ -123,12 +140,24 @@ struct NewsDetailView: View {
                     // Ticker pills
                     tickersRow
 
+                    if storageService.autoTranslateNews && translatedArticle == nil && translationService.isQuotaExhausted {
+                        quotaWarningBanner
+                    }
+
                     // Headline Title
                     Text(displayTitle)
-                        .font(.inter(15, weight: .bold, relativeTo: .title3))
+                        .font(.inter(isWide ? 18 : 15, weight: .bold, relativeTo: .title2))
                         .foregroundStyle(DS.ink)
-                        .lineSpacing(2)
+                        .lineSpacing(2.5)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if !showOriginal, let translated = translatedArticle, translated.title != article.title {
+                        Text(verbatim: article.title)
+                            .font(.inter(isWide ? 12 : 11, weight: .regular, relativeTo: .caption))
+                            .foregroundStyle(DS.inkTertiary)
+                            .lineSpacing(1.5)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     // Source & Timestamp metadata
                     HStack(spacing: 6) {
@@ -154,7 +183,7 @@ struct NewsDetailView: View {
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
-                                    .frame(maxHeight: 200)
+                                    .frame(maxHeight: isWide ? 280 : 200)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -196,17 +225,21 @@ struct NewsDetailView: View {
                     }
 
                     // Crawled article body paragraphs
-                    if !bodyParagraphs.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(Array(bodyParagraphs.enumerated()), id: \.offset) { _, para in
+                    if !activeParagraphs.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(Array(activeParagraphs.enumerated()), id: \.offset) { _, para in
                                 Text(para)
-                                    .font(.inter(13, weight: .regular, relativeTo: .body))
+                                    .font(.inter(isWide ? 14 : 13, weight: .regular, relativeTo: .body))
                                     .foregroundStyle(DS.ink)
-                                    .lineSpacing(3.5)
+                                    .lineSpacing(isWide ? 4.5 : 3.5)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .padding(.top, 4)
+
+                        if crawledArticle?.isPaywalledSnippet == true {
+                            paywallSnippetNotice
+                        }
                     } else if isLoadingBody || crawledArticle == nil {
                         HStack(spacing: 8) {
                             DSSpinner(size: 11)
@@ -248,8 +281,7 @@ struct NewsDetailView: View {
                     // Footer action to open original link in browser
                     externalSourceFooter
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .modifier(NewsDetailContentLayoutModifier(isWide: isWide))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -285,6 +317,54 @@ struct NewsDetailView: View {
 
             Spacer(minLength: 4)
 
+            if translatedArticle != nil {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showOriginal.toggle()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "character.bubble")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(showOriginal ? "Show Translation" : "Show Original")
+                            .font(.inter(10.5, weight: .medium, relativeTo: .caption))
+                    }
+                    .foregroundStyle(DS.brand)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(DS.brand.opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            } else if isTranslating {
+                HStack(spacing: 4) {
+                    DSSpinner(size: 10)
+                    Text("Translating…")
+                        .font(.inter(10, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(DS.inkTertiary)
+                }
+                .padding(.horizontal, 6)
+            } else if storageService.autoTranslateNews && translationService.isQuotaExhausted {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.orange)
+                    Text("Translation quota exceeded")
+                        .font(.inter(10, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(Color.orange)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.orange.opacity(0.12))
+                )
+                .help(String(localized: "AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings."))
+            }
+
             if let url = externalURL {
                 Button(action: {
                     openInBrowser(url)
@@ -312,8 +392,10 @@ struct NewsDetailView: View {
                 .help("Open original article in default browser")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, isWide ? 20 : 14)
+        .padding(.vertical, isWide ? 10 : 8)
+        .frame(maxWidth: isWide ? Self.articleReaderMaxWidth : .infinity)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     @ViewBuilder
@@ -363,15 +445,45 @@ struct NewsDetailView: View {
         }
     }
 
+    private var paywallSnippetNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock.doc")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.orange)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Article excerpt from partner source.")
+                    .font(.inter(11.5, weight: .semibold, relativeTo: .caption))
+                    .foregroundStyle(DS.ink)
+                Text("Open original story to view complete details.")
+                    .font(.inter(11, weight: .regular, relativeTo: .caption))
+                    .foregroundStyle(DS.inkSecondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+        .padding(.top, 6)
+    }
+
     private var externalSourceFooter: some View {
         VStack(spacing: 8) {
             Divider().overlay(DS.hairline.opacity(0.8))
             if let url = externalURL {
+                let host = url.host?.replacingOccurrences(of: "www.", with: "")
+                let targetName = (host != nil && !host!.isEmpty) ? host! : displayPublisher
                 Button(action: {
                     openInBrowser(url)
                 }) {
                     HStack(spacing: 5) {
-                        Text("Read original story on \(displayPublisher)")
+                        Text(String(format: NSLocalizedString("Read original story on %@", comment: ""), targetName))
                             .font(.inter(11, weight: .medium, relativeTo: .caption))
                         Image(systemName: "arrow.up.right")
                             .font(.system(size: 9))
@@ -396,6 +508,7 @@ struct NewsDetailView: View {
         if force {
             await ArticleCrawlerService.shared.evictCache(for: article.link)
             crawledArticle = nil
+            translatedArticle = nil
         }
         isLoadingBody = true
         let result = await ArticleCrawlerService.shared.fetchArticle(
@@ -405,5 +518,62 @@ struct NewsDetailView: View {
         )
         crawledArticle = result
         isLoadingBody = false
+
+        if storageService.autoTranslateNews {
+            isTranslating = true
+            let titleToTranslate = (result.title?.isEmpty == false) ? (result.title ?? article.title) : article.title
+            let translated = await NewsTranslationService.shared.translateArticleIfNeeded(
+                link: article.link,
+                fallbackTitle: titleToTranslate,
+                paragraphs: result.paragraphs,
+                storageService: storageService
+            )
+            translatedArticle = translated
+            isTranslating = false
+        }
+    }
+
+    private var quotaWarningBanner: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.orange)
+            Text("AI translation quota reached. Showing original content.")
+                .font(.inter(11.5, weight: .medium, relativeTo: .caption))
+                .foregroundStyle(DS.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Responsive Content Layout Modifier
+
+private struct NewsDetailContentLayoutModifier: ViewModifier {
+    let isWide: Bool
+
+    func body(content: Content) -> some View {
+        if isWide {
+            content
+                .padding(.horizontal, 20)
+                .padding(.bottom, 36)
+                .frame(maxWidth: NewsDetailView.articleReaderMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 14)
+        } else {
+            content
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+        }
     }
 }
