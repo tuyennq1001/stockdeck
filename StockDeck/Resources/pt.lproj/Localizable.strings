@@ -396,3 +396,41 @@
 "Set Buy Target…" = "Definir meta de compra…";
 "Edit Buy Target…" = "Editar meta de compra…";
 "Remove Buy Target" = "Remover meta de compra";
+
+/* Auto-translate news */
+"Auto-translate foreign news" = "Traduzir notícias estrangeiras automaticamente";
+"Automatically translate foreign news headlines and articles into your selected language using AI." = "Traduza automaticamente manchetes e artigos de notícias estrangeiras para o idioma selecionado usando IA.";
+
+/* News Reader Mode & Translations */
+"Show Translation" = "Mostrar tradução";
+"Show Original" = "Mostrar original";
+"Translating…" = "Traduzindo…";
+"Full article text is unavailable for direct in-app preview. Tap below to read the complete story on %@." = "O texto completo do artigo não está disponível para pré-visualização no app. Toque abaixo para ler a matéria completa em %@.";
+"Retry" = "Repetir";
+"No recent news" = "Nenhuma notícia recente";
+
+/* Settings SubHeaders & Options */
+"Startup" = "Inicialização";
+"AI Custom Prompt" = "Prompt personalizado de IA";
+"Connection Diagnostic" = "Diagnóstico de conexão";
+"Current Profile" = "Perfil atual";
+"Primary Goal" = "Objetivo principal";
+"Global shortcuts" = "Atalhos globais";
+"Colors" = "Cores";
+"Environment" = "Ambiente";
+"Production Data" = "Dados de produção";
+"Base URL" = "URL base";
+"Not synced yet" = "Ainda não sincronizado";
+"Toggle desktop app" = "Alternar aplicativo desktop";
+"Toggle menu bar" = "Alternar barra de menus";
+"iCloud not signed in on this device. Please sign in to Apple ID in System Settings." = "iCloud não conectado neste dispositivo. Inicie sessão com o seu ID Apple nos Ajustes do Sistema.";
+
+"Translating headlines…" = "Traduzindo manchetes…";
+"Translation quota exceeded" = "Cota de tradução esgotada";
+"Quota exceeded" = "Cota esgotada";
+"AI translation quota reached. Showing original content." = "Cota de tradução por IA atingida. Exibindo conteúdo original.";
+"AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings." = "A cota de tradução por IA está temporariamente esgotada. As manchetes originais são exibidas. Altere o provedor ou a chave de API nas Configurações.";
+
+"Read original story on %@" = "Ler artigo original em %@";
+"Article excerpt from partner source." = "Trecho do artigo de uma fonte parceira.";
+"Open original story to view complete details." = "Abra o artigo original para ver todos os detalhes.";

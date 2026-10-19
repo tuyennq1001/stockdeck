@@ -577,7 +577,10 @@ class StorageService: ObservableObject {
     }
     /// Chosen provider preset; "custom" unlocks the free-form base URL field.
     @Published var aiProvider: String = "openai" {
-        didSet { scheduleSave() }
+        didSet {
+            scheduleSave()
+            NewsTranslationService.shared.resetQuotaState()
+        }
     }
 
     /// Path to the AI Review workspace folder (mirrors the Codex/cowork idea: a
@@ -603,6 +606,12 @@ class StorageService: ObservableObject {
     /// User's investor profile (age, risk tolerance, investment style, goals).
     /// Used by AI Review across the app for personalized consultation.
     @Published var investorProfile: InvestorProfile? = nil {
+        didSet { scheduleSave() }
+    }
+
+    /// When true, foreign news headlines and reader articles are automatically
+    /// translated into the user's selected language using AI.
+    @Published var autoTranslateNews: Bool = true {
         didSet { scheduleSave() }
     }
 
@@ -732,6 +741,7 @@ class StorageService: ObservableObject {
         get { KeychainService.loadString(forKey: Self.aiApiKeyKeychainKey) ?? "" }
         set {
             let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            NewsTranslationService.shared.resetQuotaState()
             if trimmed.isEmpty {
                 _ = KeychainService.delete(key: Self.aiApiKeyKeychainKey)
             } else {
@@ -2532,6 +2542,7 @@ class StorageService: ObservableObject {
         aiWorkspacePath = ""
         aiCustomPrompt = ""
         aiDeepseekThinking = false
+        autoTranslateNews = true
         menuBarShortcut = nil
         desktopAppShortcut = nil
         if launchAtLogin {
@@ -2673,6 +2684,7 @@ class StorageService: ObservableObject {
         var lastVolumeChartTimeframe: String?
         var portfolioPositionSorts: [String: String]?
         var lastSelectedTab: String?
+        var autoTranslateNews: Bool?
         var menuBarShortcut: MenuBarShortcut?
         var desktopAppShortcut: MenuBarShortcut?
         var iCloudSyncEnabled: Bool?
@@ -2748,6 +2760,7 @@ class StorageService: ObservableObject {
             lastVolumeChartTimeframe: lastVolumeChartTimeframe,
             portfolioPositionSorts: portfolioPositionSorts,
             lastSelectedTab: lastSelectedTab,
+            autoTranslateNews: autoTranslateNews,
             menuBarShortcut: menuBarShortcut,
             desktopAppShortcut: desktopAppShortcut,
             iCloudSyncEnabled: iCloudSyncEnabled,
@@ -2876,6 +2889,7 @@ class StorageService: ObservableObject {
         lastStockChartRange = decoded.lastStockChartRange ?? "1M"
         lastVolumeChartTimeframe = decoded.lastVolumeChartTimeframe ?? "1D"
         portfolioPositionSorts = decoded.portfolioPositionSorts ?? [:]
+        autoTranslateNews = decoded.autoTranslateNews ?? true
         if let tab = decoded.lastSelectedTab ?? UserDefaults.standard.string(forKey: "lastSelectedTab") {
             lastSelectedTab = (tab == "Watchlist") ? "Watchlists" : tab
         }

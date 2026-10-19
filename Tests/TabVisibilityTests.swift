@@ -6,23 +6,26 @@ import XCTest
 /// preference the tab bar honors — no dead code paths.
 final class TabVisibilityTests: XCTestCase {
 
-    func testHomeAlwaysVisible() {
+    func testTabsVisible() {
         let tabs = Tab.visible
-        XCTAssertEqual(tabs.first, .home)
-        XCTAssertTrue(tabs.contains(.home))
+        XCTAssertEqual(tabs.first, .insights)
+        XCTAssertTrue(tabs.contains(.insights))
+        XCTAssertTrue(tabs.contains(.news))
         XCTAssertTrue(tabs.contains(.watchlist))
         XCTAssertTrue(tabs.contains(.portfolios))
         XCTAssertTrue(tabs.contains(.utilities))
         XCTAssertTrue(tabs.contains(.settings))
-        XCTAssertEqual(tabs, [.home, .watchlist, .portfolios, .utilities, .settings])
+        XCTAssertEqual(tabs, [.insights, .news, .watchlist, .portfolios, .utilities, .settings])
     }
 
     func testResolvingStoredTab() {
-        XCTAssertEqual(Tab.resolve(stored: "Home"), .home)
+        XCTAssertEqual(Tab.resolve(stored: "Home"), .insights)
+        XCTAssertEqual(Tab.resolve(stored: "AI Insights"), .insights)
+        XCTAssertEqual(Tab.resolve(stored: "News"), .news)
         XCTAssertEqual(Tab.resolve(stored: "Watchlist"), .watchlist)
         XCTAssertEqual(Tab.resolve(stored: "Watchlists"), .watchlist)
         XCTAssertEqual(Tab.resolve(stored: "Portfolios"), .portfolios)
-        XCTAssertEqual(Tab.resolve(stored: "garbage"), .home)
+        XCTAssertEqual(Tab.resolve(stored: "garbage"), .insights)
     }
 
     @MainActor

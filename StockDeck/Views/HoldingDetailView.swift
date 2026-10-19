@@ -60,6 +60,7 @@ struct HoldingDetailView: View {
             if let article = selectedNewsArticle {
                 NewsDetailView(
                     article: article,
+                    isWide: true,
                     onBack: {
                         withAnimation(.easeInOut(duration: 0.18)) {
                             selectedNewsArticle = nil

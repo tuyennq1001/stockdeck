@@ -209,7 +209,7 @@
 "Market stories for your symbols" = "Tin tức thị trường cho các mã theo dõi";
 "Menu bar" = "Thanh menu";
 "Name" = "Tên";
-"News" = "Tin tức";
+"News" = "Bảng tin";
 "No holdings yet" = "Chưa có vị thế nào";
 "No price history available" = "Không có dữ liệu lịch sử giá";
 "Other" = "Khác";
@@ -577,3 +577,41 @@
 "Reset Dev" = "Đặt lại Dev";
 "If you'd like to support me, become a sponsor — or simply star the repo. Both help, and every feature stays free." = "Nếu bạn muốn ủng hộ tác giả, hãy trở thành nhà tài trợ hoặc thả sao trên GitHub. Mọi tính năng đều hoàn toàn miễn phí.";
 "Portfolios and watchlist are not affected" = "Danh mục đầu tư và danh sách theo dõi không bị ảnh hưởng";
+
+/* Auto-translate news */
+"Auto-translate foreign news" = "Tự động dịch tin tức nước ngoài";
+"Automatically translate foreign news headlines and articles into your selected language using AI." = "Tự động dịch tiêu đề và bài viết nước ngoài sang ngôn ngữ bạn đã chọn bằng AI.";
+
+/* News Reader Mode & Translations */
+"Show Translation" = "Xem bản dịch";
+"Show Original" = "Xem bản gốc";
+"Translating…" = "Đang dịch…";
+"Full article text is unavailable for direct in-app preview. Tap below to read the complete story on %@." = "Nội dung đầy đủ không thể xem trước trực tiếp trong ứng dụng. Nhấn bên dưới để đọc toàn bộ bài viết trên %@.";
+"Retry" = "Thử lại";
+"No recent news" = "Chưa có tin tức gần đây";
+
+/* Settings SubHeaders & Options */
+"Startup" = "Khởi động";
+"AI Custom Prompt" = "Tùy chỉnh Prompt cho AI";
+"Connection Diagnostic" = "Chẩn đoán kết nối";
+"Current Profile" = "Hồ sơ hiện tại";
+"Primary Goal" = "Mục tiêu chính";
+"Global shortcuts" = "Phím tắt toàn hệ thống";
+"Colors" = "Màu sắc";
+"Environment" = "Môi trường";
+"Production Data" = "Dữ liệu Production";
+"Base URL" = "Địa chỉ Base URL";
+"Not synced yet" = "Chưa đồng bộ";
+"Toggle desktop app" = "Bật/tắt cửa sổ chính";
+"Toggle menu bar" = "Bật/tắt thanh menu";
+"iCloud not signed in on this device. Please sign in to Apple ID in System Settings." = "iCloud chưa đăng nhập trên thiết bị này. Vui lòng đăng nhập Apple ID trong Cài đặt hệ thống.";
+
+"Translating headlines…" = "Đang dịch tiêu đề…";
+"Translation quota exceeded" = "Hạn mức dịch AI tạm thời hết";
+"Quota exceeded" = "Hết hạn mức";
+"AI translation quota reached. Showing original content." = "Hạn mức dịch AI tạm thời hết. Đang hiển thị bản gốc.";
+"AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings." = "Hạn mức dịch AI tạm thời hết. Đang hiển thị tiêu đề gốc. Bạn có thể đổi nhà cung cấp hoặc API key trong Cài đặt.";
+
+"Read original story on %@" = "Đọc bài viết gốc trên %@";
+"Article excerpt from partner source." = "Trích đoạn bài viết từ nguồn đối tác.";
+"Open original story to view complete details." = "Mở bài viết gốc để xem toàn bộ nội dung.";

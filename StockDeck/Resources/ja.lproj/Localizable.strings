@@ -412,3 +412,41 @@
 "Set Buy Target…" = "購入目標を設定…";
 "Edit Buy Target…" = "購入目標を編集…";
 "Remove Buy Target" = "購入目標を削除";
+
+/* Auto-translate news */
+"Auto-translate foreign news" = "外国語ニュースを自動翻訳";
+"Automatically translate foreign news headlines and articles into your selected language using AI." = "AIを使用して外国語のニュース見出しや記事を選択した言語に自動翻訳します。";
+
+/* News Reader Mode & Translations */
+"Show Translation" = "翻訳を表示";
+"Show Original" = "原文を表示";
+"Translating…" = "翻訳中…";
+"Full article text is unavailable for direct in-app preview. Tap below to read the complete story on %@." = "記事全文はアプリ内でプレビューできません。下をタップして%@で全文をお読みください。";
+"Retry" = "再試行";
+"No recent news" = "最近のニュースはありません";
+
+/* Settings SubHeaders & Options */
+"Startup" = "起動";
+"AI Custom Prompt" = "AIカスタムプロンプト";
+"Connection Diagnostic" = "接続診断";
+"Current Profile" = "現在のプロフィール";
+"Primary Goal" = "主な目標";
+"Global shortcuts" = "グローバルショートカット";
+"Colors" = "カラー";
+"Environment" = "環境";
+"Production Data" = "本番データ";
+"Base URL" = "ベースURL";
+"Not synced yet" = "未同期";
+"Toggle desktop app" = "デスクトップアプリの切り替え";
+"Toggle menu bar" = "メニューバーの切り替え";
+"iCloud not signed in on this device. Please sign in to Apple ID in System Settings." = "このデバイスでiCloudにサインインしていません。システム設定でApple IDにサインインしてください。";
+
+"Translating headlines…" = "見出しを翻訳中…";
+"Translation quota exceeded" = "翻訳クォータ超過";
+"Quota exceeded" = "クォータ超過";
+"AI translation quota reached. Showing original content." = "AI翻訳クォータに達しました。原文を表示しています。";
+"AI translation quota is temporarily exhausted. Original headlines are displayed. Switch provider or API key in Settings." = "AI翻訳クォータが一時的に超過しました。原文を表示しています。設定でプロバイダまたはAPIキーを変更できます。";
+
+"Read original story on %@" = "%@ で元の記事を読む";
+"Article excerpt from partner source." = "提携メディアによる記事の抜粋です。";
+"Open original story to view complete details." = "全文を読むには元の記事を開いてください。";

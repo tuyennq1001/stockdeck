@@ -9,6 +9,7 @@ public struct CrawledArticle: Sendable, Equatable {
     public let publishDate: Date?
     public let paragraphs: [String]
     public let canonicalURL: String?
+    public let isPaywalledSnippet: Bool
 
     public init(
         url: String,
@@ -17,7 +18,8 @@ public struct CrawledArticle: Sendable, Equatable {
         publisher: String? = nil,
         publishDate: Date? = nil,
         paragraphs: [String] = [],
-        canonicalURL: String? = nil
+        canonicalURL: String? = nil,
+        isPaywalledSnippet: Bool = false
     ) {
         self.url = url
         self.title = title
@@ -26,6 +28,7 @@ public struct CrawledArticle: Sendable, Equatable {
         self.publishDate = publishDate
         self.paragraphs = paragraphs
         self.canonicalURL = canonicalURL
+        self.isPaywalledSnippet = isPaywalledSnippet
     }
 }
 
@@ -169,12 +172,21 @@ public actor ArticleCrawlerService {
                     ?? String(data: data, encoding: .isoLatin1)
                     ?? String(decoding: data, as: UTF8.self)
 
-                let extracted = Self.parseHTML(
+                var extracted = Self.parseHTML(
                     html,
                     sourceURL: key,
                     finalURL: finalURL,
                     fallbackTitle: fallbackTitle,
                     fallbackPublisher: fallbackPublisher
+                )
+
+                extracted = await resolvePartnerContentIfNeeded(
+                    extracted: extracted,
+                    html: html,
+                    finalURL: finalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher,
+                    key: key
                 )
 
                 if !extracted.paragraphs.isEmpty {
@@ -192,12 +204,21 @@ public actor ArticleCrawlerService {
             // Resilient fallback: Headless WebKit if URLSession was challenged by WAF or yielded 0 paragraphs
             if let webKitRes = await HeadlessWebKitFetcher.shared.fetchHTML(url: url), !webKitRes.html.isEmpty {
                 let resolvedFinalURL = webKitRes.finalURL ?? finalURL
-                let extracted = Self.parseHTML(
+                var extracted = Self.parseHTML(
                     webKitRes.html,
                     sourceURL: key,
                     finalURL: resolvedFinalURL,
                     fallbackTitle: fallbackTitle,
                     fallbackPublisher: fallbackPublisher
+                )
+
+                extracted = await resolvePartnerContentIfNeeded(
+                    extracted: extracted,
+                    html: webKitRes.html,
+                    finalURL: resolvedFinalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher,
+                    key: key
                 )
 
                 if !extracted.paragraphs.isEmpty {
@@ -222,12 +243,21 @@ public actor ArticleCrawlerService {
             // Resilient fallback: Headless WebKit if URLSession failed due to network / SSL / WAF block
             if let webKitRes = await HeadlessWebKitFetcher.shared.fetchHTML(url: url), !webKitRes.html.isEmpty {
                 let resolvedFinalURL = webKitRes.finalURL ?? effectiveURLString
-                let extracted = Self.parseHTML(
+                var extracted = Self.parseHTML(
                     webKitRes.html,
                     sourceURL: key,
                     finalURL: resolvedFinalURL,
                     fallbackTitle: fallbackTitle,
                     fallbackPublisher: fallbackPublisher
+                )
+
+                extracted = await resolvePartnerContentIfNeeded(
+                    extracted: extracted,
+                    html: webKitRes.html,
+                    finalURL: resolvedFinalURL,
+                    fallbackTitle: fallbackTitle,
+                    fallbackPublisher: fallbackPublisher,
+                    key: key
                 )
 
                 if !extracted.paragraphs.isEmpty {
@@ -250,6 +280,51 @@ public actor ArticleCrawlerService {
             )
             // Do not cache failures or fallbacks so retry attempts can succeed
             return fallback
+        }
+    }
+
+    private func resolvePartnerContentIfNeeded(
+        extracted: CrawledArticle,
+        html: String,
+        finalURL: String,
+        fallbackTitle: String,
+        fallbackPublisher: String,
+        key: String
+    ) async -> CrawledArticle {
+        guard extracted.paragraphs.count < 3,
+              let partnerURL = Self.extractPartnerArticleURL(html: html, pageURL: finalURL),
+              partnerURL != key && partnerURL != finalURL else {
+            return extracted
+        }
+
+        let partnerArticle = await fetchArticle(
+            for: partnerURL,
+            fallbackTitle: extracted.title ?? fallbackTitle,
+            fallbackPublisher: extracted.publisher ?? fallbackPublisher
+        )
+
+        if partnerArticle.paragraphs.count > extracted.paragraphs.count {
+            return CrawledArticle(
+                url: key,
+                title: partnerArticle.title ?? extracted.title,
+                leadImageURL: partnerArticle.leadImageURL ?? extracted.leadImageURL,
+                publisher: partnerArticle.publisher ?? extracted.publisher,
+                publishDate: partnerArticle.publishDate ?? extracted.publishDate,
+                paragraphs: partnerArticle.paragraphs,
+                canonicalURL: partnerURL,
+                isPaywalledSnippet: partnerArticle.paragraphs.count < 3
+            )
+        } else {
+            return CrawledArticle(
+                url: key,
+                title: extracted.title,
+                leadImageURL: extracted.leadImageURL,
+                publisher: extracted.publisher,
+                publishDate: extracted.publishDate,
+                paragraphs: extracted.paragraphs,
+                canonicalURL: partnerURL,
+                isPaywalledSnippet: true
+            )
         }
     }
 
@@ -423,15 +498,15 @@ public actor ArticleCrawlerService {
 
     /// Isolates primary article container from full HTML page to prevent capturing site headers, menus, sidebars, or footers.
     private static func isolateArticleContainer(_ html: String) -> String {
-        // Priority 1: Semantic <article>...</article>
-        let articlePattern = "(?i)<article[^>]*>([\\s\\S]*?)</article>"
-        if let match = matchFirstGroup(html: html, pattern: articlePattern), match.count >= 150 {
+        // Priority 1: Modern Yahoo Finance article body container (data-testid="article-body") or caas-body / content container
+        let yahooBodyPattern = "(?i)<div[^>]+(?:data-testid=[\"']article-body[\"']|class=[\"'][^\"']*\\b(?:caas-body|caas-content|article-body|story-body|article__body|article-content|story-content|entry-content|post-content)\\b[^\"']*)[\"'][^>]*>([\\s\\S]*?)(?:<footer|<div[^>]+class=[\"'][^\"']*\\b(?:caas-comments|comments|related|sidebar)\\b|$)"
+        if let match = matchFirstGroup(html: html, pattern: yahooBodyPattern), match.count >= 150 {
             return match
         }
 
-        // Priority 2: Yahoo Finance caas-body or main content container
-        let caasPattern = "(?i)<div[^>]+class=[\"'][^\"']*\\b(?:caas-body|caas-content|article-body|story-body|article__body|article-content|story-content|entry-content|post-content)\\b[^\"']*[\"'][^>]*>([\\s\\S]*?)(?:<footer|<div[^>]+class=[\"'][^\"']*\\b(?:caas-comments|comments|related|sidebar)\\b|$)"
-        if let match = matchFirstGroup(html: html, pattern: caasPattern), match.count >= 150 {
+        // Priority 2: Semantic <article>...</article>
+        let articlePattern = "(?i)<article[^>]*>([\\s\\S]*?)</article>"
+        if let match = matchFirstGroup(html: html, pattern: articlePattern), match.count >= 150 {
             return match
         }
 
@@ -481,6 +556,10 @@ public actor ArticleCrawlerService {
         let junkClassPattern = "(?i)<(?:div|section|aside|header|footer|p|ul|ol)[^>]+(?:class|id)=[\"'][^\"']*\\b(?:" + junkClassKeywords.joined(separator: "|") + ")\\b[^\"']*[\"'][^>]*>[\\s\\S]*?</(?:div|section|aside|header|footer|p|ul|ol)>"
         res = res.replacingOccurrences(of: junkClassPattern, with: "", options: .regularExpression)
 
+        // 4. Remove ticker carousels, lists, and badge wrappers (e.g. Yahoo Finance ticker widgets)
+        let tickerJunkPattern = "(?i)<(?:section|div|span|ul|li)[^>]+(?:data-testid=[\"'](?:ticker-container|carousel-container)[\"']|class=[\"'][^\"']*\\b(?:ticker-list|ticker-wrapper|scroll-carousel|carousel-wrapper)\\b[^\"']*)[^>]*>[\\s\\S]*?</(?:section|div|span|ul|li)>"
+        res = res.replacingOccurrences(of: tickerJunkPattern, with: "", options: .regularExpression)
+
         return res
     }
 
@@ -526,6 +605,47 @@ public actor ArticleCrawlerService {
         return nil
     }
 
+    /// Extracts external original publisher URL for syndicated partner articles (e.g. Yahoo Finance -> Investors.com / Reuters).
+    public static func extractPartnerArticleURL(html: String, pageURL: String) -> String? {
+        // Pattern 1: Yahoo Finance continue-reading button
+        let pattern1 = "(?i)<a[^>]+class=[\"'][^\"']*\\bcontinue-reading-button\\b[^\"']*[\"'][^>]+href=[\"']([^\"']+)[\"']"
+        if let match = matchFirstGroup(html: html, pattern: pattern1) {
+            let decoded = decodeHTMLEntities(match)
+            if let u = URL(string: decoded), let host = u.host, !host.contains("yahoo.com") {
+                return decoded
+            }
+        }
+
+        // Pattern 2: anchor with data-ylk containing elm:partnercta
+        let pattern2 = "(?i)<a[^>]+data-ylk=[\"'][^\"']*elm:partnercta[^\"']*[\"'][^>]+href=[\"']([^\"']+)[\"']"
+        if let match = matchFirstGroup(html: html, pattern: pattern2) {
+            let decoded = decodeHTMLEntities(match)
+            if let u = URL(string: decoded), let host = u.host, !host.contains("yahoo.com") {
+                return decoded
+            }
+        }
+
+        // Pattern 3: Schema.org JSON-LD mainEntityOfPage pointing to an external domain
+        let pattern3 = "(?i)\"mainEntityOfPage\"\\s*:\\s*(?:\\{\\s*\"@type\"\\s*:\\s*\"WebPage\"\\s*,\\s*\"@id\"\\s*:\\s*\"([^\"]+)\"|\"([^\"]+)\")"
+        if let regex = try? NSRegularExpression(pattern: pattern3, options: []) {
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            if let match = regex.firstMatch(in: html, options: [], range: range) {
+                let r1 = match.range(at: 1)
+                let r2 = match.range(at: 2)
+                let validRange = r1.location != NSNotFound ? r1 : r2
+                if validRange.location != NSNotFound, let r = Range(validRange, in: html) {
+                    let extracted = String(html[r])
+                    let decoded = decodeHTMLEntities(extracted)
+                    if let u = URL(string: decoded), let host = u.host, !host.contains("yahoo.com") {
+                        return decoded
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
     private static func matchFirstGroup(html: String, pattern: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
         let range = NSRange(html.startIndex..<html.endIndex, in: html)
@@ -549,13 +669,16 @@ public actor ArticleCrawlerService {
         }
     }
 
-    /// Strips HTML tags and decodes entities.
+    /// Strips HTML tags, ticker badge clutter, and decodes entities.
     public static func cleanText(_ text: String) -> String {
         guard !text.isEmpty else { return "" }
         var res = text
         // Remove nested HTML tags
         res = res.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         res = decodeHTMLEntities(res)
+        // Strip financial ticker badges injected into text (e.g. ^DJI -0.34% SPCX -1.74% META -3.72%)
+        let tickerTapePattern = "(?:(?:\\^[A-Z0-9]+|[A-Z]{1,5})\\s*[-+]\\d+(?:\\.\\d+)?%\\s*)+"
+        res = res.replacingOccurrences(of: tickerTapePattern, with: " ", options: .regularExpression)
         // Normalize whitespaces
         let parts = res.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
         return parts.joined(separator: " ")
@@ -623,8 +746,17 @@ public actor ArticleCrawlerService {
     /// Evaluates if a text paragraph is substantive news content rather than boilerplate, ads, skip-links, or metadata.
     public static func isValidParagraph(_ text: String, articleTitle: String? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 25 else { return false }
+        let minLength = isCJK(trimmed) ? 14 : 25
+        guard trimmed.count >= minLength else { return false }
         return !isBoilerplate(trimmed, articleTitle: articleTitle)
+    }
+
+    private static func isCJK(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            (0x3040...0x309F).contains(scalar.value) || // Hiragana
+            (0x30A0...0x30FF).contains(scalar.value) || // Katakana
+            (0x4E00...0x9FFF).contains(scalar.value)    // CJK Unified Ideographs
+        }
     }
 
     /// Detects boilerplate, ads, skip navigation links, author/byline/ticker dumps, and financial promotional widgets.

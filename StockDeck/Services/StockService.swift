@@ -263,6 +263,47 @@ class StockService: ObservableObject {
         return syms
     }
 
+    /// Returns a prioritized, deduplicated list of tracked symbols:
+    /// 1. Portfolio holdings (user's actual financial interest)
+    /// 2. First watchlist (Favorite)
+    /// 3. Remaining watchlists
+    static func collectPrioritizedSymbols(storageService: StorageService) -> [String] {
+        var ordered: [String] = []
+        var seen = Set<String>()
+
+        func add(_ s: String) {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            let upper = trimmed.uppercased()
+            if seen.insert(upper).inserted {
+                ordered.append(trimmed)
+            }
+        }
+
+        // 1. Portfolio holdings
+        for portfolio in storageService.portfolios {
+            for holding in portfolio.holdings {
+                add(holding.symbol)
+            }
+        }
+
+        // 2. Favorite / First watchlist
+        if let firstWl = storageService.watchlists.first {
+            for s in firstWl.symbols {
+                add(s)
+            }
+        }
+
+        // 3. Remaining watchlists
+        for wl in storageService.watchlists.dropFirst() {
+            for s in wl.symbols {
+                add(s)
+            }
+        }
+
+        return ordered
+    }
+
     static func collectWebSocketSymbols(storageService: StorageService) -> Set<String> {
         let all = collectSymbols(storageService: storageService)
         return all.filter { s in
@@ -4098,11 +4139,12 @@ class StockService: ObservableObject {
         isLoadingNews = true
         defer { isLoadingNews = false }
 
-        let symbols = Self.collectSymbols(storageService: storageService).sorted()
+        let prioritizedSymbols = Self.collectPrioritizedSymbols(storageService: storageService)
+        let trackedSet = Set(prioritizedSymbols.map { $0.uppercased() })
         var seen = Set<String>()
         var collected: [NewsArticle] = []
         await withTaskGroup(of: [NewsArticle].self) { group in
-            if symbols.isEmpty {
+            if prioritizedSymbols.isEmpty {
                 let lang = storageService.appLanguage.lowercased()
                 if lang == "vi" {
                     group.addTask { [weak self] in
@@ -4139,7 +4181,8 @@ class StockService: ObservableObject {
                     }
                 }
             } else {
-                for symbol in symbols.prefix(6) {
+                // Strictly fetch news for the user's tracked symbols (prioritized: portfolio holdings -> favorite watchlist -> others)
+                for symbol in prioritizedSymbols.prefix(25) {
                     let name = self.quotes[symbol]?.name ?? self.quotes[symbol.uppercased()]?.name
                     let params = Self.smartNewsParameters(symbol: symbol, displayName: name)
                     group.addTask { [weak self] in
@@ -4156,15 +4199,26 @@ class StockService: ObservableObject {
                     }
                 }
             }
+            var seenTitles = Set<String>()
             for await chunk in group {
                 for article in chunk where !article.link.isEmpty && seen.insert(article.id).inserted {
-                    collected.append(article)
+                    // Strictly enforce that the story belongs to a tracked symbol
+                    if !prioritizedSymbols.isEmpty {
+                        guard let src = article.sourceSymbol, trackedSet.contains(src.uppercased()) else {
+                            continue
+                        }
+                    }
+                    let titleKey = GoogleNewsRSSParser.normalizedTitleKey(article.title)
+                    if !titleKey.isEmpty && seenTitles.insert(titleKey).inserted {
+                        collected.append(article)
+                    }
                 }
             }
         }
         collected.sort { $0.publishTime > $1.publishTime }
-        news = Array(collected.prefix(40))
+        news = Array(collected.prefix(60))
         lastNewsFetch = Date()
+        NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: self.news, storageService: storageService)
     }
 
     func fetchNewsChunk(
@@ -4219,9 +4273,9 @@ class StockService: ObservableObject {
             let cleanTicker = upper.replacingOccurrences(of: ".T", with: "").replacingOccurrences(of: ".JP", with: "")
             let q: String
             if hasName {
-                q = "(\"\(cleanName)\" OR \"\(cleanTicker)\") (株価 OR 決算 OR 業績 OR 適時開示)"
+                q = "(\"\(cleanName)\" OR \"\(cleanTicker)\") (株価 OR 決算 OR 業績 OR 適時開示 OR ニュース) -掲示板"
             } else {
-                q = "\"\(cleanTicker)\" (株価 OR 決算 OR 業績)"
+                q = "\"\(cleanTicker)\" (株価 OR 決算 OR 業績 OR 適時開示 OR ニュース) -掲示板"
             }
             return (query: q, language: "ja", region: "JP", ceid: "JP:ja")
 
@@ -4377,16 +4431,21 @@ class StockService: ObservableObject {
         var deduped: [NewsArticle] = []
         for item in scored {
             let a = item.article
-            let keyId = a.title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            if !a.title.isEmpty && !seen.contains(keyId) && !seen.contains(a.id) {
+            guard GoogleNewsRSSParser.isRelevantForNumericTicker(ticker: key, title: a.title, content: a.content) else {
+                continue
+            }
+            let keyId = GoogleNewsRSSParser.normalizedTitleKey(a.title)
+            if !keyId.isEmpty && !seen.contains(keyId) && !seen.contains(a.id) {
                 seen.insert(keyId)
                 seen.insert(a.id)
                 deduped.append(a)
             }
         }
 
-        newsBySymbol[key] = Array(deduped.prefix(10))
+        let articles = Array(deduped.prefix(10))
+        newsBySymbol[key] = articles
         lastSymbolNewsFetch[key] = Date()
+        NewsTranslationService.shared.translateHeadlinesIfNeeded(articles: articles, storageService: StorageService.shared)
     }
 
     // MARK: - Fear & Greed Index

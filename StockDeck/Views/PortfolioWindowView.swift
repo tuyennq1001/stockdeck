@@ -16,7 +16,7 @@ struct PortfolioWindowView: View {
 
     /// Sidebar destinations — the dock tabs, with Portfolios expanded per portfolio.
     enum Nav: Hashable {
-        case home, watchlist, portfoliosAll, importExport, settings, aiReview, alerts, earnings
+        case home, insights, news, watchlist, portfoliosAll, importExport, settings, aiReview, alerts, earnings
         case portfolio(UUID)
     }
 
@@ -26,11 +26,12 @@ struct PortfolioWindowView: View {
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
     @State private var portfolioPath = NavigationPath()
 
-    /// Dev affordance: SD_OPEN_TAB=home|watchlist|settings|earnings preselects a tab so
+    /// Dev affordance: SD_OPEN_TAB=home|insights|news|watchlist|settings|earnings preselects a tab so
     /// each pane can be screenshotted deterministically.
     static func initialSelection() -> Nav {
         switch ProcessInfo.processInfo.environment["SD_OPEN_TAB"] {
-        case "home": return .home
+        case "home", "insights": return .insights
+        case "news": return .news
         case "watchlist": return .watchlist
         case "settings": return .settings
         case "earnings": return .earnings
@@ -236,14 +237,15 @@ struct PortfolioWindowView: View {
     }
 
     /// Invisible buttons that give the window native keyboard shortcuts:
-    /// ⌘1 Home · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘R Refresh · ⌘N New portfolio.
+    /// ⌘1 AI Insights · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘5 AI Review · ⌘6 News · ⌘R Refresh · ⌘N New portfolio.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { navigate(to: .home) }.keyboardShortcut("1", modifiers: .command)
+            Button("") { navigate(to: .insights) }.keyboardShortcut("1", modifiers: .command)
             Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
             Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
             Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
             Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command)
+            Button("") { navigate(to: .news) }.keyboardShortcut("6", modifiers: .command)
             Button("") {
                 Task {
                     await storageService.waitUntilRestored()
@@ -337,8 +339,10 @@ struct PortfolioWindowView: View {
             }
             Divider().overlay(DS.hairline)
             VStack(alignment: .leading, spacing: 2) {
-                NavRow(icon: "newspaper", title: "Home", helpText: "Financial news & AI market insights  ⌘1",
-                       selected: selection == .home, namespace: navNamespace) { navigate(to: .home) }
+                NavRow(icon: "sparkles", title: "AI Insights", helpText: "Daily AI market recap & movement drivers  ⌘1",
+                       selected: selection == .insights, namespace: navNamespace) { navigate(to: .insights) }
+                NavRow(icon: "newspaper", title: "News", helpText: "Financial news feed for tracked symbols  ⌘6",
+                       selected: selection == .news, namespace: navNamespace) { navigate(to: .news) }
                 NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                        selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
             }
@@ -519,8 +523,12 @@ struct PortfolioWindowView: View {
 
     @ViewBuilder private var detail: some View {
         switch selection {
-        case .home:
-            HomeWideView(onOpenSettings: { navigate(to: .settings) })
+        case .home, .insights:
+            HomeWideView(mode: .insights, showModePicker: false, onOpenSettings: { navigate(to: .settings) })
+                .id("home_insights")
+        case .news:
+            HomeWideView(mode: .news, showModePicker: false, onOpenSettings: { navigate(to: .settings) })
+                .id("home_news")
         case .watchlist:
             WatchlistWideView(stockService: stockService, viewModel: watchlistViewModel, showSearch: $showSearch)
                 .id(storageService.selectedWatchlistId)

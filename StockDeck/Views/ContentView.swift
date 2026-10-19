@@ -1,7 +1,8 @@
 import SwiftUI
 
 enum Tab: String, CaseIterable {
-    case home = "Home"
+    case insights = "AI Insights"
+    case news = "News"
     case watchlist = "Watchlists"
     case portfolios = "Portfolios"
     case utilities = "Utilities"
@@ -11,7 +12,8 @@ enum Tab: String, CaseIterable {
 extension Tab {
     var icon: String {
         switch self {
-        case .home: return "newspaper"
+        case .insights: return "sparkles"
+        case .news: return "newspaper"
         case .watchlist: return "list.bullet"
         case .portfolios: return "briefcase"
         case .utilities: return "wrench.and.screwdriver"
@@ -20,14 +22,15 @@ extension Tab {
     }
 
     static var visible: [Tab] {
-        [.home, .watchlist, .portfolios, .utilities, .settings]
+        [.insights, .news, .watchlist, .portfolios, .utilities, .settings]
     }
 
     /// Resolve a persisted tab selection against valid tabs.
     static func resolve(stored: String) -> Tab {
         let normalized = stored == "Watchlist" ? "Watchlists" : stored
+        if normalized == "Home" { return .insights }
         if let t = Tab(rawValue: normalized) { return t }
-        return .home
+        return .insights
     }
 }
 
@@ -125,7 +128,7 @@ struct RefreshActionView: View {
             Task {
                 await storageService.waitUntilRestored()
                 await stockService.refreshAll(storageService: storageService)
-                if selectedTab == .home {
+                if selectedTab == .insights || selectedTab == .news {
                     await stockService.refreshNews(storageService: storageService, force: true)
                 }
             }
@@ -279,7 +282,8 @@ struct ContentView: View {
 
             // Tab picker with pointer cursor for tabs
             HStack(spacing: 0) {
-                tabButton("Home", tab: .home)
+                tabButton("AI Insights", tab: .insights)
+                tabButton("News", tab: .news)
                 tabButton("Watchlists", tab: .watchlist)
                 tabButton("Portfolios", tab: .portfolios)
             }
@@ -296,8 +300,12 @@ struct ContentView: View {
             // Content
             Group {
                 switch selectedTab {
-                case .home:
-                    HomeView()
+                case .insights:
+                    HomeView(initialMode: .insights, showModePicker: false)
+                        .id(Tab.insights)
+                case .news:
+                    HomeView(initialMode: .news, showModePicker: false)
+                        .id(Tab.news)
                 case .watchlist:
                     WatchlistView(showSearch: $showSearch)
                 case .portfolios:

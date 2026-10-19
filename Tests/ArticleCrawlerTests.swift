@@ -347,4 +347,85 @@ final class ArticleCrawlerTests: XCTestCase {
         XCTAssertNotNil(res)
         XCTAssertTrue((res?.html ?? "").contains("html") || (res?.html ?? "").isEmpty)
     }
+
+    func testCleanTextStripsInjectedTickerTape() {
+        let textWithTickers = "Futures dropped sharply. ^DJI -0.34% SPCX -1.74% META -3.72% The Nasdaq was led lower by tech selloffs."
+        let cleaned = ArticleCrawlerService.cleanText(textWithTickers)
+        XCTAssertEqual(cleaned, "Futures dropped sharply. The Nasdaq was led lower by tech selloffs.")
+    }
+
+    func testYahooFinanceModernDataTestIdArticleBodyParsing() {
+        let yahooHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta property="og:title" content="Broadcom Stock Surges on AI Demand">
+            <meta property="og:site_name" content="Yahoo Finance">
+            <link rel="canonical" href="https://finance.yahoo.com/news/broadcom-stock-surges-123.html" />
+        </head>
+        <body>
+            <div class="body yf-51e9w5" data-testid="article-body">
+                <section class="ticker-list">
+                    <span class="ticker-wrapper">AVGO +5.24% NVDA +2.11%</span>
+                </section>
+                <p>Broadcom shares rallied on Monday after analysts raised price targets citing strong custom AI silicon demand.</p>
+                <p>Hyperscale cloud providers have accelerated deployments of next-generation networking switches and accelerators.</p>
+                <p>Management highlighted that AI revenue is projected to exceed expectations in the upcoming fiscal quarter.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        let article = ArticleCrawlerService.parseHTML(
+            yahooHTML,
+            sourceURL: "https://finance.yahoo.com/news/broadcom-stock-surges-123.html"
+        )
+
+        XCTAssertEqual(article.title, "Broadcom Stock Surges on AI Demand")
+        XCTAssertEqual(article.publisher, "Yahoo Finance")
+        XCTAssertEqual(article.paragraphs.count, 3)
+        XCTAssertTrue(article.paragraphs[0].contains("Broadcom shares rallied"))
+        XCTAssertFalse(article.paragraphs[0].contains("AVGO"))
+        XCTAssertTrue(article.paragraphs[1].contains("Hyperscale cloud providers"))
+        XCTAssertTrue(article.paragraphs[2].contains("Management highlighted"))
+    }
+
+    func testExtractPartnerArticleURLFromContinueReadingButton() {
+        let htmlWithButton = """
+        <div class="continue-reading-container">
+            <a class="continue-reading-button button-link" href="https://www.investors.com/market-trend/stock-market-today/dow-jones-futures-sp500-nasdaq-ai-fears/">
+                Continue Reading
+            </a>
+        </div>
+        """
+        let extracted = ArticleCrawlerService.extractPartnerArticleURL(html: htmlWithButton, pageURL: "https://finance.yahoo.com/news/dow-jones-futures-123.html")
+        XCTAssertEqual(extracted, "https://www.investors.com/market-trend/stock-market-today/dow-jones-futures-sp500-nasdaq-ai-fears/")
+    }
+
+    func testExtractPartnerArticleURLFromJSONLD() {
+        let jsonLDHTML = """
+        <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "NewsArticle",
+            "mainEntityOfPage": "https://www.reuters.com/technology/nvidia-partners-with-global-foundries-2026-10-18/"
+        }
+        </script>
+        """
+        let extracted = ArticleCrawlerService.extractPartnerArticleURL(html: jsonLDHTML, pageURL: "https://finance.yahoo.com/news/nvidia-partners-123.html")
+        XCTAssertEqual(extracted, "https://www.reuters.com/technology/nvidia-partners-with-global-foundries-2026-10-18/")
+    }
+
+    func testCrawledArticlePaywallSnippetFlag() {
+        let article = CrawledArticle(
+            url: "https://finance.yahoo.com/news/ibd-teaser.html",
+            title: "Market Rally Teaser",
+            paragraphs: ["Teaser paragraph."],
+            canonicalURL: "https://www.investors.com/market-rally.html",
+            isPaywalledSnippet: true
+        )
+        XCTAssertTrue(article.isPaywalledSnippet)
+        XCTAssertEqual(article.canonicalURL, "https://www.investors.com/market-rally.html")
+    }
 }
+

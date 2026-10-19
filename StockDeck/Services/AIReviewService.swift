@@ -685,7 +685,6 @@ final class AIReviewService {
             return cached
         }
         let hosts = [
-            "https://daily-cloudcode-pa.googleapis.com",
             "https://cloudcode-pa.googleapis.com"
         ]
         let bodyDict: [String: Any] = [
@@ -773,7 +772,6 @@ final class AIReviewService {
         }
 
         let hosts = [
-            "https://daily-cloudcode-pa.googleapis.com",
             "https://cloudcode-pa.googleapis.com"
         ]
 
