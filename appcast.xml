@@ -6,25 +6,24 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.16</title>
-            <pubDate>Mon, 19 Oct 2026 09:22:16 +0900</pubDate>
-            <sparkle:version>19</sparkle:version>
-            <sparkle:shortVersionString>1.1.16</sparkle:shortVersionString>
+            <title>Version 1.1.17</title>
+            <pubDate>Thu, 22 Oct 2026 17:06:15 +0900</pubDate>
+            <sparkle:version>20</sparkle:version>
+            <sparkle:shortVersionString>1.1.17</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.16</h2>
+<h2>What's New in StockDeck 1.1.17</h2>
 <ul>
-    <li><strong>Redesigned News Cards &amp; Grid:</strong> Modern card layout with responsive columns, clean publisher badges, publication timestamps, and category tabs (All, Portfolios, Watchlists).</li>
-    <li><strong>AI News Auto-Translation:</strong> Seamlessly translate international financial news headlines and articles into your preferred language using AI, with automatic quota detection and status badges.</li>
-    <li><strong>Optimized Reader Mode:</strong> Reading column width refined to an ergonomic 680pt reading width, distraction-free typography, and instant toggle between translated and original text.</li>
-    <li><strong>Enhanced Yahoo Finance Crawler:</strong> Full article extraction using modern DOM containers, stripping ticker tape badge clutter, and automatic detection of syndicated partner articles with paywall notices.</li>
-    <li><strong>Comprehensive Localization:</strong> Added complete translations across all 8 supported languages for all news reader and translation features.</li>
+    <li><strong>Faster Watchlist Switching:</strong> Reduced repeated table work and reused prepared row data when moving between watchlists.</li>
+    <li><strong>Synchronized Watchlist Lanes:</strong> Fixed vertical scrolling so both lanes stay aligned after switching watchlists.</li>
+    <li><strong>Cleaner Volume Columns:</strong> Removed 50D Vol and 50W Vol from watchlist and portfolio tables and their column selectors.</li>
+    <li><strong>More Efficient Price Charts:</strong> Reused cached history and moved sparkline preparation off the main UI path.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.16/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.17/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="S980lsS9XP0B4r+INlQDVogFjf8v4NLisVONMVllXdJH4kIO8YoGcYNoNYuP1ohTW+MMvsElj/nthWHweo+oCw=="
-                       length="9884034"/>
+                       sparkle:edSignature="D6bJ0ecIyBOVXEJfkUEz3Mm0kcEMU5/mxAozw2w09rfCEy5mE1Yy6JoaJ7ghSmJkqdBYonHeznalc8b+MJqrBw=="
+                       length="9895582"/>
         </item>
     </channel>
 </rss>
