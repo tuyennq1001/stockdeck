@@ -28,4 +28,25 @@ final class MarketDataChangeTests: XCTestCase {
         service.quotes = service.quotes
         XCTAssertEqual(events.count, countAfterChange)
     }
+
+    @MainActor
+    func testQuoteValuationChangesPublishMetadataInvalidation() {
+        let service = StockService.shared
+        let symbol = "PERF-METADATA-\(UUID().uuidString)".uppercased()
+        var events: [MarketDataChange] = []
+        let token = service.marketDataChanges.sink { events.append($0) }
+        defer { token.cancel() }
+
+        var quotes = service.quotes
+        quotes[symbol] = StockQuote(symbol: symbol, name: symbol, price: 100, trailingPE: 20)
+        service.quotes = quotes
+        events.removeAll()
+
+        var updated = service.quotes
+        updated[symbol] = StockQuote(symbol: symbol, name: symbol, price: 100, trailingPE: 21)
+        service.quotes = updated
+
+        XCTAssertTrue(events.contains { $0.kind == .metadata && $0.symbols.contains(symbol) })
+        service.quotes[symbol] = nil
+    }
 }

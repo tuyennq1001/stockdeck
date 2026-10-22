@@ -29,8 +29,32 @@ final class WatchlistViewModel {
         let sortAscending: Bool
         let currency: String
     }
+    private struct RowCacheKey: Hashable, Sendable {
+        let symbol: String
+        let order: Int
+        let quote: StockQuote?
+        let regularQuoteRevision: UInt64
+        let extendedQuoteRevision: UInt64
+        let metadataRevision: UInt64
+        let dailyHistoryRevision: UInt64
+        let maxHistoryRevision: UInt64
+        let watchlistHistoryRevision: UInt64
+        let fxRevision: UInt64
+        let priceRate: Double
+        let rate: Double
+        let target: StockTarget?
+        let isCrypto: Bool
+        let isIndex: Bool
+        let stockPriceCurrency: String
+        let dayBucket: Int64
+    }
+    private struct CachedRow: Sendable {
+        let key: RowCacheKey
+        let row: WatchlistWideView.WatchRow
+    }
     private var snapshotsByKey: [CacheKey: Snapshot] = [:]
     private var snapshotLRU: [CacheKey] = []
+    private var rowCacheBySymbol: [String: CachedRow] = [:]
     private let cachedRowLimit = 600
     private var active = false
     private var generation: UInt64 = 0
@@ -147,6 +171,8 @@ final class WatchlistViewModel {
         let stockPriceCurrency: String
         let sortKey: WatchlistSortKey
         let sortAsc: Bool
+        let rowCacheKeys: [String: RowCacheKey]
+        let reusableRows: [String: WatchlistWideView.WatchRow]
     }
     
     private func makeInputs() -> (ComputationInputs, CacheKey)? {
@@ -192,6 +218,37 @@ final class WatchlistViewModel {
             if let value = stockService.priceHistoryMax[symbol] { scopedMax[symbol] = value }
             if let value = storageService.stockTargets[symbol] { scopedTargets[symbol] = value }
         }
+
+        var rowCacheKeys: [String: RowCacheKey] = [:]
+        var reusableRows: [String: WatchlistWideView.WatchRow] = [:]
+        for (order, symbol) in currentWatchlist.enumerated() {
+            let quote = scopedQuotes[symbol]
+            let currency = quote?.currency ?? ""
+            let canonical = StockService.canonicalSymbol(for: symbol)
+            let key = RowCacheKey(
+                symbol: symbol,
+                order: order,
+                quote: quote,
+                regularQuoteRevision: stockService.dataRevision(for: .regularQuote, symbol: canonical),
+                extendedQuoteRevision: stockService.dataRevision(for: .extendedQuote, symbol: canonical),
+                metadataRevision: stockService.dataRevision(for: .metadata, symbol: canonical),
+                dailyHistoryRevision: stockService.dataRevision(for: .dailyHistory, symbol: canonical),
+                maxHistoryRevision: stockService.dataRevision(for: .maxHistory, symbol: canonical),
+                watchlistHistoryRevision: stockService.dataRevision(for: .watchlistHistory, symbol: canonical),
+                fxRevision: stockService.fxRevision,
+                priceRate: priceRates[currency] ?? 1,
+                rate: rates[currency] ?? 1,
+                target: scopedTargets[symbol],
+                isCrypto: isCryptoMap[symbol] ?? false,
+                isIndex: isIndexMap[symbol] ?? false,
+                stockPriceCurrency: storageService.stockPriceCurrency,
+                dayBucket: Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
+            )
+            rowCacheKeys[symbol] = key
+            if let cached = rowCacheBySymbol[symbol], cached.key == key {
+                reusableRows[symbol] = cached.row
+            }
+        }
         
         let inputs = ComputationInputs(
             watchlist: currentWatchlist,
@@ -206,7 +263,9 @@ final class WatchlistViewModel {
             isIndexMap: isIndexMap,
             stockPriceCurrency: storageService.stockPriceCurrency,
             sortKey: sortKey,
-            sortAsc: sortAsc
+            sortAsc: sortAsc,
+            rowCacheKeys: rowCacheKeys,
+            reusableRows: reusableRows
         )
         return (inputs, CacheKey(watchlistID: selected.id, symbols: currentWatchlist,
                                  sortKey: sortKey, sortAscending: sortAsc,
@@ -225,7 +284,8 @@ final class WatchlistViewModel {
         Task { @MainActor [weak self] in
             let result = await task.value
             self?.finishWorker(id: id, result: result, scope: scope,
-                               requestedGeneration: requestedGeneration, cacheKey: key)
+                               requestedGeneration: requestedGeneration, cacheKey: key,
+                               rowCacheKeys: inputs.rowCacheKeys)
         }
     }
 
@@ -234,7 +294,8 @@ final class WatchlistViewModel {
         result: ([WatchlistWideView.WatchRow], [WatchlistWideView.WatchRow], [String])?,
         scope: UUID,
         requestedGeneration: UInt64,
-        cacheKey: CacheKey?
+        cacheKey: CacheKey?,
+        rowCacheKeys: [String: RowCacheKey]
     ) {
         guard workerID == id else { return }
         worker = nil
@@ -251,6 +312,15 @@ final class WatchlistViewModel {
                 isLoading: false
             )
             snapshot = next
+            for row in result.0 {
+                if let key = rowCacheKeys[row.symbol] {
+                    rowCacheBySymbol[row.symbol] = CachedRow(key: key, row: row)
+                }
+            }
+            if rowCacheBySymbol.count > cachedRowLimit * 2 {
+                let activeSymbols = Set(cacheKey.symbols)
+                rowCacheBySymbol = rowCacheBySymbol.filter { activeSymbols.contains($0.key) }
+            }
             cache(next, for: cacheKey)
         }
         if let next = pending {
@@ -299,6 +369,10 @@ final class WatchlistViewModel {
         
         for (index, symbol) in inputs.watchlist.enumerated() {
             if Task.isCancelled { return nil }
+            if let cachedRow = inputs.reusableRows[symbol] {
+                newRows.append(cachedRow)
+                continue
+            }
             let q = inputs.quotes[symbol]
             let rate = q.flatMap { inputs.priceRates[$0.currency] } ?? 1.0
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }

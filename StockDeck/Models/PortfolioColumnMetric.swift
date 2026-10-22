@@ -12,6 +12,13 @@ enum PortfolioColumnMetric: String, CaseIterable, Codable, Hashable, Identifiabl
 
     var id: String { rawValue }
 
+    var isVolumeMetric: Bool { self == .volume50d || self == .volume50w }
+
+    /// Volume columns remain decodable so existing saved layouts can migrate cleanly.
+    static var selectableCases: [PortfolioColumnMetric] {
+        allCases.filter { !$0.isVolumeMetric }
+    }
+
     var title: String {
         switch self {
         case .avgPrice: return "Avg Price"
@@ -78,4 +85,10 @@ enum PortfolioColumnCategory: String, CaseIterable, Identifiable {
     case chart = "Chart"
 
     var id: String { rawValue }
+
+    static var selectionCases: [PortfolioColumnCategory] {
+        allCases.filter { category in
+            PortfolioColumnMetric.selectableCases.contains { $0.category == category }
+        }
+    }
 }

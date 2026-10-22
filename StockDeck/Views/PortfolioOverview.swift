@@ -405,10 +405,7 @@ struct PortfolioOverview: View {
             sortHeader(metric.title, column: column)
                 .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
         case .volume50d, .volume50w:
-            Text(metric.title)
-                .font(DS.label)
-                .foregroundStyle(DS.inkTertiary)
-                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
+            EmptyView()
         }
     }
 
@@ -2477,12 +2474,8 @@ private struct PositionSummaryRow: View {
                     .foregroundStyle(DS.inkTertiary)
                     .frame(minWidth: 70, idealWidth: 85, maxWidth: 105, alignment: .trailing)
             }
-        case .volume50d:
-            VolumeSparkline(symbol: symbol, mode: .days50)
-                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
-        case .volume50w:
-            VolumeSparkline(symbol: symbol, mode: .weeks50)
-                .frame(minWidth: 70, idealWidth: 80, maxWidth: 90, alignment: .trailing)
+        case .volume50d, .volume50w:
+            EmptyView()
         }
     }
 

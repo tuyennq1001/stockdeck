@@ -209,6 +209,13 @@ struct WatchlistWideView: View {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
         }
+        .onChange(of: storageService.selectedWatchlistId) { _, _ in
+            selectedSymbols.removeAll()
+            activeDetailSymbol = nil
+            draggingSymbol = nil
+            draggingSymbols.removeAll()
+            dropIndicator = nil
+        }
         .task(id: selectedMetrics) {
             guard selectedMetrics.contains(where: { $0.category == .price }) else { return }
             for symbol in storageService.watchlist where stockService.priceHistoryMax[symbol] == nil {
@@ -567,7 +574,7 @@ struct WatchlistWideView: View {
                 Label("Customize Columns…", systemImage: "slider.horizontal.3")
             }
             Divider()
-            ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price }) { metric in
+            ForEach(WatchlistMetric.selectableCases.filter { $0 != .today && $0 != .price }) { metric in
                 Button {
                     var updated = selectedMetrics
                     if updated.contains(metric) {
@@ -973,10 +980,8 @@ private struct WatchRowView<Menu: View>: View {
                 Sparkline(symbol: row.symbol, isYTD: true)
             case .chart1y:
                 Sparkline(symbol: row.symbol, days: 365)
-            case .volume50d:
-                VolumeSparkline(symbol: row.symbol, mode: .days50)
-            case .volume50w:
-                VolumeSparkline(symbol: row.symbol, mode: .weeks50)
+            case .volume50d, .volume50w:
+                EmptyView()
             }
         }
         .frame(width: WCol.width(for: metric), alignment: .trailing)
