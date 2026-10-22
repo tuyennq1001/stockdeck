@@ -164,7 +164,7 @@ struct PortfolioColumnCustomizer: View {
             // Category Sections
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 20) {
-                    ForEach(PortfolioColumnCategory.allCases) { category in
+                    ForEach(PortfolioColumnCategory.selectionCases) { category in
                         categorySection(category: category)
                     }
                 }
@@ -276,7 +276,7 @@ struct PortfolioColumnCustomizer: View {
     @ViewBuilder
     private func categoryPills(category: PortfolioColumnCategory) -> some View {
         FlowLayout(spacing: 8) {
-            ForEach(PortfolioColumnMetric.allCases.filter { $0.category == category }) { column in
+            ForEach(PortfolioColumnMetric.selectableCases.filter { $0.category == category }) { column in
                 let isSelected = columns.contains(column)
                 Button {
                     withAnimation(.spring(response: 0.2)) {

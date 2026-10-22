@@ -617,38 +617,77 @@ struct Sparkline: View {
     var width: CGFloat? = 64
     var height: CGFloat? = 22
 
-    private static var pointsCache: [String: (revision: UInt64, points: [PricePoint])] = [:]
+    private struct HistoryVersion: Hashable, Sendable {
+        let watchlist: UInt64
+        let daily: UInt64
+        let maximum: UInt64
+        let dayBucket: Int64
+    }
+    private static var pointsCache: [String: (revision: HistoryVersion, points: [PricePoint])] = [:]
     private static let cacheLock = NSLock()
+    @State private var points: [PricePoint] = []
 
-    private var points: [PricePoint] {
-        let stockService = StockService.shared
-        guard let all = stockService.watchlistHistory[symbol] ?? stockService.priceHistoryMax[symbol], !all.isEmpty else { return [] }
+    private var historyVersion: HistoryVersion {
+        let service = StockService.shared
+        return HistoryVersion(
+            watchlist: service.dataRevision(for: .watchlistHistory, symbol: symbol),
+            daily: service.dataRevision(for: .dailyHistory, symbol: symbol),
+            maximum: service.dataRevision(for: .maxHistory, symbol: symbol),
+            dayBucket: Int64(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
+        )
+    }
+
+    private var historyTaskID: String {
+        let version = historyVersion
+        return "\(symbol)-\(days)-\(isYTD)-\(version.watchlist)-\(version.daily)-\(version.maximum)-\(version.dayBucket)"
+    }
+
+    private func loadPoints() async {
+        let service = StockService.shared
+        let version = historyVersion
         let cacheKey = "\(symbol)-\(days)-\(isYTD)"
-        let revision = stockService.historyRevision
-
-        Self.cacheLock.lock()
-        if let entry = Self.pointsCache[cacheKey], entry.revision == revision {
-            Self.cacheLock.unlock()
-            return entry.points
+        if let cached = Self.cachedPoints(for: cacheKey, version: version) {
+            points = cached
+            return
         }
-        Self.cacheLock.unlock()
+        guard let all = service.watchlistHistory[symbol] ?? service.priceHistoryMax[symbol], !all.isEmpty else {
+            points = []
+            return
+        }
 
-        let filtered: [PricePoint]
+        let filtered = await Task.detached(priority: .utility) {
+            Self.filterPoints(all, days: days, isYTD: isYTD, now: Date())
+        }.value
+        Self.storePoints(filtered, for: cacheKey, version: version)
+        guard !Task.isCancelled, historyVersion == version else { return }
+        points = filtered
+    }
+
+    private nonisolated static func filterPoints(
+        _ all: [PricePoint], days: Int, isYTD: Bool, now: Date
+    ) -> [PricePoint] {
+        let boundary: Date?
         if isYTD {
-            let cal = Calendar.current
-            let now = Date()
-            guard let jan1 = cal.date(from: cal.dateComponents([.year], from: now)) else { return [] }
-            filtered = all.filter { $0.date >= jan1 }
+            let calendar = Calendar.current
+            boundary = calendar.date(from: calendar.dateComponents([.year], from: now))
         } else {
-            guard let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return [] }
-            filtered = all.filter { $0.date >= cutoff }
+            boundary = Calendar.current.date(byAdding: .day, value: -days, to: now)
         }
+        guard let boundary else { return [] }
+        return all.filter { $0.date >= boundary }
+    }
 
-        Self.cacheLock.lock()
-        Self.pointsCache[cacheKey] = (revision: revision, points: filtered)
-        Self.cacheLock.unlock()
+    private static func cachedPoints(for key: String, version: HistoryVersion) -> [PricePoint]? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        guard let entry = pointsCache[key], entry.revision == version else { return nil }
+        return entry.points
+    }
 
-        return filtered
+    private static func storePoints(_ points: [PricePoint], for key: String, version: HistoryVersion) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        pointsCache[key] = (revision: version, points: points)
     }
 
     var body: some View {
@@ -692,6 +731,9 @@ struct Sparkline: View {
             }
         }
         .frame(width: width, height: height)
+        .task(id: historyTaskID) {
+            await loadPoints()
+        }
     }
 }
 

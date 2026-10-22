@@ -263,7 +263,7 @@ struct WatchlistMetricCustomizer: View {
     @ViewBuilder
     private func categoryPills(category: WatchlistMetricCategory) -> some View {
         FlowLayout(spacing: 8) {
-            ForEach(WatchlistMetric.allCases.filter { $0 != .today && $0 != .price && $0.category == category }) { metric in
+            ForEach(WatchlistMetric.selectableCases.filter { $0 != .today && $0 != .price && $0.category == category }) { metric in
                 let isSelected = metrics.contains(metric)
                 Button {
                     withAnimation(.spring(response: 0.2)) {

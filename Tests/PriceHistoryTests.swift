@@ -153,7 +153,7 @@ final class PriceHistoryTests: XCTestCase {
         XCTAssertEqual(pt.effectiveHigh, 73.315, accuracy: 0.001)
     }
 
-    func testVolumeMetricsCategoriesAndTitles() throws {
+    func testVolumeMetricsRemainDecodableButAreNoLongerSelectable() throws {
         XCTAssertEqual(WatchlistMetric.volume50d.title, "50D Vol")
         XCTAssertEqual(WatchlistMetric.volume50w.title, "50W Vol")
         XCTAssertTrue(WatchlistMetric.volume50d.isChart)
@@ -163,6 +163,11 @@ final class PriceHistoryTests: XCTestCase {
         XCTAssertEqual(PortfolioColumnMetric.volume50w.title, "50W Vol")
         XCTAssertEqual(PortfolioColumnMetric.volume50d.category, .chart)
         XCTAssertEqual(PortfolioColumnMetric.volume50w.category, .chart)
+        XCTAssertFalse(WatchlistMetric.selectableCases.contains(.volume50d))
+        XCTAssertFalse(WatchlistMetric.selectableCases.contains(.volume50w))
+        XCTAssertFalse(PortfolioColumnMetric.selectableCases.contains(.volume50d))
+        XCTAssertFalse(PortfolioColumnMetric.selectableCases.contains(.volume50w))
+        XCTAssertFalse(PortfolioColumnCategory.selectionCases.contains(.chart))
 
         // Test backward-compatible JSON decoding
         let legacyJson1 = "\"volume20w\"".data(using: .utf8)!

@@ -330,7 +330,6 @@ struct WatchlistView: View {
                         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                     }
                 }
-                .id(storageService.selectedWatchlistId)
                 .background(DS.card)
                 .frame(maxHeight: .infinity)
                 .refreshable {
@@ -459,12 +458,6 @@ struct WatchlistView: View {
             .onAppear {
                 Task {
                     viewModel.setup(stockService: stockService, storageService: storageService)
-                    await stockService.ensureSparklines(for: storageService.watchlist)
-                }
-            }
-            .onChange(of: storageService.selectedWatchlistId) { _, _ in
-                scrollCoordinator.reset()
-                Task {
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
             }
@@ -1278,12 +1271,8 @@ struct QuoteMetricsRow<Menu: View>: View {
             case .chart1y:
                 Sparkline(symbol: row.symbol, days: 365)
                     .frame(width: WatchlistCol.chart, alignment: .trailing)
-            case .volume50d:
-                VolumeSparkline(symbol: row.symbol, mode: .days50)
-                    .frame(width: WatchlistCol.chart, alignment: .trailing)
-            case .volume50w:
-                VolumeSparkline(symbol: row.symbol, mode: .weeks50)
-                    .frame(width: WatchlistCol.chart, alignment: .trailing)
+            case .volume50d, .volume50w:
+                EmptyView()
             }
         }
     }

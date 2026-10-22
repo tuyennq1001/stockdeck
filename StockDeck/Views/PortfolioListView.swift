@@ -186,12 +186,8 @@ struct PortfolioListView: View {
     private func columnHeader(_ col: PortfolioColumnMetric) -> some View {
         let width = PortfolioCol.width(for: col)
         switch col {
-        case .volume50d:
-            Text("50D Vol")
-                .frame(width: width, alignment: .trailing)
-        case .volume50w:
-            Text("50W Vol")
-                .frame(width: width, alignment: .trailing)
+        case .volume50d, .volume50w:
+            EmptyView()
         case .cost:
             sortHeader("Cost", column: sortColumn(for: col), align: .trailing)
                 .frame(width: width, alignment: .trailing)
@@ -440,10 +436,6 @@ struct PortfolioListView: View {
             loadPositionSort(for: viewModel.scopeKey)
         }
         .task(id: "\(viewModel.symbols.joined())-\(activeColumns.map(\.rawValue).joined())") {
-            let needsSparklines = activeColumns.contains(.volume50d) || activeColumns.contains(.volume50w)
-            if needsSparklines {
-                await stockService.ensureSparklines(for: viewModel.symbols)
-            }
             let needsValuation = activeColumns.contains { $0.category == .valuation }
             if needsValuation {
                 for sym in viewModel.symbols where stockService.quotes[sym]?.hasValuationData != true {
@@ -1376,13 +1368,8 @@ private struct PortfolioMetricsRow<Menu: View>: View {
                     .frame(width: PortfolioCol.valuation, alignment: .trailing)
             }
 
-        case .volume50d:
-            VolumeSparkline(symbol: symbol, mode: .days50)
-                .frame(width: PortfolioCol.volume, alignment: .trailing)
-
-        case .volume50w:
-            VolumeSparkline(symbol: symbol, mode: .weeks50)
-                .frame(width: PortfolioCol.volume, alignment: .trailing)
+        case .volume50d, .volume50w:
+            EmptyView()
         }
     }
 

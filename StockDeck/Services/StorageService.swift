@@ -133,12 +133,13 @@ class StorageService: ObservableObject {
 
     /// All watchlists share a unified metric layout across the app.
     var watchlistMetrics: [WatchlistMetric] {
-        (currentWatchlist.metrics ?? WatchlistMetric.defaultSelection).filter { $0 != .today && $0 != .price }
+        (currentWatchlist.metrics ?? WatchlistMetric.defaultSelection)
+            .filter { $0 != .today && $0 != .price && !$0.isVolumeMetric }
     }
 
     func setWatchlistMetrics(_ metrics: [WatchlistMetric]) {
         objectWillChange.send()
-        let cleaned = metrics.filter { $0 != .today && $0 != .price }
+        let cleaned = metrics.filter { $0 != .today && $0 != .price && !$0.isVolumeMetric }
         var updated = watchlists
         for index in updated.indices {
             updated[index].metrics = cleaned
@@ -156,12 +157,12 @@ class StorageService: ObservableObject {
     }
 
     var resolvedPortfolioColumns: [PortfolioColumnMetric] {
-        portfolioColumns ?? PortfolioColumnMetric.defaultSelection
+        (portfolioColumns ?? PortfolioColumnMetric.defaultSelection).filter { !$0.isVolumeMetric }
     }
 
     func setPortfolioColumns(_ columns: [PortfolioColumnMetric]) {
         objectWillChange.send()
-        portfolioColumns = columns
+        portfolioColumns = columns.filter { !$0.isVolumeMetric }
     }
 
     @Published var portfolios: [Portfolio] = [] {
@@ -2791,7 +2792,12 @@ class StorageService: ObservableObject {
             if cleaned.count > 1 {
                 cleaned.removeAll { $0.symbols.isEmpty && $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "watchlist" }
             }
-            watchlists = cleaned.isEmpty ? wls : cleaned
+            let resolvedWatchlists = cleaned.isEmpty ? wls : cleaned
+            watchlists = resolvedWatchlists.map { watchlist in
+                var updated = watchlist
+                updated.metrics = updated.metrics?.filter { !$0.isVolumeMetric }
+                return updated
+            }
             if let selId = decoded.selectedWatchlistId, watchlists.contains(where: { $0.id == selId }) {
                 selectedWatchlistId = selId
             } else {
@@ -2895,7 +2901,7 @@ class StorageService: ObservableObject {
         }
         menuBarShortcut = decoded.menuBarShortcut
         desktopAppShortcut = decoded.desktopAppShortcut
-        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.from(raw:))
+        let decodedColumns = decoded.portfolioColumns?.compactMap(PortfolioColumnMetric.from(raw:)).filter { !$0.isVolumeMetric }
         portfolioColumns = (decodedColumns?.isEmpty == false) ? decodedColumns : nil
         if let syncEnabled = decoded.iCloudSyncEnabled {
             iCloudSyncEnabled = syncEnabled

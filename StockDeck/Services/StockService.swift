@@ -149,6 +149,11 @@ class StockService: ObservableObject {
         guard let lhs, let rhs else { return lhs == nil && rhs == nil }
         return same(lhs.dayHigh, rhs.dayHigh) && same(lhs.dayLow, rhs.dayLow)
             && same(lhs.marketCap, rhs.marketCap) && lhs.regularMarketTime == rhs.regularMarketTime
+            && same(lhs.trailingPE, rhs.trailingPE) && same(lhs.forwardPE, rhs.forwardPE)
+            && same(lhs.priceToBook, rhs.priceToBook) && same(lhs.bookValue, rhs.bookValue)
+            && same(lhs.epsTrailingTwelveMonths, rhs.epsTrailingTwelveMonths)
+            && same(lhs.epsForward, rhs.epsForward) && same(lhs.dividendYield, rhs.dividendYield)
+            && same(lhs.regularMarketVolume, rhs.regularMarketVolume)
     }
 
     private static func same(_ lhs: Double, _ rhs: Double) -> Bool {
@@ -184,6 +189,7 @@ class StockService: ObservableObject {
     private var priceHistoryMaxAt: [String: Date] = [:]
     private var intradayFetchedAt: [String: Date] = [:]
     private var sparkFetchedAt: Date?
+    private var sparkTasks: [String: Task<Void, Never>] = [:]
     /// Single-flight: coalesces concurrent `ensurePriceHistory` calls for the
     /// same symbol so the window-open task and the range-change task never issue
     /// two identical daily-history requests.
@@ -2853,6 +2859,23 @@ class StockService: ObservableObject {
     /// daily closes for MANY symbols at once. This supports the configurable
     /// 1Y/2Y/3Y/5Y metrics without one request per table cell.
     func ensureSparklines(for symbols: [String], force: Bool = false) async {
+        let scope = Set(symbols.map(Self.canonicalSymbol(for:))).sorted().joined(separator: ",")
+        let taskKey = "\(force ? "forced" : "cached"):" + scope
+        if let task = sparkTasks[taskKey] {
+            await task.value
+            return
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.loadSparklines(for: symbols, force: force)
+        }
+        sparkTasks[taskKey] = task
+        await task.value
+        sparkTasks.removeValue(forKey: taskKey)
+    }
+
+    private func loadSparklines(for symbols: [String], force: Bool) async {
         let isExpired = sparkFetchedAt.map { Date().timeIntervalSince($0) >= 1800 } ?? true
         let hasStaleSymbols = symbols.contains { sym in
             guard let last = watchlistHistory[sym]?.last?.date else { return true }

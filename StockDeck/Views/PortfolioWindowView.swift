@@ -531,7 +531,6 @@ struct PortfolioWindowView: View {
                 .id("home_news")
         case .watchlist:
             WatchlistWideView(stockService: stockService, viewModel: watchlistViewModel, showSearch: $showSearch)
-                .id(storageService.selectedWatchlistId)
         case .settings:
             SettingsWideView()
         case .importExport:

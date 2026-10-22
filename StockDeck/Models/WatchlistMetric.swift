@@ -13,6 +13,13 @@ enum WatchlistMetric: String, CaseIterable, Codable, Hashable, Identifiable, Sen
 
     var id: String { rawValue }
 
+    var isVolumeMetric: Bool { self == .volume50d || self == .volume50w }
+
+    /// Volume columns remain decodable so existing saved layouts can migrate cleanly.
+    static var selectableCases: [WatchlistMetric] {
+        allCases.filter { !$0.isVolumeMetric }
+    }
+
     var title: String {
         switch self {
         case .price: return "Price"

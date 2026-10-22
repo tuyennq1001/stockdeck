@@ -57,14 +57,25 @@ final class MultiWatchlistTests: XCTestCase {
         let wl1 = storage.createWatchlist(name: "List 1")
         let wl2 = storage.createWatchlist(name: "List 2")
 
+        let requestedMetrics: [WatchlistMetric] = [.oneMonth, .threeMonths, .ytd, .ath, .volume50d, .volume50w]
         let newMetrics: [WatchlistMetric] = [.oneMonth, .threeMonths, .ytd, .ath]
-        storage.setWatchlistMetrics(newMetrics)
+        storage.setWatchlistMetrics(requestedMetrics)
 
         storage.selectWatchlist(id: wl1.id)
         XCTAssertEqual(storage.watchlistMetrics, newMetrics)
 
         storage.selectWatchlist(id: wl2.id)
         XCTAssertEqual(storage.watchlistMetrics, newMetrics)
+        XCTAssertEqual(storage.currentWatchlist.metrics, newMetrics)
+    }
+
+    func testPortfolioVolumeColumnsAreFilteredFromSelectionAndStorage() {
+        let storage = createTestStorage()
+
+        storage.setPortfolioColumns([.price, .volume50d, .totalPnl, .volume50w])
+
+        XCTAssertEqual(storage.resolvedPortfolioColumns, [.price, .totalPnl])
+        XCTAssertEqual(storage.portfolioColumns, [.price, .totalPnl])
     }
 
     func testPortfolioChartRangePersistence() {
