@@ -66,7 +66,12 @@ final class WatchlistViewModel {
     init() {}
     
     func setup(stockService: StockService, storageService: StorageService) {
-        guard self.stockService == nil else { return } // setup only once
+        if self.stockService != nil {
+            // The view can leave and re-enter the tab while this model remains
+            // owned by ContentView. Reuse its subscriptions and snapshot cache.
+            if !active { setActive(true) }
+            return
+        }
         self.stockService = stockService
         self.storageService = storageService
         
@@ -88,7 +93,6 @@ final class WatchlistViewModel {
         // the snapshot; view-only settings remain local to the view.
         Publishers.MergeMany([
             storageService.$watchlists.map { _ in () }.eraseToAnyPublisher(),
-            storageService.$selectedWatchlistId.map { _ in () }.eraseToAnyPublisher(),
             storageService.$stockTargets.map { _ in () }.eraseToAnyPublisher(),
             storageService.$symbolType.map { _ in () }.eraseToAnyPublisher(),
             storageService.$stockPriceCurrency.map { _ in () }.eraseToAnyPublisher()
@@ -105,6 +109,15 @@ final class WatchlistViewModel {
             .store(in: &cancellables)
             
         setActive(true)
+    }
+
+    /// Changes the selected list and installs its cached snapshot synchronously
+    /// before SwiftUI's next render. This avoids a one-frame skeleton between
+    /// the selection publisher firing and the asynchronous row refresh.
+    func selectWatchlist(id: UUID) {
+        guard let storageService else { return }
+        storageService.selectWatchlist(id: id)
+        invalidate()
     }
 
     func setActive(_ active: Bool) {
