@@ -366,7 +366,10 @@ struct PortfolioListView: View {
                                         }
                                     }
                                     .padding(.vertical, 4)
-                                    .background(ScrollViewSyncAttachment { scrollCoordinator.registerVerticalFrozen($0) })
+                                    .background(ScrollViewSyncAttachment(
+                                        onAttach: { scrollCoordinator.registerVerticalFrozen($0) },
+                                        onDetach: { scrollCoordinator.unregisterVerticalFrozen($0) }
+                                    ))
                                 }
                                 .frame(width: PortfolioCol.pinnedWidth)
                             }
@@ -384,7 +387,10 @@ struct PortfolioListView: View {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     metricsHeaderRow
                                         .frame(minWidth: metricsTableWidth, alignment: .leading)
-                                        .background(ScrollViewSyncAttachment { scrollCoordinator.registerHorizontalHeader($0) })
+                                        .background(ScrollViewSyncAttachment(
+                                            onAttach: { scrollCoordinator.registerHorizontalHeader($0) },
+                                            onDetach: { scrollCoordinator.unregisterHorizontalHeader($0) }
+                                        ))
                                 }
                                 .frame(height: PortfolioCol.headerHeight)
                                 Divider().overlay(DS.hairline)
@@ -400,7 +406,10 @@ struct PortfolioListView: View {
                                     }
                                     .padding(.vertical, 4)
                                     .frame(minWidth: metricsTableWidth, alignment: .leading)
-                                    .background(ScrollViewSyncAttachment { scrollCoordinator.register2DBody($0) })
+                                    .background(ScrollViewSyncAttachment(
+                                        onAttach: { scrollCoordinator.register2DBody($0) },
+                                        onDetach: { scrollCoordinator.unregister2DBody($0) }
+                                    ))
                                 }
                                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                             }

@@ -25,18 +25,180 @@ private enum WatchlistCol {
     }
 }
 
+private struct WatchlistLaneEntry<Content: View>: View {
+    let content: Content
+    let leadingSeparatorInset: CGFloat
+    let trailingSeparatorInset: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content.frame(height: WatchlistCol.rowHeight)
+            Rectangle()
+                .fill(DS.hairline)
+                .frame(height: 1)
+                .padding(.leading, leadingSeparatorInset)
+                .padding(.trailing, trailingSeparatorInset)
+        }
+        .frame(height: WatchlistCol.rowHeight + 1)
+    }
+}
+
+private struct WatchlistSplitTable<FrozenHeader: View, MetricsHeader: View, FrozenRow: View, MetricsRow: View>: View {
+    let watchlistID: UUID
+    let symbols: [String]
+    let contentReady: Bool
+    let metricsTableWidth: CGFloat
+    let draggingSymbol: Binding<String?>
+    let dropIndicator: Binding<DropIndicator<String>?>
+    let frozenHeader: () -> FrozenHeader
+    let metricsHeader: () -> MetricsHeader
+    let frozenRow: (String, RowHoverBox) -> FrozenRow
+    let metricsRow: (String, RowHoverBox) -> MetricsRow
+    let makeDragItem: (String) -> NSItemProvider
+    let onMove: (String, String, InsertPlacement) -> Void
+    let onRefresh: () async -> Void
+
+    @StateObject private var scrollCoordinator: ScrollSyncCoordinator
+
+    init(
+        watchlistID: UUID,
+        symbols: [String],
+        contentReady: Bool,
+        metricsTableWidth: CGFloat,
+        draggingSymbol: Binding<String?>,
+        dropIndicator: Binding<DropIndicator<String>?>,
+        @ViewBuilder frozenHeader: @escaping () -> FrozenHeader,
+        @ViewBuilder metricsHeader: @escaping () -> MetricsHeader,
+        @ViewBuilder frozenRow: @escaping (String, RowHoverBox) -> FrozenRow,
+        @ViewBuilder metricsRow: @escaping (String, RowHoverBox) -> MetricsRow,
+        makeDragItem: @escaping (String) -> NSItemProvider,
+        onMove: @escaping (String, String, InsertPlacement) -> Void,
+        onRefresh: @escaping () async -> Void
+    ) {
+        self.watchlistID = watchlistID
+        self.symbols = symbols
+        self.contentReady = contentReady
+        self.metricsTableWidth = metricsTableWidth
+        self.draggingSymbol = draggingSymbol
+        self.dropIndicator = dropIndicator
+        self.frozenHeader = frozenHeader
+        self.metricsHeader = metricsHeader
+        self.frozenRow = frozenRow
+        self.metricsRow = metricsRow
+        self.makeDragItem = makeDragItem
+        self.onMove = onMove
+        self.onRefresh = onRefresh
+        _scrollCoordinator = StateObject(wrappedValue: ScrollSyncCoordinator(watchlistID: watchlistID))
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                frozenHeader()
+                Divider().overlay(DS.hairline)
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(symbols, id: \.self) { symbol in
+                            ReorderRow(
+                                id: symbol,
+                                draggingId: draggingSymbol,
+                                dropIndicator: dropIndicator,
+                                isHorizontal: false,
+                                attachDragToContent: false,
+                                makeDragItem: { makeDragItem(symbol) },
+                                onMove: onMove,
+                                onCommit: {},
+                                content: {
+                                    WatchlistLaneEntry(
+                                        content: frozenRow(symbol, scrollCoordinator.hoverBox(for: symbol)),
+                                        leadingSeparatorInset: 12,
+                                        trailingSeparatorInset: 0
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .background(ScrollViewSyncAttachment(
+                        onAttach: { scrollCoordinator.registerVerticalFrozen($0) },
+                        onDetach: { scrollCoordinator.unregisterVerticalFrozen($0) }
+                    ))
+                }
+                .frame(width: WatchlistCol.pinnedWidth)
+            }
+            .frame(width: WatchlistCol.pinnedWidth)
+            .overlay(alignment: .trailing) {
+                HStack(spacing: 0) {
+                    Spacer()
+                    Divider()
+                }
+            }
+            .background(DS.card)
+
+            VStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    metricsHeader()
+                        .frame(minWidth: metricsTableWidth, alignment: .leading)
+                        .background(ScrollViewSyncAttachment(
+                            onAttach: { scrollCoordinator.registerHorizontalHeader($0) },
+                            onDetach: { scrollCoordinator.unregisterHorizontalHeader($0) }
+                        ))
+                }
+                .frame(height: WatchlistCol.headerHeight)
+                Divider().overlay(DS.hairline)
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(symbols, id: \.self) { symbol in
+                            ReorderRow(
+                                id: symbol,
+                                draggingId: draggingSymbol,
+                                dropIndicator: dropIndicator,
+                                isHorizontal: false,
+                                attachDragToContent: false,
+                                makeDragItem: { makeDragItem(symbol) },
+                                onMove: onMove,
+                                onCommit: {},
+                                content: {
+                                    WatchlistLaneEntry(
+                                        content: metricsRow(symbol, scrollCoordinator.hoverBox(for: symbol)),
+                                        leadingSeparatorInset: 12,
+                                        trailingSeparatorInset: 12
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .frame(minWidth: metricsTableWidth, alignment: .leading)
+                    .background(ScrollViewSyncAttachment(
+                        onAttach: { scrollCoordinator.register2DBody($0) },
+                        onDetach: { scrollCoordinator.unregister2DBody($0) }
+                    ))
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            }
+        }
+        .background(DS.card)
+        .frame(maxHeight: .infinity)
+        .refreshable { await onRefresh() }
+        .onAppear {
+            if contentReady { scrollCoordinator.watchlistContentDidLoad(scopeID: watchlistID) }
+        }
+        .onChange(of: contentReady) { _, ready in
+            if ready { scrollCoordinator.watchlistContentDidLoad(scopeID: watchlistID) }
+        }
+        .onDisappear { scrollCoordinator.reset() }
+    }
+}
+
 
 struct WatchlistView: View {
     @EnvironmentObject var stockService: StockService
     @EnvironmentObject var storageService: StorageService
     @Environment(\.showSymbolDetail) private var showSymbolDetail
-    @State private var viewModel = WatchlistViewModel()
+    let viewModel: WatchlistViewModel
     @Binding var showSearch: Bool
-    @StateObject private var scrollCoordinator = ScrollSyncCoordinator()
 
-    private func hoverBox(for symbol: String) -> RowHoverBox {
-        scrollCoordinator.hoverBox(for: symbol)
-    }
     @State private var showNewWatchlistAlert = false
     @State private var newWatchlistName = ""
     @State private var renamingWatchlist: Watchlist? = nil
@@ -91,6 +253,14 @@ struct WatchlistView: View {
 
     private var displaySymbols: [String] {
         viewModel.displaySymbols
+    }
+
+    private var tableSymbols: [String] {
+        snapshotMatchesSelection ? displaySymbols : storageService.watchlist
+    }
+
+    private var snapshotMatchesSelection: Bool {
+        !viewModel.snapshot.isLoading && viewModel.snapshot.scope == storageService.currentWatchlist.id
     }
 
 
@@ -191,17 +361,34 @@ struct WatchlistView: View {
             )
             .opacity(isDraggingThis ? 0.35 : 1.0)
         } else {
-            ProgressView()
-                .scaleEffect(0.6)
-                .frame(width: WatchlistCol.price, height: WatchlistCol.rowHeight, alignment: .center)
-                .padding(.horizontal, 12)
-                .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
-                .contentShape(Rectangle())
-                .onTapGesture { showSymbolDetail.perform(symbol) }
-                .pointingHandCursor()
-                .onHover { hoverBox.isHovered = $0 }
-                .contextMenu { watchlistContextMenu(symbol: symbol) }
-                .opacity(isDraggingThis ? 0.35 : 1.0)
+            HStack(spacing: 0) {
+                ForEach([WatchlistMetric.price] + selectedMetrics.filter { $0 != .price }) { metric in
+                    VStack(alignment: .trailing, spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(DS.hairline.opacity(0.7))
+                            .frame(width: max(18, WatchlistCol.width(for: metric) * 0.42), height: 8)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(DS.hairline.opacity(0.55))
+                            .frame(width: max(12, WatchlistCol.width(for: metric) * 0.28), height: 6)
+                    }
+                    .frame(width: WatchlistCol.width(for: metric), alignment: .trailing)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(
+                minWidth: metricsTableWidth,
+                maxWidth: .infinity,
+                minHeight: WatchlistCol.rowHeight,
+                maxHeight: WatchlistCol.rowHeight,
+                alignment: .leading
+            )
+            .background(hoverBox.isHovered ? DS.cardAlt.opacity(0.6) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { showSymbolDetail.perform(symbol) }
+            .pointingHandCursor()
+            .onHover { hoverBox.isHovered = $0 }
+            .contextMenu { watchlistContextMenu(symbol: symbol) }
+            .opacity(isDraggingThis ? 0.35 : 1.0)
         }
     }
 
@@ -209,6 +396,7 @@ struct WatchlistView: View {
         VStack(spacing: 0) {
             WatchlistTabPickerBar(
                 storageService: storageService,
+                onSelectWatchlist: { viewModel.selectWatchlist(id: $0) },
                 onNewWatchlist: {
                     newWatchlistName = ""
                     showNewWatchlistAlert = true
@@ -243,101 +431,29 @@ struct WatchlistView: View {
                     Spacer()
                 }
             } else {
-                HStack(spacing: 0) {
-                    // LEFT FROZEN PANE: Symbol
-                    VStack(spacing: 0) {
-                        frozenHeaderRow
-                        Divider().overlay(DS.hairline)
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { _, symbol in
-                                    let box = hoverBox(for: symbol)
-                                    ReorderRow(
-                                        id: symbol,
-                                        draggingId: $draggingSymbol,
-                                        dropIndicator: $dropIndicator,
-                                        isHorizontal: false,
-                                        attachDragToContent: false,
-                                        makeDragItem: {
-                                            startDrag(for: symbol)
-                                        },
-                                        onMove: { src, tgt, placement in
-                                            commitSymbolDrop(sourceSymbol: src, targetSymbol: tgt, placement: placement)
-                                        },
-                                        onCommit: {},
-                                        content: {
-                                            frozenRowContent(symbol, hoverBox: box)
-                                        }
-                                    )
-                                    if symbol != displaySymbols.last {
-                                        Divider().padding(.leading, 12)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                            .background(ScrollViewSyncAttachment { scrollCoordinator.registerVerticalFrozen($0) })
+                WatchlistSplitTable(
+                    watchlistID: storageService.currentWatchlist.id,
+                    symbols: tableSymbols,
+                    contentReady: snapshotMatchesSelection,
+                    metricsTableWidth: metricsTableWidth,
+                    draggingSymbol: $draggingSymbol,
+                    dropIndicator: $dropIndicator,
+                    frozenHeader: { frozenHeaderRow },
+                    metricsHeader: { metricsHeaderRow },
+                    frozenRow: { symbol, box in frozenRowContent(symbol, hoverBox: box) },
+                    metricsRow: { symbol, box in metricsRowContent(symbol, hoverBox: box) },
+                    makeDragItem: { startDrag(for: $0) },
+                    onMove: { source, target, placement in
+                        commitSymbolDrop(sourceSymbol: source, targetSymbol: target, placement: placement)
+                    },
+                    onRefresh: {
+                        if storageService.iCloudSyncEnabled {
+                            iCloudSyncService.shared.pullAndMerge(force: false)
                         }
-                        .frame(width: WatchlistCol.pinnedWidth)
+                        await stockService.refreshAll(storageService: storageService)
                     }
-                    .frame(width: WatchlistCol.pinnedWidth)
-                    .overlay(alignment: .trailing) {
-                        HStack(spacing: 0) {
-                            Spacer()
-                            Divider()
-                        }
-                    }
-                    .background(DS.card)
-
-                    // RIGHT METRICS PANE
-                    VStack(spacing: 0) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            metricsHeaderRow
-                                .frame(minWidth: metricsTableWidth, alignment: .leading)
-                                .background(ScrollViewSyncAttachment { scrollCoordinator.registerHorizontalHeader($0) })
-                        }
-                        .frame(height: WatchlistCol.headerHeight)
-                        Divider().overlay(DS.hairline)
-                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(displaySymbols.enumerated()), id: \.element) { _, symbol in
-                                    let box = hoverBox(for: symbol)
-                                    ReorderRow(
-                                        id: symbol,
-                                        draggingId: $draggingSymbol,
-                                        dropIndicator: $dropIndicator,
-                                        isHorizontal: false,
-                                        attachDragToContent: false,
-                                        makeDragItem: {
-                                            startDrag(for: symbol)
-                                        },
-                                        onMove: { src, tgt, placement in
-                                            commitSymbolDrop(sourceSymbol: src, targetSymbol: tgt, placement: placement)
-                                        },
-                                        onCommit: {},
-                                        content: {
-                                            metricsRowContent(symbol, hoverBox: box)
-                                        }
-                                    )
-                                    if symbol != displaySymbols.last {
-                                        Divider().padding(.horizontal, 12)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                            .frame(minWidth: metricsTableWidth, alignment: .leading)
-                            .background(ScrollViewSyncAttachment { scrollCoordinator.register2DBody($0) })
-                        }
-                        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-                    }
-                }
-                .background(DS.card)
-                .frame(maxHeight: .infinity)
-                .refreshable {
-                    if storageService.iCloudSyncEnabled {
-                        iCloudSyncService.shared.pullAndMerge(force: false)
-                    }
-                    await stockService.refreshAll(storageService: storageService)
-                }
+                )
+                .id(storageService.currentWatchlist.id)
 
                 Divider().overlay(DS.hairline)
 
@@ -456,10 +572,21 @@ struct WatchlistView: View {
             ))
             .cleanupDragSession(draggingId: $draggingSymbol, dropIndicator: $dropIndicator)
             .onAppear {
+                viewModel.setup(stockService: stockService, storageService: storageService)
                 Task {
-                    viewModel.setup(stockService: stockService, storageService: storageService)
                     await stockService.ensureSparklines(for: storageService.watchlist)
                 }
+            }
+            .onDisappear {
+                viewModel.setActive(false)
+            }
+            .onChange(of: storageService.selectedWatchlistId) { _, _ in
+                Task {
+                    await stockService.ensureSparklines(for: storageService.watchlist)
+                }
+            }
+            .onChange(of: storageService.watchlists.map(\.id)) { _, watchlistIDs in
+                WatchlistScrollPositionStore.shared.retain(watchlistIDs: Set(watchlistIDs))
             }
             .onChange(of: storageService.watchlist) { _, newWatchlist in
                 Task {
@@ -642,6 +769,7 @@ struct WatchlistView: View {
 /// Keeps drag hover / drop-indicator state isolated from the symbol rows table below.
 private struct WatchlistTabPickerBar: View {
     @ObservedObject var storageService: StorageService
+    let onSelectWatchlist: (UUID) -> Void
     let onNewWatchlist: () -> Void
     let onRename: (Watchlist) -> Void
     let onDelete: (Watchlist) -> Void
@@ -685,14 +813,12 @@ private struct WatchlistTabPickerBar: View {
                                 )
                                 .contentShape(Capsule())
                                 .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        storageService.selectWatchlist(id: wl.id)
-                                        proxy.scrollTo(wl.id, anchor: .center)
-                                    }
+                                    onSelectWatchlist(wl.id)
                                 }
                                 .accessibilityAddTraits(.isButton)
                                 .pointingHandCursor()
                                 .padding(.horizontal, 3)
+                                .animation(.easeInOut(duration: 0.15), value: selected)
                                 .id(wl.id)
                                 .help("Select “\(wl.name)” · Drag to reorder")
                                 .contextMenu {

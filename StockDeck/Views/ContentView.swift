@@ -149,6 +149,7 @@ struct ContentView: View {
     @Environment(\.openWindowAction) private var openWindowAction
     @Namespace private var tabAnimation
     @State private var selectedTab: Tab
+    @State private var watchlistViewModel = WatchlistViewModel()
     @State private var showSearch = false
     @State private var addHoldingPortfolioId: UUID?
     @State private var selectedDetailSymbol: String?
@@ -307,7 +308,7 @@ struct ContentView: View {
                     HomeView(initialMode: .news, showModePicker: false)
                         .id(Tab.news)
                 case .watchlist:
-                    WatchlistView(showSearch: $showSearch)
+                    WatchlistView(viewModel: watchlistViewModel, showSearch: $showSearch)
                 case .portfolios:
                     PortfolioListView()
                 case .utilities:
