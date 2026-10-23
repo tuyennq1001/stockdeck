@@ -6,24 +6,22 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.17</title>
-            <pubDate>Thu, 22 Oct 2026 17:06:15 +0900</pubDate>
-            <sparkle:version>20</sparkle:version>
-            <sparkle:shortVersionString>1.1.17</sparkle:shortVersionString>
+            <title>Version 1.1.18</title>
+            <pubDate>Fri, 23 Oct 2026 10:33:05 +0900</pubDate>
+            <sparkle:version>21</sparkle:version>
+            <sparkle:shortVersionString>1.1.18</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.17</h2>
+<h2>What's New in StockDeck 1.1.18</h2>
 <ul>
-    <li><strong>Faster Watchlist Switching:</strong> Reduced repeated table work and reused prepared row data when moving between watchlists.</li>
-    <li><strong>Synchronized Watchlist Lanes:</strong> Fixed vertical scrolling so both lanes stay aligned after switching watchlists.</li>
-    <li><strong>Cleaner Volume Columns:</strong> Removed 50D Vol and 50W Vol from watchlist and portfolio tables and their column selectors.</li>
-    <li><strong>More Efficient Price Charts:</strong> Reused cached history and moved sparkline preparation off the main UI path.</li>
+    <li><strong>Stable Watchlist Switching:</strong> Fixed split-lane alignment and popover flicker while watchlist data loads.</li>
+    <li><strong>Cached Rows Across Tabs:</strong> Watchlist rows now return immediately when switching back from Portfolio, while background updates refresh the latest values.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.17/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.18/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="D6bJ0ecIyBOVXEJfkUEz3Mm0kcEMU5/mxAozw2w09rfCEy5mE1Yy6JoaJ7ghSmJkqdBYonHeznalc8b+MJqrBw=="
-                       length="9895582"/>
+                       sparkle:edSignature="7EFKa/g1AB58+JHTfE5ZiKJ/UXrOg32t9Q27Qo6dDkqTbCbRdCBKq4B8Mkpoku9t65dUBCYwk0TBVdyx4obyCQ=="
+                       length="9912343"/>
         </item>
     </channel>
 </rss>
