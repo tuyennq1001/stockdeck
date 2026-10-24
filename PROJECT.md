@@ -140,7 +140,7 @@ L'app non compare nel Dock (`.accessory` policy): l'icona appare nella menu bar 
 - **Protobuf**: lo schema `yaticker.proto` nella root genera `yaticker.pb.swift` via `protoc --swift_out`. Rigenerare se cambia lo schema: `protoc --swift_out=StockDeck/Services/ yaticker.proto`
 - **Requisiti**: Xcode 15+ e macOS 14 Sonoma o successivo
 - **Firma/Entitlements**: `StockDeck.entitlements` presente nella root per eventuali accessi di rete
-- **Release / What's New**: `./release.sh <versione> <build>` builda, firma, notarizza, aggiorna `appcast.xml`, crea la GitHub release e aggiorna il cask Homebrew. Le note "What's New" mostrate da Sparkle vanno scritte in `release-notes/<versione>.html` (HTML), che lo script inietta nel `<description>` dell'appcast
+- **Release / What's New**: seguire la procedura persistente in `docs/release-workflow.md`. Le note "What's New" mostrate da Sparkle vanno scritte in `release-notes/<versione>.html` (HTML), che lo script inietta nel `<description>` dell'appcast.
 
 ## TODO / Idee
 
