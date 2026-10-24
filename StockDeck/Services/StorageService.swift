@@ -1796,6 +1796,46 @@ class StorageService: ObservableObject {
         watchlists[idx].symbols.removeAll { $0 == symbol }
     }
 
+    /// Returns the stored active-watchlist entry matching a search result,
+    /// including legacy unqualified Vietnamese tickers with matching exchange metadata.
+    func watchlistEntry(for result: SearchResult) -> String? {
+        let target = result.watchlistSymbol
+        if watchlist.contains(target) { return target }
+
+        guard target != result.symbol,
+              watchlist.contains(result.symbol),
+              SearchResult.marketKey(exchange(for: result.symbol)) == SearchResult.marketKey(result.exchange),
+              !SearchResult.marketKey(result.exchange).isEmpty else { return nil }
+        return result.symbol
+    }
+
+    func mergeWatchlistSearchResults(
+        _ searchResults: [SearchResult],
+        matching query: String,
+        quotes: [String: StockQuote]
+    ) -> [SearchResult] {
+        let queryTerm = SearchResult.normalizedSearchQuery(query)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !queryTerm.isEmpty else { return searchResults }
+
+        let localResults = watchlist.compactMap { symbol -> SearchResult? in
+            let name = quotes[symbol]?.name ?? symbol
+            let displaySymbol = StockService.displayTicker(for: symbol)
+            guard symbol.localizedCaseInsensitiveContains(queryTerm)
+                    || displaySymbol.localizedCaseInsensitiveContains(queryTerm)
+                    || name.localizedCaseInsensitiveContains(queryTerm) else { return nil }
+            return SearchResult(
+                symbol: symbol,
+                name: name,
+                exchange: exchange(for: symbol),
+                type: type(for: symbol)
+            )
+        }
+
+        let existingIdentities = Set(searchResults.map(\.watchlistSymbol))
+        return searchResults + localResults.filter { !existingIdentities.contains($0.watchlistSymbol) }
+    }
+
     func removeMultipleFromWatchlist(_ symbols: Set<String>) {
         let activeId = currentWatchlist.id
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }

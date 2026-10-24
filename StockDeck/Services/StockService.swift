@@ -697,6 +697,15 @@ class StockService: ObservableObject {
         return upper
     }
 
+    /// Removes the internal Vietnamese market suffix from the visible ticker.
+    nonisolated static func displayTicker(for symbol: String) -> String {
+        guard isVietnameseStock(symbol) else { return symbol }
+        return symbol
+            .replacingOccurrences(of: ".HM", with: "")
+            .replacingOccurrences(of: ".HN", with: "")
+            .replacingOccurrences(of: ".VN", with: "")
+    }
+
     private static func isBinanceEquitySymbol(_ symbol: String) -> Bool {
         let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let base = upper.hasSuffix("-USD") ? String(upper.dropLast(4)) : upper
@@ -3994,7 +4003,7 @@ class StockService: ObservableObject {
         guard !query.isEmpty else { return [] }
 
         var fundResults: [SearchResult] = []
-        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanQuery = SearchResult.normalizedSearchQuery(query)
         let upperQuery = cleanQuery.uppercased()
 
         for stock in Self.popularVietnameseStocks {
@@ -4046,7 +4055,7 @@ class StockService: ObservableObject {
 
         // Run VNDirect, Yahoo and Binance search in parallel
         async let vnTask = fetchVNDirectSearch(query: cleanQuery)
-        async let yahooTask = fetchYahooSearch(query: query)
+        async let yahooTask = fetchYahooSearch(query: cleanQuery)
         async let binanceTask = fetchBinanceSearch(query: upperQuery)
 
         let (vnResults, yahooResults, binanceResults) = await (vnTask, yahooTask, binanceTask)
@@ -4087,18 +4096,24 @@ class StockService: ObservableObject {
             }
         }
 
-        var existingSymbols = Set(fundResults.map { $0.symbol.uppercased() })
+        var existingSymbols = Set(fundResults.map { $0.watchlistSymbol.uppercased() })
         var vnFinal: [SearchResult] = []
         for r in vnResults {
-            let sym = r.symbol.uppercased()
+            let sym = r.watchlistSymbol.uppercased()
             if !existingSymbols.contains(sym) {
                 existingSymbols.insert(sym)
                 vnFinal.append(r)
             }
         }
 
-        let uniqueFinal = final.filter { !existingSymbols.contains($0.symbol.uppercased()) }
-        return fundResults + vnFinal + uniqueFinal
+        let uniqueFinal = final.filter { !existingSymbols.contains($0.watchlistSymbol.uppercased()) }
+        return SearchResult.mergeByWatchlistIdentity(
+            // Keep provider ranking ahead of local Vietnamese presets. Otherwise
+            // a local NET (HNX) can push Yahoo's exact NET (Cloudflare) below
+            // the first visible search results, making it look as if it is absent.
+            preferred: uniqueFinal,
+            fallback: fundResults + vnFinal
+        )
     }
 
     private func fetchVNDirectSearch(query: String) async -> [SearchResult] {

@@ -62,9 +62,9 @@ final class LogoCache {
     /// Ensures a real logo is cached for a Vietnamese symbol. Safe to call
     /// repeatedly — it short-circuits once the PNG exists and deduplicates
     /// concurrent requests for the same symbol.
-    func ensureLogo(for symbol: String) async {
+    func ensureLogo(for symbol: String, exchange: String = "") async {
         let key = symbol.uppercased()
-        guard StockService.isVietnameseStock(key) else { return }
+        guard StockService.isVietnameseStock(key, exchange: exchange) else { return }
         if cachedURL(for: key) != nil { return }
         guard let dir = cacheDir else { return }
 
@@ -72,9 +72,11 @@ final class LogoCache {
         inflight.insert(key)
         defer { inflight.remove(key) }
 
+        let resultExchange = exchange.uppercased()
         let storedExchange = StorageService.shared.exchange(for: key).uppercased()
-        let markets: [String] = ["HOSE", "HNX", "UPCOM"].contains(storedExchange)
-            ? [storedExchange]
+        let preferredExchange = ["HOSE", "HNX", "UPCOM"].contains(resultExchange) ? resultExchange : storedExchange
+        let markets: [String] = ["HOSE", "HNX", "UPCOM"].contains(preferredExchange)
+            ? [preferredExchange]
             : ["HOSE", "HNX", "UPCOM"]
 
         for market in markets {

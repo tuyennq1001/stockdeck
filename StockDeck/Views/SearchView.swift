@@ -129,7 +129,7 @@ struct SearchView: View {
 
     private func resultRow(_ r: SearchResult) -> some View {
         HStack(spacing: 10) {
-            SymbolLogo(symbol: r.symbol, size: 28)
+            SymbolLogo(symbol: r.watchlistSymbol, size: 28, exchange: r.exchange)
             VStack(alignment: .leading, spacing: 1) {
                 Text(r.displayTitle)
                     .font(DS.figure)
@@ -152,7 +152,7 @@ struct SearchView: View {
                         .foregroundStyle(DS.inkTertiary)
                 }
             }
-            if isAlreadyAdded(r.symbol) {
+            if isAlreadyAdded(r) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(DS.up)
                     .font(.system(size: 12))
@@ -175,7 +175,11 @@ struct SearchView: View {
             isSearching = true
             let searchResults = await stockService.search(query: q)
             guard !Task.isCancelled else { return }
-            results = searchResults
+            results = storageService.mergeWatchlistSearchResults(
+                searchResults,
+                matching: q,
+                quotes: stockService.quotes
+            )
             isSearching = false
         }
     }
@@ -183,24 +187,29 @@ struct SearchView: View {
     private func addResult(_ result: SearchResult) {
         switch mode {
         case .watchlist:
-            storageService.addToWatchlist(result.symbol)
-            if !result.type.isEmpty { storageService.setType(result.type, for: result.symbol) }
-            if !result.exchange.isEmpty { storageService.setExchange(result.exchange, for: result.symbol) }
+            if let existingSymbol = storageService.watchlistEntry(for: result) {
+                storageService.removeFromWatchlist(existingSymbol)
+                return
+            }
+            let symbol = result.watchlistSymbol
+            if !result.type.isEmpty { storageService.setType(result.type, for: symbol) }
+            if !result.exchange.isEmpty { storageService.setExchange(result.exchange, for: symbol) }
+            storageService.addToWatchlist(symbol)
             if queryLooksLikeISIN {
-                storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: result.symbol)
+                storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: symbol)
             }
             Task {
-                await stockService.fetchQuotes(symbols: [result.symbol])
+                await stockService.fetchQuotes(symbols: [symbol])
             }
         case .holding:
             break
         }
     }
 
-    private func isAlreadyAdded(_ symbol: String) -> Bool {
+    private func isAlreadyAdded(_ result: SearchResult) -> Bool {
         switch mode {
         case .watchlist:
-            return storageService.watchlist.contains(symbol)
+            return storageService.watchlistEntry(for: result) != nil
         case .holding:
             return false
         }

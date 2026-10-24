@@ -831,7 +831,7 @@ private struct WatchRowView<Menu: View>: View {
             SymbolLogo(symbol: row.symbol, size: 22)
             let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
             let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
-            let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
+            let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : StockService.displayTicker(for: row.symbol)
             Text(titleText)
                 .font(.inter(12.5, weight: .bold, relativeTo: .body))
                 .foregroundStyle(DS.ink)
@@ -1125,7 +1125,7 @@ private struct WatchRowView<Menu: View>: View {
 
                 let isJpFund = (row.quote?.isJapaneseFund == true) || (StockService.codeToFundNameMap[row.symbol] != nil)
                 let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
-                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : row.symbol
+                let titleText = (isJpFund || isDisplayAsset) ? (row.quote?.displayName ?? StockService.beautifiedSymbol(row.symbol)) : StockService.displayTicker(for: row.symbol)
                 let subTitleText = isDisplayAsset ? row.symbol : (isJpFund ? "" : row.name)
                 HStack(spacing: 9) {
                     SymbolLogo(symbol: row.symbol, size: 28)

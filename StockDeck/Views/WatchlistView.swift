@@ -1014,7 +1014,7 @@ struct QuoteFrozenRow<Menu: View>: View {
         HStack(spacing: 6) {
             SymbolLogo(symbol: row.symbol, size: 18)
             let isDisplayAsset = StockService.isDisplayNameAsset(row.symbol)
-            Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : row.symbol)
+            Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : StockService.displayTicker(for: row.symbol))
                 .font(.inter(12, weight: .bold, relativeTo: .body))
                 .foregroundStyle(DS.ink)
             let dec = valueDecimals >= 0 ? valueDecimals : StorageService.priceDecimals(symbol: row.symbol, price: row.price)
@@ -1062,7 +1062,7 @@ struct QuoteFrozenRow<Menu: View>: View {
             symbolLogoOrHandle
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 3) {
-                    Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : row.symbol)
+                    Text(isDisplayAsset ? (row.quote?.displayName ?? row.symbol) : StockService.displayTicker(for: row.symbol))
                         .font(.inter(12.5, relativeTo: .body).monospacedDigit())
                         .fontWeight(.bold)
                         .lineLimit(1)

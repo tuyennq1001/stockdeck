@@ -772,7 +772,7 @@ struct WatchlistSearchSheet: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(filteredResults) { r in
-                            Button { add(r) } label: { resultRow(r) }
+                            Button { toggle(r) } label: { resultRow(r) }
                                 .buttonStyle(.plain)
                                 .pointingHandCursor()
                                 .onHover { inside in hoveredSymbol = inside ? r.id : nil }
@@ -800,7 +800,7 @@ struct WatchlistSearchSheet: View {
 
     private func resultRow(_ r: SearchResult) -> some View {
         HStack(spacing: 10) {
-            SymbolLogo(symbol: r.symbol, size: 28)
+            SymbolLogo(symbol: r.watchlistSymbol, size: 28, exchange: r.exchange)
             VStack(alignment: .leading, spacing: 1) {
                 Text(r.displayTitle).font(DS.figure).foregroundStyle(DS.ink)
                 if !r.displaySubtitle.isEmpty {
@@ -814,7 +814,7 @@ struct WatchlistSearchSheet: View {
                     Text(Self.friendlyExchange(r.exchange)).font(DS.micro).foregroundStyle(DS.inkTertiary)
                 }
             }
-            if storageService.watchlist.contains(r.symbol) {
+            if storageService.watchlistEntry(for: r) != nil {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(DS.up).font(.system(size: 12))
             }
         }
@@ -831,7 +831,12 @@ struct WatchlistSearchSheet: View {
             isSearching = true
             let res = await stockService.search(query: q)
             guard !Task.isCancelled else { return }
-            results = res; isSearching = false
+            results = storageService.mergeWatchlistSearchResults(
+                res,
+                matching: q,
+                quotes: stockService.quotes
+            )
+            isSearching = false
         }
     }
 
@@ -911,12 +916,17 @@ struct WatchlistSearchSheet: View {
         return raw
     }
 
-    private func add(_ r: SearchResult) {
-        storageService.addToWatchlist(r.symbol)
-        if !r.type.isEmpty { storageService.setType(r.type, for: r.symbol) }
-        if !r.exchange.isEmpty { storageService.setExchange(r.exchange, for: r.symbol) }
-        if looksLikeISIN { storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: r.symbol) }
-        Task { await stockService.fetchQuotes(symbols: [r.symbol]) }
+    private func toggle(_ r: SearchResult) {
+        if let existingSymbol = storageService.watchlistEntry(for: r) {
+            storageService.removeFromWatchlist(existingSymbol)
+            return
+        }
+        let symbol = r.watchlistSymbol
+        if !r.type.isEmpty { storageService.setType(r.type, for: symbol) }
+        if !r.exchange.isEmpty { storageService.setExchange(r.exchange, for: symbol) }
+        storageService.addToWatchlist(symbol)
+        if looksLikeISIN { storageService.setISIN(query.trimmingCharacters(in: .whitespaces).uppercased(), for: symbol) }
+        Task { await stockService.fetchQuotes(symbols: [symbol]) }
     }
 }
 
