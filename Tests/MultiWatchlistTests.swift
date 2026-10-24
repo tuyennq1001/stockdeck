@@ -32,6 +32,36 @@ final class MultiWatchlistTests: XCTestCase {
         XCTAssertEqual(storage.watchlist, ["BTC-USD"])
     }
 
+    func testSearchResultWatchlistIdentitySeparatesSameTickerAcrossMarkets() {
+        let storage = createTestStorage()
+        storage.addToWatchlist("NET")
+        storage.setExchange("NYQ", for: "NET")
+
+        let vietnamNET = SearchResult(symbol: "NET", name: "CTCP Bột giặt Net", exchange: "HNX", type: "EQUITY")
+        let cloudflareNET = SearchResult(symbol: "NET", name: "Cloudflare", exchange: "NYQ", type: "EQUITY")
+
+        XCTAssertNil(storage.watchlistEntry(for: vietnamNET))
+        XCTAssertEqual(storage.watchlistEntry(for: cloudflareNET), "NET")
+
+        storage.addToWatchlist(vietnamNET.watchlistSymbol)
+        storage.setExchange("HNX", for: vietnamNET.watchlistSymbol)
+        XCTAssertEqual(storage.watchlistEntry(for: vietnamNET), "NET.HN")
+        XCTAssertEqual(storage.watchlist, ["NET", "NET.HN"])
+    }
+
+    func testWatchlistSearchResultsIncludeLocalEntriesAndKeepMarketDistinct() {
+        let storage = createTestStorage()
+        storage.addToWatchlist("NET")
+        storage.setExchange("NYQ", for: "NET")
+        storage.addToWatchlist("NET.HN")
+        storage.setExchange("HNX", for: "NET.HN")
+
+        let results = storage.mergeWatchlistSearchResults([], matching: "NET", quotes: [:])
+
+        XCTAssertEqual(Set(results.map(\.watchlistSymbol)), Set(["NET", "NET.HN"]))
+        XCTAssertEqual(results.count, 2)
+    }
+
     func testRenameWatchlist() {
         let storage = createTestStorage()
         let wl = storage.createWatchlist(name: "Tech Stocks")

@@ -626,12 +626,14 @@ struct BrandMark: View {
 struct SymbolLogo: View {
     let symbol: String
     var size: CGFloat = 28
+    var exchange: String = ""
 
     @State private var vnImage: NSImage?
     @State private var vnResolved = false
 
     @MainActor private var isVietnamese: Bool {
-        StockService.isVietnameseStock(symbol, exchange: StorageService.shared.exchange(for: symbol))
+        StockService.isVietnameseStock(symbol, exchange: exchange)
+            || StockService.isVietnameseStock(symbol, exchange: StorageService.shared.exchange(for: symbol))
     }
 
     private var logoURL: URL? {
@@ -699,6 +701,11 @@ struct SymbolLogo: View {
             vnResolved = false
             resolveVNCache()
         }
+        .onChange(of: exchange) { _, _ in
+            vnImage = nil
+            vnResolved = false
+            resolveVNCache()
+        }
     }
 
     /// The cached VN logo once available; a letter monogram while it downloads.
@@ -727,7 +734,7 @@ struct SymbolLogo: View {
             return
         }
         Task {
-            await LogoCache.shared.ensureLogo(for: requestedSymbol)
+            await LogoCache.shared.ensureLogo(for: requestedSymbol, exchange: exchange)
             let image = await LogoCache.shared.image(for: requestedSymbol)
             guard !Task.isCancelled, symbol == requestedSymbol else { return }
             vnImage = image

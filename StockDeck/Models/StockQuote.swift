@@ -514,6 +514,49 @@ struct SearchResult: Identifiable, Codable {
 
     var id: String { "\(symbol)|\(type)|\(exchange)" }
 
+    /// A ticker can exist on multiple markets (for example US NET and HNX NET).
+    /// Keep Vietnamese market identity in the stored ticker while leaving the
+    /// search result itself unchanged for display.
+    var watchlistSymbol: String {
+        let suffix: String
+        switch Self.marketKey(exchange) {
+        case "HNX": suffix = ".HN"
+        case "HOSE": suffix = ".HM"
+        case "UPCOM": suffix = ".VN"
+        default: return symbol
+        }
+        let upper = symbol.uppercased()
+        if upper.hasSuffix(".HN") || upper.hasSuffix(".HM") || upper.hasSuffix(".VN") { return symbol }
+        return symbol + suffix
+    }
+
+    static func marketKey(_ exchange: String) -> String {
+        switch exchange.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "HNX", "HANOI": "HNX"
+        case "HOSE", "HOCHIMINH", "HO CHI MINH": "HOSE"
+        case "UPCOM": "UPCOM"
+        default: ""
+        }
+    }
+
+    static func normalizedSearchQuery(_ query: String) -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let upper = trimmed.uppercased()
+        for suffix in [".HM", ".HN", ".VN"] where upper.hasSuffix(suffix) {
+            return String(trimmed.dropLast(suffix.count))
+        }
+        return trimmed
+    }
+
+    static func mergeByWatchlistIdentity(
+        preferred: [SearchResult],
+        fallback: [SearchResult]
+    ) -> [SearchResult] {
+        var identities = Set(preferred.map { $0.watchlistSymbol.uppercased() })
+        let uniqueFallback = fallback.filter { identities.insert($0.watchlistSymbol.uppercased()).inserted }
+        return preferred + uniqueFallback
+    }
+
     private enum CodingKeys: String, CodingKey {
         case symbol
         case longname

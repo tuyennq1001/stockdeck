@@ -229,6 +229,33 @@ final class StockQuoteTests: XCTestCase {
         XCTAssertTrue(StockService.isVietnameseStock("XYZ", exchange: "HOSE"))
     }
 
+    func testSearchResultUsesMarketQualifiedWatchlistSymbol() {
+        let hnx = SearchResult(symbol: "NET", name: "CTCP Bột giặt Net", exchange: "HNX", type: "EQUITY")
+        let hose = SearchResult(symbol: "NET", name: "Vietnam stock", exchange: "HOSE", type: "EQUITY")
+        let us = SearchResult(symbol: "NET", name: "Cloudflare", exchange: "NYQ", type: "EQUITY")
+
+        XCTAssertEqual(hnx.watchlistSymbol, "NET.HN")
+        XCTAssertEqual(hose.watchlistSymbol, "NET.HM")
+        XCTAssertEqual(us.watchlistSymbol, "NET")
+        XCTAssertEqual(StockService.displayTicker(for: hnx.watchlistSymbol), "NET")
+        XCTAssertEqual(SearchResult.normalizedSearchQuery("NET.HN"), "NET")
+        XCTAssertEqual(SearchResult.normalizedSearchQuery("NET"), "NET")
+    }
+
+    func testSearchMergeKeepsSameTickerFromDifferentMarkets() {
+        let hnxNET = SearchResult(symbol: "NET", name: "CTCP Bột giặt Net", exchange: "HNX", type: "EQUITY")
+        let cloudflareNET = SearchResult(symbol: "NET", name: "Cloudflare", exchange: "NYQ", type: "EQUITY")
+        let duplicateHNX = SearchResult(symbol: "NET", name: "Duplicate HNX result", exchange: "HNX", type: "EQUITY")
+
+        let merged = SearchResult.mergeByWatchlistIdentity(
+            preferred: [cloudflareNET],
+            fallback: [hnxNET, duplicateHNX]
+        )
+
+        XCTAssertEqual(merged.map(\.name), ["Cloudflare", "CTCP Bột giặt Net"])
+        XCTAssertEqual(merged.map(\.watchlistSymbol), ["NET", "NET.HN"])
+    }
+
     func testVietnameseStockDetectedCurrency() {
         XCTAssertEqual(StockService.detectedCurrency(for: "SHS"), "VND")
         XCTAssertEqual(StockService.detectedCurrency(for: "CEO"), "VND")
