@@ -6,23 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.19</title>
-            <pubDate>Sat, 24 Oct 2026 16:59:21 +0900</pubDate>
-            <sparkle:version>22</sparkle:version>
-            <sparkle:shortVersionString>1.1.19</sparkle:shortVersionString>
+            <title>Version 1.1.20</title>
+            <pubDate>Sun, 25 Oct 2026 23:02:05 +0900</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>1.1.20</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.19</h2>
+<h2>What's New in StockDeck 1.1.20</h2>
 <ul>
-    <li><strong>Cross-market ticker search:</strong> Search results now distinguish US NET (Cloudflare) from HNX NET (CTCP Bột giặt Net), while the Vietnamese ticker remains displayed as NET.</li>
-    <li><strong>Watchlist picker:</strong> Existing symbols stay visible in search and can be removed by selecting them again.</li>
-    <li><strong>Market-aware logos:</strong> Search result logos now use the result's exchange so similarly named tickers show the correct company logo.</li>
+    <li><strong>Periodic Local Auto-Export:</strong> Automatically export clean JSON snapshots of portfolios, active holdings, closed trades, and transaction history to iCloud Drive or local storage for third-party tools.</li>
+    <li><strong>Configurable Schedule:</strong> Choose between bi-weekly (1st & 15th) and monthly (1st) auto-export schedules with automatic catch-up on application launch, plus manual export on demand.</li>
+    <li><strong>Rich Metadata & Sanitized Payloads:</strong> Exported files include asset types, market exchange details, normalized account identifiers, realized P&L for closed positions, and missing cost basis flags for exchange-synced assets.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.19/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.20/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="h+JwaZ+OSMsNoXzd0raaeX4W577vSif3LmPetSrA2fbP54I/1vuyn6YBhnSloi0HNf0hd1KVMcrU/Wl+2TcMAQ=="
-                       length="9917966"/>
+                       sparkle:edSignature="QpwRHmD0vXwpxCHPJICTkNJXxeqxdaAvAZvdVBC4WKMPm6kGRkTHjARgIp1oQhxxW+IvYd8yWofB1NVvISNWAw=="
+                       length="9986255"/>
         </item>
     </channel>
 </rss>
