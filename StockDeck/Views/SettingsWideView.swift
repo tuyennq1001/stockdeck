@@ -41,6 +41,7 @@ private struct SettingsContentView: View {
         return Calendar.current.date(from: c) ?? Date()
     }()
     @ObservedObject private var oauthService = AIOAuthService.shared
+    @ObservedObject private var autoExportService = AutoExportService.shared
 
     private func oauthProviderName(for provider: String) -> String {
         switch provider {
@@ -118,6 +119,7 @@ private struct SettingsContentView: View {
                         tradingCard
                         notificationsCard
                         appearanceCard
+                        autoExportCard
                         if AppEnvironment.isDev {
                             devEnvironmentCard
                         }
@@ -1071,6 +1073,50 @@ private struct SettingsContentView: View {
                     Text("\(storageService.fontSizeLevel)")
                         .font(DS.figure).foregroundStyle(DS.inkSecondary)
                         .frame(width: 18, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    private var autoExportCard: some View {
+        SettingsCard(title: "iCloud & Auto-Export") {
+            SettingToggle("Enable iCloud Sync",
+                          caption: "Automatically syncs watchlists, portfolios, alerts, and notes across all your devices via iCloud",
+                          isOn: $storageService.iCloudSyncEnabled)
+            SettingDivider()
+            SettingToggle("Auto-Export for 3rd Party (Muse)",
+                          caption: "Exports clean portfolio and transactions JSON locally to iCloud Drive for third-party apps like Muse to read",
+                          isOn: $storageService.autoExportEnabled)
+                .onChange(of: storageService.autoExportEnabled) {
+                    if storageService.autoExportEnabled {
+                        autoExportService.checkAndRunScheduledExport()
+                    }
+                }
+            if storageService.autoExportEnabled {
+                SettingDivider()
+                SettingRow("Schedule", caption: "How often clean portfolio snapshots are generated") {
+                    DSPicker(options: AutoExportFrequency.allCases.map { ($0.rawValue, $0.displayName) },
+                             selection: $storageService.autoExportFrequencyRaw, width: 230)
+                        .onChange(of: storageService.autoExportFrequencyRaw) {
+                            autoExportService.checkAndRunScheduledExport()
+                        }
+                }
+                SettingDivider()
+                SettingRow("Status", caption: storageService.lastAutoExportDate.map { "Last exported: \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "Not exported yet") {
+                    HStack(spacing: 8) {
+                        Button(autoExportService.isExporting ? "Exporting…" : "Export Now") {
+                            autoExportService.exportNow()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(autoExportService.isExporting)
+
+                        Button("Show in Finder") {
+                            autoExportService.showInFinder()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
             }
         }

@@ -27,6 +27,7 @@ struct SettingsView: View {
     @AppStorage("settings.group.icloud") private var groupICloud = false
     @State private var showEditProfileSheet = false
     @ObservedObject private var syncService = iCloudSyncService.shared
+    @ObservedObject private var autoExportService = AutoExportService.shared
     @State private var isLoadingModels = false
     @State private var modelFetchError: String? = nil
     @State private var aiTestResult: String? = nil
@@ -428,6 +429,65 @@ struct SettingsView: View {
                             .font(.inter(10, relativeTo: .caption))
                             .foregroundStyle(DS.brand)
                         }
+                    }
+
+                    Divider().padding(.vertical, 4)
+
+                    subHeader("Auto-Export for 3rd Party (Muse)")
+                    Toggle("Enable Auto-Export", isOn: $storageService.autoExportEnabled)
+                        .toggleStyle(.switch)
+                        .onChange(of: storageService.autoExportEnabled) {
+                            if storageService.autoExportEnabled {
+                                autoExportService.checkAndRunScheduledExport()
+                            }
+                        }
+                    caption("Exports clean portfolio and transactions JSON locally to iCloud Drive for third-party apps like Muse to read.")
+
+                    if storageService.autoExportEnabled {
+                        Picker("Schedule", selection: $storageService.autoExportFrequencyRaw) {
+                            ForEach(AutoExportFrequency.allCases, id: \.rawValue) { freq in
+                                Text(freq.displayName).tag(freq.rawValue)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: storageService.autoExportFrequencyRaw) {
+                            autoExportService.checkAndRunScheduledExport()
+                        }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(autoExportService.exportStatus.contains("Failed") ? Color.red : Color.green)
+                                        .frame(width: 6, height: 6)
+                                    Text(autoExportService.exportStatus)
+                                        .font(.inter(11, weight: .semibold, relativeTo: .subheadline))
+                                }
+                                if let lastDate = storageService.lastAutoExportDate {
+                                    Text("Last: \(lastDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("Not exported yet")
+                                        .font(.inter(10, relativeTo: .caption))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button(autoExportService.isExporting ? "Exporting…" : "Export Now") {
+                                autoExportService.exportNow()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(autoExportService.isExporting)
+                        }
+
+                        Button("Show in Finder") {
+                            autoExportService.showInFinder()
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.inter(10, relativeTo: .caption))
+                        .foregroundStyle(DS.brand)
                     }
                 }
 

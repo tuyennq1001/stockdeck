@@ -126,6 +126,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             await storageService.waitUntilRestored()
             iCloudSyncService.shared.start()
+            AutoExportService.shared.start()
         }
 
         // Cold launch from clicking a delivered notification: the system already

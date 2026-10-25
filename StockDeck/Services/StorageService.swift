@@ -272,6 +272,21 @@ class StorageService: ObservableObject {
     }
     @Published var lastiCloudSyncDate: Date? = nil
 
+    // MARK: - Local Auto-Export for 3rd Party (Muse)
+    @Published var autoExportEnabled: Bool = false {
+        didSet { scheduleSave() }
+    }
+    @Published var autoExportFrequencyRaw: String = AutoExportFrequency.biweekly.rawValue {
+        didSet { scheduleSave() }
+    }
+    @Published var lastAutoExportDate: Date? = nil
+    @Published var lastAutoExportPeriodKey: String? = nil
+
+    var autoExportFrequency: AutoExportFrequency {
+        get { AutoExportFrequency(rawValue: autoExportFrequencyRaw) ?? .biweekly }
+        set { autoExportFrequencyRaw = newValue.rawValue }
+    }
+
     /// Typed appearance preference, tolerant of unknown persisted values.
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceRaw) ?? .default }
@@ -2730,6 +2745,10 @@ class StorageService: ObservableObject {
         var desktopAppShortcut: MenuBarShortcut?
         var iCloudSyncEnabled: Bool?
         var lastiCloudSyncDate: Date?
+        var autoExportEnabled: Bool?
+        var autoExportFrequency: String?
+        var lastAutoExportDate: Date?
+        var lastAutoExportPeriodKey: String?
     }
 
     func exportAppData() -> AppData {
@@ -2805,7 +2824,11 @@ class StorageService: ObservableObject {
             menuBarShortcut: menuBarShortcut,
             desktopAppShortcut: desktopAppShortcut,
             iCloudSyncEnabled: iCloudSyncEnabled,
-            lastiCloudSyncDate: lastiCloudSyncDate
+            lastiCloudSyncDate: lastiCloudSyncDate,
+            autoExportEnabled: autoExportEnabled,
+            autoExportFrequency: autoExportFrequencyRaw,
+            lastAutoExportDate: lastAutoExportDate,
+            lastAutoExportPeriodKey: lastAutoExportPeriodKey
         )
     }
 
@@ -2948,6 +2971,18 @@ class StorageService: ObservableObject {
         }
         if let syncDate = decoded.lastiCloudSyncDate {
             lastiCloudSyncDate = syncDate
+        }
+        if let autoExp = decoded.autoExportEnabled {
+            autoExportEnabled = autoExp
+        }
+        if let freq = decoded.autoExportFrequency {
+            autoExportFrequencyRaw = freq
+        }
+        if let expDate = decoded.lastAutoExportDate {
+            lastAutoExportDate = expDate
+        }
+        if let periodKey = decoded.lastAutoExportPeriodKey {
+            lastAutoExportPeriodKey = periodKey
         }
         FontRegistration.familyName = fontFamily
         FontRegistration.sizeOffset = CGFloat(fontSizeLevel - 9)
