@@ -6,23 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.20</title>
-            <pubDate>Sun, 25 Oct 2026 23:02:05 +0900</pubDate>
-            <sparkle:version>23</sparkle:version>
-            <sparkle:shortVersionString>1.1.20</sparkle:shortVersionString>
+            <title>Version 1.1.21</title>
+            <pubDate>Mon, 26 Oct 2026 15:50:25 +0900</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>1.1.21</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.20</h2>
+<h2>What's New in StockDeck 1.1.21</h2>
 <ul>
-    <li><strong>Periodic Local Auto-Export:</strong> Automatically export clean JSON snapshots of portfolios, active holdings, closed trades, and transaction history to iCloud Drive or local storage for third-party tools.</li>
-    <li><strong>Configurable Schedule:</strong> Choose between bi-weekly (1st & 15th) and monthly (1st) auto-export schedules with automatic catch-up on application launch, plus manual export on demand.</li>
-    <li><strong>Rich Metadata & Sanitized Payloads:</strong> Exported files include asset types, market exchange details, normalized account identifiers, realized P&L for closed positions, and missing cost basis flags for exchange-synced assets.</li>
+    <li><strong>Improved Superchart:</strong> Add chart hover details, custom date ranges, favorite timeframes, and synchronized chart controls in the table view.</li>
+    <li><strong>Persistent Chart Settings:</strong> Save indicator settings, pane sizes, and toolbar timeframe and timerange choices independently for each chart surface.</li>
+    <li><strong>Portfolio Ordering:</strong> Sort Superchart portfolio symbols by holding market value, with duplicate holdings combined and values converted to the preferred currency.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.20/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.21/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="QpwRHmD0vXwpxCHPJICTkNJXxeqxdaAvAZvdVBC4WKMPm6kGRkTHjARgIp1oQhxxW+IvYd8yWofB1NVvISNWAw=="
-                       length="9986255"/>
+                       sparkle:edSignature="U0WclyURB/n/I0CrdQ06K5+MDj99GigBxwapBPNVCk4ufA+gxoeaFHgTPDVR2zxLG80ob43MrHDd8lKMgO7lBA=="
+                       length="10362105"/>
         </item>
     </channel>
 </rss>
