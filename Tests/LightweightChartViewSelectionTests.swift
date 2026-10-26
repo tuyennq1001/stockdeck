@@ -2,33 +2,64 @@ import XCTest
 @testable import StockDeck
 
 final class LightweightChartViewSelectionTests: XCTestCase {
-    func testSuperchartRangeAndIntervalAreSharedAcrossSymbols() {
+    func testToolbarSelectionsAreSharedAcrossSymbolsAndIndependentBetweenCharts() {
         let suite = "LightweightChartViewSelection-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 
         LightweightChartViewSelectionStore.save(.init(range: "1Y", interval: .week),
-            symbol: "AAPL", shared: true, defaults: defaults)
+            surface: .superchart, defaults: defaults)
+        LightweightChartViewSelectionStore.save(.init(range: "1M", interval: .hour),
+            surface: .detail, defaults: defaults)
 
-        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", shared: true, defaults: defaults),
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", surface: .superchart, defaults: defaults),
             .init(range: "1Y", interval: .week))
-        XCTAssertEqual(defaults.string(forKey: "stockdeck.superchart.range"), "1Y")
-        XCTAssertNil(defaults.dictionary(forKey: "stockdeck.lightweightChart.view.v1.AAPL"))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", surface: .detail, defaults: defaults),
+            .init(range: "1M", interval: .hour))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", surface: .superchart, defaults: defaults),
+            .init(range: "1Y", interval: .week))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", surface: .detail, defaults: defaults),
+            .init(range: "1M", interval: .hour))
     }
 
-    func testDetailChartSelectionsRemainPerSymbol() {
+    func testSavingToolbarSelectionForAnotherSymbolUpdatesTheSharedChartSelection() {
         let suite = "LightweightChartViewSelection-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 
         LightweightChartViewSelectionStore.save(.init(range: "3M", interval: .day),
-            symbol: "AAPL", shared: false, defaults: defaults)
+            surface: .detail, defaults: defaults)
         LightweightChartViewSelectionStore.save(.init(range: "1Y", interval: .week),
-            symbol: "MSFT", shared: false, defaults: defaults)
+            surface: .detail, defaults: defaults)
 
-        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", shared: false, defaults: defaults),
-            .init(range: "3M", interval: .day))
-        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", shared: false, defaults: defaults),
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", surface: .detail, defaults: defaults),
             .init(range: "1Y", interval: .week))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", surface: .detail, defaults: defaults),
+            .init(range: "1Y", interval: .week))
+    }
+
+    func testLegacySuperchartSelectionMigratesToSharedToolbarSelection() {
+        let suite = "LightweightChartViewSelection-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["range": "6M", "interval": "1D"], forKey: "stockdeck.superchart.view.v1")
+
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", surface: .superchart, defaults: defaults),
+            .init(range: "6M", interval: .day))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", surface: .superchart, defaults: defaults),
+            .init(range: "6M", interval: .day))
+    }
+
+    func testPerSymbolSelectionMigratesToSharedToolbarSelection() {
+        let suite = "LightweightChartViewSelection-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["range": "5Y", "interval": "1M"],
+                     forKey: "stockdeck.lightweightChart.view.v2.superchart.AAPL")
+
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "AAPL", surface: .superchart, defaults: defaults),
+            .init(range: "5Y", interval: .month))
+        XCTAssertEqual(LightweightChartViewSelectionStore.load(symbol: "MSFT", surface: .superchart, defaults: defaults),
+            .init(range: "5Y", interval: .month))
     }
 }

@@ -3,6 +3,20 @@ import AppKit
 import UniformTypeIdentifiers
 import Combine
 
+/// Rotated labels keep their natural text length instead of reserving a fixed tall tab.
+private struct VerticalModeTabLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let label = subviews.first else { return .zero }
+        let size = label.sizeThatFits(.unspecified)
+        return CGSize(width: size.height, height: size.width)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY),
+                              anchor: .center, proposal: .unspecified)
+    }
+}
+
 /// The full-window companion to the menu-bar glance. It IS the app in expanded
 /// form: same tabs as the popover (Home, Watchlist, Portfolios, Settings), same
 /// data, over the same shared `StockService`/`StorageService` — so edits here
@@ -280,37 +294,46 @@ struct PortfolioWindowView: View {
     // MARK: - Sidebar
 
     private var modeRail: some View {
-        VStack(spacing: 8) {
-            modeRailButton(title: "Bảng", symbol: "tablecells", selected: !isSuperchartMode) {
+        VStack(spacing: 4) {
+            modeRailButton(title: "Bảng", selected: !isSuperchartMode) {
                 isSuperchartMode = false
             }
-            modeRailButton(title: "Superchart", symbol: "chart.xyaxis.line", selected: isSuperchartMode) {
+            modeRailButton(title: "Superchart", selected: isSuperchartMode) {
                 isSuperchartMode = true
             }
             Spacer(minLength: 0)
         }
         .padding(.top, 14)
-        .frame(minWidth: 60, maxWidth: 60, maxHeight: .infinity)
+        .frame(minWidth: 32, maxWidth: 32, maxHeight: .infinity)
         .background(DS.sidebarBG)
-        .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
     }
 
-    private func modeRailButton(title: String, symbol: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func modeRailButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 17, weight: .medium))
-                Text(title).font(.inter(9, weight: selected ? .semibold : .medium, relativeTo: .caption2))
-                    .lineLimit(1).minimumScaleFactor(0.72)
+            VerticalModeTabLayout {
+                Text(title)
+                    .font(.inter(11, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                    .fixedSize()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .rotationEffect(.degrees(-90))
             }
-            .foregroundStyle(selected ? DS.brand : DS.inkSecondary)
-            .frame(width: 54, height: 52)
-            .background(selected ? DS.brand.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 9))
-            .contentShape(RoundedRectangle(cornerRadius: 9))
+            .foregroundStyle(selected ? DS.ink : DS.inkSecondary)
+            .frame(width: 28)
+            .background(selected ? DS.ground : .clear,
+                        in: UnevenRoundedRectangle(topLeadingRadius: 5, bottomLeadingRadius: 5))
+            .overlay(alignment: .leading) {
+                if selected {
+                    Capsule().fill(DS.brand).frame(width: 2).padding(.vertical, 8)
+                }
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(title)
         .accessibilityLabel(title)
-        .padding(.horizontal, 3)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .padding(.leading, 4)
     }
 
     private var sidebar: some View {

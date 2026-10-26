@@ -23,6 +23,10 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         try FileManager.default.copyItem(at: resources.appendingPathComponent("LightweightCharts"), to: directory.appendingPathComponent("LightweightCharts"))
         var html = try String(contentsOf: resources.appendingPathComponent("LightweightChartTrial.html"))
         html = html.replacingOccurrences(of: "const chart=C.createChart", with: "const chart=window.testChart=C.createChart")
+        html = html.replacingOccurrences(of: "const surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';",
+            with: "let surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';window.testSetSurface=value=>{surface=value};")
+        html = html.replacingOccurrences(of: "const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};",
+            with: "const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};window.testCrosshair=onCrosshairMove;window.testSetReadout=updateReadout;")
         html = html.replacingOccurrences(of: "ctx.fillStyle=colorWithOpacity(style.color||'#8a78bd',style.opacity??10);",
             with: "window.testBandPaints=(window.testBandPaints||0)+1;window.testBandFirst=points.find(point=>point);ctx.fillStyle=colorWithOpacity(style.color||'#8a78bd',style.opacity??10);")
         let file = directory.appendingPathComponent("chart.html")
@@ -172,5 +176,124 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         _ = try await finalReload.evaluateJavaScript("document.querySelector('[data-ind=RSI]').click()")
         let restoredAfterExplicitAdd = try await finalReload.evaluateJavaScript("!!document.querySelector('[data-indicator=RSI]')") as? Bool
         XCTAssertEqual(restoredAfterExplicitAdd, true, "Explicitly enabling an indicator must clear its deleted state")
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+        _ = try await finalReload.evaluateJavaScript("document.querySelector('[data-favorite-interval=\"6h\"]').click()")
+        let quickInterval = try await finalReload.evaluateJavaScript("!!document.querySelector('#intervalFavorites [data-interval=\"6h\"]')") as? Bool
+        XCTAssertEqual(quickInterval, true, "A favorite must be selectable directly on the toolbar")
+        let favorites = try XCTUnwrap(UserDefaults.standard.dictionary(forKey: keys[0])?["timeframes"] as? String)
+        XCTAssertTrue(favorites.contains("6h"), "Favorites must reach native preferences, not just localStorage")
+
+        _ = try await finalReload.evaluateJavaScript("document.getElementById('customRangeButton').click();document.getElementById('customFrom').value='2023-12-01';document.getElementById('customTo').value='2023-12-15';document.getElementById('customRangeForm').dispatchEvent(new Event('submit',{cancelable:true}));")
+        let custom = try XCTUnwrap(messages.last { $0["type"] as? String == "selectCustomRange" })
+        XCTAssertEqual(custom["from"] as? String, "2023-12-01")
+        XCTAssertEqual(custom["to"] as? String, "2023-12-15")
+        let customClosed = try await finalReload.evaluateJavaScript("!document.getElementById('customRangeDialog').open&&window.testChart.options().handleScale.mouseWheel") as? Bool
+        XCTAssertEqual(customClosed, true)
+
+        let bounded = LightweightChartMath.payload(points: points, interval: .day, symbol: "TEST", currency: "USD",
+            periods: [:], visibleFrom: points[20].date, selectedRange: "Custom", showsRangeControls: true,
+            visibleTo: points[40].date)
+        let boundedJSON = String(data: try JSONEncoder().encode(bounded), encoding: .utf8)!
+        _ = try await finalReload.evaluateJavaScript("window.setChartData(\(boundedJSON));window.resetChartView();window.testChart.takeScreenshot()!==null")
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let logicalBounds = try await finalReload.evaluateJavaScript("window.testChart.takeScreenshot();window.testChart.timeScale().getVisibleLogicalRange()") as? [String: Double]
+        XCTAssertGreaterThan(try XCTUnwrap(logicalBounds?["from"]), 15)
+        XCTAssertLessThan(try XCTUnwrap(logicalBounds?["to"]), 45, "Custom range must stop at the chosen end date")
+
+        // Intraday candles must keep numeric timestamps through drawing, indicators and a return to daily data.
+        let hourlyPoints = (0..<200).map { PricePoint(date: Date(timeIntervalSince1970: 1_700_000_000 + Double($0) * 300), close: Double(100 + $0 % 15)) }
+        let hourlyPayload = LightweightChartMath.payload(points: hourlyPoints, interval: .fiveMinutes,
+            symbol: "BTC-USD", currency: "USD", periods: [:], showsRangeControls: true)
+        let hourlyJSON = String(data: try JSONEncoder().encode(hourlyPayload), encoding: .utf8)!
+        _ = try await finalReload.evaluateJavaScript("window.setChartData(\(hourlyJSON));window.testChart.takeScreenshot()!==null")
+        let showsTime = try await finalReload.evaluateJavaScript("window.testChart.options().timeScale.timeVisible") as? Bool
+        XCTAssertEqual(showsTime, true)
+        _ = try await finalReload.evaluateJavaScript("window.setChartData(\(json));window.testChart.takeScreenshot()!==null")
+        let showsDates = try await finalReload.evaluateJavaScript("!window.testChart.options().timeScale.timeVisible") as? Bool
+        XCTAssertEqual(showsDates, true)
+        XCTAssertTrue(messages.filter { $0["type"] as? String == "jsError" }.isEmpty)
+
+        let storedPreferences = UserDefaults.standard.dictionary(forKey: keys[0]) ?? [:]
+        let storedJSON = String(data: try JSONSerialization.data(withJSONObject: storedPreferences), encoding: .utf8)!
+        config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckPreferences=\(storedJSON);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        native = nil
+        let favoritesReload = WKWebView(frame: web.frame, configuration: config)
+        window.contentView = favoritesReload
+        favoritesReload.loadFileURL(file, allowingReadAccessTo: directory)
+        for _ in 0..<100 {
+            if (try? await favoritesReload.evaluateJavaScript("typeof window.setChartData==='function'")) as? Bool == true { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        let favoriteRestored = try await favoritesReload.evaluateJavaScript("window.setChartData(\(json));!!document.querySelector('#intervalFavorites [data-interval=\"6h\"]')") as? Bool
+        XCTAssertEqual(favoriteRestored, true, "Native favorites must restore when the web chart is reopened")
+
+        let candlePoints = (0..<100).map { index in
+            let close = 100 + Double(index % 13)
+            return PricePoint(date: Date(timeIntervalSince1970: 1_700_000_000 + Double(index)*86400),
+                close: close, open: close - 0.5, high: close + 1, low: close - 1, volume: 500 + Double(index))
+        }
+        let candlePayload = LightweightChartMath.payload(points: candlePoints, interval: .day, symbol: "TEST",
+            currency: "USD", periods: [:], showsRangeControls: true)
+        let candleJSON = String(data: try JSONEncoder().encode(candlePayload), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.setChartData(\(candleJSON));document.getElementById('lineType').click();")
+        let lineSelected = try await favoritesReload.evaluateJavaScript("document.getElementById('lineType').textContent.startsWith('✓')") as? Bool
+        XCTAssertEqual(lineSelected, true)
+        _ = try await favoritesReload.evaluateJavaScript("document.getElementById('candleType').click()")
+        let candleSelected = try await favoritesReload.evaluateJavaScript("document.getElementById('candleType').textContent.startsWith('✓')") as? Bool
+        XCTAssertEqual(candleSelected, true, "Daily bars with valid OHLC must allow candle selection")
+
+        let latestRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        let hoveredTime = String(data: try JSONEncoder().encode(candlePayload.bars[40].time), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetReadout(\(hoveredTime))")
+        let hoverClose = try await favoritesReload.evaluateJavaScript("document.querySelector('#candleReadout [data-field=close] i')?.textContent") as? String
+        XCTAssertEqual(hoverClose, "\(Int(candlePoints[40].close))")
+        let hoverFields = try await favoritesReload.evaluateJavaScript("Object.fromEntries([...document.querySelectorAll('#candleReadout [data-field]')].map(node=>[node.dataset.field,node.querySelector('i').textContent]))") as? [String: String]
+        XCTAssertEqual(hoverFields?["change"], "+1")
+        XCTAssertEqual(hoverFields?["changePercent"], "+1.00%")
+        XCTAssertEqual(hoverFields?["volume"], "540")
+        let hoveredRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        XCTAssertNotEqual(hoveredRSI, latestRSI, "Indicator legend should show the hovered candle's value")
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetReadout(null)")
+        let restoredRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        XCTAssertEqual(restoredRSI, latestRSI, "Leaving the chart should restore latest indicator values")
+
+        let closeOnlyPayload = LightweightChartMath.payload(points: points, interval: .day, symbol: "TEST",
+            currency: "USD", periods: [:], showsRangeControls: true)
+        let closeOnlyJSON = String(data: try JSONEncoder().encode(closeOnlyPayload), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.setChartData(\(closeOnlyJSON))")
+        let candlesDisabled = try await favoritesReload.evaluateJavaScript("document.getElementById('candleType').disabled") as? Bool
+        XCTAssertEqual(candlesDisabled, true, "Close-only sources should not offer fabricated candles")
+        let detailPayload = LightweightChartMath.payload(points: candlePoints, interval: .day, symbol: "TEST", currency: "USD", periods: [:])
+        let detailJSON = String(data: try JSONEncoder().encode(detailPayload), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetSurface('detail');window.setChartData(\(detailJSON))")
+        let detailRenderError = try await favoritesReload.evaluateJavaScript("document.getElementById('error').textContent") as? String
+        XCTAssertTrue(detailRenderError?.isEmpty ?? true, "The table detail chart should render indicators without JavaScript errors: \(detailRenderError ?? "")")
+        let detailReadoutVisible = try await favoritesReload.evaluateJavaScript("!document.getElementById('candleReadout').hidden") as? Bool
+        XCTAssertEqual(detailReadoutVisible, true, "The table detail chart should show the candle information row")
+        let detailCandlesEnabled = try await favoritesReload.evaluateJavaScript("!document.getElementById('candleType').disabled") as? Bool
+        XCTAssertEqual(detailCandlesEnabled, true, "The table detail chart should allow candles for valid daily OHLC data")
+        let detailToolbarUsesIcons = try await favoritesReload.evaluateJavaScript("document.getElementById('chartTypeLabel').classList.contains('icon-only')&&document.getElementById('indicatorLabel').classList.contains('icon-only')") as? Bool
+        XCTAssertEqual(detailToolbarUsesIcons, true, "The table detail chart should use the shared icon toolbar")
+        let detailLatestRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        let detailHoveredTime = String(data: try JSONEncoder().encode(detailPayload.bars[40].time), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetReadout(\(detailHoveredTime))")
+        let detailHoverClose = try await favoritesReload.evaluateJavaScript("document.querySelector('#candleReadout [data-field=close] i')?.textContent") as? String
+        XCTAssertEqual(detailHoverClose, "\(Int(candlePoints[40].close))")
+        let detailHoveredRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        XCTAssertNotEqual(detailHoveredRSI, detailLatestRSI, "The table detail RSI value should follow the hovered candle")
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetReadout(null)")
+        let detailRestoredRSI = try await favoritesReload.evaluateJavaScript("document.querySelector('#indicatorLegend [data-legend-key=RSI]')?.textContent") as? String
+        XCTAssertEqual(detailRestoredRSI, detailLatestRSI, "Leaving the detail chart should restore the latest RSI value")
+
+        let sharedChartPayload = LightweightChartMath.payload(points: candlePoints, interval: .day, symbol: "TEST",
+            currency: "USD", periods: [:], selectedRange: "3M", showsRangeControls: true,
+            availableRanges: ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "7Y", "10Y", "All"])
+        let sharedChartJSON = String(data: try JSONEncoder().encode(sharedChartPayload), encoding: .utf8)!
+        _ = try await favoritesReload.evaluateJavaScript("window.testSetSurface('superchart');window.setChartData(\(sharedChartJSON))")
+        let sharedRangeVisible = try await favoritesReload.evaluateJavaScript("!document.getElementById('rangeBar').hidden&&document.querySelectorAll('#rangePresets [data-range]').length===9") as? Bool
+        XCTAssertEqual(sharedRangeVisible, true, "The table chart should expose Superchart's range picker")
+        let sharedToolbarIcons = try await favoritesReload.evaluateJavaScript("['chartTypeLabel','indicatorLabel','displayLabel','resetView'].every(id=>document.getElementById(id).classList.contains('icon-only'))") as? Bool
+        XCTAssertEqual(sharedToolbarIcons, true, "The table chart should use Superchart's icon toolbar")
     }
 }

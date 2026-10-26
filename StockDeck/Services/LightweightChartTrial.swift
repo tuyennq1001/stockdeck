@@ -3,7 +3,28 @@ import SwiftUI
 import WebKit
 
 enum LightweightChartInterval: String, CaseIterable, Identifiable {
-    case day = "1D", week = "1W", month = "1M"
+    case fiveMinutes = "5m", thirtyMinutes = "30m", hour = "1h", fourHours = "4h", sixHours = "6h"
+    case day = "1D", week = "1W", month = "1M", quarter = "3M", halfYear = "6M", year = "1Y"
+    var seconds: Int? {
+        switch self {
+        case .fiveMinutes: 300
+        case .thirtyMinutes: 1800
+        case .hour: 3600
+        case .fourHours: 14400
+        case .sixHours: 21600
+        default: nil
+        }
+    }
+    var isIntraday: Bool { seconds != nil }
+    var label: String {
+        switch self {
+        case .day: "D"
+        case .week: "W"
+        case .month: "M"
+        case .year: "Y"
+        default: rawValue
+        }
+    }
     var id: String { rawValue }
 
     static func automatic(visibleFrom: Date?, points: [PricePoint]) -> Self {
@@ -16,11 +37,14 @@ enum LightweightChartInterval: String, CaseIterable, Identifiable {
 }
 
 enum LightweightChartRangePreset: String, CaseIterable {
+    case oneDay = "1D", fiveDays = "5D"
     case oneMonth = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", oneYear = "1Y"
     case threeYears = "3Y", fiveYears = "5Y", sevenYears = "7Y", tenYears = "10Y", all = "All"
 
     var automaticInterval: LightweightChartInterval? {
         switch self {
+        case .oneDay: .fiveMinutes
+        case .fiveDays: .thirtyMinutes
         case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear: .day
         case .threeYears, .fiveYears: .week
         case .sevenYears, .tenYears: .month
@@ -30,25 +54,31 @@ enum LightweightChartRangePreset: String, CaseIterable {
 
     static func range(for interval: LightweightChartInterval) -> Self {
         switch interval {
+        case .fiveMinutes: .oneDay
+        case .thirtyMinutes: .fiveDays
+        case .hour, .fourHours, .sixHours: .oneMonth
         case .day: .threeMonths
         case .week: .oneYear
-        case .month: .fiveYears
+        case .month, .quarter, .halfYear, .year: .fiveYears
         }
     }
 }
 
 struct LightweightBar: Codable {
     let time: String
-    let open, high, low, close: Double
+    let open, high, low: Double?
+    let close: Double
     let volume: Double?
 }
 
 struct LightweightChartPayload: Encodable {
     let symbol: String
     let currency: String
+    let timeZone: String
     let interval: String
     let bars: [LightweightBar]
     let visibleFrom: String?
+    let visibleTo: String?
     let markers: [LightweightChartMarker]
     let targetPrice: Double?
     let showInsiderMarkers: Bool
@@ -474,10 +504,10 @@ enum LightweightChartMath {
                               drawings: [LightweightPriceRange] = [],
                               indicatorSettings: LightweightIndicatorSettings = .init(),
                               selectedRange: String = "3M", showsRangeControls: Bool = false,
-                              availableRanges: [String] = []) -> Data? {
+                              availableRanges: [String] = [], visibleTo: Date? = nil) -> Data? {
         var hasher = Hasher()
         hasher.combine(symbol); hasher.combine(currency); hasher.combine(interval.rawValue)
-        hasher.combine(visibleFrom?.timeIntervalSince1970); hasher.combine(targetPrice)
+        hasher.combine(visibleFrom?.timeIntervalSince1970); hasher.combine(visibleTo?.timeIntervalSince1970); hasher.combine(targetPrice)
         hasher.combine(showInsiderMarkers)
         hasher.combine(selectedRange); hasher.combine(showsRangeControls)
         for range in availableRanges { hasher.combine(range) }
@@ -530,7 +560,7 @@ enum LightweightChartMath {
                             periods: periods, visibleFrom: visibleFrom, markers: markers, targetPrice: targetPrice,
                             showInsiderMarkers: showInsiderMarkers, drawings: drawings, indicatorSettings: settings,
                             selectedRange: selectedRange, showsRangeControls: showsRangeControls,
-                            availableRanges: availableRanges)
+                            availableRanges: availableRanges, visibleTo: visibleTo)
         guard let data = try? JSONEncoder().encode(value) else { return nil }
         cacheLock.lock()
         payloadCache[key] = data
@@ -546,17 +576,26 @@ enum LightweightChartMath {
         let ordered = deduplicate(input).sorted { $0.date < $1.date }
         guard interval != .day else { return deduplicate(ordered) }
         var cal = calendar
-        cal.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
+        let schedule = MarketCategory.marketSchedule(for: symbol)
+        cal.timeZone = schedule.timeZone
         cal.firstWeekday = 2
         cal.minimumDaysInFirstWeek = 4
         var result: [PricePoint] = []
         var key: Date?
         for point in ordered where valid(point) {
             let bucket: Date
-            if interval == .week {
+            if let seconds = interval.seconds {
+                let day = cal.startOfDay(for: point.date)
+                let anchor = cal.date(byAdding: .minute, value: schedule.mondayOpenMinutes, to: day) ?? day
+                bucket = anchor.addingTimeInterval(floor(point.date.timeIntervalSince(anchor) / Double(seconds)) * Double(seconds))
+            } else if interval == .week {
                 bucket = cal.dateInterval(of: .weekOfYear, for: point.date)?.start ?? cal.startOfDay(for: point.date)
             } else {
-                bucket = cal.dateInterval(of: .month, for: point.date)?.start ?? cal.startOfDay(for: point.date)
+                let span = interval == .quarter ? 3 : interval == .halfYear ? 6 : interval == .year ? 12 : 1
+                var components = cal.dateComponents([.year, .month], from: point.date)
+                components.month = ((components.month! - 1) / span) * span + 1
+                components.day = 1
+                bucket = cal.date(from: components) ?? cal.startOfDay(for: point.date)
             }
             if key == bucket, let last = result.popLast() {
                 let preservesOHLC = last.open != nil && last.high != nil && last.low != nil
@@ -569,7 +608,8 @@ enum LightweightChartMath {
                     low: preservesOHLC ? min(last.low!, point.low!) : nil, volume: volume))
             } else {
                 key = bucket
-                result.append(point)
+                result.append(PricePoint(date: interval == .week || interval == .month ? point.date : bucket,
+                    close: point.close, open: point.open, high: point.high, low: point.low, volume: point.volume))
             }
         }
         return deduplicate(result)
@@ -582,19 +622,21 @@ enum LightweightChartMath {
                         drawings: [LightweightPriceRange] = [],
                         indicatorSettings: LightweightIndicatorSettings = .init(),
                         selectedRange: String = "3M", showsRangeControls: Bool = false,
-                        availableRanges: [String] = []) -> LightweightChartPayload {
+                        availableRanges: [String] = [], visibleTo: Date? = nil) -> LightweightChartPayload {
         let settings = indicatorSettings.validated()
         let grouped = aggregate(points, interval: interval, symbol: symbol)
-        let hasOHLC = !grouped.isEmpty && grouped.allSatisfy { point in
-            guard let open = point.open, let high = point.high, let low = point.low else { return false }
-            return valid(point) && high >= max(open, point.close) && low <= min(open, point.close)
-        }
         let bars = grouped.compactMap { point -> LightweightBar? in
             guard valid(point) else { return nil }
-            return LightweightBar(time: tradingDay(point.date, symbol: symbol), open: point.open ?? point.close,
-                                  high: point.high ?? point.close, low: point.low ?? point.close,
+            return LightweightBar(time: chartTime(point.date, interval: interval, symbol: symbol),
+                                  open: point.open, high: point.high, low: point.low,
                                   close: point.close, volume: point.volume.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
         }
+        let ohlcBars = bars.filter { bar in
+            guard let open = bar.open, let high = bar.high, let low = bar.low else { return false }
+            return high.isFinite && low.isFinite && open.isFinite
+                && high >= max(open, bar.close) && low <= min(open, bar.close)
+        }
+        let hasOHLC = !ohlcBars.isEmpty
         let closes = bars.map(\.close)
         var lines: [String: [LightweightIndicatorPoint]] = [:]
         for (name, period) in periods where period > 0 {
@@ -606,15 +648,23 @@ enum LightweightChartMath {
                     lines[name] = []
                     continue
                 }
+                let sourceBars: [LightweightBar]
                 let prices: [Double]
                 switch source {
-                case "open": prices = bars.map(\.open)
-                case "high": prices = bars.map(\.high)
-                case "low": prices = bars.map(\.low)
-                case "hl2": prices = bars.map { ($0.high + $0.low) / 2 }
-                case "hlc3": prices = bars.map { ($0.high + $0.low + $0.close) / 3 }
-                case "ohlc4": prices = bars.map { ($0.open + $0.high + $0.low + $0.close) / 4 }
-                default: prices = closes
+                case "open": sourceBars = bars.filter { $0.open != nil }; prices = sourceBars.compactMap(\.open)
+                case "high": sourceBars = bars.filter { $0.high != nil }; prices = sourceBars.compactMap(\.high)
+                case "low": sourceBars = bars.filter { $0.low != nil }; prices = sourceBars.compactMap(\.low)
+                case "hl2": sourceBars = bars.filter { $0.high != nil && $0.low != nil }; prices = sourceBars.compactMap { bar in
+                    guard let high = bar.high, let low = bar.low else { return nil }; return (high + low) / 2
+                }
+                case "hlc3": sourceBars = bars.filter { $0.high != nil && $0.low != nil }; prices = sourceBars.compactMap { bar in
+                    guard let high = bar.high, let low = bar.low else { return nil }; return (high + low + bar.close) / 3
+                }
+                case "ohlc4": sourceBars = bars.filter { $0.open != nil && $0.high != nil && $0.low != nil }; prices = sourceBars.compactMap { bar in
+                    guard let open = bar.open, let high = bar.high, let low = bar.low else { return nil }
+                    return (open + high + low + bar.close) / 4
+                }
+                default: sourceBars = bars; prices = closes
                 }
                 switch components[1] {
                 case "SMA": values = sma(prices, period)
@@ -628,35 +678,59 @@ enum LightweightChartMath {
                 default: continue
                 }
             }
-            lines[name] = zip(bars, values).compactMap { bar, value in
+            let sourceBars: [LightweightBar]
+            if components.count == 3, components[0].hasPrefix("MA ") {
+                switch components[2] {
+                case "open": sourceBars = bars.filter { $0.open != nil }
+                case "high": sourceBars = bars.filter { $0.high != nil }
+                case "low": sourceBars = bars.filter { $0.low != nil }
+                case "hl2", "hlc3": sourceBars = bars.filter { $0.high != nil && $0.low != nil }
+                case "ohlc4": sourceBars = bars.filter { $0.open != nil && $0.high != nil && $0.low != nil }
+                default: sourceBars = bars
+                }
+            } else { sourceBars = bars }
+            lines[name] = zip(sourceBars, values).compactMap { bar, value in
                 value.map { LightweightIndicatorPoint(time: bar.time, value: $0) }
             }
         }
-        func indicatorPoints(_ values: [Double?]) -> [LightweightIndicatorPoint] {
-            zip(bars, values).compactMap { bar, value in
+        func indicatorPoints(_ values: [Double?], on source: [LightweightBar] = bars) -> [LightweightIndicatorPoint] {
+            zip(source, values).compactMap { bar, value in
                 value.flatMap { $0.isFinite ? LightweightIndicatorPoint(time: bar.time, value: $0) : nil }
             }
         }
         let bands = bollinger(closes, settings.bollingerPeriod, settings.bollingerDeviations)
         let macdValues = macd(closes, fast: settings.macdFast, slow: settings.macdSlow, signal: settings.macdSignal)
-        let highs = bars.map(\.high), lows = bars.map(\.low)
+        let highs = ohlcBars.compactMap(\.high), lows = ohlcBars.compactMap(\.low)
         let stochasticValues = showsRangeControls && hasOHLC
-            ? stochastic(highs: highs, lows: lows, closes: closes, kPeriod: settings.stochasticKPeriod,
+            ? stochastic(highs: highs, lows: lows, closes: ohlcBars.map(\.close), kPeriod: settings.stochasticKPeriod,
                          kSmoothing: settings.stochasticKSmoothing, dPeriod: settings.stochasticDPeriod)
-            : (k: Array<Double?>(repeating: nil, count: bars.count), d: Array<Double?>(repeating: nil, count: bars.count))
+            : (k: Array<Double?>(repeating: nil, count: ohlcBars.count), d: Array<Double?>(repeating: nil, count: ohlcBars.count))
         let sarValues = showsRangeControls && hasOHLC
-            ? parabolicSAR(highs: highs, lows: lows, closes: closes, step: settings.sarStep,
+            ? parabolicSAR(highs: highs, lows: lows, closes: ohlcBars.map(\.close), step: settings.sarStep,
                            increment: settings.sarIncrement, maximum: settings.sarMaximum)
-            : Array<Double?>(repeating: nil, count: bars.count)
-        return LightweightChartPayload(symbol: symbol, currency: currency, interval: interval.rawValue,
-            bars: bars, visibleFrom: visibleFrom.map { tradingDay($0, symbol: symbol) },
-            markers: markers, targetPrice: targetPrice.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
+            : Array<Double?>(repeating: nil, count: ohlcBars.count)
+        var markerTimes: [String: String] = [:]
+        if interval.isIntraday {
+            for (point, bar) in zip(grouped, bars) {
+                let day = tradingDay(point.date, symbol: symbol)
+                if markerTimes[day] == nil { markerTimes[day] = bar.time }
+            }
+        }
+        let displayMarkers = interval.isIntraday ? markers.compactMap { marker -> LightweightChartMarker? in
+            guard let time = markerTimes[marker.time] else { return nil }
+            return .init(time: time, position: marker.position, color: marker.color, shape: marker.shape, text: marker.text)
+        } : markers
+        return LightweightChartPayload(symbol: symbol, currency: currency,
+            timeZone: MarketCategory.marketSchedule(for: symbol).timeZone.identifier, interval: interval.rawValue,
+            bars: bars, visibleFrom: visibleFrom.map { chartTime($0, interval: interval, symbol: symbol) },
+            visibleTo: visibleTo.map { chartTime($0, interval: interval, symbol: symbol) },
+            markers: displayMarkers, targetPrice: targetPrice.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
             showInsiderMarkers: showInsiderMarkers, drawings: drawings,
             hasOHLC: hasOHLC, lines: lines, rsi: indicatorPoints(rsi(closes, settings.rsiPeriod)),
             macd: indicatorPoints(macdValues.macd), signal: indicatorPoints(macdValues.signal),
             histogram: indicatorPoints(macdValues.histogram),
-            stochasticK: indicatorPoints(stochasticValues.k), stochasticD: indicatorPoints(stochasticValues.d),
-            parabolicSAR: indicatorPoints(sarValues), upperBand: indicatorPoints(bands.upper),
+            stochasticK: indicatorPoints(stochasticValues.k, on: ohlcBars), stochasticD: indicatorPoints(stochasticValues.d, on: ohlcBars),
+            parabolicSAR: indicatorPoints(sarValues, on: ohlcBars), upperBand: indicatorPoints(bands.upper),
             middleBand: indicatorPoints(bands.middle), lowerBand: indicatorPoints(bands.lower),
             indicatorSettings: settings, selectedRange: selectedRange,
             showsRangeControls: showsRangeControls, availableRanges: availableRanges)
@@ -816,6 +890,9 @@ enum LightweightChartMath {
         return output
     }
 
+    static func chartTime(_ date: Date, interval: LightweightChartInterval, symbol: String) -> String {
+        interval.isIntraday ? String(Int(date.timeIntervalSince1970)) : tradingDay(date, symbol: symbol)
+    }
     private static func valid(_ point: PricePoint) -> Bool { point.close.isFinite && point.close > 0 }
     static func tradingDay(_ date: Date, symbol: String) -> String {
         var calendar = Calendar(identifier: .gregorian)
@@ -837,32 +914,99 @@ enum LightweightChartMath {
     }
 }
 
+struct LightweightCustomRange: Equatable, Codable {
+    let from: String
+    let to: String
+
+    func dates(symbol: String) -> (Date, Date)? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
+        func date(_ text: String) -> Date? {
+            let parts = text.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3, text.count == 10,
+                  let value = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
+                  LightweightChartMath.tradingDay(value, symbol: symbol) == text else { return nil }
+            return value
+        }
+        guard let start = date(from), let end = date(to), start <= end,
+              let nextDay = calendar.date(byAdding: .day, value: 1, to: end) else { return nil }
+        return (start, nextDay.addingTimeInterval(-1))
+    }
+
+    func automaticInterval(symbol: String) -> LightweightChartInterval {
+        guard let (start, end) = dates(symbol: symbol) else { return .day }
+        let days = end.timeIntervalSince(start) / 86400
+        return days <= 366 ? .day : days <= 5 * 366 ? .week : .month
+    }
+}
+
 struct LightweightChartViewSelection: Equatable {
     let range: String
     let interval: LightweightChartInterval
+    var customRange: LightweightCustomRange? = nil
+}
+
+enum LightweightChartSurface: String {
+    case detail
+    case superchart
 }
 
 enum LightweightChartViewSelectionStore {
-    static let superchartKey = "stockdeck.superchart.view.v1"
+    static func load(symbol: String, surface: LightweightChartSurface,
+                     defaults: UserDefaults = .standard) -> LightweightChartViewSelection? {
+        let key = sharedKey(surface: surface)
+        if let saved = defaults.dictionary(forKey: key),
+           let selection = decode(saved, symbol: symbol) { return selection }
 
-    static func load(symbol: String, shared: Bool, defaults: UserDefaults = .standard) -> LightweightChartViewSelection? {
-        let key = shared ? superchartKey : symbolKey(symbol)
-        guard let saved = defaults.dictionary(forKey: key),
+        // Migrate the previous per-symbol selection once, using the currently
+        // open symbol as the initial shared toolbar choice for this chart.
+        if let saved = defaults.dictionary(forKey: scopedKey(symbol, surface: surface)),
+           let selection = decode(saved, symbol: symbol) {
+            save(selection, surface: surface, defaults: defaults)
+            return selection
+        }
+
+        // Also migrate selections from versions before the v2 per-symbol store.
+        let legacyKey = surface == .superchart ? "stockdeck.superchart.view.v1" : legacySymbolKey(symbol)
+        guard let saved = defaults.dictionary(forKey: legacyKey),
+              let selection = decode(saved, symbol: symbol) else { return nil }
+        save(selection, surface: surface, defaults: defaults)
+        if surface == .superchart { defaults.removeObject(forKey: legacyKey) }
+        return selection
+    }
+
+    static func save(_ selection: LightweightChartViewSelection,
+                     surface: LightweightChartSurface, defaults: UserDefaults = .standard) {
+        var values = ["range": selection.range, "interval": selection.interval.rawValue]
+        if let custom = selection.customRange {
+            values["customFrom"] = custom.from
+            values["customTo"] = custom.to
+        }
+        defaults.set(values, forKey: sharedKey(surface: surface))
+    }
+
+    private static func decode(_ saved: [String: Any], symbol: String) -> LightweightChartViewSelection? {
+        guard
               let range = saved["range"] as? String,
-              LightweightChartRangePreset(rawValue: range) != nil,
+              (LightweightChartRangePreset(rawValue: range) != nil || range == "Custom"),
               let rawInterval = saved["interval"] as? String,
               let interval = LightweightChartInterval(rawValue: rawInterval) else { return nil }
-        return LightweightChartViewSelection(range: range, interval: interval)
+        let custom = (saved["customFrom"] as? String).flatMap { from in
+            (saved["customTo"] as? String).map { LightweightCustomRange(from: from, to: $0) }
+        }
+        guard range != "Custom" || custom?.dates(symbol: symbol) != nil else { return nil }
+        return LightweightChartViewSelection(range: range, interval: interval, customRange: custom)
     }
 
-    static func save(_ selection: LightweightChartViewSelection, symbol: String, shared: Bool,
-                     defaults: UserDefaults = .standard) {
-        defaults.set(["range": selection.range, "interval": selection.interval.rawValue],
-                     forKey: shared ? superchartKey : symbolKey(symbol))
-        if shared { defaults.set(selection.range, forKey: "stockdeck.superchart.range") }
+    private static func scopedKey(_ symbol: String, surface: LightweightChartSurface) -> String {
+        "stockdeck.lightweightChart.view.v2.\(surface.rawValue).\(StockService.canonicalSymbol(for: symbol))"
     }
 
-    private static func symbolKey(_ symbol: String) -> String {
+    private static func sharedKey(surface: LightweightChartSurface) -> String {
+        "stockdeck.lightweightChart.view.v3.\(surface.rawValue)"
+    }
+
+    private static func legacySymbolKey(_ symbol: String) -> String {
         "stockdeck.lightweightChart.view.v1.\(StockService.canonicalSymbol(for: symbol))"
     }
 }
@@ -880,20 +1024,35 @@ struct LightweightPriceChartView: View {
     let retry: () -> Void
     @Binding var selectedRange: String
     let showsRangePicker: Bool
-    private static let allRanges = ["1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "7Y", "10Y", "All"]
+    var surface: LightweightChartSurface = .detail
+    private static let allRanges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "7Y", "10Y", "All"]
     @State private var interval: LightweightChartInterval = .day
     @State private var webView: WKWebView?
     @State private var state = "loading"
     @State private var restoredViewForSymbol: String?
     @State private var skipRangeAutoSelection = false
-    private var hasOHLC: Bool { activePoints.contains { $0.open != nil && $0.high != nil && $0.low != nil } }
+    @State private var customRange: LightweightCustomRange?
+    @State private var intradayPoints: [PricePoint] = []
+    @State private var intradaySymbol: String?
+    @State private var intradayError: String?
+    @State private var loadingIntraday = false
+    @State private var intradayReload = 0
+    private var hasOHLC: Bool { activePoints.contains { point in
+        guard let open = point.open, let high = point.high, let low = point.low else { return false }
+        return open.isFinite && high.isFinite && low.isFinite && high >= max(open, point.close) && low <= min(open, point.close)
+    } }
 
     private var rangeStart: Date? {
+        if selectedRange == "Custom" { return customRange?.dates(symbol: symbol)?.0 }
         if selectedRange == "All" { return nil }
         let now = activePoints.last?.date ?? Date()
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
         switch selectedRange {
+        case "1D", "5D":
+            let days = Array(Set(activePoints.map { calendar.startOfDay(for: $0.date) })).sorted()
+            let count = selectedRange == "1D" ? 1 : 5
+            return days.isEmpty ? nil : days[max(0, days.count - count)]
         case "1M": return calendar.date(byAdding: .month, value: -1, to: now)
         case "3M": return calendar.date(byAdding: .month, value: -3, to: now)
         case "6M": return calendar.date(byAdding: .month, value: -6, to: now)
@@ -908,6 +1067,11 @@ struct LightweightPriceChartView: View {
     }
 
     private var activePoints: [PricePoint] {
+        if interval.isIntraday { return intradaySymbol == symbol ? intradayPoints : [] }
+        if selectedRange == "Custom", let start = customRange?.dates(symbol: symbol)?.0,
+           let first = points.first?.date, start < first, !maxPoints.isEmpty {
+            return maxPoints
+        }
         if ["7Y", "10Y", "All"].contains(selectedRange), !maxPoints.isEmpty { return maxPoints }
         return points
     }
@@ -934,11 +1098,11 @@ struct LightweightPriceChartView: View {
             if !showsRangePicker {
                 HStack(spacing: 8) {
                     Menu {
-                        Button("D · Ngày") { selectInterval(.day) }
-                        Button("W · Tuần") { selectInterval(.week) }
-                        Button("M · Tháng") { selectInterval(.month) }
+                        ForEach(LightweightChartInterval.allCases) { item in
+                            Button(item.label) { selectInterval(item) }
+                        }
                     } label: {
-                        Label(activeInterval.rawValue.replacingOccurrences(of: "1", with: ""), systemImage: "chevron.down")
+                        Label(activeInterval.label, systemImage: "chevron.down")
                             .font(.inter(12, weight: .semibold, relativeTo: .body))
                     }
                     .help("Khung nến; khoảng xem sẽ chọn D/W/M tự động, hoặc chọn thủ công.")
@@ -952,24 +1116,34 @@ struct LightweightPriceChartView: View {
                 ContentUnavailableView("Không mở được chart", systemImage: "exclamationmark.triangle",
                     description: Text("Thử tải lại chart."))
                 Button("Thử lại") { state = "loading"; webView?.reload(); retry() }
-            } else if activePoints.isEmpty && isLoading && webView == nil {
+            } else if activePoints.isEmpty && isLoading && webView == nil && !showsRangePicker {
                 ProgressView("Đang tải lịch sử giá…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if activePoints.isEmpty && webView == nil {
+            } else if activePoints.isEmpty && webView == nil && !showsRangePicker && !interval.isIntraday {
                 ContentUnavailableView("Không có lịch sử giá", systemImage: "chart.xyaxis.line",
                     description: Text("Chưa có lịch sử giá cho mã này."))
                 Button("Thử lại", action: retry).padding(.bottom, 12)
             } else {
                 ZStack(alignment: .top) {
-                    if !activePoints.isEmpty || webView != nil {
+                    if showsRangePicker || interval.isIntraday || !activePoints.isEmpty || webView != nil {
                         LightweightChartWebView(symbol: symbol, interval: activeInterval, points: activePoints,
                             currency: currency, visibleFrom: rangeStart, markers: markers,
                             targetPrice: targetPrice, showInsiderMarkers: StorageService.shared.showInsiderMarkers,
-                            selectedRange: selectedRange, showsRangeControls: showsRangePicker,
+                            selectedRange: selectedRange, showsRangeControls: showsRangePicker, surface: surface,
                             availableRanges: availableRanges,
                             onSelectRange: selectRange, onSelectInterval: selectInterval,
+                            visibleTo: selectedRange == "Custom" ? customRange?.dates(symbol: symbol)?.1 : nil,
+                            onSelectCustomRange: selectCustomRange,
                             webView: $webView, state: $state)
                     }
-                    if activePoints.isEmpty && isLoading { ProgressView("Đang tải lịch sử giá…").padding(8).background(.regularMaterial, in: Capsule()) }
+                    if interval.isIntraday && loadingIntraday {
+                        ProgressView("Đang tải dữ liệu trong ngày…").padding(8).background(.regularMaterial, in: Capsule()).padding(.top, 60)
+                    } else if interval.isIntraday && activePoints.isEmpty {
+                        VStack(spacing: 8) {
+                            Text(intradayError ?? "Không có dữ liệu trong ngày cho mã này.")
+                                .multilineTextAlignment(.center).frame(maxWidth: 360)
+                            Button("Thử lại") { intradayReload += 1 }
+                        }.padding(16).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).padding(.top, 60)
+                    } else if activePoints.isEmpty && isLoading { ProgressView("Đang tải lịch sử giá…").padding(8).background(.regularMaterial, in: Capsule()) }
                     else if activePoints.isEmpty { ContentUnavailableView("Không có lịch sử giá", systemImage: "chart.xyaxis.line", description: Text("Chưa có lịch sử giá cho mã này.")); Button("Thử lại", action: retry) }
                     else if state == "loading" { ProgressView("Đang dựng chart…").padding(8).background(.regularMaterial, in: Capsule()) }
                 }
@@ -978,6 +1152,24 @@ struct LightweightPriceChartView: View {
                 .font(.system(size: 9)).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: "\(symbol)|\(interval.isIntraday)|\(intradayReload)") {
+            guard interval.isIntraday else { loadingIntraday = false; return }
+            loadingIntraday = true
+            intradayError = nil
+            let requestedSymbol = symbol
+            do {
+                let loaded = try await SuperchartIntradayLoader.shared.load(symbol: requestedSymbol)
+                guard !Task.isCancelled else { return }
+                intradaySymbol = requestedSymbol
+                intradayPoints = loaded
+            } catch {
+                guard !Task.isCancelled else { return }
+                intradaySymbol = requestedSymbol
+                intradayPoints = []
+                intradayError = error.localizedDescription
+            }
+            loadingIntraday = false
+        }
         .onAppear { restoreView(for: symbol) }
         .onChange(of: symbol) { _, newSymbol in
             restoreView(for: newSymbol)
@@ -985,7 +1177,8 @@ struct LightweightPriceChartView: View {
         .onChange(of: selectedRange) { _, range in
             if skipRangeAutoSelection { skipRangeAutoSelection = false; persistView(); return }
             let preset = LightweightChartRangePreset(rawValue: range)
-            interval = preset?.automaticInterval ?? LightweightChartInterval.automatic(
+            interval = range == "Custom" ? (customRange?.automaticInterval(symbol: symbol) ?? .day)
+                : preset?.automaticInterval ?? LightweightChartInterval.automatic(
                 visibleFrom: nil, points: maxPoints.isEmpty ? points : maxPoints)
             persistView()
             webView?.evaluateJavaScript("window.resetChartView?.()")
@@ -1002,8 +1195,22 @@ struct LightweightPriceChartView: View {
         if !changed { webView?.evaluateJavaScript("window.resetChartView?.()") }
     }
 
+    private func selectCustomRange(_ custom: LightweightCustomRange) {
+        guard custom.dates(symbol: symbol) != nil else { return }
+        customRange = custom
+        interval = custom.automaticInterval(symbol: symbol)
+        selectedRange = "Custom"
+        persistView()
+        webView?.evaluateJavaScript("window.resetChartView?.()")
+    }
+
     private func selectInterval(_ value: LightweightChartInterval) {
         interval = value
+        if selectedRange == "Custom" {
+            persistView()
+            webView?.evaluateJavaScript("window.resetChartView?.()")
+            return
+        }
         let range = LightweightChartRangePreset.range(for: value).rawValue
         skipRangeAutoSelection = selectedRange != range
         selectedRange = range
@@ -1014,24 +1221,23 @@ struct LightweightPriceChartView: View {
     private func restoreView(for symbol: String) {
         guard restoredViewForSymbol != symbol else { return }
         restoredViewForSymbol = symbol
-        if let saved = LightweightChartViewSelectionStore.load(symbol: symbol, shared: showsRangePicker) {
+        customRange = nil
+        if let saved = LightweightChartViewSelectionStore.load(symbol: symbol, surface: surface) {
             skipRangeAutoSelection = selectedRange != saved.range
+            customRange = saved.customRange
             selectedRange = saved.range
             interval = saved.interval
-        } else if showsRangePicker {
-            if LightweightChartRangePreset(rawValue: selectedRange) == nil { selectedRange = "3M" }
-            interval = LightweightChartRangePreset(rawValue: selectedRange)?.automaticInterval
-                ?? LightweightChartInterval.automatic(visibleFrom: nil, points: maxPoints.isEmpty ? points : maxPoints)
         } else {
             skipRangeAutoSelection = selectedRange != "3M"
             selectedRange = "3M"
-            interval = .day
+            interval = LightweightChartRangePreset.threeMonths.automaticInterval
+                ?? LightweightChartInterval.automatic(visibleFrom: nil, points: maxPoints.isEmpty ? points : maxPoints)
         }
     }
 
     private func persistView() {
-        LightweightChartViewSelectionStore.save(.init(range: selectedRange, interval: interval),
-            symbol: symbol, shared: showsRangePicker)
+        LightweightChartViewSelectionStore.save(.init(range: selectedRange, interval: interval, customRange: customRange),
+            surface: surface)
     }
 }
 
@@ -1047,23 +1253,36 @@ struct LightweightChartWebView: NSViewRepresentable {
     let showInsiderMarkers: Bool
     let selectedRange: String
     let showsRangeControls: Bool
+    var surface: LightweightChartSurface = .superchart
     let availableRanges: [String]
     let onSelectRange: (String) -> Void
     let onSelectInterval: (LightweightChartInterval) -> Void
+    var visibleTo: Date? = nil
+    var onSelectCustomRange: (LightweightCustomRange) -> Void = { _ in }
     @Binding var webView: WKWebView?
     @Binding var state: String
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        let surface = showsRangeControls ? "superchart" : "detail"
-        let preferences = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.\(surface).v1") ?? [:]
+        let surfaceName = surface.rawValue
+        let preferenceKey = "stockdeck.chart.preferences.\(surfaceName).v1"
+        let preferences: [String: Any]
+        if let current = UserDefaults.standard.dictionary(forKey: preferenceKey) {
+            preferences = current
+        } else if surface == .detail,
+                  let migrated = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.superchart.v1") {
+            preferences = migrated
+            UserDefaults.standard.set(migrated, forKey: preferenceKey)
+        } else {
+            preferences = [:]
+        }
         if let data = try? JSONSerialization.data(withJSONObject: preferences),
            let json = String(data: data, encoding: .utf8) {
             config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckPreferences=\(json);",
                 injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckChartSurface='\(surface)';",
+        config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckChartSurface='\(surfaceName)';",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController.add(context.coordinator, name: "chart")
         let view = WKWebView(frame: .zero, configuration: config)
@@ -1101,16 +1320,17 @@ struct LightweightChartWebView: NSViewRepresentable {
         private static let legacyIndicatorSettingsKey = "stockdeck.lightweightChart.indicatorSettings.v1"
         init(parent: LightweightChartWebView) {
             self.parent = parent
-            let key = Self.indicatorSettingsKey(superchart: parent.showsRangeControls)
-            let surface = parent.showsRangeControls ? "superchart" : "detail"
+            let key = Self.indicatorSettingsKey(surface: parent.surface)
+            let surface = parent.surface.rawValue
             let preferences = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.\(surface).v1")
             let data = (preferences?["indicatorSettings"] as? String)?.data(using: .utf8)
                 ?? UserDefaults.standard.data(forKey: key)
-                ?? (parent.showsRangeControls ? UserDefaults.standard.data(forKey: Self.legacyIndicatorSettingsKey) : nil)
+                ?? (parent.surface == .detail ? (UserDefaults.standard.data(forKey: Self.legacyIndicatorSettingsKey)
+                    ?? UserDefaults.standard.data(forKey: Self.indicatorSettingsKey(surface: .superchart))) : nil)
             if let data,
                let value = try? JSONDecoder().decode(LightweightIndicatorSettings.self, from: data) {
                 indicatorSettings = value.validated()
-                if parent.showsRangeControls, UserDefaults.standard.data(forKey: key) == nil,
+                if UserDefaults.standard.data(forKey: key) == nil,
                    let migrated = try? JSONEncoder().encode(indicatorSettings) {
                     UserDefaults.standard.set(migrated, forKey: key)
                 }
@@ -1118,22 +1338,23 @@ struct LightweightChartWebView: NSViewRepresentable {
                 indicatorSettings = .init()
             }
         }
-        private static func indicatorSettingsKey(superchart: Bool) -> String {
-            superchart ? "stockdeck.lightweightChart.indicatorSettings.superchart.v1"
-                : legacyIndicatorSettingsKey
+        private static func indicatorSettingsKey(surface: LightweightChartSurface) -> String {
+            "stockdeck.lightweightChart.indicatorSettings.\(surface.rawValue).v1"
         }
         func sendData(to webView: WKWebView) {
             guard webView.url != nil else { return }
             let requestID = UUID()
             latestRequest = requestID
             let points = parent.points, interval = parent.interval, symbol = parent.symbol, currency = parent.currency
-            let visibleFrom = parent.visibleFrom, markers = parent.markers, targetPrice = parent.targetPrice
+            let visibleFrom = parent.visibleFrom, visibleTo = parent.visibleTo, markers = parent.markers, targetPrice = parent.targetPrice
             let showInsiderMarkers = parent.showInsiderMarkers
             let selectedRange = parent.selectedRange
-            let showsRangeControls = parent.showsRangeControls
+            // Detail charts use the same full controls as Superchart, but keep
+            // their stored chart preferences separate.
+            let showsRangeControls = parent.showsRangeControls || parent.surface == .detail
             let availableRanges = parent.availableRanges
             let indicatorSettings = self.indicatorSettings
-            var periods = parent.showsRangeControls
+            var periods = parent.surface == .superchart
                 ? ["MA 1|SMA|close": 20, "MA 2|SMA|close": 50, "MA 3|SMA|close": 100, "MA 4|SMA|close": 200]
                 : ["SMA 20": 20, "SMA 50": 50, "SMA 100": 100, "SMA 200": 200,
                    "EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200]
@@ -1146,7 +1367,7 @@ struct LightweightChartWebView: NSViewRepresentable {
                         visibleFrom: visibleFrom, markers: markers, targetPrice: targetPrice,
                         showInsiderMarkers: showInsiderMarkers, drawings: drawings,
                         indicatorSettings: indicatorSettings, selectedRange: selectedRange,
-                        showsRangeControls: showsRangeControls, availableRanges: availableRanges)
+                        showsRangeControls: showsRangeControls, availableRanges: availableRanges, visibleTo: visibleTo)
                 }.value
                 guard let data else { return }
                 let base64 = data.base64EncodedString()
@@ -1170,9 +1391,9 @@ struct LightweightChartWebView: NSViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             if type == "chartPreferenceChanged", let name = body["name"] as? String,
-               ["display", "indicators", "indicatorSettings", "paneLayout"].contains(name),
+               ["display", "indicators", "indicatorSettings", "paneLayout", "timeframes"].contains(name),
                let value = body["value"] as? String, value.utf8.count < 100_000 {
-                let surface = parent.showsRangeControls ? "superchart" : "detail"
+                let surface = parent.surface.rawValue
                 let key = "stockdeck.chart.preferences.\(surface).v1"
                 var preferences = UserDefaults.standard.dictionary(forKey: key) ?? [:]
                 preferences[name] = value
@@ -1188,7 +1409,7 @@ struct LightweightChartWebView: NSViewRepresentable {
                     indicatorPeriods = rawPeriods.filter { (1...2_000).contains($0.value) }
                 }
                 if let data = try? JSONEncoder().encode(indicatorSettings) {
-                    UserDefaults.standard.set(data, forKey: Self.indicatorSettingsKey(superchart: parent.showsRangeControls))
+                    UserDefaults.standard.set(data, forKey: Self.indicatorSettingsKey(surface: parent.surface))
                 }
                 if let webView = parent.webView { sendData(to: webView) }
             } else if type == "indicatorConfigChanged", let raw = body["periods"] as? [String: Int] {
@@ -1199,6 +1420,10 @@ struct LightweightChartWebView: NSViewRepresentable {
             } else if type == "selectRangePreset", let range = body["range"] as? String,
                       LightweightChartRangePreset(rawValue: range) != nil {
                 parent.onSelectRange(range)
+            } else if type == "selectCustomRange", let from = body["from"] as? String,
+                      let to = body["to"] as? String {
+                let custom = LightweightCustomRange(from: from, to: to)
+                if custom.dates(symbol: parent.symbol) != nil { parent.onSelectCustomRange(custom) }
             } else if type == "selectChartInterval", let rawValue = body["interval"] as? String,
                       let interval = LightweightChartInterval(rawValue: rawValue) {
                 parent.onSelectInterval(interval)

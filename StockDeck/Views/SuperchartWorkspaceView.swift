@@ -14,6 +14,52 @@ enum SuperchartSource: Hashable, Identifiable {
     }
 }
 
+enum SuperchartPortfolioSymbolOrdering {
+    struct Entry {
+        let symbol: String
+        let marketValue: Double?
+    }
+
+    static func orderedSymbols(from entries: [Entry]) -> [String] {
+        struct Aggregate {
+            let symbol: String
+            let firstIndex: Int
+            var marketValue: Double?
+        }
+
+        var aggregates: [String: Aggregate] = [:]
+        for (index, entry) in entries.enumerated() {
+            let key = StockService.canonicalSymbol(for: entry.symbol)
+            guard !key.isEmpty else { continue }
+            if var aggregate = aggregates[key] {
+                if let current = aggregate.marketValue, let added = entry.marketValue,
+                   current.isFinite, added.isFinite {
+                    aggregate.marketValue = current + added
+                } else {
+                    aggregate.marketValue = nil
+                }
+                aggregates[key] = aggregate
+            } else {
+                let value = entry.marketValue.flatMap { $0.isFinite ? $0 : nil }
+                aggregates[key] = Aggregate(symbol: entry.symbol, firstIndex: index, marketValue: value)
+            }
+        }
+
+        return aggregates.values.sorted { lhs, rhs in
+            switch (lhs.marketValue, rhs.marketValue) {
+            case let (left?, right?) where left != right:
+                return left > right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                return lhs.firstIndex < rhs.firstIndex
+            }
+        }.map(\.symbol)
+    }
+}
+
 @MainActor
 struct SuperchartWorkspaceView: View {
     @EnvironmentObject private var storageService: StorageService
@@ -25,7 +71,10 @@ struct SuperchartWorkspaceView: View {
 
     @State private var source: SuperchartSource
     @State private var query = ""
-    @State private var chartRange = UserDefaults.standard.string(forKey: "stockdeck.superchart.range") ?? "3M"
+    @State private var sourceQuery = ""
+    @State private var isSourcePickerPresented = false
+    @State private var sourcePickerShowsPortfolios = false
+    @State private var chartRange = "3M"
     @State private var listWidth = UserDefaults.standard.object(forKey: "stockdeck.superchart.listWidth") as? CGFloat ?? 300
     @State private var isListCollapsed = UserDefaults.standard.bool(forKey: "stockdeck.superchart.listCollapsed")
     @State private var listDragOrigin: CGFloat?
@@ -44,15 +93,29 @@ struct SuperchartWorkspaceView: View {
         case .watchlist(let id):
             return storageService.watchlists.first(where: { $0.id == id })?.symbols ?? []
         case .portfolio(let id):
-            return storageService.portfolios.first(where: { $0.id == id })?.holdings
-                .filter { $0.quantity != 0 }.map(\.symbol) ?? []
+            guard let portfolio = storageService.portfolios.first(where: { $0.id == id }) else { return [] }
+            return orderedPortfolioSymbols(in: [portfolio])
         case .allPortfolios:
-            var seen = Set<String>()
-            return storageService.portfolios.flatMap(\.holdings)
-                .filter { $0.quantity != 0 }
-                .map(\.symbol)
-                .filter { seen.insert(StockService.canonicalSymbol(for: $0)).inserted }
+            return orderedPortfolioSymbols(in: storageService.portfolios)
         }
+    }
+
+    private func orderedPortfolioSymbols(in portfolios: [Portfolio]) -> [String] {
+        let entries = portfolios.flatMap(\.holdings).filter { $0.quantity != 0 }.map { holding in
+            let quote = stockService.quotes[holding.symbol]
+                ?? stockService.quotes[holding.symbol.uppercased()]
+                ?? quoteByCanonical[StockService.canonicalSymbol(for: holding.symbol)]
+            guard let quote, quote.price.isFinite else {
+                return SuperchartPortfolioSymbolOrdering.Entry(symbol: holding.symbol, marketValue: nil)
+            }
+            let currency = stockService.detectedCurrency(for: holding.symbol)
+            let fxRate = stockService.rate(from: currency, to: storageService.preferredCurrency)
+            return SuperchartPortfolioSymbolOrdering.Entry(
+                symbol: holding.symbol,
+                marketValue: holding.marketValue(currentPrice: quote.price) * fxRate
+            )
+        }
+        return SuperchartPortfolioSymbolOrdering.orderedSymbols(from: entries)
     }
 
     private var filteredSymbols: [String] {
@@ -143,7 +206,7 @@ struct SuperchartWorkspaceView: View {
                                 await stockService.ensurePriceHistory(for: symbol)
                                 await stockService.ensurePriceHistoryMax(for: symbol)
                             }
-                        }, selectedRange: $chartRange, showsRangePicker: true)
+                        }, selectedRange: $chartRange, showsRangePicker: true, surface: .superchart)
                         .padding(12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -164,9 +227,6 @@ struct SuperchartWorkspaceView: View {
                 StockService.canonicalSymbol(for: $0) == StockService.canonicalSymbol(for: selectedSymbol)
             }) { return }
             self.selectedSymbol = symbols.first
-        }
-        .onChange(of: chartRange) { _, range in
-            UserDefaults.standard.set(range, forKey: "stockdeck.superchart.range")
         }
         .onChange(of: sourceSymbols) { _, symbols in
             if let selectedSymbol, symbols.contains(where: {
@@ -235,40 +295,27 @@ struct SuperchartWorkspaceView: View {
 
     private var symbolList: some View {
         VStack(spacing: 0) {
-            Menu {
-                Section("Watchlists") {
-                    ForEach(storageService.watchlists) { watchlist in
-                        Button {
-                            source = .watchlist(watchlist.id)
-                        } label: {
-                            sourceMenuLabel(watchlist.name, selected: source == .watchlist(watchlist.id))
-                        }
-                    }
-                }
-                Section("Portfolios") {
-                    Button {
-                        source = .allPortfolios
-                    } label: {
-                        sourceMenuLabel("Tất cả danh mục", selected: source == .allPortfolios)
-                    }
-                    ForEach(storageService.portfolios) { portfolio in
-                        Button {
-                            source = .portfolio(portfolio.id)
-                        } label: {
-                            sourceMenuLabel(portfolio.name, selected: source == .portfolio(portfolio.id))
-                        }
-                    }
-                }
+            Button {
+                if case .portfolio = source { sourcePickerShowsPortfolios = true }
+                else if source == .allPortfolios { sourcePickerShowsPortfolios = true }
+                else { sourcePickerShowsPortfolios = false }
+                sourceQuery = ""
+                isSourcePickerPresented = true
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: sourceIcon)
                         .foregroundStyle(DS.brand)
-                    Text(sourceTitle)
-                        .font(.inter(13, weight: .semibold, relativeTo: .body))
-                        .foregroundStyle(DS.ink)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sourceTitle)
+                            .font(.inter(13, weight: .semibold, relativeTo: .body))
+                            .foregroundStyle(DS.ink)
+                            .lineLimit(1)
+                        Text(sourceKindTitle)
+                            .font(.inter(10, weight: .medium, relativeTo: .caption))
+                            .foregroundStyle(DS.inkTertiary)
+                    }
                     Spacer(minLength: 4)
-                    Image(systemName: "chevron.down")
+                    Image(systemName: isSourcePickerPresented ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DS.inkTertiary)
                 }
@@ -276,9 +323,12 @@ struct SuperchartWorkspaceView: View {
                 .contentShape(Rectangle())
                 .padding(12)
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
             .help("Chọn Watchlist hoặc Portfolio")
-            .accessibilityLabel("Nguồn: \(sourceTitle)")
+            .accessibilityLabel("Nguồn: \(sourceTitle), \(sourceKindTitle)")
+            .popover(isPresented: $isSourcePickerPresented, arrowEdge: .top) {
+                sourcePicker
+            }
 
             TextField("Tìm trong nguồn…", text: $query)
                 .textFieldStyle(.roundedBorder)
@@ -354,6 +404,101 @@ struct SuperchartWorkspaceView: View {
         }
     }
 
+    private var sourceKindTitle: String {
+        switch source {
+        case .watchlist: "Theo dõi"
+        case .portfolio, .allPortfolios: "Danh mục"
+        }
+    }
+
+    private var sourcePicker: some View {
+        VStack(spacing: 10) {
+            Picker("Loại nguồn", selection: $sourcePickerShowsPortfolios) {
+                Text("Theo dõi").tag(false)
+                Text("Danh mục").tag(true)
+            }
+            .pickerStyle(.segmented)
+
+            TextField("Tìm danh sách…", text: $sourceQuery)
+                .textFieldStyle(.roundedBorder)
+
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    if sourcePickerShowsPortfolios {
+                        if matchesSourceQuery("Tất cả danh mục") {
+                            sourcePickerRow("Tất cả danh mục", icon: "briefcase",
+                                            selected: source == .allPortfolios) {
+                                selectSource(.allPortfolios)
+                            }
+                        }
+                        if storageService.portfolios.filter({ matchesSourceQuery($0.name) }).isEmpty,
+                           !matchesSourceQuery("Tất cả danh mục") {
+                            ContentUnavailableView("Không tìm thấy danh mục", systemImage: "magnifyingglass")
+                        }
+                        ForEach(storageService.portfolios.filter { matchesSourceQuery($0.name) }) { portfolio in
+                            sourcePickerRow(portfolio.name, icon: "briefcase",
+                                            selected: source == .portfolio(portfolio.id)) {
+                                selectSource(.portfolio(portfolio.id))
+                            }
+                        }
+                    } else {
+                        if storageService.watchlists.filter({ matchesSourceQuery($0.name) }).isEmpty {
+                            ContentUnavailableView("Không tìm thấy danh sách", systemImage: "magnifyingglass")
+                        }
+                        ForEach(storageService.watchlists.filter { matchesSourceQuery($0.name) }) { watchlist in
+                            sourcePickerRow(watchlist.name, icon: "star",
+                                            selected: source == .watchlist(watchlist.id)) {
+                                selectSource(.watchlist(watchlist.id))
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 300)
+        }
+        .padding(12)
+        .frame(width: 300)
+    }
+
+    private func matchesSourceQuery(_ name: String) -> Bool {
+        let needle = sourceQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return needle.isEmpty || name.localizedCaseInsensitiveContains(needle)
+    }
+
+    private func selectSource(_ newSource: SuperchartSource) {
+        source = newSource
+        isSourcePickerPresented = false
+        sourceQuery = ""
+    }
+
+    private func sourcePickerRow(_ title: String, icon: String, selected: Bool,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(selected ? DS.brand : DS.inkTertiary)
+                    .frame(width: 18)
+                Text(title)
+                    .font(.inter(12, weight: selected ? .semibold : .regular, relativeTo: .body))
+                    .foregroundStyle(selected ? DS.brand : DS.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DS.brand)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? DS.brand.opacity(0.10) : .clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var sourceIcon: String {
         switch source {
         case .watchlist: "star"
@@ -361,23 +506,13 @@ struct SuperchartWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
-    private func sourceMenuLabel(_ title: String, selected: Bool) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            if selected { Image(systemName: "checkmark") }
-        }
-    }
-
     private func symbols(for source: SuperchartSource) -> [String] {
         switch source {
         case .watchlist(let id): return storageService.watchlists.first(where: { $0.id == id })?.symbols ?? []
-        case .portfolio(let id): return storageService.portfolios.first(where: { $0.id == id })?.holdings.filter { $0.quantity != 0 }.map(\.symbol) ?? []
-        case .allPortfolios:
-            var seen = Set<String>()
-            return storageService.portfolios.flatMap(\.holdings).filter { $0.quantity != 0 }.map(\.symbol)
-                .filter { seen.insert(StockService.canonicalSymbol(for: $0)).inserted }
+        case .portfolio(let id):
+            guard let portfolio = storageService.portfolios.first(where: { $0.id == id }) else { return [] }
+            return orderedPortfolioSymbols(in: [portfolio])
+        case .allPortfolios: return orderedPortfolioSymbols(in: storageService.portfolios)
         }
     }
 

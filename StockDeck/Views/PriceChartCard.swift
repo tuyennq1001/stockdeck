@@ -90,7 +90,8 @@ struct PriceChartCard: View {
         self.symbol = symbol
         self.quote = quote
         self.chartHeight = chartHeight
-        let initialRange = ChartRange(rawValue: StorageService.shared.lastStockChartRange) ?? .month
+        // LightweightChartViewSelectionStore restores the detail chart's shared toolbar range.
+        let initialRange = ChartRange.month
 
         let stockService = StockService.shared
         let daily = stockService.priceHistory[symbol] ?? []
@@ -493,11 +494,7 @@ struct PriceChartCard: View {
                 }
             }
 
-            // Row 2: Range Picker (1M, 3M, 6M, YTD, 1Y, 3Y, 5Y, 7Y, 10Y, All) placed above chart
-            rangePicker
-                .padding(.top, 2)
-
-            // Row 3: Chart.
+            // The chart's own range bar is shared with Superchart.
             LightweightPriceChartView(symbol: symbol,
                 points: preparedHistory.fullPoints.isEmpty ? currentHistory : preparedHistory.fullPoints,
                 maxPoints: stockService.priceHistoryMax[symbol] ?? [],
@@ -507,7 +504,7 @@ struct PriceChartCard: View {
                 targetPrice: storageService.buyTarget(for: symbol)?.targetPrice,
                 isLoading: isLoadingCurrent,
                 retry: { Task { await stockService.ensurePriceHistory(for: symbol) } },
-                selectedRange: $lightweightRange, showsRangePicker: false)
+                selectedRange: $lightweightRange, showsRangePicker: true, surface: .detail)
                 .frame(height: chartHeight)
         }
         .padding(.horizontal, 14)
@@ -559,14 +556,23 @@ struct PriceChartCard: View {
             updateCachedInsiderTrades()
         }
         .onChange(of: chartRange) { _, newRange in
-            if lightweightRange != newRange.rawValue { lightweightRange = newRange.rawValue }
-            if isRangeAvailable(newRange) {
-                storageService.lastStockChartRange = newRange.rawValue
+            if !["Custom", "1D", "5D"].contains(lightweightRange), lightweightRange != newRange.rawValue {
+                lightweightRange = newRange.rawValue
             }
             updateCachedInsiderTrades()
         }
         .onChange(of: lightweightRange) { _, value in
-            guard let range = ChartRange(rawValue: value), range != chartRange else { return }
+            let range: ChartRange
+            if let preset = ChartRange(rawValue: value) {
+                range = preset
+            } else if value == "Custom" {
+                range = .all
+            } else if value == "1D" || value == "5D" {
+                range = .month
+            } else {
+                return
+            }
+            guard range != chartRange else { return }
             chartRange = range
         }
         .onChange(of: stockService.priceHistory[symbol]?.count) { _, _ in
@@ -603,16 +609,6 @@ struct PriceChartCard: View {
                     ? "BUY\(trade.count > 1 ? " \(trade.count)x" : "")"
                     : "SELL\(trade.count > 1 ? " \(trade.count)x" : "")")
         }
-    }
-
-    private var rangePicker: some View {
-        SegmentedRangePicker(
-            options: ChartRange.allCases,
-            label: \.rawValue,
-            selection: $chartRange,
-            isOptionEnabled: { isRangeAvailable($0) },
-            disabledHelp: { _ in isVi ? "Dữ liệu lịch sử chưa đủ cho mốc này" : "Historical data does not yet span this period" }
-        )
     }
 
     private func chartDomain(using currentHistory: [PricePoint]) -> ClosedRange<Double> {

@@ -158,6 +158,25 @@ final class LightweightChartMathTests: XCTestCase {
         XCTAssertFalse(payload.hasOHLC)
     }
 
+    func testPartialDailyOHLCKeepsRealCandlesAndDoesNotFillMissingFields() {
+        let start = Date(timeIntervalSince1970: 1_736_000_000)
+        let points = [
+            PricePoint(date: start, close: 102, open: 100, high: 105, low: 99, volume: 1_000),
+            PricePoint(date: start.addingTimeInterval(86_400), close: 104, volume: 1_200)
+        ]
+
+        let payload = LightweightChartMath.payload(points: points, interval: .day,
+            symbol: "TEST", currency: "USD", periods: [:], showsRangeControls: true)
+
+        XCTAssertTrue(payload.hasOHLC, "A daily series with real OHLC bars should allow candle display")
+        XCTAssertEqual(payload.bars.count, 2)
+        XCTAssertEqual(payload.bars[0].open, 100)
+        XCTAssertNil(payload.bars[1].open)
+        XCTAssertNil(payload.bars[1].high)
+        XCTAssertNil(payload.bars[1].low)
+        XCTAssertEqual(payload.bars[1].close, 104)
+    }
+
     func testAutomaticIntervalUsesDailyWeeklyAndMonthlyBarsByRangeLength() {
         let end = Date(timeIntervalSince1970: 1_800_000_000)
         func start(_ years: Double) -> Date { end.addingTimeInterval(-years * 365.2425 * 24 * 60 * 60) }
