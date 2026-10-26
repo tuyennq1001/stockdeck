@@ -1,0 +1,33 @@
+# Lightweight Charts and Superchart — Dev status
+
+Updated 2026-10-25. This is an implementation status report for an uncommitted Dev build, not a claim that the full QA plan has passed.
+
+## Implemented in this build
+
+- Lightweight Charts 5.2.1 and its standalone production bundle are packaged locally; chart runtime does not fetch the library from a CDN.
+- The desktop Portfolio window has a remembered Bảng / Superchart mode switch. Superchart uses the Watchlist or Portfolio already selected in the left sidebar; its symbol list sits directly beside the chart and shows `Symbol / Last / Chg% / Ext%`. The list can be collapsed and resized from 280–420 px. Search, quote updates and cached/offline history use the existing StockService.
+- In Superchart, the normal wide navigation lane is hidden behind a slim mode rail to give the chart more room. A source pulldown above the adjacent symbol list switches between Watchlists and Portfolios; choosing a source also synchronizes the normal Bảng selection. Chart controls are grouped into one compact toolbar row, with the drawing tools in a narrow vertical rail.
+- Range presets use D through 1Y, W for 3Y–5Y, and M for 7Y–10Y. Choosing D/W/M manually selects 3M/1Y/5Y and is not overwritten by the preset rule. All uses the full available history to choose a timeframe. The chosen range and interval are saved by symbol; the WebView saves the viewport by symbol and interval. Switching symbols keeps the WebView and chart instance alive.
+- Chart type and scale live in one menu with separate Nến/Đường and Tuyến tính/Log choices. The indicator menu manages SMA/EMA, Bollinger Bands, RSI and MACD. SMA/EMA entries each have a settings button for period, color and width; custom averages can be added, edited or removed. Bollinger settings include period, deviation, color and width, and the menu label reflects the current parameters. RSI uses a TradingView-inspired Inputs / Style / Visibility dialog: length and editable oversold/middle/overbought levels; independent visibility, color and line width for the RSI line and each threshold; plus axis labels and status-line value toggles. Level ordering is validated before live preview. All indicator forms preview valid edits immediately, debounce recalculation/persistence, and restore the opening configuration with Cancel. Defaults preview immediately. RSI keeps its 0–100 pane scale and reports the latest value with oversold/overbought state. MACD 12/26/9 parameters, line colors/width and component visibility are configurable. Indicator calculations run in Swift; latest settings are persisted and included in the calculation cache key. The display menu contains Volume and buy-target visibility.
+- Superchart toolbar actions use compact SVG icons with full tooltips and accessibility labels; full names remain in menus. Indicator legend rows expose show/hide, settings and delete controls on hover or keyboard focus. Stochastic (14/3/3, 20/80) and Parabolic SAR (0.02/0.02/0.20) are available, off by default; calculations run in Swift and require complete OHLC data. Their configuration is persisted separately for Superchart and included in the calculation cache key.
+- Volume is drawn over the price pane on an independent hidden scale. RSI and MACD panes can be resized or focused with Lightweight Charts pane controls. Price Range labels show signed price change and percent; selecting the drawing exposes high/low and candle count in its tooltip. Existing drawing tools retain per-symbol persistence.
+- Superchart passes the real buy target and executed Insider markers from the existing app services. Its left list remains next to the chart, and sidebar utility/AI/news/settings entries and shortcuts are disabled while Superchart is active.
+- Drawings save by symbol to atomic local files through an actor, with migration from the previous UserDefaults Price Range store. A save error is shown in the chart and can be retried. Legacy data is removed only after migration is durably written.
+
+## Automated verification
+
+- `swift test --filter LightweightChartMathTests`: **23 tests passed, 0 failures** on 2026-10-25, including RSI level ordering, backward-compatible setting decoding, Stochastic smoothing/warm-up, SAR reversal, and OHLC gating.
+- Full `swift test`: **582 passed, 8 failed out of 590** on 2026-10-25. All eight failures are existing Rakuten transaction import tests because `template/transaction` fixtures are absent from this checkout; no chart tests failed.
+- `./dev.sh`: **build and Dev app launch passed** on 2026-10-25; the running process is from this feature worktree.
+- `node --check` on the current inline chart JavaScript and `git diff --check`: **passed**.
+- Native accessibility and interaction smoke check: prior smoke check confirmed Bảng/Superchart switch, source pulldown with Watchlists and Portfolios, adjacent symbol list, compact toolbar and drawing rail. On the running WebView, selecting W changed the range to 1Y; selecting 5Y kept W; returning to D reset the range to 3M. The chart returned to D/3M after the check. The latest RSI dialog could not be visually inspected because macOS reported the screen locked during this run.
+- Visual review of the running Dev window confirmed the left source/list arrangement, rendered chart panes, and single-row chart toolbar. This was a focused smoke check, not a complete Light/Dark, resize, or fullscreen matrix.
+- Existing non-blocking warnings remain in `ContentView.swift` (MainActor default argument) and `AppDelegate.swift` (deprecated activation option). The package also reports the pre-existing unhandled `StockDeck/Info.plist` warning.
+
+## Not yet verified
+
+This build has not completed the native WebKit QA matrix for the latest toolbar and indicator additions. Hover/focus actions, RSI form tabs and validation, and Stochastic/SAR rendering still need hands-on verification. US/JP/VN/Crypto/NAV-only cases, full Light/Dark review, minimum-size/fullscreen, trackpad/keyboard workflows, stale bridge events, save-failure recovery, and close/reopen restoration also remain to be checked.
+
+The required 30 warm / 10 cold ready-time sample, per-scenario p95 frame measurement on real 10-year histories, CPU/memory profile of StockDeck plus WebKit, and 20-cycle retained-object/leak check have **not** been run. No performance target is claimed as met. Screenshot-based visual review was not completed during this implementation session.
+
+The user should try the running Dev build and report workflow/UI issues. Per project instructions, do not commit until the user confirms the app behaves as expected; do not push or create a PR unless requested.

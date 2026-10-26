@@ -62,7 +62,7 @@ struct SymbolDetailView: View {
             if let quote {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: DS.gap) {
-                        PriceChartCard(symbol: symbol, quote: quote, chartHeight: 240)
+                        PriceChartCard(symbol: symbol, quote: quote, chartHeight: 420)
                             .id("price-\(symbol)")
                         VolumeChartCard(symbol: symbol, quote: quote, chartHeight: 140)
                             .id("volume-\(symbol)")
