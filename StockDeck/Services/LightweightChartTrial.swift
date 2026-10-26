@@ -837,6 +837,36 @@ enum LightweightChartMath {
     }
 }
 
+struct LightweightChartViewSelection: Equatable {
+    let range: String
+    let interval: LightweightChartInterval
+}
+
+enum LightweightChartViewSelectionStore {
+    static let superchartKey = "stockdeck.superchart.view.v1"
+
+    static func load(symbol: String, shared: Bool, defaults: UserDefaults = .standard) -> LightweightChartViewSelection? {
+        let key = shared ? superchartKey : symbolKey(symbol)
+        guard let saved = defaults.dictionary(forKey: key),
+              let range = saved["range"] as? String,
+              LightweightChartRangePreset(rawValue: range) != nil,
+              let rawInterval = saved["interval"] as? String,
+              let interval = LightweightChartInterval(rawValue: rawInterval) else { return nil }
+        return LightweightChartViewSelection(range: range, interval: interval)
+    }
+
+    static func save(_ selection: LightweightChartViewSelection, symbol: String, shared: Bool,
+                     defaults: UserDefaults = .standard) {
+        defaults.set(["range": selection.range, "interval": selection.interval.rawValue],
+                     forKey: shared ? superchartKey : symbolKey(symbol))
+        if shared { defaults.set(selection.range, forKey: "stockdeck.superchart.range") }
+    }
+
+    private static func symbolKey(_ symbol: String) -> String {
+        "stockdeck.lightweightChart.view.v1.\(StockService.canonicalSymbol(for: symbol))"
+    }
+}
+
 @MainActor
 struct LightweightPriceChartView: View {
     let symbol: String
@@ -948,9 +978,9 @@ struct LightweightPriceChartView: View {
                 .font(.system(size: 9)).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { if !showsRangePicker { restoreView(for: symbol) } }
+        .onAppear { restoreView(for: symbol) }
         .onChange(of: symbol) { _, newSymbol in
-            if !showsRangePicker { restoreView(for: newSymbol) }
+            restoreView(for: newSymbol)
         }
         .onChange(of: selectedRange) { _, range in
             if skipRangeAutoSelection { skipRangeAutoSelection = false; persistView(); return }
@@ -982,18 +1012,16 @@ struct LightweightPriceChartView: View {
     }
 
     private func restoreView(for symbol: String) {
-        guard !showsRangePicker else { return }
         guard restoredViewForSymbol != symbol else { return }
         restoredViewForSymbol = symbol
-        let key = "stockdeck.lightweightChart.view.v1.\(StockService.canonicalSymbol(for: symbol))"
-        if let saved = UserDefaults.standard.dictionary(forKey: key),
-           let range = saved["range"] as? String,
-           LightweightChartRangePreset(rawValue: range) != nil,
-           let intervalRaw = saved["interval"] as? String,
-           let savedInterval = LightweightChartInterval(rawValue: intervalRaw) {
-            skipRangeAutoSelection = selectedRange != range
-            selectedRange = range
-            interval = savedInterval
+        if let saved = LightweightChartViewSelectionStore.load(symbol: symbol, shared: showsRangePicker) {
+            skipRangeAutoSelection = selectedRange != saved.range
+            selectedRange = saved.range
+            interval = saved.interval
+        } else if showsRangePicker {
+            if LightweightChartRangePreset(rawValue: selectedRange) == nil { selectedRange = "3M" }
+            interval = LightweightChartRangePreset(rawValue: selectedRange)?.automaticInterval
+                ?? LightweightChartInterval.automatic(visibleFrom: nil, points: maxPoints.isEmpty ? points : maxPoints)
         } else {
             skipRangeAutoSelection = selectedRange != "3M"
             selectedRange = "3M"
@@ -1002,8 +1030,8 @@ struct LightweightPriceChartView: View {
     }
 
     private func persistView() {
-        let key = "stockdeck.lightweightChart.view.v1.\(StockService.canonicalSymbol(for: symbol))"
-        UserDefaults.standard.set(["range": selectedRange, "interval": interval.rawValue], forKey: key)
+        LightweightChartViewSelectionStore.save(.init(range: selectedRange, interval: interval),
+            symbol: symbol, shared: showsRangePicker)
     }
 }
 
@@ -1029,6 +1057,12 @@ struct LightweightChartWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let surface = showsRangeControls ? "superchart" : "detail"
+        let preferences = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.\(surface).v1") ?? [:]
+        if let data = try? JSONSerialization.data(withJSONObject: preferences),
+           let json = String(data: data, encoding: .utf8) {
+            config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckPreferences=\(json);",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckChartSurface='\(surface)';",
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController.add(context.coordinator, name: "chart")
@@ -1068,7 +1102,10 @@ struct LightweightChartWebView: NSViewRepresentable {
         init(parent: LightweightChartWebView) {
             self.parent = parent
             let key = Self.indicatorSettingsKey(superchart: parent.showsRangeControls)
-            let data = UserDefaults.standard.data(forKey: key)
+            let surface = parent.showsRangeControls ? "superchart" : "detail"
+            let preferences = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.\(surface).v1")
+            let data = (preferences?["indicatorSettings"] as? String)?.data(using: .utf8)
+                ?? UserDefaults.standard.data(forKey: key)
                 ?? (parent.showsRangeControls ? UserDefaults.standard.data(forKey: Self.legacyIndicatorSettingsKey) : nil)
             if let data,
                let value = try? JSONDecoder().decode(LightweightIndicatorSettings.self, from: data) {
@@ -1132,6 +1169,16 @@ struct LightweightChartWebView: NSViewRepresentable {
         }
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+            if type == "chartPreferenceChanged", let name = body["name"] as? String,
+               ["display", "indicators", "indicatorSettings", "paneLayout"].contains(name),
+               let value = body["value"] as? String, value.utf8.count < 100_000 {
+                let surface = parent.showsRangeControls ? "superchart" : "detail"
+                let key = "stockdeck.chart.preferences.\(surface).v1"
+                var preferences = UserDefaults.standard.dictionary(forKey: key) ?? [:]
+                preferences[name] = value
+                UserDefaults.standard.set(preferences, forKey: key)
+                return
+            }
             if type == "indicatorSettingsChanged",
                let value = body["settings"], JSONSerialization.isValidJSONObject(value),
                let data = try? JSONSerialization.data(withJSONObject: value),

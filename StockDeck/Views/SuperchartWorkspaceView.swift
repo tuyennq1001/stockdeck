@@ -25,9 +25,9 @@ struct SuperchartWorkspaceView: View {
 
     @State private var source: SuperchartSource
     @State private var query = ""
-    @State private var chartRange = "3M"
-    @State private var listWidth: CGFloat = 300
-    @State private var isListCollapsed = false
+    @State private var chartRange = UserDefaults.standard.string(forKey: "stockdeck.superchart.range") ?? "3M"
+    @State private var listWidth = UserDefaults.standard.object(forKey: "stockdeck.superchart.listWidth") as? CGFloat ?? 300
+    @State private var isListCollapsed = UserDefaults.standard.bool(forKey: "stockdeck.superchart.listCollapsed")
     @State private var listDragOrigin: CGFloat?
 
     init(stockService: StockService, selectedSymbol: Binding<String?>, initialSource: SuperchartSource,
@@ -127,7 +127,7 @@ struct SuperchartWorkspaceView: View {
                     .gesture(DragGesture(minimumDistance: 1).onChanged { value in
                         if listDragOrigin == nil { listDragOrigin = listWidth }
                         listWidth = min(420, max(280, (listDragOrigin ?? listWidth) + value.translation.width))
-                    }.onEnded { _ in listDragOrigin = nil })
+                    }.onEnded { _ in listDragOrigin = nil; UserDefaults.standard.set(listWidth, forKey: "stockdeck.superchart.listWidth") })
                     .help("Kéo để đổi độ rộng danh sách")
             }
 
@@ -157,12 +157,16 @@ struct SuperchartWorkspaceView: View {
         }
         .background(DS.ground)
         .onChange(of: source) { _, newSource in
+            UserDefaults.standard.set(newSource.id, forKey: "stockdeck.superchart.source")
             onSelectSource(newSource)
             let symbols = symbols(for: newSource)
             if let selectedSymbol, symbols.contains(where: {
                 StockService.canonicalSymbol(for: $0) == StockService.canonicalSymbol(for: selectedSymbol)
             }) { return }
             self.selectedSymbol = symbols.first
+        }
+        .onChange(of: chartRange) { _, range in
+            UserDefaults.standard.set(range, forKey: "stockdeck.superchart.range")
         }
         .onChange(of: sourceSymbols) { _, symbols in
             if let selectedSymbol, symbols.contains(where: {
@@ -173,6 +177,7 @@ struct SuperchartWorkspaceView: View {
         .onChange(of: initialSource) { _, newSource in source = newSource }
         .onChange(of: selectedSymbol) { _, symbol in
             guard let symbol else { return }
+            UserDefaults.standard.set(symbol, forKey: "stockdeck.superchart.symbol")
             Task {
                 await stockService.ensurePriceHistory(for: symbol)
                 await stockService.ensurePriceHistoryMax(for: symbol)
@@ -180,6 +185,12 @@ struct SuperchartWorkspaceView: View {
             }
         }
         .task {
+            if let sourceID = UserDefaults.standard.string(forKey: "stockdeck.superchart.source"),
+               let savedSource = source(from: sourceID) { source = savedSource }
+            if let saved = UserDefaults.standard.string(forKey: "stockdeck.superchart.symbol"),
+               sourceSymbols.contains(where: { StockService.canonicalSymbol(for: $0) == StockService.canonicalSymbol(for: saved) }) {
+                selectedSymbol = saved
+            }
             if selectedSymbol == nil { selectedSymbol = sourceSymbols.first }
             if let selectedSymbol {
                 await stockService.ensurePriceHistory(for: selectedSymbol)
@@ -191,7 +202,7 @@ struct SuperchartWorkspaceView: View {
 
     private var chartHeader: some View {
         HStack(spacing: 12) {
-            Button { isListCollapsed.toggle() } label: {
+            Button { isListCollapsed.toggle(); UserDefaults.standard.set(isListCollapsed, forKey: "stockdeck.superchart.listCollapsed") } label: {
                 Image(systemName: isListCollapsed ? "sidebar.right" : "sidebar.left")
                     .foregroundStyle(DS.inkSecondary)
             }
@@ -367,6 +378,17 @@ struct SuperchartWorkspaceView: View {
             var seen = Set<String>()
             return storageService.portfolios.flatMap(\.holdings).filter { $0.quantity != 0 }.map(\.symbol)
                 .filter { seen.insert(StockService.canonicalSymbol(for: $0)).inserted }
+        }
+    }
+
+    private func source(from id: String) -> SuperchartSource? {
+        if id == "all-portfolios" { return .allPortfolios }
+        let parts = id.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let uuid = UUID(uuidString: String(parts[1])) else { return nil }
+        switch parts[0] {
+        case "watchlist" where storageService.watchlists.contains(where: { $0.id == uuid }): return .watchlist(uuid)
+        case "portfolio" where storageService.portfolios.contains(where: { $0.id == uuid }): return .portfolio(uuid)
+        default: return nil
         }
     }
 }
