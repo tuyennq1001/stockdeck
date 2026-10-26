@@ -9,7 +9,7 @@ struct PriceChartCard: View {
     @EnvironmentObject var storageService: StorageService
     let symbol: String
     let quote: StockQuote
-    var chartHeight: CGFloat = 280
+    var chartHeight: CGFloat = 420
 
     enum ChartRange: String, CaseIterable, Sendable {
         case month = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", year = "1Y", threeYears = "3Y", fiveYears = "5Y", sevenYears = "7Y", tenYears = "10Y", all = "All"
@@ -83,9 +83,10 @@ struct PriceChartCard: View {
     }
 
     @State private var chartRange: ChartRange
+    @State private var lightweightRange: String
     @State private var preparedHistory: PreparedHistory
 
-    init(symbol: String, quote: StockQuote, chartHeight: CGFloat = 280) {
+    init(symbol: String, quote: StockQuote, chartHeight: CGFloat = 420) {
         self.symbol = symbol
         self.quote = quote
         self.chartHeight = chartHeight
@@ -105,6 +106,7 @@ struct PriceChartCard: View {
             resolvedRange = candidates.first(where: { Self.isRangeAvailable($0, daily: daily, watchlist: watchlist, full: full) }) ?? .all
         }
         self._chartRange = State(initialValue: resolvedRange)
+        self._lightweightRange = State(initialValue: resolvedRange.rawValue)
 
         let initialInput = HistoryInput(
             symbol: symbol,
@@ -117,7 +119,7 @@ struct PriceChartCard: View {
         let initialPoints = Self.computeHistory(initialInput)
         let initialLow = initialPoints.map(\.close).min() ?? .infinity
         let initialHigh = initialPoints.map(\.close).max() ?? -.infinity
-        self._preparedHistory = State(initialValue: PreparedHistory(points: initialPoints, low: initialLow, high: initialHigh))
+        self._preparedHistory = State(initialValue: PreparedHistory(points: initialPoints, fullPoints: resolvedRange == .all ? initialPoints : [], low: initialLow, high: initialHigh))
     }
 
     private var isVi: Bool {
@@ -135,6 +137,7 @@ struct PriceChartCard: View {
 
     struct PreparedHistory: Sendable {
         let points: [PricePoint]
+        let fullPoints: [PricePoint]
         let low: Double
         let high: Double
     }
@@ -317,11 +320,12 @@ struct PriceChartCard: View {
         
         if chartRange == .all {
             if !maxPoints.isEmpty {
-                // If maxPoints genuinely spans further back than daily, or daily is missing, prefer full history
+                // Stitch the lower-resolution max-history prefix to the daily tail so multi-year charts
+                // keep the available daily detail instead of replacing it with monthly points.
                 if let maxEarliest = maxPoints.first?.date,
                    let dailyEarliest = daily.first?.date {
                     if dailyEarliest.timeIntervalSince(maxEarliest) > 35 * 86400 {
-                        return maxPoints
+                        return maxPoints.filter { $0.date < dailyEarliest } + daily
                     }
                 } else if daily.isEmpty {
                     return maxPoints
@@ -494,16 +498,16 @@ struct PriceChartCard: View {
                 .padding(.top, 2)
 
             // Row 3: Chart.
-            PriceChartPlot(currentHistory: currentHistory,
-                           chartRange: chartRange,
-                           cachedGroupedTrades: cachedGroupedTrades,
-                           showInsiderMarkers: storageService.showInsiderMarkers && hasInsiderChartTrades,
-                           buyTarget: storageService.buyTarget(for: symbol),
-                           symbol: symbol, priceSymbol: priceSymbol,
-                           valueDecimals: storageService.valueDecimals,
-                           domain: chartDomain(using: currentHistory),
-                           isLoadingCurrent: isLoadingCurrent)
-                .equatable()
+            LightweightPriceChartView(symbol: symbol,
+                points: preparedHistory.fullPoints.isEmpty ? currentHistory : preparedHistory.fullPoints,
+                maxPoints: stockService.priceHistoryMax[symbol] ?? [],
+                currency: quote.currency,
+                visibleFrom: chartRange.startDate(),
+                markers: lightweightMarkers,
+                targetPrice: storageService.buyTarget(for: symbol)?.targetPrice,
+                isLoading: isLoadingCurrent,
+                retry: { Task { await stockService.ensurePriceHistory(for: symbol) } },
+                selectedRange: $lightweightRange, showsRangePicker: false)
                 .frame(height: chartHeight)
         }
         .padding(.horizontal, 14)
@@ -516,6 +520,9 @@ struct PriceChartCard: View {
             let worker = Task.detached(priority: .userInitiated) { () throws -> PreparedHistory in
                 try Task.checkCancellation()
                 let points = Self.computeHistory(input)
+                let allInput = HistoryInput(symbol: input.symbol, range: .all, daily: input.daily,
+                    watchlist: input.watchlist, full: input.full, intraday: input.intraday)
+                let fullPoints = input.range == .all ? points : Self.computeHistory(allInput)
                 var low = Double.infinity
                 var high = -Double.infinity
                 for (index, point) in points.enumerated() {
@@ -523,7 +530,7 @@ struct PriceChartCard: View {
                     low = min(low, point.effectiveLow)
                     high = max(high, point.effectiveHigh)
                 }
-                return PreparedHistory(points: points, low: low, high: high)
+                return PreparedHistory(points: points, fullPoints: fullPoints, low: low, high: high)
             }
             do {
                 let result = try await withTaskCancellationHandler {
@@ -552,10 +559,15 @@ struct PriceChartCard: View {
             updateCachedInsiderTrades()
         }
         .onChange(of: chartRange) { _, newRange in
+            if lightweightRange != newRange.rawValue { lightweightRange = newRange.rawValue }
             if isRangeAvailable(newRange) {
                 storageService.lastStockChartRange = newRange.rawValue
             }
             updateCachedInsiderTrades()
+        }
+        .onChange(of: lightweightRange) { _, value in
+            guard let range = ChartRange(rawValue: value), range != chartRange else { return }
+            chartRange = range
         }
         .onChange(of: stockService.priceHistory[symbol]?.count) { _, _ in
             clampRangeIfNeeded()
@@ -577,6 +589,19 @@ struct PriceChartCard: View {
         }
         .onChange(of: currentHistory.count) { _, _ in
             updateCachedInsiderTrades()
+        }
+    }
+
+    private var lightweightMarkers: [LightweightChartMarker] {
+        guard storageService.showInsiderMarkers && hasInsiderChartTrades else { return [] }
+        return cachedGroupedTrades.map { trade in
+            LightweightChartMarker(time: LightweightChartMath.tradingDay(trade.date, symbol: symbol),
+                position: trade.isBuy ? "belowBar" : "aboveBar",
+                color: trade.isBuy ? "#1a9b82" : "#d94b59",
+                shape: trade.isBuy ? "arrowUp" : "arrowDown",
+                text: trade.isBuy
+                    ? "BUY\(trade.count > 1 ? " \(trade.count)x" : "")"
+                    : "SELL\(trade.count > 1 ? " \(trade.count)x" : "")")
         }
     }
 

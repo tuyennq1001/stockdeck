@@ -33,7 +33,7 @@ final class DetailChartHistoryTests: XCTestCase {
         XCTAssertEqual(PriceChartCard.ChartRange.tenYears.startDate(from: testDate, calendar: cal), expected10Y)
     }
 
-    func testAllRangeUsesFullHistoryAndDetectsMiddlePointChanges() {
+    func testAllRangeStitchesOlderMaxHistoryToDailyTailAndDetectsMiddlePointChanges() {
         let full = [point(1000, 10), point(500, 20), point(0, 30)]
         let input = PriceChartCard.HistoryInput(symbol: "VGT", range: .all,
             daily: [point(10, 29), point(0, 30)], watchlist: [], full: full, intraday: [])
@@ -42,8 +42,8 @@ final class DetailChartHistoryTests: XCTestCase {
         let next = PriceChartCard.HistoryInput(symbol: "VGT", range: .all,
             daily: input.daily, watchlist: [], full: changed, intraday: [])
         XCTAssertNotEqual(input, next)
-        XCTAssertEqual(PriceChartCard.computeHistory(input, now: now), full)
-        XCTAssertEqual(PriceChartCard.computeHistory(next, now: now), changed)
+        XCTAssertEqual(PriceChartCard.computeHistory(input, now: now), Array(full.prefix(2)) + input.daily)
+        XCTAssertEqual(PriceChartCard.computeHistory(next, now: now), Array(changed.prefix(2)) + input.daily)
     }
 
     func testNearestPointMatchesLinearLookupIncludingBoundariesAndTies() {

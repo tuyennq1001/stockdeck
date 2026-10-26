@@ -24,6 +24,8 @@ struct PortfolioWindowView: View {
     typealias Scope = PortfolioScope
 
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
+    @AppStorage("stockdeck.superchart.workspaceEnabled") private var isSuperchartMode = false
+    @State private var superchartSymbol: String?
     @State private var portfolioPath = NavigationPath()
 
     /// Dev affordance: SD_OPEN_TAB=home|insights|news|watchlist|settings|earnings preselects a tab so
@@ -90,14 +92,28 @@ struct PortfolioWindowView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                NavigationSplitView {
-                    sidebar
-                        .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
-                } detail: {
-                    detail
-                        .frame(minWidth: 640)
-                        .id(selection)
-                        .transition(.opacity.combined(with: .offset(y: 6)))
+                HStack(spacing: 0) {
+                    modeRail
+                    if isSuperchartMode {
+                        SuperchartWorkspaceView(stockService: stockService,
+                            selectedSymbol: $superchartSymbol,
+                            initialSource: sourceForCurrentSelection(),
+                            onSelectSource: selectSuperchartSource)
+                            .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
+                            .id("superchart")
+                            .transition(.opacity.combined(with: .offset(y: 6)))
+                    } else {
+                        NavigationSplitView {
+                            sidebar
+                                .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
+                        } detail: {
+                            detail
+                                .frame(minWidth: 640)
+                                .id(String(describing: selection))
+                                .transition(.opacity.combined(with: .offset(y: 6)))
+                        }
+                        .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }
@@ -112,6 +128,7 @@ struct PortfolioWindowView: View {
         .preferredColorScheme(storageService.appearanceMode.colorScheme)
         // Clicking an alert notification lands the user on the Alerts tab.
         .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
+            isSuperchartMode = false
             navigate(to: .alerts)
         }
         .environment(\.locale, Locale(identifier: storageService.appLanguage))
@@ -240,12 +257,12 @@ struct PortfolioWindowView: View {
     /// ⌘1 AI Insights · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘5 AI Review · ⌘6 News · ⌘R Refresh · ⌘N New portfolio.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { navigate(to: .insights) }.keyboardShortcut("1", modifiers: .command)
+            Button("") { navigate(to: .insights) }.keyboardShortcut("1", modifiers: .command).disabled(isSuperchartMode)
             Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
             Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
-            Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command)
-            Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command)
-            Button("") { navigate(to: .news) }.keyboardShortcut("6", modifiers: .command)
+            Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command).disabled(isSuperchartMode)
+            Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command).disabled(isSuperchartMode)
+            Button("") { navigate(to: .news) }.keyboardShortcut("6", modifiers: .command).disabled(isSuperchartMode)
             Button("") {
                 Task {
                     await storageService.waitUntilRestored()
@@ -261,6 +278,40 @@ struct PortfolioWindowView: View {
     }
 
     // MARK: - Sidebar
+
+    private var modeRail: some View {
+        VStack(spacing: 8) {
+            modeRailButton(title: "Bảng", symbol: "tablecells", selected: !isSuperchartMode) {
+                isSuperchartMode = false
+            }
+            modeRailButton(title: "Superchart", symbol: "chart.xyaxis.line", selected: isSuperchartMode) {
+                isSuperchartMode = true
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 14)
+        .frame(minWidth: 60, maxWidth: 60, maxHeight: .infinity)
+        .background(DS.sidebarBG)
+        .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
+    }
+
+    private func modeRailButton(title: String, symbol: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 17, weight: .medium))
+                Text(title).font(.inter(9, weight: selected ? .semibold : .medium, relativeTo: .caption2))
+                    .lineLimit(1).minimumScaleFactor(0.72)
+            }
+            .foregroundStyle(selected ? DS.brand : DS.inkSecondary)
+            .frame(width: 54, height: 52)
+            .background(selected ? DS.brand.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 9))
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+        .padding(.horizontal, 3)
+    }
 
     private var sidebar: some View {
         return VStack(spacing: 0) {
@@ -326,14 +377,18 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "sparkles", title: "AI Review",
                            helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
                            selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
+                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "calendar", title: "Earnings",
                            helpText: "Earnings report calendar for your portfolios & watchlists",
                            selected: selection == .earnings, namespace: navNamespace) { navigate(to: .earnings) }
+                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
+                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "arrow.triangle.2.circlepath.icloud", title: "Import / Export", helpText: "iCloud Sync, import & export portfolios, watchlists, templates",
                            selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
+                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
@@ -341,10 +396,13 @@ struct PortfolioWindowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 NavRow(icon: "sparkles", title: "AI Insights", helpText: "Daily AI market recap & movement drivers  ⌘1",
                        selected: selection == .insights, namespace: navNamespace) { navigate(to: .insights) }
+                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                 NavRow(icon: "newspaper", title: "News", helpText: "Financial news feed for tracked symbols  ⌘6",
                        selected: selection == .news, namespace: navNamespace) { navigate(to: .news) }
+                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                 NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
                        selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
+                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
             }
             .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
             let totals = sidebarTotals
@@ -497,13 +555,20 @@ struct PortfolioWindowView: View {
     }
 
     private var brand: some View {
-        HStack(spacing: 10) {
-            BrandMark(size: 30)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("StockDeck").font(.inter(15, weight: .bold, relativeTo: .headline)).foregroundStyle(DS.ink)
-                Text(appVersion).font(DS.micro).foregroundStyle(DS.inkTertiary)
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Button { isSuperchartMode = false } label: {
+                    HStack(spacing: 10) {
+                        BrandMark(size: 30)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("StockDeck").font(.inter(15, weight: .bold, relativeTo: .headline)).foregroundStyle(DS.ink)
+                            Text(appVersion).font(DS.micro).foregroundStyle(DS.inkTertiary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
-            Spacer()
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
@@ -571,8 +636,37 @@ struct PortfolioWindowView: View {
     /// this path explicit avoids SwiftUI retaining a stale HoldingDetailView when
     /// the user switches directly to a watchlist or another sidebar destination.
     private func navigate(to destination: Nav) {
+        if isSuperchartMode {
+            switch destination {
+            case .watchlist, .portfolio, .portfoliosAll: break
+            default: return
+            }
+        }
         portfolioPath = NavigationPath()
         selection = destination
+    }
+
+    private func sourceForCurrentSelection() -> SuperchartSource {
+        switch selection {
+        case .watchlist:
+            return .watchlist(storageService.selectedWatchlistId ?? storageService.watchlists.first?.id ?? UUID())
+        case .portfolio(let id): return .portfolio(id)
+        case .portfoliosAll: return .allPortfolios
+        default:
+            return .watchlist(storageService.selectedWatchlistId ?? storageService.watchlists.first?.id ?? UUID())
+        }
+    }
+
+    private func selectSuperchartSource(_ source: SuperchartSource) {
+        switch source {
+        case .watchlist(let id):
+            storageService.selectedWatchlistId = id
+            navigate(to: .watchlist)
+        case .portfolio(let id):
+            navigate(to: .portfolio(id))
+        case .allPortfolios:
+            navigate(to: .portfoliosAll)
+        }
     }
 
 
