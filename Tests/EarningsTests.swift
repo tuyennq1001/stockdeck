@@ -244,6 +244,17 @@ final class EarningsTests: XCTestCase {
         XCTAssertFalse(duplicateDeliver)
     }
 
+    func testEarningsNotificationDeduplication() {
+        let id = "earnings-SPGI-Oct 27"
+        var notified: Set<String> = []
+
+        XCTAssertTrue(NotificationManager.shouldDeliverEarnings(identifier: id, notifiedIds: notified))
+        notified.insert(id)
+
+        XCTAssertFalse(NotificationManager.shouldDeliverEarnings(identifier: id, notifiedIds: notified))
+        XCTAssertTrue(NotificationManager.shouldDeliverEarnings(identifier: "earnings-AAPL-Oct 28", notifiedIds: notified))
+    }
+
     func testYahooEarningsParsesQuarterlyRevenueAndProfit() throws {
         let json = """
         {

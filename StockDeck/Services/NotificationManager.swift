@@ -19,6 +19,14 @@ final class NotificationManager {
     /// identifiers, so this only ever swallows rapid duplicates — never a genuinely new alert.
     private static let dedupWindow: TimeInterval = 120
 
+    private static let notifiedEarningsStorageKey = "stockdeck.notifiedEarningsIds.v1"
+
+    /// Set of earnings notification IDs already dispatched this session or recorded in storage.
+    private var notifiedEarningsIds: Set<String> = {
+        let saved = UserDefaults.standard.stringArray(forKey: "stockdeck.notifiedEarningsIds.v1") ?? []
+        return Set(saved)
+    }()
+
     private init() {
         let isTesting = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil
         isAvailable = !isTesting && Bundle.main.bundleIdentifier != nil && Bundle.main.bundlePath.hasSuffix(".app")
@@ -36,6 +44,11 @@ final class NotificationManager {
     nonisolated static func shouldDeliver(identifier: String, now: Date, lastSent: Date?, window: TimeInterval) -> Bool {
         guard let lastSent else { return true }
         return now.timeIntervalSince(lastSent) >= window
+    }
+
+    /// Deduplicates earnings notifications so each symbol/announcement is notified at most once.
+    nonisolated static func shouldDeliverEarnings(identifier: String, notifiedIds: Set<String>) -> Bool {
+        !notifiedIds.contains(identifier)
     }
 
     /// - Parameter sentiment: drives the Discord embed color (positive/negative/neutral).
@@ -70,6 +83,17 @@ final class NotificationManager {
         let dayString = item.isToday ? "today" : "tomorrow"
         let sessionString = item.session != .unspecified ? " (\(item.session.title))" : ""
         let id = "earnings-\(item.symbol)-\(item.shortDateFormatted)"
+
+        guard Self.shouldDeliverEarnings(identifier: id, notifiedIds: notifiedEarningsIds) else { return }
+        notifiedEarningsIds.insert(id)
+
+        var savedList = UserDefaults.standard.stringArray(forKey: Self.notifiedEarningsStorageKey) ?? []
+        savedList.append(id)
+        if savedList.count > 200 {
+            savedList.removeFirst(savedList.count - 200)
+        }
+        UserDefaults.standard.set(savedList, forKey: Self.notifiedEarningsStorageKey)
+
         let title = "Earnings Alert: \(item.symbol)"
         let body = "\(item.symbol) reports earnings \(dayString)\(sessionString). Consensus EPS: \(item.epsEstimate.map { String(format: "$%.2f", $0) } ?? "TBD")."
         send(title: title, body: body, identifier: id, sentiment: .neutral)
