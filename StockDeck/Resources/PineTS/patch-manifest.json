@@ -1,0 +1,38 @@
+{
+  "base": "pinets@0.13.0",
+  "createdAt": "2026-10-26T09:58:16.793Z",
+  "patches": [
+    "ema-first-source-seed",
+    "allocation-reduced-parameter-parser",
+    "binary-search-htf-index",
+    "scalar-plot-options-without-series-allocation",
+    "incremental-window-stdev",
+    "live-tail-output-replacement"
+  ],
+  "artifacts": {
+    "pinets.browser.js": {
+      "baseSHA256": "15dac361cde5cba8921cc65e1360d17a942e2d0109515023abc8c5407a0a302e",
+      "patchedFactorySHA256": "965e9113b2d08b5cf81e8b690de41749a362e96aeef344d80e5379c31a22dc00",
+      "patchSHA256": {
+        "ema": "4f7c09d994dd50a16e7a74faee7eed1f71540b9c009e069addaa454a4642b63c",
+        "params": "4e852a2c2675115953b238bce9a40276dd13b01c9b1c3bde74d04b2a11af6566",
+        "htfIndex": "ac61ee18b25139c3ac257942c28c374de7acdebd59f28ce5d7437e91ffbffa17",
+        "plotOptions": "a180e37ea80ccc9970f97447c3f9a0074804242a417890705600e46eb0f1cb71",
+        "stdev": "9accdb9977a0ce507bdb2c8bb09ff051f93cb0ffd67bb021b06c3371b4c17f1f"
+      },
+      "candidateSHA256": "449639feed54fb83c640de25bba0e570d8d8914886030d79af590134bf8a8f7a"
+    },
+    "pinets.es.mjs": {
+      "baseSHA256": "eff9dc0f8699c72b3f4ca6fcf17695f103cce7b041a5ca929e74106f9aeca2aa",
+      "patchedFactorySHA256": "756cf279a81c1c48ef8ac09fa3fb085c6b2088390a520d4f8d23e6a03dd17910",
+      "patchSHA256": {
+        "ema": "4f7c09d994dd50a16e7a74faee7eed1f71540b9c009e069addaa454a4642b63c",
+        "params": "4e852a2c2675115953b238bce9a40276dd13b01c9b1c3bde74d04b2a11af6566",
+        "htfIndex": "ac61ee18b25139c3ac257942c28c374de7acdebd59f28ce5d7437e91ffbffa17",
+        "plotOptions": "a180e37ea80ccc9970f97447c3f9a0074804242a417890705600e46eb0f1cb71",
+        "stdev": "9accdb9977a0ce507bdb2c8bb09ff051f93cb0ffd67bb021b06c3371b4c17f1f"
+      },
+      "candidateSHA256": "57b7da56e61ab9b72adbf02f617cf68b84d75b6d9615266688661e2e19464b56"
+    }
+  }
+}

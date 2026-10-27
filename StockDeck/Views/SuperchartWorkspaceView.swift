@@ -83,6 +83,9 @@ struct SuperchartWorkspaceView: View {
     @State private var editingShortcutID: String? = nil
     @State private var editingShortcutText = ""
     @State private var isShortcutEditorPresented = false
+    @StateObject private var pineWorkspace = PineScriptWorkspace()
+    @State private var showsPineScripts = false
+    @State private var selectedPineSettings: CustomPineIndicator?
 
     init(stockService: StockService, selectedSymbol: Binding<String?>, initialSource: SuperchartSource,
          onSelectSource: @escaping (SuperchartSource) -> Void) {
@@ -211,13 +214,34 @@ struct SuperchartWorkspaceView: View {
                                 await stockService.ensurePriceHistory(for: symbol)
                                 await stockService.ensurePriceHistoryMax(for: symbol)
                             }
-                        }, selectedRange: $chartRange, showsRangePicker: true, surface: .superchart)
+                        }, selectedRange: $chartRange, showsRangePicker: true, surface: .superchart,
+                        pineIndicators: pineWorkspace.indicators, pineMenuItems: pineWorkspace.menuItems,
+                        onManagePineScripts: { showsPineScripts = true },
+                        onCustomPineAction: { id, action in
+                            switch action {
+                            case "attach": pineWorkspace.attach(id)
+                            case "remove": pineWorkspace.remove(id)
+                            case "retry": pineWorkspace.retry(id)
+                            default: selectedPineSettings = pineWorkspace.indicators.first { $0.id == id }
+                            }
+                        }, onPineInput: { input in
+                            guard selectedSymbol == input.symbol else { return }
+                            pineWorkspace.setInput(input)
+                        })
                         .padding(12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .sheet(item: $selectedPineSettings) { indicator in
+                            PineScriptStyleSettingsView(title: indicator.title,
+                                initialPlots: indicator.plots.reduce(into: [:]) { $0[$1.id] = $1 }) { updated in
+                                pineWorkspace.saveStyle(updated, for: indicator.id)
+                            }
+                        }
                 } else {
-                    ContentUnavailableView("Chọn một mã", systemImage: "chart.xyaxis.line",
-                        description: Text("Chọn mã từ Watchlist hoặc Portfolio để xem biểu đồ."))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack {
+                        ContentUnavailableView("Chọn một mã", systemImage: "chart.xyaxis.line",
+                            description: Text("Chọn mã từ Watchlist hoặc Portfolio để xem biểu đồ."))
+                        Button("Quản lý scripts…") { showsPineScripts = true }.padding(.bottom, 24)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -237,6 +261,9 @@ struct SuperchartWorkspaceView: View {
             }
         } message: {
             Text("Nhập tên ngắn gọn hiển thị trên thanh nút Shortcut của Superchart:")
+        }
+        .sheet(isPresented: $showsPineScripts) {
+            CustomPineScriptsView(library: pineWorkspace.library)
         }
         .onChange(of: source) { _, newSource in
             UserDefaults.standard.set(newSource.id, forKey: "stockdeck.superchart.source")

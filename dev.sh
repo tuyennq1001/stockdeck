@@ -21,12 +21,17 @@ if [ ! -d "$PRODUCTS" ] || [ ! -f "$PRODUCTS/StockDeck" ]; then
         PRODUCTS=".build/$(uname -m)-apple-macosx/debug"
     fi
 fi
+if [ ! -f "$PRODUCTS/PineScriptRunner" ]; then
+    echo "PineScriptRunner target was not built."
+    exit 1
+fi
 
 echo "Assembling DEV app bundle..."
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
 cp "$PRODUCTS/StockDeck" "$APP/Contents/MacOS/StockDeck"
+cp "$PRODUCTS/PineScriptRunner" "$APP/Contents/MacOS/PineScriptRunner"
 cp "StockDeck/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "StockDeck/Resources/AppLogo.png" "$APP/Contents/Resources/AppLogo.png" 2>/dev/null || true
 cp "StockDeck/Resources/AppIcon.png" "$APP/Contents/Resources/AppIcon.png" 2>/dev/null || true
@@ -84,6 +89,11 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 
 echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
 codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
+
+if [ "${SD_BUILD_ONLY:-0}" = "1" ]; then
+    echo "DEV build ready: $PWD/$APP (launch skipped)."
+    exit 0
+fi
 
 echo "Killing old StockDeck process instances..."
 pkill -15 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true

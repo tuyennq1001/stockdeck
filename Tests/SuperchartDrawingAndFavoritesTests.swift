@@ -166,6 +166,10 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
             at: resources.appendingPathComponent("LightweightCharts"),
             to: directory.appendingPathComponent("LightweightCharts")
         )
+        try FileManager.default.copyItem(
+            at: resources.appendingPathComponent("CustomPineChart.js"),
+            to: directory.appendingPathComponent("CustomPineChart.js")
+        )
         let htmlPath = resources.appendingPathComponent("LightweightChartTrial.html")
         let html = try String(contentsOf: htmlPath)
 
@@ -271,6 +275,10 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
         try FileManager.default.copyItem(
             at: resources.appendingPathComponent("LightweightCharts"),
             to: directory.appendingPathComponent("LightweightCharts")
+        )
+        try FileManager.default.copyItem(
+            at: resources.appendingPathComponent("CustomPineChart.js"),
+            to: directory.appendingPathComponent("CustomPineChart.js")
         )
         let htmlPath = resources.appendingPathComponent("LightweightChartTrial.html")
         let html = try String(contentsOf: htmlPath)

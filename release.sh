@@ -89,6 +89,8 @@ mkdir -p "$APP_PATH/Contents/Resources"
 mkdir -p "$APP_PATH/Contents/Frameworks"
 
 cp "$BINARY" "$APP_PATH/Contents/MacOS/${APP_NAME}"
+[[ -f "${PRODUCTS_DIR}/PineScriptRunner" ]] || fail "Build failed: PineScriptRunner not found"
+cp "${PRODUCTS_DIR}/PineScriptRunner" "$APP_PATH/Contents/MacOS/PineScriptRunner"
 cp "$PLIST" "$APP_PATH/Contents/Info.plist"
 cp "StockDeck/Resources/AppIcon.icns" "$APP_PATH/Contents/Resources/AppIcon.icns"
 cp "StockDeck/Resources/AppLogo.png" "$APP_PATH/Contents/Resources/AppLogo.png" 2>/dev/null || true
