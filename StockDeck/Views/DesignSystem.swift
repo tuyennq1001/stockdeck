@@ -14,6 +14,9 @@ enum DS {
     /// Sidebar flat tint — a hair darker than the ground.
     static let sidebarBG = dynamic(light: NSColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1),
                                    dark: NSColor(white: 0.11, alpha: 1))
+    /// Mode rail tabstrip surface — slightly deeper tone behind tabs like Chrome tabstrip.
+    static let tabstripBG = dynamic(light: NSColor(red: 0.914, green: 0.894, blue: 0.847, alpha: 1),
+                                    dark: NSColor(white: 0.065, alpha: 1))
     /// Card stock.
     static let card = dynamic(light: .white, dark: NSColor(white: 0.13, alpha: 1))
     /// Inset wells, chart placeholders, thumbnails.

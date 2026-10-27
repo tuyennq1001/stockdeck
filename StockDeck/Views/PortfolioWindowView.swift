@@ -34,23 +34,71 @@ struct PortfolioWindowView: View {
         case portfolio(UUID)
     }
 
+    /// Top-level workspace modes presented on the left mode rail.
+    enum WorkspaceMode: String, CaseIterable {
+        case index = "Index"
+        case superchart = "Superchart"
+        case news = "News"
+        case aiInsight = "AI Insight"
+        case settings = "Settings"
+
+        var keyboardShortcutKey: KeyEquivalent {
+            switch self {
+            case .index: return "1"
+            case .superchart: return "2"
+            case .news: return "3"
+            case .aiInsight: return "4"
+            case .settings: return "5"
+            }
+        }
+
+        var shortcutLabel: String {
+            "⌘\(keyboardShortcutKey.character)"
+        }
+    }
+
     /// Scope passed to the portfolio overview.
     typealias Scope = PortfolioScope
 
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
-    @AppStorage("stockdeck.superchart.workspaceEnabled") private var isSuperchartMode = false
+    @AppStorage("stockdeck.workspaceMode") private var workspaceMode: WorkspaceMode = PortfolioWindowView.initialWorkspaceMode()
     @State private var superchartSymbol: String?
     @State private var portfolioPath = NavigationPath()
 
     /// Dev affordance: SD_OPEN_TAB=home|insights|news|watchlist|settings|earnings preselects a tab so
     /// each pane can be screenshotted deterministically.
+    static func initialWorkspaceMode() -> WorkspaceMode {
+        switch ProcessInfo.processInfo.environment["SD_OPEN_TAB"] {
+        case "superchart":
+            return .superchart
+        case "news":
+            return .news
+        case "home", "insights", "aiInsight", "ai_insight":
+            return .aiInsight
+        case "settings":
+            return .settings
+        default:
+            if let raw = UserDefaults.standard.string(forKey: "stockdeck.workspaceMode"),
+               let saved = WorkspaceMode(rawValue: raw) {
+                return saved
+            }
+            if UserDefaults.standard.bool(forKey: "stockdeck.superchart.workspaceEnabled") {
+                return .superchart
+            }
+            return .index
+        }
+    }
+
     static func initialSelection() -> Nav {
         switch ProcessInfo.processInfo.environment["SD_OPEN_TAB"] {
+        case "watchlist": return .watchlist
+        case "earnings": return .earnings
+        case "alerts": return .alerts
+        case "importExport": return .importExport
+        case "aiReview": return .aiReview
         case "home", "insights": return .insights
         case "news": return .news
-        case "watchlist": return .watchlist
         case "settings": return .settings
-        case "earnings": return .earnings
         default: return .portfoliosAll
         }
     }
@@ -100,183 +148,234 @@ struct PortfolioWindowView: View {
     }
     struct PortfolioRef: Identifiable { let id: UUID; let name: String }
 
+    private var isRenameWatchlistPresented: Binding<Bool> {
+        Binding(
+            get: { renamingWatchlist != nil },
+            set: { if !$0 { renamingWatchlist = nil } }
+        )
+    }
+
+    private var isDeleteWatchlistPresented: Binding<Bool> {
+        Binding(
+            get: { deleteWatchlistTarget != nil },
+            set: { if !$0 { deleteWatchlistTarget = nil } }
+        )
+    }
+
+    private var isDeletePortfolioPresented: Binding<Bool> {
+        Binding(
+            get: { deletePortfolioTarget != nil },
+            set: { if !$0 { deletePortfolioTarget = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var workspaceContent: some View {
+        HStack(spacing: 0) {
+            modeRail
+            switch workspaceMode {
+            case .superchart:
+                SuperchartWorkspaceView(stockService: stockService,
+                    selectedSymbol: $superchartSymbol,
+                    initialSource: sourceForCurrentSelection(),
+                    onSelectSource: selectSuperchartSource)
+                    .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
+                    .id("superchart")
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            case .news:
+                HomeWideView(mode: .news, showModePicker: false, onOpenSettings: { workspaceMode = .settings })
+                    .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                    .id("home_news")
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            case .aiInsight:
+                HomeWideView(mode: .insights, showModePicker: false, onOpenSettings: { workspaceMode = .settings })
+                    .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                    .id("home_insights")
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            case .settings:
+                SettingsWideView()
+                    .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                    .id("settings")
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            case .index:
+                NavigationSplitView {
+                    sidebar
+                        .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
+                } detail: {
+                    detail
+                        .frame(minWidth: 640)
+                        .id(String(describing: selection))
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+                .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
     var body: some View {
-        Group {
-            if storageService.isRestoringData {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                HStack(spacing: 0) {
-                    modeRail
-                    if isSuperchartMode {
-                        SuperchartWorkspaceView(stockService: stockService,
-                            selectedSymbol: $superchartSymbol,
-                            initialSource: sourceForCurrentSelection(),
-                            onSelectSource: selectSuperchartSource)
-                            .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
-                            .id("superchart")
-                            .transition(.opacity.combined(with: .offset(y: 6)))
-                    } else {
-                        NavigationSplitView {
-                            sidebar
-                                .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
-                        } detail: {
-                            detail
-                                .frame(minWidth: 640)
-                                .id(String(describing: selection))
-                                .transition(.opacity.combined(with: .offset(y: 6)))
-                        }
-                        .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-            }
-        }
-        .animation(.easeOut(duration: 0.22), value: selection)
-        .task {
-            sidebarSummaryCache.setup(stockService: stockService, storageService: storageService)
-            await sidebarSummaryCache.refresh()
-        }
-        .toolbar(removing: .sidebarToggle)
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        .frame(minWidth: 1000, minHeight: 680)
-        .preferredColorScheme(storageService.appearanceMode.colorScheme)
-        // Clicking an alert notification lands the user on the Alerts tab.
-        .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
-            isSuperchartMode = false
-            navigate(to: .alerts)
-        }
-        .environment(\.locale, Locale(identifier: storageService.appLanguage))
-        .environment(\.addHoldingAction, AddHoldingAction { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: $1) })
-        .environment(\.editHoldingAction, EditHoldingAction { editHolding = EditTarget(portfolioId: $0, holding: $1) })
-        .environment(\.portfolioActions, PortfolioActions(
-            addHolding: { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: nil) },
-            batchImport: { _ in importStandard() },
-            rename: { renameTarget = PortfolioRef(id: $0, name: $1) },
-            notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
-            export: { exportPortfolios([$0]) },
-            delete: { id in
-                if let p = storageService.portfolios.first(where: { $0.id == id }) {
-                    deletePortfolioTarget = PortfolioRef(id: p.id, name: p.name)
-                }
-            }))
-        .sheet(isPresented: $showSearch) {
-            WatchlistSearchSheet { showSearch = false }
-                .environmentObject(stockService).environmentObject(storageService)
-        }
-        .sheet(item: $addHoldingTarget) { target in
-            let mode: HoldingFormSheet.Mode = {
-                if let sym = target.symbol {
-                    return .addSymbol(symbol: sym, portfolioId: target.portfolioId)
+        windowDialogs(
+            Group {
+                if storageService.isRestoringData {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    return .add(portfolioId: target.portfolioId)
+                    workspaceContent
                 }
-            }()
-            HoldingFormSheet(mode: mode) { addHoldingTarget = nil }
-                .environmentObject(stockService).environmentObject(storageService)
-        }
-        .sheet(item: $editHolding) { target in
-            HoldingFormSheet(mode: .edit(portfolioId: target.portfolioId, holding: target.holding)) { editHolding = nil }
-                .environmentObject(stockService).environmentObject(storageService)
-        }
-        .alert("New Portfolio", isPresented: $showNewPortfolioAlert) {
-            TextField("Portfolio name", text: $newPortfolioName)
-            Button("Cancel", role: .cancel) { newPortfolioName = "" }
-            Button("Create") {
-                let trimmed = newPortfolioName.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    storageService.addPortfolio(name: trimmed)
-                }
-                newPortfolioName = ""
             }
-        }
-        .sheet(isPresented: $showBinanceSheet) {
-            AddBinancePortfolioSheet(storageService: storageService) { newP in
-                selection = .portfolio(newP.id)
+            .animation(.easeOut(duration: 0.22), value: workspaceMode)
+            .animation(.easeOut(duration: 0.22), value: selection)
+            .onChange(of: workspaceMode) { _, newMode in
+                UserDefaults.standard.set(newMode == .superchart, forKey: "stockdeck.superchart.workspaceEnabled")
             }
-        }
-        .sheet(item: $renameTarget) { t in
-            RenamePortfolioSheet(portfolioId: t.id, currentName: t.name) { renameTarget = nil }
-                .environmentObject(storageService)
-        }
-        .sheet(item: $notifTarget) { t in
-            PortfolioNotificationsSheet(portfolioId: t.id, portfolioName: t.name) { notifTarget = nil }
-                .environmentObject(storageService)
-        }
-        .sheet(item: $pendingImportResult) { res in
-            ImportPreviewSheet(
-                items: res.items,
-                closedTrades: res.closedTrades,
-                transactions: res.transactions,
-                suggestedPortfolioName: res.suggestedPortfolioName,
-                isFundImport: res.isFundImport
-            ) {
-                pendingImportResult = nil
+            .task {
+                sidebarSummaryCache.setup(stockService: stockService, storageService: storageService)
+                await sidebarSummaryCache.refresh()
             }
-            .environmentObject(stockService)
-            .environmentObject(storageService)
-        }
-        .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
-                 title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
-        .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
-            TextField("Watchlist name", text: $newWatchlistName)
-            Button("Cancel", role: .cancel) { newWatchlistName = "" }
-            Button("Create") {
-                let trimmed = newWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    storageService.createWatchlist(name: trimmed)
-                }
-                newWatchlistName = ""
+            .toolbar(removing: .sidebarToggle)
+            .toolbarBackground(.hidden, for: .windowToolbar)
+            .frame(minWidth: 1000, minHeight: 680)
+            .preferredColorScheme(storageService.appearanceMode.colorScheme)
+            // Clicking an alert notification lands the user on the Alerts tab.
+            .onReceive(NotificationCenter.default.publisher(for: .stockDeckAlertTapped)) { _ in
+                navigate(to: .alerts)
             }
-        }
-        .alert("Rename Watchlist", isPresented: Binding(get: { renamingWatchlist != nil }, set: { if !$0 { renamingWatchlist = nil } })) {
-            TextField("Watchlist name", text: $renameWatchlistName)
-            Button("Cancel", role: .cancel) { renamingWatchlist = nil }
-            Button("Rename") {
-                if let wl = renamingWatchlist {
-                    let trimmed = renameWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        storageService.renameWatchlist(id: wl.id, newName: trimmed)
+            .environment(\.locale, Locale(identifier: storageService.appLanguage))
+            .environment(\.addHoldingAction, AddHoldingAction { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: $1) })
+            .environment(\.editHoldingAction, EditHoldingAction { editHolding = EditTarget(portfolioId: $0, holding: $1) })
+            .environment(\.portfolioActions, PortfolioActions(
+                addHolding: { addHoldingTarget = AddHoldingTarget(portfolioId: $0, symbol: nil) },
+                batchImport: { _ in importStandard() },
+                rename: { renameTarget = PortfolioRef(id: $0, name: $1) },
+                notifications: { notifTarget = PortfolioRef(id: $0, name: $1) },
+                export: { exportPortfolios([$0]) },
+                delete: { id in
+                    if let p = storageService.portfolios.first(where: { $0.id == id }) {
+                        deletePortfolioTarget = PortfolioRef(id: p.id, name: p.name)
                     }
-                    renamingWatchlist = nil
+                }))
+            .background(keyboardShortcuts)
+        )
+    }
+
+    @ViewBuilder
+    private func windowDialogs<V: View>(_ content: V) -> some View {
+        content
+            .sheet(isPresented: $showSearch) {
+                WatchlistSearchSheet { showSearch = false }
+                    .environmentObject(stockService).environmentObject(storageService)
+            }
+            .sheet(item: $addHoldingTarget) { target in
+                let mode: HoldingFormSheet.Mode = {
+                    if let sym = target.symbol {
+                        return .addSymbol(symbol: sym, portfolioId: target.portfolioId)
+                    } else {
+                        return .add(portfolioId: target.portfolioId)
+                    }
+                }()
+                HoldingFormSheet(mode: mode) { addHoldingTarget = nil }
+                    .environmentObject(stockService).environmentObject(storageService)
+            }
+            .sheet(item: $editHolding) { target in
+                HoldingFormSheet(mode: .edit(portfolioId: target.portfolioId, holding: target.holding)) { editHolding = nil }
+                    .environmentObject(stockService).environmentObject(storageService)
+            }
+            .alert("New Portfolio", isPresented: $showNewPortfolioAlert) {
+                TextField("Portfolio name", text: $newPortfolioName)
+                Button("Cancel", role: .cancel) { newPortfolioName = "" }
+                Button("Create") {
+                    let trimmed = newPortfolioName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        storageService.addPortfolio(name: trimmed)
+                    }
+                    newPortfolioName = ""
                 }
             }
-        }
-        .alert("Delete Watchlist", isPresented: Binding(get: { deleteWatchlistTarget != nil }, set: { if !$0 { deleteWatchlistTarget = nil } })) {
-            Button("Cancel", role: .cancel) { deleteWatchlistTarget = nil }
-            Button("Delete", role: .destructive) {
-                if let wl = deleteWatchlistTarget {
-                    storageService.deleteWatchlist(id: wl.id)
-                    deleteWatchlistTarget = nil
+            .sheet(isPresented: $showBinanceSheet) {
+                AddBinancePortfolioSheet(storageService: storageService) { newP in
+                    selection = .portfolio(newP.id)
                 }
             }
-        } message: {
-            Text("Are you sure you want to delete “\(deleteWatchlistTarget?.name ?? "")”? This action cannot be undone.")
-        }
-        .alert("Delete Portfolio", isPresented: Binding(get: { deletePortfolioTarget != nil }, set: { if !$0 { deletePortfolioTarget = nil } })) {
-            Button("Cancel", role: .cancel) { deletePortfolioTarget = nil }
-            Button("Delete", role: .destructive) {
-                if let p = deletePortfolioTarget {
-                    storageService.deletePortfolio(id: p.id)
-                    if selection == .portfolio(p.id) { navigate(to: .portfoliosAll) }
-                }
-                deletePortfolioTarget = nil
+            .sheet(item: $renameTarget) { t in
+                RenamePortfolioSheet(portfolioId: t.id, currentName: t.name) { renameTarget = nil }
+                    .environmentObject(storageService)
             }
-        } message: {
-            Text("Are you sure you want to delete portfolio '\(deletePortfolioTarget?.name ?? "")'? This action cannot be undone.")
-        }
-        .background(keyboardShortcuts)
+            .sheet(item: $notifTarget) { t in
+                PortfolioNotificationsSheet(portfolioId: t.id, portfolioName: t.name) { notifTarget = nil }
+                    .environmentObject(storageService)
+            }
+            .sheet(item: $pendingImportResult) { res in
+                ImportPreviewSheet(
+                    items: res.items,
+                    closedTrades: res.closedTrades,
+                    transactions: res.transactions,
+                    suggestedPortfolioName: res.suggestedPortfolioName,
+                    isFundImport: res.isFundImport
+                ) {
+                    pendingImportResult = nil
+                }
+                .environmentObject(stockService)
+                .environmentObject(storageService)
+            }
+            .dsAlert(Binding(get: { importAlert != nil }, set: { if !$0 { importAlert = nil } }),
+                     title: "Import", message: importAlert ?? "", confirmTitle: "OK", cancelTitle: nil, onConfirm: {})
+            .alert("New Watchlist", isPresented: $showNewWatchlistAlert) {
+                TextField("Watchlist name", text: $newWatchlistName)
+                Button("Cancel", role: .cancel) { newWatchlistName = "" }
+                Button("Create") {
+                    let trimmed = newWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        storageService.createWatchlist(name: trimmed)
+                    }
+                    newWatchlistName = ""
+                }
+            }
+            .alert("Rename Watchlist", isPresented: isRenameWatchlistPresented) {
+                TextField("Watchlist name", text: $renameWatchlistName)
+                Button("Cancel", role: .cancel) { renamingWatchlist = nil }
+                Button("Rename") {
+                    if let wl = renamingWatchlist {
+                        let trimmed = renameWatchlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            storageService.renameWatchlist(id: wl.id, newName: trimmed)
+                        }
+                        renamingWatchlist = nil
+                    }
+                }
+            }
+            .alert("Delete Watchlist", isPresented: isDeleteWatchlistPresented) {
+                Button("Cancel", role: .cancel) { deleteWatchlistTarget = nil }
+                Button("Delete", role: .destructive) {
+                    if let wl = deleteWatchlistTarget {
+                        storageService.deleteWatchlist(id: wl.id)
+                        deleteWatchlistTarget = nil
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to delete “\(deleteWatchlistTarget?.name ?? "")”? This action cannot be undone.")
+            }
+            .alert("Delete Portfolio", isPresented: isDeletePortfolioPresented) {
+                Button("Cancel", role: .cancel) { deletePortfolioTarget = nil }
+                Button("Delete", role: .destructive) {
+                    if let p = deletePortfolioTarget {
+                        storageService.deletePortfolio(id: p.id)
+                        if selection == .portfolio(p.id) { navigate(to: .portfoliosAll) }
+                    }
+                    deletePortfolioTarget = nil
+                }
+            } message: {
+                Text("Are you sure you want to delete portfolio '\(deletePortfolioTarget?.name ?? "")'? This action cannot be undone.")
+            }
     }
 
     /// Invisible buttons that give the window native keyboard shortcuts:
-    /// ⌘1 AI Insights · ⌘2 Watchlist · ⌘3 Portfolios · ⌘4 Settings · ⌘5 AI Review · ⌘6 News · ⌘R Refresh · ⌘N New portfolio.
+    /// ⌘1 Index · ⌘2 Superchart · ⌘3 News · ⌘4 AI Insight · ⌘5 Settings · ⌘R Refresh · ⌘N New portfolio · ⌘W Close window.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { navigate(to: .insights) }.keyboardShortcut("1", modifiers: .command).disabled(isSuperchartMode)
-            Button("") { navigate(to: .watchlist) }.keyboardShortcut("2", modifiers: .command)
-            Button("") { navigate(to: .portfoliosAll) }.keyboardShortcut("3", modifiers: .command)
-            Button("") { navigate(to: .settings) }.keyboardShortcut("4", modifiers: .command).disabled(isSuperchartMode)
-            Button("") { navigate(to: .aiReview) }.keyboardShortcut("5", modifiers: .command).disabled(isSuperchartMode)
-            Button("") { navigate(to: .news) }.keyboardShortcut("6", modifiers: .command).disabled(isSuperchartMode)
+            Button("") { workspaceMode = .index }.keyboardShortcut("1", modifiers: .command)
+            Button("") { workspaceMode = .superchart }.keyboardShortcut("2", modifiers: .command)
+            Button("") { workspaceMode = .news }.keyboardShortcut("3", modifiers: .command)
+            Button("") { workspaceMode = .aiInsight }.keyboardShortcut("4", modifiers: .command)
+            Button("") { workspaceMode = .settings }.keyboardShortcut("5", modifiers: .command)
             Button("") {
                 Task {
                     await storageService.waitUntilRestored()
@@ -294,46 +393,95 @@ struct PortfolioWindowView: View {
     // MARK: - Sidebar
 
     private var modeRail: some View {
-        VStack(spacing: 4) {
-            modeRailButton(title: "Bảng", selected: !isSuperchartMode) {
-                isSuperchartMode = false
+        ZStack(alignment: .trailing) {
+            Rectangle()
+                .fill(DS.hairline)
+                .frame(width: 1)
+
+            VStack(spacing: 2) {
+                ModeRailTabButton(mode: .index, selected: workspaceMode == .index) {
+                    workspaceMode = .index
+                }
+                if workspaceMode != .index && workspaceMode != .superchart {
+                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
+                }
+                ModeRailTabButton(mode: .superchart, selected: workspaceMode == .superchart) {
+                    workspaceMode = .superchart
+                }
+                if workspaceMode != .superchart && workspaceMode != .news {
+                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
+                }
+                ModeRailTabButton(mode: .news, selected: workspaceMode == .news) {
+                    workspaceMode = .news
+                }
+                if workspaceMode != .news && workspaceMode != .aiInsight {
+                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
+                }
+                ModeRailTabButton(mode: .aiInsight, selected: workspaceMode == .aiInsight) {
+                    workspaceMode = .aiInsight
+                }
+                Spacer(minLength: 0)
+                ModeRailTabButton(mode: .settings, selected: workspaceMode == .settings) {
+                    workspaceMode = .settings
+                }
+                .padding(.bottom, 14)
             }
-            modeRailButton(title: "Superchart", selected: isSuperchartMode) {
-                isSuperchartMode = true
-            }
-            Spacer(minLength: 0)
+            .padding(.top, 14)
+            .padding(.leading, 4)
         }
-        .padding(.top, 14)
-        .frame(minWidth: 32, maxWidth: 32, maxHeight: .infinity)
-        .background(DS.sidebarBG)
+        .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
+        .background(DS.tabstripBG)
     }
 
-    private func modeRailButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VerticalModeTabLayout {
-                Text(title)
-                    .font(.inter(11, weight: selected ? .semibold : .medium, relativeTo: .caption))
-                    .fixedSize()
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .rotationEffect(.degrees(-90))
-            }
-            .foregroundStyle(selected ? DS.ink : DS.inkSecondary)
-            .frame(width: 28)
-            .background(selected ? DS.ground : .clear,
-                        in: UnevenRoundedRectangle(topLeadingRadius: 5, bottomLeadingRadius: 5))
-            .overlay(alignment: .leading) {
-                if selected {
-                    Capsule().fill(DS.brand).frame(width: 2).padding(.vertical, 8)
+    private struct ModeRailTabButton: View {
+        let mode: WorkspaceMode
+        let selected: Bool
+        let action: () -> Void
+        @State private var isHovered = false
+
+        var body: some View {
+            Button(action: action) {
+                VerticalModeTabLayout {
+                    Text(verbatim: mode.rawValue)
+                        .font(.inter(11, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                        .fixedSize()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .rotationEffect(.degrees(-90))
                 }
+                .foregroundStyle(selected ? DS.ink : (isHovered ? DS.ink : DS.inkSecondary))
+                .frame(width: 32)
+                .background(
+                    Group {
+                        if selected {
+                            UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8)
+                                .fill(DS.ground)
+                        } else if isHovered {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(DS.ink.opacity(0.06))
+                                .padding(.trailing, 4)
+                        } else {
+                            Color.clear
+                        }
+                    }
+                )
+                .overlay(alignment: .leading) {
+                    if selected {
+                        Capsule()
+                            .fill(DS.brand)
+                            .frame(width: 2.5)
+                            .padding(.vertical, 8)
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .onHover { isHovered = $0 }
+            .help("\(mode.rawValue)  \(mode.shortcutLabel)")
+            .accessibilityLabel("\(mode.rawValue)  \(mode.shortcutLabel)")
+            .accessibilityAddTraits(selected ? .isSelected : [])
         }
-        .buttonStyle(.plain)
-        .help(title)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .padding(.leading, 4)
     }
 
     private var sidebar: some View {
@@ -379,7 +527,7 @@ struct PortfolioWindowView: View {
                     NavRow(icon: "square.grid.2x2", title: "All Portfolios",
                            trailing: allStats.text,
                            trailingTint: DS.pnlColor(allStats.percent),
-                           helpText: "Combined view of every portfolio  ⌘3",
+                           helpText: "Combined view of every portfolio",
                            selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
                     SidebarPortfoliosSection(
                         storageService: storageService,
@@ -398,36 +546,19 @@ struct PortfolioWindowView: View {
 
                     utilitiesHeader
                     NavRow(icon: "sparkles", title: "AI Review",
-                           helpText: "Advise on your watchlists & portfolios with built-in context  ⌘5",
+                           helpText: "Advise on your watchlists & portfolios with built-in context",
                            selected: selection == .aiReview, namespace: navNamespace) { navigate(to: .aiReview) }
-                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "calendar", title: "Earnings",
                            helpText: "Earnings report calendar for your portfolios & watchlists",
                            selected: selection == .earnings, namespace: navNamespace) { navigate(to: .earnings) }
-                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "bell", title: "Alerts",
                            helpText: "Price alerts you've set on your watchlist symbols",
                            selected: selection == .alerts, namespace: navNamespace) { navigate(to: .alerts) }
-                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                     NavRow(icon: "arrow.triangle.2.circlepath.icloud", title: "Import / Export", helpText: "iCloud Sync, import & export portfolios, watchlists, templates",
                            selected: selection == .importExport, namespace: navNamespace) { navigate(to: .importExport) }
-                        .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
             }
-            Divider().overlay(DS.hairline)
-            VStack(alignment: .leading, spacing: 2) {
-                NavRow(icon: "sparkles", title: "AI Insights", helpText: "Daily AI market recap & movement drivers  ⌘1",
-                       selected: selection == .insights, namespace: navNamespace) { navigate(to: .insights) }
-                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
-                NavRow(icon: "newspaper", title: "News", helpText: "Financial news feed for tracked symbols  ⌘6",
-                       selected: selection == .news, namespace: navNamespace) { navigate(to: .news) }
-                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
-                NavRow(icon: "gearshape", title: "Settings", helpText: "Preferences (shared with the menu bar)  ⌘4",
-                       selected: selection == .settings, namespace: navNamespace) { navigate(to: .settings) }
-                    .disabled(isSuperchartMode).opacity(isSuperchartMode ? 0.45 : 1)
-            }
-            .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 6)
             let totals = sidebarTotals
             let secCurr = storageService.secondaryCurrency
             let secRate = !secCurr.isEmpty && secCurr != storageService.preferredCurrency
@@ -442,7 +573,7 @@ struct PortfolioWindowView: View {
                         secondaryRate: secRate)
             quitRow
         }
-        .background(DS.sidebarBG)
+        .background(DS.ground)
         .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
     }
 
@@ -580,7 +711,7 @@ struct PortfolioWindowView: View {
     private var brand: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                Button { isSuperchartMode = false } label: {
+                Button { workspaceMode = .index } label: {
                     HStack(spacing: 10) {
                         BrandMark(size: 30)
                         VStack(alignment: .leading, spacing: 1) {
@@ -659,14 +790,18 @@ struct PortfolioWindowView: View {
     /// this path explicit avoids SwiftUI retaining a stale HoldingDetailView when
     /// the user switches directly to a watchlist or another sidebar destination.
     private func navigate(to destination: Nav) {
-        if isSuperchartMode {
-            switch destination {
-            case .watchlist, .portfolio, .portfoliosAll: break
-            default: return
-            }
+        switch destination {
+        case .home, .insights:
+            workspaceMode = .aiInsight
+        case .news:
+            workspaceMode = .news
+        case .settings:
+            workspaceMode = .settings
+        default:
+            workspaceMode = .index
+            portfolioPath = NavigationPath()
+            selection = destination
         }
-        portfolioPath = NavigationPath()
-        selection = destination
     }
 
     private func sourceForCurrentSelection() -> SuperchartSource {
@@ -681,14 +816,15 @@ struct PortfolioWindowView: View {
     }
 
     private func selectSuperchartSource(_ source: SuperchartSource) {
+        portfolioPath = NavigationPath()
         switch source {
         case .watchlist(let id):
             storageService.selectedWatchlistId = id
-            navigate(to: .watchlist)
+            selection = .watchlist
         case .portfolio(let id):
-            navigate(to: .portfolio(id))
+            selection = .portfolio(id)
         case .allPortfolios:
-            navigate(to: .portfoliosAll)
+            selection = .portfoliosAll
         }
     }
 

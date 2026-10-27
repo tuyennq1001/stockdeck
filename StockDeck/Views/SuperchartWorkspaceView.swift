@@ -430,7 +430,7 @@ struct SuperchartWorkspaceView: View {
             if filteredSymbols.isEmpty {
                 ContentUnavailableView(query.isEmpty ? "Nguồn đang trống" : "Không tìm thấy mã",
                     systemImage: query.isEmpty ? "tray" : "magnifyingglass",
-                    description: Text(query.isEmpty ? "Thêm mã vào nguồn trong Bảng." : "Thử mã khác trong nguồn này."))
+                    description: Text(query.isEmpty ? "Thêm mã vào nguồn trong Index." : "Thử mã khác trong nguồn này."))
             }
         }
         .background(DS.ground)
