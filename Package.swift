@@ -25,8 +25,16 @@ let package = Package(
                 .copy("Resources/MenuBarIcon.png"),
                 .copy("Resources/LightweightCharts"),
                 .copy("Resources/LightweightChartTrial.html"),
+                .copy("Resources/CustomPineChart.js"),
+                .copy("Resources/PineTS"),
                 .copy("Fonts/InterVariable.ttf")
             ]
+        ),
+        .executableTarget(
+            name: "PineScriptRunner",
+            path: "tools/pine-runner",
+            resources: [.copy("Resources/PineTS")],
+            linkerSettings: [.linkedFramework("JavaScriptCore")]
         ),
         .testTarget(
             name: "StockDeckTests",

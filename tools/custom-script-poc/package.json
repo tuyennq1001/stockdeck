@@ -1,0 +1,11 @@
+{
+  "name": "stockdeck-custom-script-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "candidate:build": "node build-candidate.mjs",
+    "pretest": "node build-candidate.mjs > local/candidate-build.json",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {"pinets": "0.13.0"}
+}

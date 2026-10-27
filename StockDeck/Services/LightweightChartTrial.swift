@@ -1025,6 +1025,11 @@ struct LightweightPriceChartView: View {
     @Binding var selectedRange: String
     let showsRangePicker: Bool
     var surface: LightweightChartSurface = .detail
+    var pineIndicators: [CustomPineIndicator] = []
+    var pineMenuItems: [PineScriptMenuItem] = []
+    var onManagePineScripts: () -> Void = {}
+    var onCustomPineAction: (UUID, String) -> Void = { _, _ in }
+    var onPineInput: (PineChartInput) -> Void = { _ in }
     private static let allRanges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "7Y", "10Y", "All"]
     @State private var interval: LightweightChartInterval = .day
     @State private var webView: WKWebView?
@@ -1079,6 +1084,13 @@ struct LightweightPriceChartView: View {
     private var activeInterval: LightweightChartInterval {
         interval
     }
+
+    var pineInput: PineChartInput {
+        // maxPoints may contain monthly history for long ranges; it must not replace the daily source.
+        PineChartInput(symbol: symbol, interval: interval, points: activePoints, dailyPoints: points,
+            loading: interval.isIntraday ? (loadingIntraday || intradaySymbol != symbol) : (points.isEmpty && isLoading),
+            error: interval.isIntraday ? intradayError : nil)
+    }
     private func hasHistoryCoverage(for range: String) -> Bool {
         let history = maxPoints.isEmpty ? points : maxPoints
         guard let years = Int(range.dropLast()), let first = history.first?.date,
@@ -1129,6 +1141,8 @@ struct LightweightPriceChartView: View {
                             currency: currency, visibleFrom: rangeStart, markers: markers,
                             targetPrice: targetPrice, showInsiderMarkers: StorageService.shared.showInsiderMarkers,
                             selectedRange: selectedRange, showsRangeControls: showsRangePicker, surface: surface,
+                            pineIndicators: pineIndicators, pineMenuItems: pineMenuItems, onManagePineScripts: onManagePineScripts,
+                            onCustomPineAction: onCustomPineAction,
                             availableRanges: availableRanges,
                             onSelectRange: selectRange, onSelectInterval: selectInterval,
                             visibleTo: selectedRange == "Custom" ? customRange?.dates(symbol: symbol)?.1 : nil,
@@ -1152,6 +1166,9 @@ struct LightweightPriceChartView: View {
                 .font(.system(size: 9)).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: pineInput, initial: true) { _, input in
+            onPineInput(input)
+        }
         .task(id: "\(symbol)|\(interval.isIntraday)|\(intradayReload)") {
             guard interval.isIntraday else { loadingIntraday = false; return }
             loadingIntraday = true
@@ -1254,6 +1271,10 @@ struct LightweightChartWebView: NSViewRepresentable {
     let selectedRange: String
     let showsRangeControls: Bool
     var surface: LightweightChartSurface = .superchart
+    var pineIndicators: [CustomPineIndicator] = []
+    var pineMenuItems: [PineScriptMenuItem] = []
+    var onManagePineScripts: () -> Void = {}
+    var onCustomPineAction: (UUID, String) -> Void = { _, _ in }
     let availableRanges: [String]
     let onSelectRange: (String) -> Void
     let onSelectInterval: (LightweightChartInterval) -> Void
@@ -1353,6 +1374,7 @@ struct LightweightChartWebView: NSViewRepresentable {
             // their stored chart preferences separate.
             let showsRangeControls = parent.showsRangeControls || parent.surface == .detail
             let availableRanges = parent.availableRanges
+            let pineIndicators = parent.pineIndicators, pineMenuItems = parent.pineMenuItems
             let indicatorSettings = self.indicatorSettings
             var periods = parent.surface == .superchart
                 ? ["MA 1|SMA|close": 20, "MA 2|SMA|close": 50, "MA 3|SMA|close": 100, "MA 4|SMA|close": 200]
@@ -1361,18 +1383,27 @@ struct LightweightChartWebView: NSViewRepresentable {
             periods.merge(indicatorPeriods) { _, new in new }
             Task { [weak self, weak webView] in
                 let drawings = await LightweightChartDrawingStore.shared.load(symbol: symbol)
-                let data = await Task.detached(priority: .userInitiated) {
-                    LightweightChartMath.encodedPayload(points: points, interval: interval, symbol: symbol,
+                let encoded = await Task.detached(priority: .userInitiated) {
+                    let data = LightweightChartMath.encodedPayload(points: points, interval: interval, symbol: symbol,
                         currency: currency, periods: periods,
                         visibleFrom: visibleFrom, markers: markers, targetPrice: targetPrice,
                         showInsiderMarkers: showInsiderMarkers, drawings: drawings,
                         indicatorSettings: indicatorSettings, selectedRange: selectedRange,
                         showsRangeControls: showsRangeControls, availableRanges: availableRanges, visibleTo: visibleTo)
+                    return (data?.base64EncodedString(), (try? JSONEncoder().encode(pineIndicators))?.base64EncodedString(),
+                            (try? JSONEncoder().encode(pineMenuItems))?.base64EncodedString())
                 }.value
-                guard let data else { return }
-                let base64 = data.base64EncodedString()
+                guard let base64 = encoded.0 else { return }
                 guard let self, self.latestRequest == requestID, let webView else { return }
-                _ = try? await webView.evaluateJavaScript("window.setChartData && window.setChartData(JSON.parse(atob('\(base64)')))")
+                _ = try? await webView.evaluateJavaScript("window.setChartData && window.setChartData(window.decodeStockDeckJSON('\(base64)'))")
+                if let plots = encoded.1 {
+                    guard self.latestRequest == requestID else { return }
+                    _ = try? await webView.evaluateJavaScript("window.setCustomPineIndicators?.(window.decodeStockDeckJSON('\(plots)'))")
+                }
+                if let menu = encoded.2 {
+                    guard self.latestRequest == requestID else { return }
+                    _ = try? await webView.evaluateJavaScript("window.setPineScriptsMenu?.(window.decodeStockDeckJSON('\(menu)'))")
+                }
             }
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.state = "ready"; sendData(to: webView) }
@@ -1417,6 +1448,12 @@ struct LightweightChartWebView: NSViewRepresentable {
                 if let webView = parent.webView { sendData(to: webView) }
             } else if type == "toggleInsiderMarkers" {
                 StorageService.shared.showInsiderMarkers = body["visible"] as? Bool ?? !StorageService.shared.showInsiderMarkers
+            } else if type == "customPineAction", let rawID = body["id"] as? String,
+                      let id = UUID(uuidString: rawID), let action = body["action"] as? String,
+                      ["attach", "settings", "remove", "retry"].contains(action) {
+                parent.onCustomPineAction(id, action)
+            } else if type == "managePineScripts" {
+                parent.onManagePineScripts()
             } else if type == "selectRangePreset", let range = body["range"] as? String,
                       LightweightChartRangePreset(rawValue: range) != nil {
                 parent.onSelectRange(range)

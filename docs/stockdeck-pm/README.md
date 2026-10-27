@@ -1,6 +1,8 @@
 # StockDeck — hồ sơ đề xuất Superchart Essential
 
-Cập nhật 2026-10-25. Trạng thái: **để chủ sản phẩm duyệt**, chưa triển khai code app theo phạm vi mới, chưa commit/push.
+Cập nhật 2026-10-27. **Custom Scripts đã tích hợp vào Superchart; người dùng đã yêu cầu push và merge.** Cách dùng, phạm vi và giới hạn hiện tại: [Custom Scripts workflow](../custom-scripts-workflow.md). Hồ sơ Superchart Essential bên dưới ghi trạng thái tại 2026-10-25; không suy hồ sơ cũ thành kết quả acceptance hiện tại.
+
+Kế hoạch gốc: [Nhập và kiểm chứng Custom Scripts](specs/implementation-custom-scripts.md). Báo cáo POC lịch sử: [bản sửa runtime](../custom-script-candidate-report.md) [S18], đối chiếu [baseline](../custom-script-poc-report.md) [S17]. Numeric reference và TradingView parity là hai verdict riêng. AGPL đã được người dùng chọn tạm; compliance và điều kiện phân phối vẫn là gate trước release. Yêu cầu push/merge không bao gồm release.
 
 Kế hoạch hợp nhất đã được lập theo yêu cầu người dùng và rà độc lập. Điểm bắt đầu đọc: [kế hoạch triển khai từng mốc, đầu ra và gate](specs/implementation-superchart-essential.md). Chưa có lệnh bắt đầu sửa app từ yêu cầu lập plan.
 
