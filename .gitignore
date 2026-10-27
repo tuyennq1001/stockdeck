@@ -41,3 +41,8 @@ screenshots/
 
 # Templates & Local Assets
 template/
+/template
+
+# Local agent task state and verification evidence (may contain private logs)
+.harness/
+__pycache__/

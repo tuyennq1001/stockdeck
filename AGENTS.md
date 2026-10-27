@@ -135,3 +135,16 @@ Khi giải quyết bất kỳ lỗi hoặc phát triển tính năng nào, bắt
 ## 8. Bản địa hóa & Tên riêng / Thương hiệu (Localization & Proper Nouns)
 - **Tuyệt đối không dịch tên riêng**: Các danh từ riêng, tên công ty, sàn giao dịch, mã chỉ số và nền tảng đối tác (ví dụ: TradingView, Yahoo Finance, Binance, S&P 500, Sparkle, Google, Gemini...) **bắt buộc giữ nguyên 100% tên gốc**, không dịch sang tiếng Việt hay bất kỳ ngôn ngữ nào.
 - **Dùng `Text(verbatim:)` trong SwiftUI**: Khi hiển thị tên riêng hoặc nhãn thương hiệu trên giao diện SwiftUI, bắt buộc dùng `Text(verbatim: "...")` thay vì `Text("...")` để tránh việc SwiftUI tự động tra cứu từ điển `LocalizedStringKey` (ngăn chặn các lỗi dịch nhầm như `Text("Trading")` thành `Giao dịch`).
+
+---
+
+## 9. Harness cho công việc AI
+- Bắt đầu tại [docs/harness/README.md](docs/harness/README.md); dùng [bản đồ dự án](docs/harness/project-map.md) để tìm nguồn theo công việc.
+- Trước khi thực hiện, ghi mục tiêu, phạm vi, tiêu chí hoàn thành và quyết định vào task bằng `./harness.sh new` / `note`. Việc tạo task **không thay thế** phê duyệt phương án trong chat theo Phần 1.
+- Dùng `./harness.sh verify <task-id>` để chạy kiểm chứng và giữ log/receipt trong `.harness/`. Xem [hướng dẫn kiểm thử](docs/harness/testing.md). Không dùng receipt cũ khi code hoặc tiêu chí đã đổi.
+- Khi tiếp tục phiên làm việc, đọc `./harness.sh status <task-id>`, receipt gần nhất và ghi chú; đối chiếu lại checkout thực tế. Nếu verifier bị gián đoạn, dùng `recover` trước khi tiếp tục.
+- Tối đa 3 lượt kiểm chứng mỗi task; nếu vẫn chưa đạt thì dừng, trình bày bằng chứng và đề xuất bước tiếp theo. Không xóa lịch sử/tạo task mới cùng phạm vi để lách giới hạn.
+- Task mặc định yêu cầu UI: nhập [kế hoạch UI](docs/harness/ui-verification.md) trước verify, mở đúng bản DEV đã kiểm chứng, dùng công cụ điều khiển UI thao tác thật và ghi từng bước kèm ảnh trước/sau. Không suy kết quả UI từ đọc code hoặc unit test.
+- Dùng `./harness.sh check <task-id>` trước bàn giao. Mã thoát 3 nghĩa là còn thiếu kiểm chứng; test/build pass chưa đủ. Không dùng task `--ui none` nếu có sửa file UI; chỉ miễn UI cho công việc không ảnh hưởng giao diện và có lý do cụ thể.
+- Không bỏ bước, dùng lại ảnh cũ, ảnh dựng hoặc sửa báo cáo để qua cổng. Hạng mục không áp dụng cần lý do trong kế hoạch; mọi bước còn lại đều bắt buộc. Thiếu quyền/công cụ/dữ liệu thì báo vướng mắc, giữ trạng thái pending/blocked.
+- Đủ bằng chứng UI chỉ chuyển sang chờ người dùng kiểm tra; vẫn phải tuân thủ điều kiện commit/push/PR/merge của Phần 1. Jira/Atlassian mặc định chỉ đọc; mọi thao tác ghi cần xác nhận riêng.

@@ -85,6 +85,11 @@ SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 echo "Signing DEV app with identity: ${SIGN_IDENTITY}..."
 codesign --deep --sign "${SIGN_IDENTITY}" --force "$APP" 2>/dev/null || codesign --deep --sign - --force "$APP" 2>/dev/null
 
+if [ "${SD_BUILD_ONLY:-0}" = "1" ]; then
+    echo "DEV build ready: $PWD/$APP (launch skipped)."
+    exit 0
+fi
+
 echo "Killing old StockDeck process instances..."
 pkill -15 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 pkill -15 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true

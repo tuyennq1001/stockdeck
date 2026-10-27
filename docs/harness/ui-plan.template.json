@@ -1,0 +1,25 @@
+{
+  "scenarios": [
+    {
+      "id": "main-flow",
+      "title": "",
+      "surface": "",
+      "preconditions": [""],
+      "covers": ["loaded"],
+      "steps": [
+        {"id": "open", "action": "", "expected": ""},
+        {"id": "interact", "action": "", "expected": ""},
+        {"id": "restore", "action": "", "expected": ""}
+      ]
+    }
+  ],
+  "exclusions": {
+    "loading": "",
+    "empty": "",
+    "error": "",
+    "appearance": "",
+    "window_size": "",
+    "keyboard": "",
+    "parity": ""
+  }
+}
