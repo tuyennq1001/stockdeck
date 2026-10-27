@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-*{box-sizing:border-box}html,body,#app{height:100%;margin:0}body{font:12px -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;color:#333}#app{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:42px minmax(0,1fr) auto}.toolbar{grid-column:2;grid-row:1;height:42px;display:flex;align-items:center;gap:4px;padding:3px 7px;overflow:visible;white-space:nowrap;background:rgba(244,243,239,.86);border-bottom:1px solid #8883}.toolbar button,.menu summary{border:0;background:transparent;color:inherit;padding:5px 7px;border-radius:5px;cursor:pointer}.toolbar button:hover,.toolbar button.selected,.menu summary:hover,.draw-rail button:hover,.draw-rail button.selected{background:#8882}.toolbar button.selected,.draw-rail button.selected{color:#16816d;font-weight:600}.draw-rail{grid-column:1;grid-row:2;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 3px;border-right:1px solid #8882}.draw-rail button{width:28px;height:28px;border:0;border-radius:5px;background:transparent;color:inherit;cursor:pointer;font-size:15px}.draw-rail .rail-separator{height:1px;width:20px;background:#8883;margin:3px 0}.menu{position:relative;flex:0 0 auto}.menu summary{list-style:none}.menu summary::-webkit-details-marker{display:none}.menu-panel{position:fixed;z-index:1000;top:46px;right:12px;min-width:225px;max-height:70vh;overflow:auto;padding:8px;background:rgba(250,250,250,.98);border:1px solid #8883;border-radius:9px;box-shadow:0 6px 24px #0002}.menu-group{padding:5px 4px;border-bottom:1px solid #8882}.menu-group:last-child{border-bottom:0}.menu-title{font-size:10px;color:#888;padding:2px 5px 5px}.menu label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:4px;cursor:pointer}.menu label:hover{background:#8882}.menu input{accent-color:#16816d}.time-control[hidden]{display:none!important}#chart{grid-column:2;grid-row:2;width:100%;height:100%;position:relative}#drawing-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none;z-index:5}#error{display:none;padding:20px;color:#777}.separator{width:1px;height:20px;background:#8883;flex:0 0 auto}.danger{color:#b44!important}@media(prefers-color-scheme:dark){body{color:#ddd}.toolbar{background:rgba(34,37,42,.88)}.menu-panel{background:rgba(36,39,45,.98);border-color:#ffffff24}}
-#drawingTools{display:flex;align-items:center;gap:3px}#drawingTools[hidden]{display:none}details[open]>.menu-panel{display:block}details:not([open])>.menu-panel{display:none}.menu-panel button{display:block;width:100%;text-align:left;padding:6px 8px}.menu-panel select{width:100%;padding:5px;border:1px solid #8884;border-radius:5px;background:transparent;color:inherit}#paneReadout{position:absolute;z-index:4;left:48px;top:44px;display:flex;gap:12px;align-items:center;pointer-events:none;color:#6d5bb0;font-size:11px;text-shadow:0 1px 2px #fff}#paneReadout:empty{display:none}#paneReadout .muted{color:#888}dialog{width:min(360px,calc(100vw - 32px));border:1px solid #8884;border-radius:12px;padding:0;color:inherit;background:#fff;box-shadow:0 12px 36px #0003}dialog::backdrop{background:#0004}dialog form{padding:16px}dialog h3{margin:0 0 12px;font-size:15px}#indicatorFields{display:grid;grid-template-columns:1fr 1fr;gap:8px}#indicatorFields label{display:grid;gap:4px;font-size:11px;color:#777}#indicatorFields input{width:100%;padding:6px;border:1px solid #8885;border-radius:5px;background:transparent;color:inherit}.dialog-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:16px}.dialog-actions button{padding:6px 9px;border:1px solid #8884;border-radius:6px;background:transparent;color:inherit;cursor:pointer}@media(prefers-color-scheme:dark){dialog{background:#24272d}}
+*{box-sizing:border-box}html,body,#app{height:100%;margin:0}body{font:12px -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;color:#333}#app{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:42px minmax(0,1fr) auto}.toolbar{grid-column:2;grid-row:1;height:42px;display:flex;align-items:center;gap:4px;padding:3px 7px;overflow-x:auto;overflow-y:visible;scrollbar-width:none;white-space:nowrap;background:rgba(244,243,239,.86);border-bottom:1px solid #8883}.toolbar::-webkit-scrollbar{display:none}.toolbar button,.menu summary{border:0;background:transparent;color:inherit;padding:5px 7px;border-radius:5px;cursor:pointer}.toolbar button:hover,.toolbar button.selected,.menu summary:hover,.draw-rail button:hover,.draw-rail button.selected{background:#8882}.toolbar button.selected,.draw-rail button.selected{color:#16816d;font-weight:600}.draw-rail{grid-column:1;grid-row:2;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;border-right:1px solid #8882;overflow-y:auto;overflow-x:hidden}.draw-rail button{position:relative;width:28px;height:28px;border:0;border-radius:5px;background:transparent;color:inherit;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0}.draw-rail button:hover{background:#8882}.draw-rail button.selected{background:#8882;color:#16816d;font-weight:600}.draw-rail button.mod-active{background:rgba(22,129,109,.2);color:#16816d;box-shadow:0 0 0 1px rgba(22,129,109,.4) inset}.draw-rail .rail-separator{height:1px;width:20px;background:#8883;margin:2px 0;flex-shrink:0}.draw-favs{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%}.fav-btn{position:relative}.fav-dot{position:absolute;top:2px;right:2px;width:4px;height:4px;border-radius:50%;background:#f59e0b;pointer-events:none}.group-chevron{position:absolute;bottom:0px;right:1px;font-size:8px;line-height:1;opacity:.65;pointer-events:none}.flyout-menu{position:fixed;z-index:1000;left:38px;top:80px;min-width:240px;background:rgba(250,250,250,.98);border:1px solid #8883;border-radius:8px;box-shadow:0 8px 28px #0003;padding:6px;display:none}@media(prefers-color-scheme:dark){.flyout-menu{background:rgba(36,39,45,.98);border-color:#ffffff24}}.flyout-title{font-size:10px;font-weight:700;color:#888;padding:4px 8px;border-bottom:1px solid #8882;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}.flyout-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:12px}.flyout-item:hover{background:#8882}.flyout-item.is-active{background:rgba(22,129,109,.15);color:#16816d;font-weight:600}.flyout-item-left{display:flex;align-items:center;gap:8px}.flyout-item-icon{width:18px;text-align:center;font-size:14px}.flyout-star{border:0;background:transparent;color:#888;cursor:pointer;padding:2px 4px;font-size:13px;border-radius:3px}.flyout-star:hover{background:#8882}.flyout-star.is-fav{color:#f59e0b}.pin-tooltip{display:none!important}.inline-drawing-editor{position:absolute;z-index:95;pointer-events:auto;user-select:none}.inline-drawing-editor[hidden]{display:none!important}.inline-editor-bubble{position:relative;display:flex;flex-direction:column;filter:drop-shadow(0 4px 14px rgba(0,0,0,.28));border-radius:6px}.inline-editor-bubble textarea{display:block;box-sizing:border-box;margin:0;padding:5px 9px;border:1.5px solid #2962ff;border-radius:6px;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:12px;line-height:1.35;resize:none;outline:none;min-width:100px;max-width:300px;box-shadow:0 0 0 2px rgba(41,98,255,.3)}.inline-editor-tail{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid #16816d;pointer-events:none}.menu{position:relative;flex:0 0 auto}.menu summary{list-style:none}.menu summary::-webkit-details-marker{display:none}.menu-panel{position:fixed;z-index:1000;top:46px;right:12px;min-width:225px;max-height:70vh;overflow:auto;padding:8px;background:rgba(250,250,250,.98);border:1px solid #8883;border-radius:9px;box-shadow:0 6px 24px #0002}.menu-group{padding:5px 4px;border-bottom:1px solid #8882}.menu-group:last-child{border-bottom:0}.menu-title{font-size:10px;color:#888;padding:2px 5px 5px}.menu label{display:flex;align-items:center;gap:8px;padding:5px;border-radius:4px;cursor:pointer}.menu label:hover{background:#8882}.menu input{accent-color:#16816d}.time-control[hidden]{display:none!important}#chart{grid-column:2;grid-row:2;width:100%;height:100%;position:relative;overflow:hidden}#drawing-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none;z-index:5}#error{display:none;padding:20px;color:#777}.separator{width:1px;height:20px;background:#8883;flex:0 0 auto}.danger{color:#b44!important}@media(prefers-color-scheme:dark){body{color:#ddd}.toolbar{background:rgba(34,37,42,.88)}.menu-panel{background:rgba(36,39,45,.98);border-color:#ffffff24}}
+#drawingTools{position:absolute;z-index:120;display:flex;align-items:center;gap:3px;padding:3px 5px;border-radius:7px;background:rgba(255,255,255,.98);border:1px solid rgba(0,0,0,.18);box-shadow:0 4px 18px rgba(0,0,0,.22);backdrop-filter:blur(8px);pointer-events:auto;user-select:none;white-space:nowrap;max-width:calc(100% - 16px)}@media(prefers-color-scheme:dark){#drawingTools{background:rgba(30,34,42,.98);border-color:rgba(255,255,255,.18);box-shadow:0 4px 20px rgba(0,0,0,.5)}}#drawingTools[hidden],#drawingTools [hidden],#drawingTools button[hidden],#drawingTools select[hidden],[hidden]{display:none!important}#drawingTools button>*{pointer-events:none}.floating-drag-handle{cursor:grab;padding:2px 4px;color:#888;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;border-radius:4px;letter-spacing:-1px;touch-action:none}.floating-drag-handle:hover{background:#8882;color:#16816d}.floating-drag-handle.is-dragging{cursor:grabbing;color:#16816d}.floating-btn{display:flex;align-items:center;justify-content:center;gap:4px;height:24px;padding:2px 6px;border:1px solid #8884;border-radius:5px;background:transparent;color:inherit;font-size:11px;cursor:pointer}.floating-btn:hover{background:#8882}.floating-btn-icon{width:26px;padding:0;display:flex;align-items:center;justify-content:center}#drawingTools button svg{display:block;margin:auto}.floating-mini-popover{position:fixed;z-index:2100;padding:6px;background:rgba(255,255,255,.98);border:1px solid #8884;border-radius:7px;box-shadow:0 8px 24px rgba(0,0,0,.25);color:inherit;font-family:-apple-system,BlinkMacSystemFont,sans-serif;pointer-events:auto;display:flex;flex-direction:column;gap:2px;min-width:96px}@media(prefers-color-scheme:dark){.floating-mini-popover{background:rgba(36,39,45,.98);border-color:#ffffff24}}.popover-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;border:0;background:transparent;color:inherit;font-size:11px;cursor:pointer;text-align:left;width:100%}.popover-item:hover{background:#8882}.popover-item.is-active{background:rgba(22,129,109,.15);color:#16816d;font-weight:600}.width-stroke-preview{height:0;flex:1;border-top-style:solid;border-top-color:currentColor}.style-stroke-preview{height:0;flex:1;border-top-width:2px;border-top-color:currentColor}#drawingTools select{padding:3px 5px;border:1px solid #8884;border-radius:5px;background:transparent;color:inherit;font-size:11px;cursor:pointer;height:24px}#drawingTools button{display:flex;align-items:center;gap:3px;padding:3px 6px;height:24px;border:0;border-radius:5px;background:transparent;color:inherit;font-size:11px;cursor:pointer}#drawingTools button:hover{background:#8882}#drawingTools button:disabled,#drawingTools select:disabled{opacity:.4;cursor:default}#drawingTools .floating-sep{width:1px;height:16px;background:#8883;margin:0 2px;flex-shrink:0}.drawing-color-btn{width:24px;height:24px;padding:2px;display:flex;align-items:center;justify-content:center;border:1px solid #8884;border-radius:5px;background:transparent;cursor:pointer}.drawing-color-btn:hover{background:#8882}#drawingColorSwatch,#drawingFontColorSwatch{width:16px;height:16px;border-radius:3px;border:1px solid #0003;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;box-sizing:border-box}.lock-btn.is-locked{background:rgba(245,158,11,.18)!important;color:#d97706!important;border:1px solid rgba(245,158,11,.45)!important;font-weight:600}@media(prefers-color-scheme:dark){.lock-btn.is-locked{background:rgba(245,158,11,.25)!important;color:#fbbf24!important}}.draw-rail button svg,.fav-btn svg,.flyout-item-icon svg{width:16px;height:16px;display:block;flex-shrink:0}.drawing-color-popover{position:fixed;z-index:2000;width:210px;padding:10px;background:rgba(255,255,255,.98);border:1px solid #8884;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.22);color:inherit;font-family:-apple-system,BlinkMacSystemFont,sans-serif;pointer-events:auto}@media(prefers-color-scheme:dark){.drawing-color-popover{background:rgba(36,39,45,.98);border-color:#ffffff24}}.pop-title{font-size:10px;font-weight:700;color:#888;letter-spacing:.04em;margin-bottom:6px}.auto-color-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:5px 7px;margin-bottom:7px;border:1px solid #8884;border-radius:5px;background:transparent;color:inherit;font-size:11px;cursor:pointer}.auto-color-btn:hover{background:#8882}.auto-color-btn.is-selected{border-color:#16816d;background:rgba(22,129,109,.12);color:#16816d;font-weight:600}.auto-color-btn .subtext{font-size:10px;opacity:.7}.color-palette-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.palette-chip{width:100%;height:22px;border-radius:4px;border:1px solid rgba(0,0,0,.15);cursor:pointer;padding:0}.palette-chip:hover{transform:scale(1.08)}.palette-chip.is-selected{outline:2px solid #2962ff;outline-offset:2px}details[open]>.menu-panel{display:block}details:not([open])>.menu-panel{display:none}.menu-panel button{display:block;width:100%;text-align:left;padding:6px 8px}.menu-panel select{width:100%;padding:5px;border:1px solid #8884;border-radius:5px;background:transparent;color:inherit}#paneReadout{position:absolute;z-index:4;left:48px;top:44px;display:flex;gap:12px;align-items:center;pointer-events:none;color:#6d5bb0;font-size:11px;text-shadow:0 1px 2px #fff}#paneReadout:empty{display:none}#paneReadout .muted{color:#888}dialog{width:min(360px,calc(100vw - 32px));border:1px solid #8884;border-radius:12px;padding:0;color:inherit;background:#fff;box-shadow:0 12px 36px #0003}dialog::backdrop{background:#0004}dialog form{padding:16px}dialog h3{margin:0 0 12px;font-size:15px}#indicatorFields{display:grid;grid-template-columns:1fr 1fr;gap:8px}#indicatorFields label{display:grid;gap:4px;font-size:11px;color:#777}#indicatorFields input{width:100%;padding:6px;border:1px solid #8885;border-radius:5px;background:transparent;color:inherit}.dialog-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:16px}.dialog-actions button{padding:6px 9px;border:1px solid #8884;border-radius:6px;background:transparent;color:inherit;cursor:pointer}@media(prefers-color-scheme:dark){dialog{background:#24272d}}
 #indicatorDialog{width:min(540px,calc(100vw - 32px));max-height:calc(100vh - 36px);overflow:auto}#indicatorDialog form{padding:18px 20px 14px}.dialog-title-row{display:flex;align-items:center;justify-content:space-between}.dialog-title-row h3{font-size:20px;margin:0 0 12px}.dialog-close{width:30px;height:30px;border:0;background:transparent;color:inherit;font-size:23px;line-height:1;cursor:pointer;border-radius:5px}.dialog-close:hover{background:#8882}#rsiTabs{display:flex;gap:22px;border-bottom:1px solid #8883;margin-bottom:15px}#rsiTabs[hidden]{display:none}#rsiTabs button{border:0;background:transparent;color:inherit;padding:8px 2px 10px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent}#rsiTabs button[aria-selected="true"]{border-color:#16816d;color:#16816d;font-weight:600}.rsi-tab-panel{display:grid;grid-template-columns:1fr 1fr;gap:11px 14px;min-height:190px}.rsi-tab-panel[hidden]{display:none!important}.rsi-setting-group{grid-column:1/-1;color:#8a8a8a;font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding-top:5px;border-top:1px solid #8882}.rsi-toggle-row{display:flex!important;align-items:center;gap:9px!important;min-height:34px;color:inherit!important;font-size:12px!important}.rsi-toggle-row input{width:15px!important;height:15px;margin:0;accent-color:#16816d}.rsi-tab-panel>label:not(.rsi-toggle-row){display:grid;grid-template-columns:minmax(0,1fr) 130px;align-items:center;gap:8px;color:inherit!important;font-size:12px!important}.rsi-tab-panel>label:not(.rsi-toggle-row) input{width:100%;min-height:30px;padding:5px 8px!important;border:1px solid #8884;border-radius:6px}.rsi-tab-panel input[type=color]{padding:3px!important;height:32px}.rsi-tab-panel input[type=checkbox]{width:15px;height:15px}.dialog-actions{border-top:1px solid #8882;padding-top:12px}.dialog-actions #applyIndicator{background:#16816d;color:white;border-color:#16816d;padding-inline:14px}.dialog-actions #resetIndicator{margin-right:auto}@media(prefers-color-scheme:dark){#rsiTabs button[aria-selected="true"]{color:#67c2aa;border-color:#67c2aa}.dialog-actions #applyIndicator{background:#16816d}}
 #indicatorFields>.rsi-tab-panel{grid-column:1/-1}
 #indicatorPreviewStatus{min-height:16px;margin:10px 0 0;font-size:11px;color:#16816d}#indicatorPreviewStatus[data-invalid="true"]{color:#c44}
@@ -59,20 +59,55 @@
       <div class="menu-group"><div class="menu-title">DỮ LIỆU</div><label><input type="checkbox" data-series="Volume" checked> Volume</label><label><input type="checkbox" data-series="Target" checked> Giá mục tiêu mua</label></div>
       <div class="menu-group"><div class="menu-title">PANE</div><select id="focusPane" title="Phóng to khung"><option value="0">Toàn chart</option></select><button id="restorePanes" title="Khôi phục kích thước các pane" disabled>Khôi phục pane</button></div>
     </div></details>
-    <button id="resetView" type="button" title="Đặt lại góc nhìn" aria-label="Đặt lại góc nhìn">Đặt lại</button><span class="separator"></span>
-    <div id="drawingTools" hidden><button id="deleteRange" title="Xóa hình đang chọn" disabled>Xóa</button><button id="lockDrawing" title="Khóa/mở khóa hình đang chọn" disabled>Khóa</button><input id="drawingColor" type="color" value="#1a9b82" title="Màu hình vẽ" style="width:24px;height:24px;border:0;background:transparent;padding:0"><select id="drawingWidth" title="Độ dày"><option value="1">1px</option><option value="2">2px</option><option value="3">3px</option></select><span id="saveState"></span></div>
+    <button id="resetView" type="button" title="Đặt lại góc nhìn" aria-label="Đặt lại góc nhìn">Đặt lại</button>
   </div>
   <div class="draw-rail" aria-label="Công cụ vẽ">
-    <button data-tool="select" class="selected" title="Chọn và sửa">↖</button>
-    <button data-tool="horizontal" title="Đường ngang">━</button>
-    <button data-tool="trend" title="Đường xu hướng">／</button>
-    <button data-tool="rectangle" title="Hình chữ nhật">▱</button>
-    <button data-tool="range" title="Price Range">↕</button>
+    <button id="toolSelect" data-tool="select" class="selected" title="Chọn và sửa (Esc)"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 3l13 7.5-6.5 1.5 4 8-2.5 1.2-4-8-4 4.8z"/></svg></button>
+    <div id="drawFavorites" class="draw-favs" title="Công cụ yêu thích (★)"></div>
     <span class="rail-separator"></span>
-    <button id="undo" title="Hoàn tác (⌘Z)" disabled>↶</button>
-    <button id="redo" title="Làm lại (⌘⇧Z)" disabled>↷</button>
+    <div id="drawGroups" style="display:flex;flex-direction:column;align-items:center;gap:3px;width:100%"></div>
+    <span class="rail-separator"></span>
+    <button id="toolRuler" data-tool="ruler" title="Thước đo nhanh (Giữ Shift + Click)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="8" rx="1.5"/><line x1="7" y1="8" x2="7" y2="12"/><line x1="11" y1="8" x2="11" y2="11"/><line x1="15" y1="8" x2="15" y2="12"/><line x1="19" y1="8" x2="19" y2="11"/></svg></button>
+    <span class="rail-separator"></span>
+    <button id="modMagnet" title="Magnet: Bắt dính giá OHLC (24px)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v7a8 8 0 0 0 16 0V4"/><line x1="4" y1="8" x2="9" y2="8"/><line x1="15" y1="8" x2="20" y2="8"/></svg></button>
+    <button id="modStay" title="Giữ chế độ vẽ liên tục"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+    <button id="modLockAll" title="Khóa tất cả hình vẽ"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+    <button id="modHideAll" title="Ẩn/Hiện tất cả hình vẽ"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+    <button id="modClearAll" class="danger" title="Xóa tất cả hình vẽ (⌘Z để hoàn tác)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+    <span class="rail-separator"></span>
+    <button id="undo" title="Hoàn tác (⌘Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></button>
+    <button id="redo" title="Làm lại (⌘⇧Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg></button>
   </div>
-  <div id="chart"><canvas id="drawing-layer"></canvas><button id="collapseIndicators" class="legend-collapse" type="button" aria-label="Thu gọn chỉ báo" title="Thu gọn chỉ báo" aria-expanded="true" hidden>⌃</button><div id="candleReadout" aria-label="Thông tin nến" hidden><span class="candle-readout-time" data-candle-time></span><span class="candle-readout-field" data-field="open"><b>O</b> <i></i></span><span class="candle-readout-field" data-field="high"><b>H</b> <i></i></span><span class="candle-readout-field" data-field="low"><b>L</b> <i></i></span><span class="candle-readout-field" data-field="close"><b>C</b> <i></i></span><span class="candle-readout-field" data-field="change"><b>Δ</b> <i></i></span><span class="candle-readout-field" data-field="changePercent"><b>Δ%</b> <i></i></span><span class="candle-readout-field" data-field="volume"><b>KL</b> <i></i></span></div><div id="indicatorLegend" aria-label="Chỉ báo đang hiển thị"></div></div>
+  <div id="drawFlyout" class="flyout-menu" role="menu"><div id="flyoutTitle" class="flyout-title"></div><div id="flyoutItems"></div></div>
+  <div id="pinTooltip" class="pin-tooltip" hidden><div class="pin-tooltip-header"><span class="pin-tooltip-title">📌 Ghi chú</span><span class="pin-tooltip-date" id="pinTooltipDate"></span></div><p class="pin-tooltip-body" id="pinTooltipBody"></p></div>
+  <div id="chart">
+    <canvas id="drawing-layer"></canvas>
+    <div id="drawingTools" class="drawing-floating-toolbar" hidden>
+      <div id="drawingDragHandle" class="floating-drag-handle" title="Kéo để di chuyển thanh công cụ">⠿</div>
+      <button id="drawingColorBtn" type="button" class="drawing-color-btn" title="Màu sắc hình vẽ"><span id="drawingColorSwatch"></span></button>
+      <input id="drawingColor" type="hidden" value="auto">
+      <button id="drawingFontColorBtn" type="button" class="drawing-color-btn" title="Màu chữ" hidden><span id="drawingFontColorSwatch">A</span></button>
+      <input id="drawingFontColor" type="hidden" value="#eeeeee">
+      <button id="drawingFontSizeBtn" type="button" class="floating-btn floating-btn-icon" title="Cỡ chữ (13px)" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"/></svg><span id="drawingFontSizeLabel" class="visually-hidden">13px</span></button>
+      <select id="drawingFontSize" title="Cỡ chữ" style="display:none"><option value="11">11px</option><option value="12">12px</option><option value="13">13px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="24">24px</option></select>
+      <button id="drawingWidthBtn" type="button" class="floating-btn floating-btn-icon" title="Độ dày đường nét (1px)"><span id="drawingWidthPreview" class="width-stroke-preview" style="width:18px;border-top-width:1px"></span><span id="drawingWidthLabel" class="visually-hidden">1px</span></button>
+      <select id="drawingWidth" title="Độ dày đường nét" style="display:none"><option value="1">1px</option><option value="2">2px</option><option value="3">3px</option><option value="4">4px</option></select>
+      <button id="drawingLineStyleBtn" type="button" class="floating-btn floating-btn-icon" title="Kiểu nét: Liền"><span id="drawingLineStylePreview" class="style-stroke-preview" style="width:18px;border-top-style:solid"></span><span id="drawingLineStyleLabel" class="visually-hidden">Liền</span></button>
+      <select id="drawingLineStyle" title="Kiểu nét" style="display:none"><option value="solid">― Liền</option><option value="dashed">┄ Đứt</option><option value="dotted">┈ Chấm</option></select>
+      <button id="extendDrawing" class="floating-btn floating-btn-icon" title="Kéo dài tia vô hạn sang phải (Extend Right)" type="button" hidden><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><polyline points="14 6 20 12 14 18"/></svg></button>
+      <button id="editDrawingText" class="floating-btn floating-btn-icon" title="Sửa nội dung văn bản / ghi chú" type="button" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+      <span class="floating-sep"></span>
+      <button id="lockDrawing" class="lock-btn floating-btn-icon" title="Khóa / Mở khóa hình vẽ" disabled><svg class="icon-lock" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span id="lockDrawingLabel" class="visually-hidden">Khóa</span></button>
+      <button id="duplicateDrawing" class="dup-btn floating-btn-icon" title="Nhân bản / Sao chép hình vẽ (⌘D)" type="button" disabled><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+      <button id="deleteRange" class="danger floating-btn-icon" title="Xóa hình đang chọn (Delete)" disabled><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    </div>
+    <div id="inlineDrawingEditor" class="inline-drawing-editor" hidden>
+      <div class="inline-editor-bubble">
+        <textarea id="inlineDrawingInput" rows="1" placeholder="Nhập ghi chú..." spellcheck="false" maxlength="1000"></textarea>
+        <div class="inline-editor-tail" id="inlineEditorTail"></div>
+      </div>
+    </div>
+    <button id="collapseIndicators" class="legend-collapse" type="button" aria-label="Thu gọn chỉ báo" title="Thu gọn chỉ báo" aria-expanded="true" hidden>⌃</button><div id="candleReadout" aria-label="Thông tin nến" hidden><span class="candle-readout-time" data-candle-time></span><span class="candle-readout-field" data-field="open"><b>O</b> <i></i></span><span class="candle-readout-field" data-field="high"><b>H</b> <i></i></span><span class="candle-readout-field" data-field="low"><b>L</b> <i></i></span><span class="candle-readout-field" data-field="close"><b>C</b> <i></i></span><span class="candle-readout-field" data-field="change"><b>Δ</b> <i></i></span><span class="candle-readout-field" data-field="changePercent"><b>Δ%</b> <i></i></span><span class="candle-readout-field" data-field="volume"><b>KL</b> <i></i></span></div><div id="indicatorLegend" aria-label="Chỉ báo đang hiển thị"></div></div>
   <div id="rangeBar" class="range-bar" role="toolbar" aria-label="Khoảng xem" hidden>
     <div id="rangePresets"></div>
     <details class="menu" id="rangeMenu"><summary id="rangeLabel" aria-label="Các khoảng xem khác">···</summary><div class="menu-panel"><div id="rangeOptions" class="menu-group"></div></div></details>
@@ -90,6 +125,7 @@
   <div class="dialog-actions"><button id="cancelCustomRange" type="button">Hủy</button><button type="submit">Áp dụng</button></div>
 </form></dialog>
 <dialog id="indicatorDialog"><form method="dialog" id="indicatorForm"><div class="dialog-title-row"><h3 id="dialogTitle">Cài đặt chỉ báo</h3><button id="closeIndicator" class="dialog-close" type="button" aria-label="Đóng">×</button></div><div id="rsiTabs" role="tablist" aria-label="Cài đặt RSI" hidden><button type="button" role="tab" data-rsi-tab="inputs" aria-selected="true">Inputs</button><button type="button" role="tab" data-rsi-tab="style" aria-selected="false">Style</button><button type="button" role="tab" data-rsi-tab="visibility" aria-selected="false">Visibility</button></div><div id="indicatorFields"></div><p id="indicatorPreviewStatus" role="status" aria-live="polite"></p><div class="dialog-actions"><button id="cancelIndicator" type="button">Hủy</button><button id="resetIndicator" type="button">Mặc định</button></div></form></dialog>
+
 <script>
 (() => {
   const C=window.LightweightCharts,host=document.getElementById('chart'),canvas=document.getElementById('drawing-layer'),ctx=canvas.getContext('2d');
@@ -134,6 +170,58 @@
   let indexedValues=new WeakMap(),barsByTime=new Map(),previousCloseByTime=new Map(),activeHoverTime=null,hoverFrame=0,pendingHoverTime=null;
   let drawings=[],selectedId=null,activeTool='select',dragStart=null,dragCurrent=null,draggingId=null,draggingHandle=null,undoStack=[],redoStack=[];
   let pendingReset=false,viewportSaveTimer=null,pendingSymbolZoom=null;
+  let rulerStart=null,rulerCurrent=null,activeHoverPin=null;
+  const drawingIcons = {
+    select: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 3l13 7.5-6.5 1.5 4 8-2.5 1.2-4-8-4 4.8z"/></svg>',
+    trend: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/><circle cx="5" cy="19" r="2.2" fill="currentColor"/><circle cx="19" cy="5" r="2.2" fill="currentColor"/></svg>',
+    arrow: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="18" x2="18" y2="6"/><polyline points="9 6 18 6 18 15"/></svg>',
+    horizontal: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg>',
+    horizontalRay: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="20" y2="12"/><polyline points="15 7 20 12 15 17"/><circle cx="5" cy="12" r="2.2" fill="currentColor"/></svg>',
+    vertical: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="3" x2="12" y2="21"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg>',
+    rectangle: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="2"/></svg>',
+    range: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/><line x1="5" y1="3" x2="19" y2="3"/><line x1="5" y1="21" x2="19" y2="21"/></svg>',
+    dateRange: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="7 8 3 12 7 16"/><polyline points="17 8 21 12 17 16"/><line x1="3" y1="5" x2="3" y2="19"/><line x1="21" y1="5" x2="21" y2="19"/></svg>',
+    datePriceRange: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="2.5 2"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="4" y1="12" x2="20" y2="12"/><polyline points="9 7 12 4 15 7"/><polyline points="17 9 20 12 17 15"/></svg>',
+    text: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 7 5 4 19 4 19 7"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="9" y1="20" x2="15" y2="20"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/></svg>',
+    priceLabel: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13l-7.6 7.6a2 2 0 0 1-2.8 0L3 13.4V3h10.4l7.2 7.2a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/></svg>',
+    ruler: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="8" rx="1.5"/><line x1="7" y1="8" x2="7" y2="12"/><line x1="11" y1="8" x2="11" y2="11"/><line x1="15" y1="8" x2="15" y2="12"/><line x1="19" y1="8" x2="19" y2="11"/></svg>',
+    magnet: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v7a8 8 0 0 0 16 0V4"/><line x1="4" y1="8" x2="9" y2="8"/><line x1="15" y1="8" x2="20" y2="8"/></svg>',
+    stay: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    lockOpen: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+    eyeOff: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+    undo: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>',
+    redo: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>'
+  };
+  const toolGroups=[
+    {id:'lines',title:'ĐƯỜNG KẺ & HÌNH KHỐI',activeTool:'trend',tools:[
+      {id:'trend',icon:drawingIcons.trend,name:'Trendline (Đường xu hướng)',fav:true},
+      {id:'arrow',icon:drawingIcons.arrow,name:'Arrow (Mũi tên chỉ hướng)',fav:false},
+      {id:'horizontal',icon:drawingIcons.horizontal,name:'Horizontal Line (Đường ngang)',fav:true},
+      {id:'horizontalRay',icon:drawingIcons.horizontalRay,name:'Horizontal Ray (Tia ngang)',fav:false},
+      {id:'vertical',icon:drawingIcons.vertical,name:'Vertical Line (Đường dọc)',fav:false},
+      {id:'rectangle',icon:drawingIcons.rectangle,name:'Rectangle (Hình chữ nhật)',fav:false}
+    ]},
+    {id:'ranges',title:'ĐO LƯỜNG KHOẢNG',activeTool:'range',tools:[
+      {id:'range',icon:drawingIcons.range,name:'Price Range (Khoảng giá)',fav:true},
+      {id:'dateRange',icon:drawingIcons.dateRange,name:'Date Range (Khoảng ngày)',fav:false},
+      {id:'datePriceRange',icon:drawingIcons.datePriceRange,name:'Date & Price Range (Thời gian & Giá)',fav:false}
+    ]},
+    {id:'annotations',title:'GHI CHÚ & ĐÁNH DẤU',activeTool:'pin',tools:[
+      {id:'text',icon:drawingIcons.text,name:'Text (Văn bản trên chart)',fav:false},
+      {id:'pin',icon:drawingIcons.pin,name:'Pin / Note (Ghim ghi chú)',fav:true},
+      {id:'priceLabel',icon:drawingIcons.priceLabel,name:'Price Label (Nhãn giá)',fav:false}
+    ]}
+  ];
+  let storedDrawingFavs=null;try{storedDrawingFavs=JSON.parse(readStorage('drawingFavorites')||'null');}catch{}
+  if(Array.isArray(storedDrawingFavs)&&storedDrawingFavs.length){const s=new Set(storedDrawingFavs);for(const g of toolGroups)for(const t of g.tools)t.fav=s.has(t.id);}
+  const mods={magnet:false,stay:false,lockAll:false,hideAll:false};
+  let storedDrawingPrefs=null;try{storedDrawingPrefs=JSON.parse(readStorage('drawingPreferences')||'null');}catch{}
+  if(storedDrawingPrefs?.mods)Object.assign(mods,storedDrawingPrefs.mods);
+  let globalExtendRight=!!storedDrawingPrefs?.extendRight;
   const timeframeOptions=[
     {value:'5m',short:'5m',name:'5 phút',group:'PHÚT'}, {value:'30m',short:'30m',name:'30 phút',group:'PHÚT'},
     {value:'1h',short:'1h',name:'1 giờ',group:'GIỜ'},{value:'4h',short:'4h',name:'4 giờ',group:'GIỜ'},{value:'6h',short:'6h',name:'6 giờ',group:'GIỜ'},
@@ -241,7 +329,23 @@
     document.getElementById('rsiSummary').textContent=`${settings.rsiPeriod||14} · ${settings.rsiOversold??30}/${settings.rsiOverbought??70}`;document.getElementById('macdSummary').textContent=`${settings.macdFast||12}/${settings.macdSlow||26}/${settings.macdSignal||9}`;
     document.getElementById('stochasticSummary').textContent=`${settings.stochasticKPeriod||14}/${settings.stochasticKSmoothing||3}/${settings.stochasticDPeriod||3} · ${settings.stochasticOversold??20}/${settings.stochasticOverbought??80}`;document.getElementById('bbMenuSummary').textContent=`Bollinger Bands ${settings.bollingerPeriod||20}/${settings.bollingerDeviations||2}`;
     const candleTypeButton=document.getElementById('candleType');candleTypeButton.disabled=!payload.hasOHLC;candleTypeButton.title=payload.hasOHLC?'Hiển thị nến':'Nguồn này chỉ có giá đóng cửa';candleTypeButton.textContent=`${chartType==='candles'&&payload.hasOHLC?'✓ ':''}Nến`;document.getElementById('lineType').textContent=`${chartType==='line'||!payload.hasOHLC?'✓ ':''}Đường`;document.getElementById('linearScale').textContent=`${!logScale?'✓ ':''}Tuyến tính`;document.getElementById('logScale').textContent=`${logScale?'✓ ':''}Log`;
-    renderIndicatorLegend(settings);drawings=Array.isArray(payload.drawings)?payload.drawings:drawings;drawings=drawings.filter(d=>Number.isFinite(d.startPrice)&&Number.isFinite(d.endPrice));setButtonState();updateMarkerState();updateToolbarState();updateDeleteButtons();syncPaneMenu();scheduleDraw();if(reset){if(pendingReset){applyRange();pendingReset=false;pendingSymbolZoom=null;}else if(surface==='superchart'&&pendingSymbolZoom){const to=bars.length-1+pendingSymbolZoom.rightOffset;chart.timeScale().setVisibleLogicalRange({from:to-pendingSymbolZoom.barCount,to});pendingSymbolZoom=null;}else if(!restoreViewport())applyRange();}else if(rangeBefore)chart.timeScale().setVisibleLogicalRange(rangeBefore);
+    renderIndicatorLegend(settings);
+    if(Array.isArray(payload.drawings)){
+      if(drawings.length===0){
+        drawings=payload.drawings;
+      }else{
+        const byId=new Map(drawings.map(d=>[d.id,d]));
+        drawings=payload.drawings.map(inc=>{
+          const cur=byId.get(inc.id);
+          return cur?{...inc,...cur}:inc;
+        });
+        for(const cur of byId.values()){
+          if(!drawings.some(d=>d.id===cur.id))drawings.push(cur);
+        }
+      }
+    }
+    drawings=drawings.filter(d=>Number.isFinite(d.startPrice)&&Number.isFinite(d.endPrice));
+    setButtonState();updateMarkerState();updateToolbarState();updateDeleteButtons();syncPaneMenu();scheduleDraw();if(reset){if(pendingReset){applyRange();pendingReset=false;pendingSymbolZoom=null;}else if(surface==='superchart'&&pendingSymbolZoom){const to=bars.length-1+pendingSymbolZoom.rightOffset;chart.timeScale().setVisibleLogicalRange({from:to-pendingSymbolZoom.barCount,to});pendingSymbolZoom=null;}else if(!restoreViewport())applyRange();}else if(rangeBefore)chart.timeScale().setVisibleLogicalRange(rangeBefore);
   }
   function pointKey(time){const value=timeValue(time);return value==null?null:String(value);}
   function indexHoverData(){indexedValues=new WeakMap();barsByTime=new Map();previousCloseByTime=new Map();activeHoverTime=null;let previous=null;for(const bar of payload?.bars||[]){const key=pointKey(bar.time);if(key==null)continue;barsByTime.set(key,bar);previousCloseByTime.set(key,previous);previous=bar.close;}const arrays=[payload?.rsi,payload?.macd,payload?.signal,payload?.histogram,payload?.stochasticK,payload?.stochasticD,payload?.parabolicSAR,payload?.upperBand,payload?.middleBand,payload?.lowerBand,...Object.values(payload?.lines||{})];for(const points of arrays){if(!Array.isArray(points))continue;const values=new Map();for(const point of points){const key=pointKey(point.time);if(key!=null&&Number.isFinite(point.value))values.set(key,point.value);}indexedValues.set(points,values);}}
@@ -299,13 +403,179 @@
   const indicatorLegend=document.getElementById('indicatorLegend');indicatorLegend.addEventListener('pointerdown',event=>{if(event.target.closest('button'))event.stopPropagation();});indicatorLegend.addEventListener('click',event=>{const button=event.target.closest('button[data-action]');if(!button)return;event.preventDefault();event.stopPropagation();const {action,indicator}=button.dataset;if(action==='toggle')toggleIndicator(indicator,!isVisible(indicator));else if(action==='settings')openLegendSettings(indicator);else if(action==='delete')deleteIndicator(indicator);});
   document.getElementById('collapseIndicators').addEventListener('click',()=>{indicatorsCollapsed=!indicatorsCollapsed;persistDisplay();renderIndicatorLegend(payload?.indicatorSettings||indicatorSettings);});
   function syncPaneMenu(){const select=document.getElementById('focusPane'),previous=select.value;select.innerHTML='<option value="0">Toàn chart</option>';chart.panes().forEach((pane,index)=>{if(index===0)return;const content=pane.getSeries(),name=content.includes(rsi)?'RSI':content.includes(macd)?'MACD':content.includes(stochasticK)?'Stochastic':content.includes(volume)?'Volume':`Pane ${index+1}`;select.add(new Option(name,String(index)));});select.value=[...select.options].some(option=>option.value===previous)?previous:'0';}
+  function addTradingDays(dateStr,count){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr)))return String(dateStr);const [y,m,d]=dateStr.split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d));const step=count>=0?1:-1;let rem=Math.abs(count);while(rem>0){dt.setUTCDate(dt.getUTCDate()+step);const day=dt.getUTCDay();if(day!==0&&day!==6)rem--;}return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;}
+  function tradingDaysBetween(startStr,endStr){if(startStr===endStr)return 0;if(!/^\d{4}-\d{2}-\d{2}$/.test(String(startStr))||!/^\d{4}-\d{2}-\d{2}$/.test(String(endStr))){const s=timeSeconds(startStr),e=timeSeconds(endStr);return Math.round((e-s)/86400);}const forward=startStr<endStr,s=forward?startStr:endStr,e=forward?endStr:startStr;const [y1,m1,d1]=s.split('-').map(Number),[y2,m2,d2]=e.split('-').map(Number);const dt=new Date(Date.UTC(y1,m1-1,d1)),target=new Date(Date.UTC(y2,m2-1,d2));let count=0;while(dt<target){dt.setUTCDate(dt.getUTCDate()+1);const day=dt.getUTCDay();if(day!==0&&day!==6)count++;}return forward?count:-count;}
+  function calendarDaysBetween(t1,t2){const s1=timeSeconds(t1),s2=timeSeconds(t2);if(!Number.isFinite(s1)||!Number.isFinite(s2))return 1;return Math.max(1,Math.round(Math.abs(s2-s1)/86400));}
+  function intervalStepSeconds(){const interval=payload?.interval||'1D';if(interval==='5m')return 300;if(interval==='30m')return 1800;if(interval==='1h')return 3600;if(interval==='4h')return 14400;if(interval==='6h')return 21600;if(interval==='1W')return 604800;if(interval==='1M')return 2592000;return 86400;}
+  function barIndexForTime(time){if(!payload?.bars?.length)return 0;const bars=payload.bars,lastBar=bars[bars.length-1],firstBar=bars[0],tSec=timeSeconds(time),lastSec=timeSeconds(lastBar.time),firstSec=timeSeconds(firstBar.time),intraday=/h$|m$/.test(payload.interval||'');if(tSec>lastSec){if(intraday)return(bars.length-1)+Math.round((tSec-lastSec)/intervalStepSeconds());return(bars.length-1)+tradingDaysBetween(dateLabel(lastBar.time),dateLabel(time));}if(tSec<firstSec){if(intraday)return-Math.round((firstSec-tSec)/intervalStepSeconds());return-tradingDaysBetween(dateLabel(time),dateLabel(firstBar.time));}return nearestIndex(time);}
+  function distToSegment(px,py,x0,y0,x1,y1){const l2=(x1-x0)*(x1-x0)+(y1-y0)*(y1-y0);if(l2===0)return Math.hypot(px-x0,py-y0);let t=((px-x0)*(x1-x0)+(py-y0)*(y1-y0))/l2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(x0+t*(x1-x0)),py-(y0+t*(y1-y0)));}
+  function distToRay(px,py,x0,y0,x1,y1){const dx=x1-x0,dy=y1-y0,l2=dx*dx+dy*dy;if(l2===0)return Math.hypot(px-x0,py-y0);let t=((px-x0)*dx+(py-y0)*dy)/l2;if(t<0)t=0;return Math.hypot(px-(x0+t*dx),py-(y0+t*dy));}
+  function roundRect(ctx,x,y,w,h,r){if(typeof ctx.roundRect==='function'){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}else{ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}}
   function timeValue(time){if(typeof time==='number')return String(time);if(!time)return null;if(typeof time==='string')return time;if(time.year&&time.month&&time.day)return `${time.year}-${String(time.month).padStart(2,'0')}-${String(time.day).padStart(2,'0')}`;return null;}
   function timePoint(value){if(/^\d+$/.test(String(value)))return Number(value);const [year,month,day]=String(value).split('-').map(Number);return {year,month,day};}
-  function timeToX(value){const scale=chart.timeScale(),direct=scale.timeToCoordinate(timePoint(value));if(direct!==null)return direct;const target=timeSeconds(value)*1000;let nearest=null,distance=Infinity;for(const bar of payload?.bars||[]){const delta=Math.abs(timeSeconds(bar.time)*1000-target);if(delta<distance){nearest=bar.time;distance=delta;}}return nearest?scale.timeToCoordinate(timePoint(nearest)):null;}
-  function coords(d){const t0=timeToX(d.startTime),t1=timeToX(d.endTime),p0=(closeLine||candles).priceToCoordinate(d.startPrice),p1=(closeLine||candles).priceToCoordinate(d.endPrice);return [t0,t1,p0,p1];}
+  function timeToX(value){if(value==null)return null;const scale=chart.timeScale(),direct=scale.timeToCoordinate(timePoint(value));if(direct!==null)return direct;if(!payload?.bars?.length)return null;const bars=payload.bars,lastBar=bars[bars.length-1],firstBar=bars[0],valSec=timeSeconds(value),lastSec=timeSeconds(lastBar.time),firstSec=timeSeconds(firstBar.time),intraday=/h$|m$/.test(payload.interval||'');if(valSec>lastSec){const diffBars=intraday?Math.round((valSec-lastSec)/intervalStepSeconds()):tradingDaysBetween(dateLabel(lastBar.time),dateLabel(value));const coord=scale.logicalToCoordinate((bars.length-1)+Math.max(1,diffBars));if(coord!==null)return coord;}else if(valSec<firstSec){const diffBars=intraday?Math.round((firstSec-valSec)/intervalStepSeconds()):tradingDaysBetween(dateLabel(value),dateLabel(firstBar.time));const coord=scale.logicalToCoordinate(-Math.max(1,diffBars));if(coord!==null)return coord;}const target=valSec*1000;let nearest=null,distance=Infinity;for(const bar of bars){const delta=Math.abs(timeSeconds(bar.time)*1000-target);if(delta<distance){nearest=bar.time;distance=delta;}}return nearest?scale.timeToCoordinate(timePoint(nearest)):null;}
+  function coords(d){const t0=timeToX(d.startTime),t1=timeToX(d.endTime),series=closeLine||candles,p0=series.priceToCoordinate(d.startPrice),p1=series.priceToCoordinate(d.endPrice);return [t0,t1,p0,p1];}
   function resizeCanvas(){const rect=canvas.getBoundingClientRect(),ratio=window.devicePixelRatio||1,w=Math.max(1,Math.round(rect.width*ratio)),h=Math.max(1,Math.round(rect.height*ratio));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}ctx.setTransform(ratio,0,0,ratio,0,0);scheduleDraw();}
-  let drawFrame=0;function scheduleDraw(){if(drawFrame)return;drawFrame=requestAnimationFrame(()=>{drawFrame=0;drawAll();});}
-  function drawOne(d,preview=false){let [x0,x1,y0,y1]=coords(d);if([x0,x1,y0,y1].some(v=>v===null||!Number.isFinite(v)))return;const selected=d.id===selectedId,kind=d.kind||'range',color=d.color||'#1a9b82';if(kind==='horizontal'){x0=0;x1=canvas.clientWidth;}ctx.strokeStyle=color;ctx.lineWidth=d.lineWidth||1;ctx.setLineDash(preview?[4,3]:[]);if(kind==='range'||kind==='rectangle'){const left=Math.min(x0,x1),top=Math.min(y0,y1),width=Math.abs(x1-x0),height=Math.abs(y1-y0);ctx.fillStyle=selected?'#16816d22':color+'22';ctx.fillRect(left,top,width,height);ctx.strokeRect(left,top,width,height);}else{ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();}ctx.setLineDash([]);if(selected&&!d.isLocked){for(const [x,y] of (kind==='horizontal'?[[canvas.clientWidth/2,y0]]:[[x0,y0],[x1,y1]])){ctx.fillStyle='#fff';ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();ctx.stroke();}}if(kind==='range'){const delta=d.endPrice-d.startPrice,pct=d.startPrice?delta/d.startPrice*100:0,n=Math.abs(nearestIndex(d.endTime)-nearestIndex(d.startTime))+1;let money=value=>value.toFixed(2);try{money=new Intl.NumberFormat(undefined,{style:'currency',currency:payload.currency,maximumFractionDigits:5}).format;}catch{}const label=`${delta>=0?'+':''}${money(delta)} (${pct>=0?'+':''}${pct.toFixed(2)}%)`;canvas.title=selected?`Cao ${money(Math.max(d.startPrice,d.endPrice))} · Thấp ${money(Math.min(d.startPrice,d.endPrice))} · ${n} nến`:'';ctx.font='11px -apple-system,BlinkMacSystemFont,sans-serif';const labelWidth=ctx.measureText(label).width+12,left=Math.min(x0,x1),top=Math.min(y0,y1),labelX=Math.max(0,Math.min(left,canvas.clientWidth-labelWidth)),labelY=Math.max(18,top-5);ctx.fillStyle=color;ctx.fillRect(labelX,labelY-14,labelWidth,18);ctx.fillStyle='#fff';ctx.fillText(label,labelX+6,labelY-1);}}
+  let drawFrame=0;function scheduleDraw(){if(drawFrame)return;drawFrame=requestAnimationFrame(()=>{drawFrame=0;drawAll();updateFloatingToolbarPosition();updateInlineEditorPosition();});}
+  function drawOne(d,preview=false){
+    let [x0,x1,y0,y1]=coords(d);const selected=d.id===selectedId,kind=d.kind||'range',width=Number(d.lineWidth)||1,style=d.lineStyle||'solid',extend=!!d.extendRight,isLocked=!!d.isLocked;
+    if(kind==='horizontal'){if(!Number.isFinite(y0))return;x0=0;x1=canvas.clientWidth;y1=y0;}
+    else if(kind==='horizontalRay'){if(x0===null||!Number.isFinite(x0)||!Number.isFinite(y0))return;x1=canvas.clientWidth;y1=y0;}
+    else if(kind==='vertical'){if(x0===null||!Number.isFinite(x0))return;y0=0;y1=canvas.clientHeight;x1=x0;}
+    else if(kind==='text'||kind==='pin'||kind==='priceLabel'){if(x0===null||!Number.isFinite(x0)||!Number.isFinite(y0))return;x1=x0;y1=y0;}
+    else{if([x0,x1,y0,y1].some(v=>v===null||!Number.isFinite(v)))return;}
+
+    const delta=(Number.isFinite(d.endPrice)&&Number.isFinite(d.startPrice))?(d.endPrice-d.startPrice):0;
+    const isUp=delta>=0;
+    const isAutoColor=!d.color||d.color==='auto';
+    const effectiveColor=isAutoColor?((kind==='range'||kind==='datePriceRange')?(isUp?'#16816d':'#d94b59'):'#16816d'):d.color;
+
+    ctx.save();ctx.strokeStyle=effectiveColor;ctx.lineWidth=width;
+    const lineDash=preview?[4,3]:(style==='dashed'?[Math.max(8,Math.round(width*3.2)),Math.max(5,Math.round(width*2.2))]:(style==='dotted'?[Math.max(2,Math.round(width*1.1)),Math.max(4,Math.round(width*2.0))]:[]));
+    ctx.setLineDash(lineDash);
+    const left=Math.min(x0,x1),right=Math.max(x0,x1),top=Math.min(y0,y1),bottom=Math.max(y0,y1),boxW=Math.max(1,right-left),boxH=Math.max(1,bottom-top);
+
+    if(kind==='range'||kind==='dateRange'||kind==='datePriceRange'||kind==='rectangle'||kind==='ruler'){
+      ctx.fillStyle=selected?colorWithOpacity(effectiveColor,20):colorWithOpacity(effectiveColor,10);
+      ctx.fillRect(left,top,boxW,boxH);
+      ctx.setLineDash(lineDash);
+      ctx.lineWidth=width;
+
+      if(kind==='range'){
+        ctx.beginPath();
+        ctx.moveTo(left,top);ctx.lineTo(extend?canvas.clientWidth:right,top);
+        ctx.moveTo(left,bottom);ctx.lineTo(extend?canvas.clientWidth:right,bottom);
+        ctx.moveTo(left,top);ctx.lineTo(left,bottom);
+        ctx.moveTo(right,top);ctx.lineTo(right,bottom);
+        ctx.stroke();
+        const cx=(left+right)/2;
+        ctx.beginPath();ctx.moveTo(cx,y0);ctx.lineTo(cx,y1);ctx.stroke();
+        ctx.setLineDash([]);const dir=y1<y0?-1:1;ctx.beginPath();ctx.moveTo(cx-5,y1-dir*7);ctx.lineTo(cx,y1);ctx.lineTo(cx+5,y1-dir*7);ctx.stroke();
+      }else if(kind==='dateRange'){
+        ctx.beginPath();
+        ctx.moveTo(left,top);ctx.lineTo(left,bottom);
+        ctx.moveTo(right,top);ctx.lineTo(right,bottom);
+        ctx.stroke();
+        const cy=(top+bottom)/2;
+        ctx.beginPath();ctx.moveTo(x0,cy);ctx.lineTo(x1,cy);ctx.stroke();
+        ctx.setLineDash([]);const dir=x1<x0?-1:1;ctx.beginPath();ctx.moveTo(x1-dir*7,cy-5);ctx.lineTo(x1,cy);ctx.lineTo(x1-dir*7,cy+5);ctx.stroke();
+      }else{
+        ctx.beginPath();ctx.rect(left,top,boxW,boxH);ctx.stroke();
+        if(kind==='datePriceRange'||kind==='ruler'){
+          const cx=(left+right)/2;ctx.beginPath();ctx.moveTo(cx,y0);ctx.lineTo(cx,y1);ctx.stroke();
+          ctx.setLineDash([]);const dirY=y1<y0?-1:1;ctx.beginPath();ctx.moveTo(cx-5,y1-dirY*7);ctx.lineTo(cx,y1);ctx.lineTo(cx+5,y1-dirY*7);ctx.stroke();
+          ctx.setLineDash(lineDash);
+          const cy=(top+bottom)/2;ctx.beginPath();ctx.moveTo(x0,cy);ctx.lineTo(x1,cy);ctx.stroke();
+          ctx.setLineDash([]);const dirX=x1<x0?-1:1;ctx.beginPath();ctx.moveTo(x1-dirX*7,cy-5);ctx.lineTo(x1,cy);ctx.lineTo(x1-dirX*7,cy+5);ctx.stroke();
+        }
+        if(extend&&kind==='datePriceRange'){
+          ctx.setLineDash(lineDash);ctx.beginPath();ctx.moveTo(right,top);ctx.lineTo(canvas.clientWidth,top);ctx.moveTo(right,bottom);ctx.lineTo(canvas.clientWidth,bottom);ctx.stroke();
+        }
+      }
+      if(kind!=='rectangle'){
+        const pct=d.startPrice?(delta/d.startPrice*100):0,nBars=Math.abs(barIndexForTime(d.endTime)-barIndexForTime(d.startTime))+1,nDays=calendarDaysBetween(d.startTime,d.endTime);
+        let money=v=>(v>=0?'+':'')+v.toFixed(2);try{const fmt=new Intl.NumberFormat(undefined,{style:'currency',currency:payload?.currency||'USD',maximumFractionDigits:payload?.currency==='VND'?0:2});money=v=>(v>=0?'+':'')+fmt.format(v);}catch{}
+        const priceText=`${money(delta)} (${pct>=0?'+':''}${pct.toFixed(2)}%)`,timeText=`${nBars} nến · ${nDays} ngày`;
+        const fSize=Number(d.fontSize)||11;
+        const lines=kind==='range'?[priceText]:(kind==='dateRange'?[timeText]:[priceText,timeText]);
+        if(d.text)lines.unshift(d.text);
+        ctx.font=`bold ${fSize}px -apple-system,BlinkMacSystemFont,sans-serif`;let maxW=0;lines.forEach(l=>{maxW=Math.max(maxW,ctx.measureText(l).width);});
+        const lineH=fSize+5,badgeW=maxW+16,badgeH=lines.length*lineH+8;
+        const badgeX=Math.max(4,Math.min(canvas.clientWidth-badgeW-4,(left+right)/2-badgeW/2)),badgeY=Math.max(4,Math.min(canvas.clientHeight-badgeH-4,(top+bottom)/2-badgeH/2));
+        ctx.setLineDash([]);ctx.fillStyle=effectiveColor;roundRect(ctx,badgeX,badgeY,badgeW,badgeH,4);ctx.fill();ctx.fillStyle=d.fontColor||'#fff';ctx.textAlign='center';lines.forEach((l,i)=>{ctx.fillText(l,badgeX+badgeW/2,badgeY+12+i*lineH);});ctx.textAlign='start';
+      }
+    }else if(kind==='horizontal'||kind==='horizontalRay'){
+      const startX=kind==='horizontal'?0:x0,endX=canvas.clientWidth;ctx.beginPath();ctx.moveTo(startX,y0);ctx.lineTo(endX,y0);ctx.stroke();
+      let money=v=>v.toFixed(2);try{const fmt=new Intl.NumberFormat(undefined,{style:'currency',currency:payload?.currency||'USD',maximumFractionDigits:payload?.currency==='VND'?0:2});money=v=>fmt.format(v);}catch{}
+      const pText=money(d.startPrice);ctx.font='10px -apple-system,BlinkMacSystemFont,sans-serif';const tagW=ctx.measureText(pText).width+10,tagX=canvas.clientWidth-tagW-2,tagY=y0-9;
+      ctx.setLineDash([]);ctx.fillStyle=effectiveColor;roundRect(ctx,tagX,tagY,tagW,18,3);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(pText,tagX+5,tagY+13);
+    }else if(kind==='vertical'){
+      ctx.beginPath();ctx.moveTo(x0,0);ctx.lineTo(x0,canvas.clientHeight);ctx.stroke();
+      const dText=dateLabel(d.startTime);ctx.font='10px -apple-system,BlinkMacSystemFont,sans-serif';const tagW=ctx.measureText(dText).width+10,tagX=Math.max(4,Math.min(canvas.clientWidth-tagW-4,x0-tagW/2)),tagY=canvas.clientHeight-22;
+      ctx.setLineDash([]);ctx.fillStyle=effectiveColor;roundRect(ctx,tagX,tagY,tagW,18,3);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(dText,tagX+5,tagY+13);
+    }else if(kind==='trend'||kind==='arrow'){
+      ctx.beginPath();ctx.moveTo(x0,y0);if(extend&&x1!==x0){const slope=(y1-y0)/(x1-x0),targetX=x1>x0?canvas.clientWidth:0;ctx.lineTo(targetX,y0+slope*(targetX-x0));}else{ctx.lineTo(x1,y1);}ctx.stroke();
+      if(kind==='arrow'){ctx.setLineDash([]);const angle=Math.atan2(y1-y0,x1-x0),arrowLen=10;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x1-arrowLen*Math.cos(angle-Math.PI/6),y1-arrowLen*Math.sin(angle-Math.PI/6));ctx.moveTo(x1,y1);ctx.lineTo(x1-arrowLen*Math.cos(angle+Math.PI/6),y1-arrowLen*Math.sin(angle+Math.PI/6));ctx.stroke();}
+    }else if(kind==='text'){
+      const text=d.text||'Văn bản';const fSize=Number(d.fontSize)||13;ctx.font=`${fSize}px -apple-system,BlinkMacSystemFont,sans-serif`;const textW=ctx.measureText(text).width+16,textH=Math.max(24,fSize+10);
+      ctx.setLineDash([]);ctx.fillStyle=selected?'rgba(30,41,59,.96)':'rgba(30,41,59,.88)';roundRect(ctx,x0,y0-textH/2,textW,textH,4);ctx.fill();ctx.strokeStyle=effectiveColor;ctx.stroke();ctx.fillStyle=d.fontColor||'#f8fafc';ctx.fillText(text,x0+8,y0+fSize/3);
+    }else if(kind==='pin'){
+      ctx.setLineDash([]);
+      const isHovered=!!(activeHoverPin&&activeHoverPin.id===d.id);
+      const isEditingThis=inlineEditingDrawingId===d.id;
+      if(selected||isHovered){
+        ctx.fillStyle=selected?'rgba(41,98,255,0.26)':colorWithOpacity(effectiveColor,24);
+        ctx.beginPath();ctx.arc(x0,y0-1,14,0,Math.PI*2);ctx.fill();
+      }
+      ctx.save();
+      ctx.shadowColor='rgba(0,0,0,0.28)';ctx.shadowBlur=6;ctx.shadowOffsetY=2;
+      ctx.fillStyle=effectiveColor;
+      const pw=20,ph=16,pr=5,px=Math.round(x0-pw/2),py=Math.round(y0-ph/2-2),ptip=3.5;
+      ctx.beginPath();
+      ctx.moveTo(px+pr,py);ctx.lineTo(px+pw-pr,py);ctx.quadraticCurveTo(px+pw,py,px+pw,py+pr);
+      ctx.lineTo(px+pw,py+ph-pr);ctx.quadraticCurveTo(px+pw,py+ph,px+pw-pr,py+ph);
+      ctx.lineTo(x0+3.5,py+ph);ctx.lineTo(x0,py+ph+ptip);ctx.lineTo(x0-3.5,py+ph);
+      ctx.lineTo(px+pr,py+ph);ctx.quadraticCurveTo(px,py+ph,px,py+ph-pr);
+      ctx.lineTo(px,py+pr);ctx.quadraticCurveTo(px,py,px+pr,py);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle=selected?'#ffffff':'rgba(255,255,255,0.88)';
+      ctx.lineWidth=selected?1.75:1.15;
+      ctx.stroke();
+      ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6;ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(x0-5,py+5.5);ctx.lineTo(x0+5,py+5.5);
+      ctx.moveTo(x0-5,py+10);ctx.lineTo(x0+2,py+10);
+      ctx.stroke();
+      if((isHovered||selected)&&!isEditingThis){
+        const displayText=d.text||'Nhập ghi chú...';
+        const fSize=Number(d.fontSize)||12;
+        ctx.font=`${fSize}px -apple-system,BlinkMacSystemFont,sans-serif`;
+        const textW=ctx.measureText(displayText).width;
+        const bubbleW=Math.max(48,Math.round(textW+18)),bubbleH=Math.max(22,Math.round(fSize+10)),tailH=6;
+        const bubbleX=Math.round(Math.max(6,Math.min(canvas.clientWidth-bubbleW-6,x0-bubbleW/2))),bubbleY=Math.round(y0-12-tailH-bubbleH);
+        ctx.fillStyle=selected?effectiveColor:colorWithOpacity(effectiveColor,92);
+        ctx.beginPath();
+        const r=5,bx=bubbleX,by=bubbleY,bw=bubbleW,bh=bubbleH;
+        ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+r);
+        ctx.lineTo(bx+bw,by+bh-r);ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-r,by+bh);
+        const tailX=Math.max(bx+8,Math.min(bx+bw-8,x0));
+        ctx.lineTo(tailX+5,by+bh);ctx.lineTo(x0,by+bh+tailH);ctx.lineTo(tailX-5,by+bh);
+        ctx.lineTo(bx+r,by+bh);ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-r);
+        ctx.lineTo(bx,by+r);ctx.quadraticCurveTo(bx,by,bx+r,by);
+        ctx.closePath();ctx.fill();
+        ctx.strokeStyle=selected?'#2962ff':'rgba(255,255,255,.7)';ctx.lineWidth=selected?1.5:1;ctx.stroke();
+        ctx.fillStyle=d.fontColor||'#ffffff';
+        ctx.fillText(displayText,bubbleX+9,bubbleY+fSize+3);
+      }
+    }else if(kind==='priceLabel'){
+      let money=v=>v.toFixed(2);try{const fmt=new Intl.NumberFormat(undefined,{style:'currency',currency:payload?.currency||'USD',maximumFractionDigits:payload?.currency==='VND'?0:2});money=v=>fmt.format(v);}catch{}
+      const pText=money(d.startPrice);ctx.font='11px -apple-system,BlinkMacSystemFont,sans-serif';const tagW=ctx.measureText(pText).width+14,tagH=22;
+      ctx.setLineDash([]);ctx.fillStyle=effectiveColor;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0+7,y0-tagH/2);ctx.lineTo(x0+7+tagW,y0-tagH/2);ctx.lineTo(x0+7+tagW,y0+tagH/2);ctx.lineTo(x0+7,y0+tagH/2);ctx.closePath();ctx.fill();ctx.fillStyle='#fff';ctx.fillText(pText,x0+11,y0+4);
+    }
+    if(selected&&!isLocked){
+      ctx.setLineDash([]);const handles=[];
+      if(kind==='horizontal')handles.push([canvas.clientWidth/2,y0]);
+      else if(kind==='horizontalRay')handles.push([x0,y0]);
+      else if(kind==='vertical')handles.push([x0,canvas.clientHeight/2]);
+      else if(kind==='text'||kind==='priceLabel')handles.push([x0,y0]);
+      else if(kind==='range'||kind==='dateRange'||kind==='datePriceRange'||kind==='rectangle')handles.push([left,top],[right,top],[left,bottom],[right,bottom]);
+      else handles.push([x0,y0],[x1,y1]);
+      for(const [hx,hy] of handles){ctx.fillStyle='#fff';ctx.strokeStyle=effectiveColor;ctx.lineWidth=2;ctx.beginPath();ctx.arc(hx,hy,4.5,0,Math.PI*2);ctx.fill();ctx.stroke();}
+    }
+    if(isLocked){
+      ctx.setLineDash([]);let lx=right-16,ly=top-16;
+      if(kind==='horizontal'||kind==='horizontalRay'){lx=canvas.clientWidth-30;ly=y0-16;}
+      else if(kind==='vertical'){lx=x0+6;ly=20;}
+      else if(kind==='text'||kind==='pin'||kind==='priceLabel'){lx=x0+10;ly=y0-18;}
+      else if(kind==='trend'||kind==='arrow'){lx=Math.max(x0,x1)-10;ly=Math.min(y0,y1)-16;}
+      lx=Math.max(6,Math.min(canvas.clientWidth-22,lx));ly=Math.max(6,Math.min(canvas.clientHeight-22,ly));
+      ctx.fillStyle='rgba(245,158,11,0.92)';ctx.beginPath();ctx.arc(lx+8,ly+8,8,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='#fff';ctx.font='10px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText('🔒',lx+8,ly+11.5);ctx.textAlign='start';
+    }
+    ctx.restore();
+  }
   let bollingerFillUpper=null,bollingerFillLower=null,bollingerFillPoints=[];
   function drawBollingerFill(ctx,plotWidth,paneHeight){
     if(!payload||!isVisible('BB'))return;const style=styleValue('bbFill');if(style.visible===false||Number(style.opacity??10)<=0)return;
@@ -324,14 +594,593 @@
   const bollingerFillViews=[{zOrder:()=> 'bottom',renderer:()=>bollingerFillRenderer}];
   chart.panes()[0].attachPrimitive({paneViews:()=>bollingerFillViews});
   function nearestIndex(time){const bars=payload?.bars||[];const target=timeSeconds(time)*1000;let best=0,distance=Infinity;bars.forEach((bar,index)=>{const delta=Math.abs(timeSeconds(bar.time)*1000-target);if(delta<distance){best=index;distance=delta;}});return best;}
-  function drawAll(){ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);for(const d of drawings)drawOne(d);if(dragStart&&dragCurrent)drawOne({id:'__preview',startTime:dragStart.time,endTime:dragCurrent.time,startPrice:dragStart.price,endPrice:dragCurrent.price},true);}
-  function updateDeleteButtons(){const selected=drawings.find(d=>d.id===selectedId);document.getElementById('drawingTools').hidden=!selected;document.getElementById('deleteRange').disabled=!selected;document.getElementById('lockDrawing').disabled=!selected;document.getElementById('lockDrawing').textContent=selected?.isLocked?'Mở khóa':'Khóa';document.getElementById('undo').disabled=!undoStack.length;document.getElementById('redo').disabled=!redoStack.length;}
+  function drawAll(){
+    ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);if(mods.hideAll)return;for(const d of drawings)drawOne(d);
+    if(dragStart&&dragCurrent&&activeTool!=='select'&&activeTool!=='ruler'){
+      const isSinglePoint=['horizontal','horizontalRay','vertical','text','pin','priceLabel'].includes(activeTool);
+      drawOne({id:'__preview',kind:activeTool,startTime:dragStart.time,endTime:isSinglePoint?dragStart.time:dragCurrent.time,startPrice:dragStart.price,endPrice:isSinglePoint?dragStart.price:dragCurrent.price,color:'auto',fontColor:'#ffffff',lineWidth:Number(document.getElementById('drawingWidth').value)||1,lineStyle:document.getElementById('drawingLineStyle').value||'solid',extendRight:(activeTool==='horizontalRay'||globalExtendRight),text:activeTool==='pin'?'Ghi chú mới':activeTool==='text'?'Văn bản':undefined},true);
+    }
+    if(rulerStart&&rulerCurrent){drawOne({id:'__ruler',kind:'ruler',startTime:rulerStart.time,endTime:rulerCurrent.time,startPrice:rulerStart.price,endPrice:rulerCurrent.price,color:'#3b82f6',lineWidth:1},true);}
+  }
+  function updateColorSwatchUI(col,fontCol){
+    const swatch=document.getElementById('drawingColorSwatch');
+    if(swatch){
+      if(!col||col==='auto'){
+        swatch.style.background='linear-gradient(135deg, #16816d 50%, #d94b59 50%)';
+        swatch.title='Màu tự động (Xanh khi tăng, Đỏ khi giảm)';
+      }else{
+        swatch.style.background=col;
+        swatch.title=`Màu: ${col}`;
+      }
+    }
+    const fontSwatch=document.getElementById('drawingFontColorSwatch');
+    if(fontSwatch){
+      const fCol=fontCol||'#eeeeee';
+      fontSwatch.style.color=fCol;
+      fontSwatch.style.borderBottom=`3px solid ${fCol}`;
+      fontSwatch.title=`Màu chữ: ${fCol}`;
+    }
+  }
+  let toolbarCustomPos=null,previousSelectedId=null;
+  function updateFloatingToolbarPosition(){
+    const toolsBar=document.getElementById('drawingTools');
+    if(!toolsBar||toolsBar.hidden||!selectedId)return;
+    const d=drawings.find(x=>x.id===selectedId);
+    if(!d){toolsBar.hidden=true;return;}
+
+    const barW=toolsBar.offsetWidth||280;
+    const barH=toolsBar.offsetHeight||32;
+    const chartW=canvas.clientWidth;
+    const chartH=canvas.clientHeight;
+
+    if(toolbarCustomPos){
+      const x=Math.max(6,Math.min(chartW-barW-6,toolbarCustomPos.x));
+      const y=Math.max(6,Math.min(chartH-barH-6,toolbarCustomPos.y));
+      toolsBar.style.left=`${Math.round(x)}px`;
+      toolsBar.style.top=`${Math.round(y)}px`;
+      return;
+    }
+
+    let [x0,x1,y0,y1]=coords(d);
+    if(x0===null&&x1===null){
+      toolsBar.style.left=`${Math.round(Math.max(6,(chartW-barW)/2))}px`;
+      toolsBar.style.top='28px';
+      return;
+    }
+    const kind=d.kind||'range';
+    let left=x0,right=x1,top=y0,bottom=y1;
+    if(kind==='horizontal'){
+      left=0;right=canvas.clientWidth;top=bottom=y0;
+    }else if(kind==='horizontalRay'){
+      left=x0;right=canvas.clientWidth;top=bottom=y0;
+    }else if(kind==='vertical'){
+      left=right=x0;top=0;bottom=canvas.clientHeight;
+    }else if(kind==='pin'){
+      const fSize=Number(d.fontSize)||12;
+      const bubbleH=Math.max(22,fSize+10),tailH=6;
+      left=right=x0;
+      top=Math.min(y0-10-tailH-bubbleH,y0-48);
+      bottom=y0+14;
+    }else if(kind==='text'||kind==='priceLabel'){
+      left=right=x0;top=bottom=y0;
+    }else{
+      left=Math.min(x0,x1);right=Math.max(x0,x1);
+      top=Math.min(y0,y1);bottom=Math.max(y0,y1);
+    }
+
+    const GAP=kind==='pin'?18:28;
+    let targetX=(left+right)/2-barW/2;
+    let targetY=(top-barH-GAP);
+    if(targetY<8){
+      targetY=Math.min(chartH-barH-8,bottom+GAP);
+    }
+    targetX=Math.max(6,Math.min(chartW-barW-6,targetX));
+    targetY=Math.max(6,Math.min(chartH-barH-8,targetY));
+
+    toolsBar.style.left=`${Math.round(targetX)}px`;
+    toolsBar.style.top=`${Math.round(targetY)}px`;
+  }
+  function closeAllDrawingPopovers(except=null){
+    document.querySelectorAll('.drawing-color-popover,.floating-mini-popover').forEach(n=>{
+      if(n===except)return;
+      if(typeof n._cleanup==='function')n._cleanup();
+      else n.remove();
+    });
+  }
+  function updateDeleteButtons(){
+    const selected=drawings.find(d=>d.id===selectedId);
+    const toolsBar=document.getElementById('drawingTools');
+    toolsBar.hidden=!selected;
+    if(!selected){
+      toolbarCustomPos=null;
+      previousSelectedId=null;
+      closeAllDrawingPopovers();
+      const colInput=document.getElementById('drawingColor');if(colInput)colInput.value='auto';
+      const fontColInput=document.getElementById('drawingFontColor');if(fontColInput)fontColInput.value='#ffffff';
+      updateColorSwatchUI('auto','#ffffff');
+      document.getElementById('undo').disabled=!undoStack.length;
+      document.getElementById('redo').disabled=!redoStack.length;
+      return;
+    }
+    if(selectedId!==previousSelectedId){
+      toolbarCustomPos=null;
+      previousSelectedId=selectedId;
+      closeAllDrawingPopovers();
+    }
+    const isLocked=!!selected.isLocked;
+    const kind=selected.kind||'range';
+
+    const isTrend=kind==='trend';
+    const isRange=['range','dateRange','datePriceRange'].includes(kind);
+    const isLine=['trend','arrow','horizontal','horizontalRay','vertical','rectangle'].includes(kind);
+    const isLineOrShape=isLine||isRange;
+    const isNote=kind==='pin';
+    const isText=kind==='text';
+
+    const colorBtn=document.getElementById('drawingColorBtn');
+    colorBtn.title=isNote?'Màu ghim & ghi chú':'Màu sắc';
+    colorBtn.hidden=false;
+
+    const fontColorBtn=document.getElementById('drawingFontColorBtn');
+    if(fontColorBtn)fontColorBtn.hidden=!(isText||isRange||isNote);
+
+    const showFont=isText||isRange||isNote;
+    const fontSizeBtn=document.getElementById('drawingFontSizeBtn');
+    if(fontSizeBtn)fontSizeBtn.hidden=!showFont;
+    const fontSizeSelect=document.getElementById('drawingFontSize');
+    const curFontSize=selected.fontSize!==undefined?selected.fontSize:(isNote?12:13);
+    if(fontSizeSelect){
+      fontSizeSelect.hidden=true;
+      fontSizeSelect.value=String(curFontSize);
+    }
+    const fontSizeLabel=document.getElementById('drawingFontSizeLabel');
+    if(fontSizeLabel)fontSizeLabel.textContent=`${curFontSize}px`;
+    if(fontSizeBtn)fontSizeBtn.title=`Cỡ chữ (${curFontSize}px)`;
+
+    const widthBtn=document.getElementById('drawingWidthBtn');
+    if(widthBtn)widthBtn.hidden=!isLineOrShape;
+    const widthSelect=document.getElementById('drawingWidth');
+    const curWidth=selected.lineWidth||1;
+    if(widthSelect){
+      widthSelect.hidden=true;
+      widthSelect.value=String(curWidth);
+    }
+    const widthLabel=document.getElementById('drawingWidthLabel');
+    if(widthLabel)widthLabel.textContent=`${curWidth}px`;
+    const widthPreview=document.getElementById('drawingWidthPreview');
+    if(widthPreview)widthPreview.style.borderTopWidth=`${curWidth}px`;
+    if(widthBtn)widthBtn.title=`Độ dày đường nét (${curWidth}px)`;
+
+    const styleBtn=document.getElementById('drawingLineStyleBtn');
+    if(styleBtn)styleBtn.hidden=!isLineOrShape;
+    const styleSelect=document.getElementById('drawingLineStyle');
+    const curStyle=selected.lineStyle||'solid';
+    if(styleSelect){
+      styleSelect.hidden=true;
+      styleSelect.value=curStyle;
+    }
+    const styleText=curStyle==='dashed'?'Đứt':(curStyle==='dotted'?'Chấm':'Liền');
+    const styleLabel=document.getElementById('drawingLineStyleLabel');
+    if(styleLabel)styleLabel.textContent=styleText;
+    const stylePreview=document.getElementById('drawingLineStylePreview');
+    if(stylePreview)stylePreview.style.borderTopStyle=curStyle;
+    if(styleBtn)styleBtn.title=`Kiểu nét: ${styleText}`;
+
+    const extendBtn=document.getElementById('extendDrawing');
+    extendBtn.hidden=!(kind==='trend'||kind==='arrow'||kind==='horizontalRay');
+    extendBtn.classList.toggle('selected',!!selected.extendRight);
+
+    const editTextBtn=document.getElementById('editDrawingText');
+    editTextBtn.hidden=!(isNote||isText);
+    editTextBtn.title=isNote?'Sửa nội dung ghi chú':'Sửa văn bản';
+
+    const dupBtn=document.getElementById('duplicateDrawing');
+    if(dupBtn)dupBtn.hidden=false;
+
+    const lockBtn=document.getElementById('lockDrawing');
+    lockBtn.disabled=false;
+    lockBtn.classList.toggle('is-locked',isLocked);
+    lockBtn.title=isLocked?'Đã khóa (Nhấn để mở khóa)':'Khóa hình vẽ';
+    const lockLabel=document.getElementById('lockDrawingLabel');
+    if(lockLabel)lockLabel.textContent=isLocked?'Đã khóa':'Khóa';
+    const lockIcon=lockBtn.querySelector('.icon-lock');
+    if(lockIcon)lockIcon.outerHTML=isLocked?drawingIcons.lock.replace('<svg ','<svg class="icon-lock" '):drawingIcons.lockOpen.replace('<svg ','<svg class="icon-lock" ');
+
+    // When locked, disable ALL editing controls except the lock button!
+    document.getElementById('deleteRange').disabled=isLocked;
+    colorBtn.disabled=isLocked;
+    if(fontColorBtn)fontColorBtn.disabled=isLocked;
+    if(fontSizeBtn)fontSizeBtn.disabled=isLocked;
+    if(widthBtn)widthBtn.disabled=isLocked;
+    if(styleBtn)styleBtn.disabled=isLocked;
+    extendBtn.disabled=isLocked;
+    editTextBtn.disabled=isLocked;
+    if(dupBtn)dupBtn.disabled=isLocked;
+
+    const col=selected.color||'auto';
+    document.getElementById('drawingColor').value=col;
+    const fontCol=selected.fontColor||'#eeeeee';
+    const fontColorInput=document.getElementById('drawingFontColor');
+    if(fontColorInput)fontColorInput.value=fontCol;
+    updateColorSwatchUI(col,fontCol);
+
+    document.getElementById('undo').disabled=!undoStack.length;
+    document.getElementById('redo').disabled=!redoStack.length;
+    updateFloatingToolbarPosition();
+  }
+  function duplicateSelectedDrawing(){
+    const d=drawings.find(x=>x.id===selectedId);
+    if(!d||d.isLocked)return;
+    pushUndo();
+    const newId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
+    const clone=JSON.parse(JSON.stringify(d));
+    clone.id=newId;
+    clone.isLocked=false;
+    if(clone.kind==='horizontal'){
+      clone.startPrice=clone.startPrice*1.01;
+      clone.endPrice=clone.startPrice;
+    }else if(clone.kind==='vertical'){
+      const nextTime=addTradingDays(clone.startTime,1);
+      clone.startTime=nextTime;
+      clone.endTime=nextTime;
+    }else if(clone.kind==='pin'||clone.kind==='text'||clone.kind==='priceLabel'){
+      const nextTime=addTradingDays(clone.startTime,1);
+      clone.startTime=nextTime;
+      clone.endTime=nextTime;
+      clone.startPrice=clone.startPrice*1.006;
+      clone.endPrice=clone.startPrice;
+    }else{
+      clone.startTime=addTradingDays(clone.startTime,1);
+      clone.endTime=addTradingDays(clone.endTime,1);
+      clone.startPrice=clone.startPrice*1.01;
+      clone.endPrice=clone.endPrice*1.01;
+    }
+    drawings.push(clone);
+    selectedId=newId;
+    commitDrawings();
+  }
   function snapshot(){return JSON.stringify(drawings)}function pushUndo(){undoStack.push(snapshot());if(undoStack.length>100)undoStack.shift();redoStack=[];updateDeleteButtons();}
-  function commitDrawings(){document.getElementById('saveState').textContent='Đang lưu…';post({type:'priceRangesChanged',symbol:payload?.symbol,ranges:drawings});updateDeleteButtons();scheduleDraw();}
-  window.setDrawingSaveState=ok=>{document.getElementById('saveState').textContent=ok?'Đã lưu':'Lỗi lưu · bấm để thử lại';document.getElementById('saveState').style.color=ok?'#16816d':'#b44';};
-  function chartInteractionOptions(){if(!!document.querySelector('dialog[open]'))return{handleScroll:false,handleScale:false};const drawing=activeTool!=='select';return{handleScroll:drawing?false:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},handleScale:drawing?false:{mouseWheel:true,pinch:true,axisPressedMouseMove:{time:true,price:true}}};}
-  function syncChartInteractionLock(){const locked=!!document.querySelector('dialog[open]');if(locked){dragStart=dragCurrent=null;draggingId=null;draggingHandle=null;canvas.style.pointerEvents='none';canvas.style.cursor='default';}else{const drawing=activeTool!=='select';canvas.style.pointerEvents=drawing?'auto':'none';canvas.style.cursor=drawing?'crosshair':'default';}chart.applyOptions(chartInteractionOptions());}
-  function setTool(tool){activeTool=tool;document.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('selected',b.dataset.tool===tool));syncChartInteractionLock();}
+  function commitDrawings(){if(payload)payload.drawings=JSON.parse(JSON.stringify(drawings));post({type:'priceRangesChanged',symbol:payload?.symbol,ranges:drawings});updateDeleteButtons();scheduleDraw();}
+  window.setDrawingSaveState=ok=>{};
+  function syncInlineEditorStyle(d){
+    if(!d||inlineEditingDrawingId!==d.id)return;
+    const editor=document.getElementById('inlineDrawingEditor'),input=document.getElementById('inlineDrawingInput'),tail=document.getElementById('inlineEditorTail');
+    if(!editor||editor.hidden||!input)return;
+    const isNote=d.kind==='pin';
+    const isAutoColor=!d.color||d.color==='auto';
+    const effectiveColor=isAutoColor?'#16816d':d.color;
+    const fontCol=d.fontColor||'#ffffff';
+    const fSize=Number(d.fontSize)||(isNote?12:13);
+    input.style.fontSize=`${fSize}px`;
+    input.style.color=fontCol;
+    if(isNote){
+      input.style.background=effectiveColor;
+      input.style.borderColor='rgba(255,255,255,0.45)';
+      if(tail){tail.hidden=false;tail.style.borderTopColor=effectiveColor;}
+    }else{
+      input.style.background='rgba(30,41,59,0.96)';
+      input.style.borderColor=effectiveColor;
+      if(tail)tail.hidden=true;
+    }
+    autoResizeInlineInput();
+    positionInlineEditor(d);
+  }
+  function openDrawingColorPopover(target='color'){
+    const isFont=target==='fontColor';
+    const btn=document.getElementById(isFont?'drawingFontColorBtn':'drawingColorBtn');if(!btn)return;
+
+    const existing=document.querySelector('.drawing-color-popover');
+    if(existing&&existing._target===target){closeAllDrawingPopovers();return;}
+    closeAllDrawingPopovers();
+    document.querySelectorAll('.style-popover').forEach(n=>n.remove());
+
+    const selected=drawings.find(x=>x.id===selectedId);
+    const btnRect=btn.getBoundingClientRect();
+    const pop=document.createElement('div');
+    pop.className='drawing-color-popover';pop._target=target;
+
+    let closeListener=null;
+    const cleanup=()=>{
+      if(closeListener){
+        window.removeEventListener('pointerdown',closeListener,true);
+        closeListener=null;
+      }
+      pop.remove();
+    };
+    pop._cleanup=cleanup;
+
+    const popW=210,popH=145;
+    let popTop=btnRect.bottom+6;
+    if(popTop+popH>window.innerHeight-10){popTop=Math.max(10,btnRect.top-popH-6);}
+    let popLeft=Math.max(10,Math.min(window.innerWidth-popW-10,btnRect.left-popW/2+btnRect.width/2));
+    pop.style.top=`${Math.round(popTop)}px`;pop.style.left=`${Math.round(popLeft)}px`;
+
+    const paletteColors=isFont
+      ?['#ffffff','#f8fafc','#cbd5e1','#94a3b8','#fbbf24','#f59e0b','#38bdf8','#3b82f6','#4ade80','#16816d','#f87171','#ef4444','#c084fc','#a855f7','#1e293b','#0f172a']
+      :['#ffffff','#cbd5e1','#64748b','#0f172a','#3b82f6','#1d4ed8','#06b6d4','#0e7490','#10b981','#16816d','#22c55e','#65a30d','#f59e0b','#ea580c','#ef4444','#8b5cf6'];
+    const currentColor=isFont?(selected?.fontColor||'#eeeeee'):(selected?.color||'auto');
+    const isAuto=!isFont&&(!currentColor||currentColor==='auto');
+    const titleText=isFont?'MÀU CHỮ GHI CHÚ':(selected?.kind==='pin'?'MÀU GHIM':'MÀU SẮC');
+    const autoBtnHtml=isFont?'':`<button type="button" class="auto-color-btn${isAuto?' is-selected':''}"><span>✦ Tự động</span><span class="subtext">(Xanh/Đỏ theo nến)</span></button>`;
+    pop.innerHTML=`<div class="pop-title">${titleText}</div>${autoBtnHtml}<div class="color-palette-grid">${paletteColors.map(c=>{const sel=currentColor.toLowerCase()===c.toLowerCase();return `<button type="button" class="palette-chip${sel?' is-selected':''}" data-color="${c}" style="background:${c}"></button>`;}).join('')}</div>`;
+    ['pointerdown','pointerup','mousedown','mouseup','click','dblclick','touchstart','touchend'].forEach(evt=>{pop.addEventListener(evt,e=>e.stopPropagation());});
+    if(!isFont){
+      let autoHandled=false;
+      const onAuto=e=>{
+        if(autoHandled)return;
+        autoHandled=true;
+        if(e){e.preventDefault();e.stopPropagation();}
+        const d=drawings.find(x=>x.id===selectedId);
+        if(d&&!d.isLocked){pushUndo();d.color='auto';syncInlineEditorStyle(d);commitDrawings();}
+        document.getElementById('drawingColor').value='auto';updateColorSwatchUI('auto',d?.fontColor);cleanup();
+      };
+      const autoBtn=pop.querySelector('.auto-color-btn');
+      autoBtn?.addEventListener('pointerdown',onAuto);
+      autoBtn?.addEventListener('click',onAuto);
+    }
+    pop.querySelectorAll('.palette-chip').forEach(chip=>{
+      let chipHandled=false;
+      const onChip=e=>{
+        if(chipHandled)return;
+        chipHandled=true;
+        if(e){e.preventDefault();e.stopPropagation();}
+        const col=chip.dataset.color;
+        const d=drawings.find(x=>x.id===selectedId);
+        if(d&&!d.isLocked){
+          pushUndo();
+          if(isFont)d.fontColor=col;else d.color=col;
+          syncInlineEditorStyle(d);
+          commitDrawings();
+        }
+        if(isFont){
+          const fontInp=document.getElementById('drawingFontColor');if(fontInp)fontInp.value=col;
+          updateColorSwatchUI(d?.color,col);
+        }else{
+          document.getElementById('drawingColor').value=col;
+          updateColorSwatchUI(col,d?.fontColor);
+        }
+        cleanup();
+      };
+      chip.addEventListener('pointerdown',onChip);
+      chip.addEventListener('click',onChip);
+    });
+    document.body.append(pop);
+    closeListener=e=>{if(!pop.contains(e.target)&&e.target!==btn&&!btn.contains(e.target)){cleanup();}};
+    setTimeout(()=>{if(pop.parentElement)window.addEventListener('pointerdown',closeListener,true);},10);
+  }
+  function openDrawingMiniPopover(type){
+    const d=drawings.find(x=>x.id===selectedId);
+    if(!d||d.isLocked)return;
+    const existing=document.querySelector('.floating-mini-popover');
+    if(existing&&existing._type===type){closeAllDrawingPopovers();return;}
+    closeAllDrawingPopovers();
+    document.querySelectorAll('.style-popover').forEach(n=>n.remove());
+
+    let btn=null,items=[];
+    if(type==='width'){
+      btn=document.getElementById('drawingWidthBtn');
+      items=[
+        {val:1,label:'1px',preview:'1px solid currentColor'},
+        {val:2,label:'2px',preview:'2px solid currentColor'},
+        {val:3,label:'3px',preview:'3px solid currentColor'},
+        {val:4,label:'4px',preview:'4px solid currentColor'}
+      ];
+    }else if(type==='style'){
+      btn=document.getElementById('drawingLineStyleBtn');
+      items=[
+        {val:'solid',label:'Liền',preview:'2px solid currentColor'},
+        {val:'dashed',label:'Đứt',preview:'2px dashed currentColor'},
+        {val:'dotted',label:'Chấm',preview:'2px dotted currentColor'}
+      ];
+    }else if(type==='fontSize'){
+      btn=document.getElementById('drawingFontSizeBtn');
+      items=[11,12,13,14,16,18,20,24].map(s=>({val:s,label:`${s}px`}));
+    }
+    if(!btn)return;
+
+    const pop=document.createElement('div');
+    pop.className='floating-mini-popover';pop._type=type;
+
+    let cleanupListener=null;
+    const cleanup=()=>{
+      if(cleanupListener){
+        window.removeEventListener('pointerdown',cleanupListener,true);
+        cleanupListener=null;
+      }
+      pop.remove();
+    };
+    pop._cleanup=cleanup;
+
+    items.forEach(it=>{
+      const b=document.createElement('button');
+      b.type='button';b.className='popover-item';
+      const curVal=type==='width'?(d.lineWidth||1):type==='style'?(d.lineStyle||'solid'):(d.fontSize||(d.kind==='pin'?12:13));
+      if(String(curVal)===String(it.val))b.classList.add('is-active');
+      if(it.preview){
+        b.innerHTML=`<span style="pointer-events:none;display:inline-block;width:32px;height:0;border-top:${it.preview};vertical-align:middle;margin-right:6px"></span><span style="pointer-events:none">${it.label}</span>`;
+      }else{
+        b.textContent=it.label;
+      }
+      let itemHandled=false;
+      const selectItem=e=>{
+        if(itemHandled)return;
+        itemHandled=true;
+        if(e){e.preventDefault();e.stopPropagation();}
+        const targetDrawing=drawings.find(x=>x.id===selectedId)||d;
+        if(!targetDrawing||targetDrawing.isLocked){cleanup();return;}
+        pushUndo();
+        if(type==='width'){
+          const chosenWidth=Number(it.val)||1;
+          targetDrawing.lineWidth=chosenWidth;
+          const wSel=document.getElementById('drawingWidth');if(wSel)wSel.value=String(chosenWidth);
+          const wLbl=document.getElementById('drawingWidthLabel');if(wLbl)wLbl.textContent=`${chosenWidth}px`;
+          const wPrev=document.getElementById('drawingWidthPreview');if(wPrev)wPrev.style.borderTopWidth=`${chosenWidth}px`;
+          if(btn)btn.title=`Độ dày đường nét (${chosenWidth}px)`;
+        }else if(type==='style'){
+          const chosenStyle=it.val||'solid';
+          targetDrawing.lineStyle=chosenStyle;
+          const sSel=document.getElementById('drawingLineStyle');if(sSel)sSel.value=chosenStyle;
+          const sText=chosenStyle==='dashed'?'Đứt':(chosenStyle==='dotted'?'Chấm':'Liền');
+          const sLbl=document.getElementById('drawingLineStyleLabel');if(sLbl)sLbl.textContent=sText;
+          const sPrev=document.getElementById('drawingLineStylePreview');if(sPrev)sPrev.style.borderTopStyle=chosenStyle;
+          if(btn)btn.title=`Kiểu nét: ${sText}`;
+        }else if(type==='fontSize'){
+          const chosen=Number(it.val)||(targetDrawing.kind==='pin'?12:13);
+          targetDrawing.fontSize=chosen;
+          const fSel=document.getElementById('drawingFontSize');if(fSel)fSel.value=String(chosen);
+          const fLbl=document.getElementById('drawingFontSizeLabel');if(fLbl)fLbl.textContent=`${chosen}px`;
+          if(btn)btn.title=`Cỡ chữ (${chosen}px)`;
+          syncInlineEditorStyle(targetDrawing);
+        }
+        commitDrawings();
+        cleanup();
+      };
+      b.addEventListener('pointerdown',selectItem);
+      b.addEventListener('click',selectItem);
+      pop.append(b);
+    });
+
+    ['pointerdown','pointerup','mousedown','mouseup','click','dblclick','touchstart','touchend'].forEach(evt=>{
+      pop.addEventListener(evt,e=>e.stopPropagation());
+    });
+
+    const btnRect=btn.getBoundingClientRect();
+    document.body.append(pop);
+    const popRect=pop.getBoundingClientRect();
+    let top=btnRect.bottom+6;
+    if(top+popRect.height>window.innerHeight-10)top=Math.max(10,btnRect.top-popRect.height-6);
+    let left=Math.max(10,Math.min(window.innerWidth-popRect.width-10,btnRect.left+btnRect.width/2-popRect.width/2));
+    pop.style.top=`${Math.round(top)}px`;
+    pop.style.left=`${Math.round(left)}px`;
+
+    cleanupListener=e=>{
+      if(!pop.contains(e.target)&&e.target!==btn&&!btn.contains(e.target)){
+        cleanup();
+      }
+    };
+    setTimeout(()=>{
+      if(pop.parentElement)window.addEventListener('pointerdown',cleanupListener,true);
+    },10);
+  }
+  function chartInteractionOptions(){if(!!document.querySelector('dialog[open]')||inlineEditingDrawingId)return{handleScroll:false,handleScale:false};const drawing=activeTool!=='select';return{handleScroll:drawing?false:{mouseWheel:false,pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false},handleScale:drawing?false:{mouseWheel:true,pinch:true,axisPressedMouseMove:{time:true,price:true}}};}
+  function syncChartInteractionLock(){const locked=!!document.querySelector('dialog[open]')||!!inlineEditingDrawingId;if(locked){dragStart=dragCurrent=null;draggingId=null;draggingHandle=null;canvas.style.pointerEvents='none';canvas.style.cursor='default';}else{const drawing=activeTool!=='select';canvas.style.pointerEvents=(drawing||activeHoverPin)?'auto':'none';canvas.style.cursor=drawing?(activeTool==='ruler'?'cell':'crosshair'):'default';}chart.applyOptions(chartInteractionOptions());}
+  function findTool(id){for(const g of toolGroups){const t=g.tools.find(item=>item.id===id);if(t)return{tool:t,group:g};}return null;}
+  function persistFavorites(){const favs=[];for(const g of toolGroups)for(const t of g.tools)if(t.fav)favs.push(t.id);writeStorage('drawingFavorites',JSON.stringify(favs));}
+  function persistDrawingPrefs(){writeStorage('drawingPreferences',JSON.stringify({mods,extendRight:globalExtendRight}));}
+  function setTool(tool){activeTool=tool;const found=findTool(tool);if(found)found.group.activeTool=tool;closeFlyout();renderRail();syncChartInteractionLock();}
+  function renderRail(){
+    const selBtn=document.getElementById('toolSelect');if(selBtn)selBtn.classList.toggle('selected',activeTool==='select');
+    const favContainer=document.getElementById('drawFavorites');favContainer.replaceChildren();
+    const favTools=[];for(const g of toolGroups)for(const t of g.tools)if(t.fav)favTools.push(t);
+    for(const t of favTools){const b=document.createElement('button');b.type='button';b.className=`fav-btn${activeTool===t.id?' selected':''}`;b.dataset.tool=t.id;b.title=`★ ${t.name}`;b.innerHTML=`${t.icon}<span class="fav-dot"></span>`;b.addEventListener('click',()=>setTool(t.id));favContainer.append(b);}
+    const groupContainer=document.getElementById('drawGroups');groupContainer.replaceChildren();
+    for(const g of toolGroups){const active=g.tools.find(t=>t.id===g.activeTool)||g.tools[0],isSelected=activeTool===active.id;const b=document.createElement('button');b.type='button';b.className=`group-btn${isSelected?' selected':''}`;b.dataset.groupId=g.id;b.title=`${g.title}: ${active.name}`;b.innerHTML=`<span>${active.icon}</span><span class="group-chevron">▸</span>`;b.addEventListener('click',e=>{e.stopPropagation();openGroupFlyout(g.id,b);});groupContainer.append(b);}
+    const rulerBtn=document.getElementById('toolRuler');if(rulerBtn)rulerBtn.classList.toggle('selected',activeTool==='ruler');
+    document.getElementById('modMagnet').classList.toggle('mod-active',mods.magnet);document.getElementById('modStay').classList.toggle('mod-active',mods.stay);
+    document.getElementById('modLockAll').classList.toggle('mod-active',mods.lockAll);
+    document.getElementById('modLockAll').innerHTML=mods.lockAll?drawingIcons.lock:drawingIcons.lockOpen;
+    document.getElementById('modHideAll').classList.toggle('mod-active',mods.hideAll);
+    document.getElementById('modHideAll').innerHTML=mods.hideAll?drawingIcons.eyeOff:drawingIcons.eye;
+  }
+  let openFlyoutGroupId=null;const flyoutMenu=document.getElementById('drawFlyout'),flyoutTitle=document.getElementById('flyoutTitle'),flyoutItems=document.getElementById('flyoutItems');
+  function openGroupFlyout(groupId,button){
+    if(openFlyoutGroupId===groupId){closeFlyout();return;}openFlyoutGroupId=groupId;const group=toolGroups.find(g=>g.id===groupId);if(!group)return;flyoutTitle.textContent=group.title;flyoutItems.replaceChildren();
+    for(const tool of group.tools){
+      const row=document.createElement('div');row.className=`flyout-item${activeTool===tool.id?' is-active':''}`;
+      const left=document.createElement('div');left.className='flyout-item-left';const icon=document.createElement('span');icon.className='flyout-item-icon';icon.innerHTML=tool.icon;const name=document.createElement('span');name.textContent=tool.name;left.append(icon,name);
+      const star=document.createElement('button');star.type='button';star.className=`flyout-star${tool.fav?' is-fav':''}`;star.textContent=tool.fav?'★':'☆';star.title=tool.fav?'Bỏ khỏi Yêu thích':'Thêm vào Yêu thích';
+      star.addEventListener('click',e=>{e.stopPropagation();tool.fav=!tool.fav;star.textContent=tool.fav?'★':'☆';star.classList.toggle('is-fav',tool.fav);persistFavorites();renderRail();});
+      row.append(left,star);row.addEventListener('click',()=>{group.activeTool=tool.id;setTool(tool.id);closeFlyout();});flyoutItems.append(row);
+    }
+    const r=button.getBoundingClientRect();flyoutMenu.style.top=`${Math.max(46,Math.min(innerHeight-260,r.top-10))}px`;flyoutMenu.style.left='38px';flyoutMenu.style.display='block';
+  }
+  function closeFlyout(){openFlyoutGroupId=null;flyoutMenu.style.display='none';}
+  document.addEventListener('pointerdown',e=>{
+    if(!e.target.closest('#drawFlyout')&&!e.target.closest('.group-btn'))closeFlyout();
+    if(inlineEditingDrawingId&&!e.target.closest('#inlineDrawingEditor')&&!e.target.closest('#drawingTools')&&!e.target.closest('.floating-mini-popover')&&!e.target.closest('.drawing-color-popover')){
+      commitInlineText(true);
+    }
+  });
+  let inlineEditingDrawingId=null;
+  function openDrawingTextEditor(d){
+    if(!d||d.isLocked)return;
+    inlineEditingDrawingId=d.id;
+    const editor=document.getElementById('inlineDrawingEditor'),input=document.getElementById('inlineDrawingInput'),tail=document.getElementById('inlineEditorTail');
+    if(!editor||!input)return;
+    input.value=d.text||'';
+    const isNote=d.kind==='pin';
+    const isAutoColor=!d.color||d.color==='auto';
+    const effectiveColor=isAutoColor?'#16816d':d.color;
+    const fontCol=d.fontColor||'#ffffff';
+    const fSize=Number(d.fontSize)||(isNote?12:13);
+    input.style.fontSize=`${fSize}px`;
+    input.style.color=fontCol;
+    if(isNote){
+      input.style.background=effectiveColor;
+      input.style.borderColor='rgba(255,255,255,0.45)';
+      input.placeholder='Nhập ghi chú...';
+      if(tail){tail.hidden=false;tail.style.borderTopColor=effectiveColor;}
+    }else{
+      input.style.background='rgba(30,41,59,0.96)';
+      input.style.borderColor=effectiveColor;
+      input.placeholder='Nhập văn bản...';
+      if(tail)tail.hidden=true;
+    }
+    editor.hidden=false;
+    autoResizeInlineInput();
+    positionInlineEditor(d);
+    updateFloatingToolbarPosition();
+    syncChartInteractionLock();
+    scheduleDraw();
+    input.focus();
+    input.select();
+  }
+  function autoResizeInlineInput(){
+    const input=document.getElementById('inlineDrawingInput');
+    if(!input)return;
+    input.style.height='auto';
+    input.style.width='auto';
+    input.style.height=`${Math.min(180,Math.max(26,input.scrollHeight))}px`;
+    input.style.width=`${Math.min(320,Math.max(100,input.scrollWidth+14))}px`;
+  }
+  function positionInlineEditor(d){
+    const editor=document.getElementById('inlineDrawingEditor');
+    if(!editor||editor.hidden)return;
+    const [x0,,y0]=coords(d);
+    if(x0===null||!Number.isFinite(x0)||!Number.isFinite(y0))return;
+    const isNote=d.kind==='pin';
+    const editorRect=editor.getBoundingClientRect(),chartRect=host.getBoundingClientRect();
+    const w=editorRect.width||140,h=editorRect.height||32;
+    let targetX=x0-w/2;
+    let targetY=isNote?(y0-h-12):(y0-h/2);
+    targetX=Math.max(8,Math.min(chartRect.width-w-8,targetX));
+    if(targetY<8)targetY=isNote?(y0+16):8;
+    editor.style.left=`${Math.round(targetX)}px`;
+    editor.style.top=`${Math.round(targetY)}px`;
+  }
+  function commitInlineText(commit=true){
+    const editor=document.getElementById('inlineDrawingEditor');
+    if(!editor||editor.hidden||!inlineEditingDrawingId)return;
+    const input=document.getElementById('inlineDrawingInput');
+    const d=drawings.find(x=>x.id===inlineEditingDrawingId);
+    if(d&&commit){
+      const val=input.value.trim();
+      if(val!==(d.text||'')){
+        pushUndo();
+        d.text=val;
+        commitDrawings();
+      }
+    }
+    inlineEditingDrawingId=null;
+    editor.hidden=true;
+    syncChartInteractionLock();
+    scheduleDraw();
+  }
+  function updateInlineEditorPosition(){
+    if(!inlineEditingDrawingId)return;
+    const d=drawings.find(x=>x.id===inlineEditingDrawingId);
+    if(d)positionInlineEditor(d);
+  }
   function routeWheel(event){if(!!document.querySelector('dialog[open]')||activeTool!=='select'||!payload)return;const rect=host.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top,plotWidth=chart.timeScale().width();if(x<0||x>rect.width||y<0||y>rect.height)return;
     const deltaUnit=event.deltaMode===1?16:event.deltaMode===2?rect.height:1,deltaY=event.deltaY*deltaUnit,deltaX=event.deltaX*deltaUnit;
     if(x>=plotWidth){event.preventDefault();event.stopPropagation();const panes=chart.panes();let top=0,paneIndex=panes.findIndex(pane=>{const height=pane.getHeight(),inside=y>=top&&y<=top+height;if(!inside)top+=height;return inside;});if(paneIndex<0){paneIndex=0;top=0;}const pane=panes[paneIndex],seriesInPane=pane?.getSeries()||[candles],axisSeries=seriesInPane.find(series=>series!==volume&&series.priceScale()?.getVisibleRange())||seriesInPane[0]||candles,scale=axisSeries.priceScale(),range=scale.getVisibleRange();if(!range||!Number.isFinite(range.from)||!Number.isFinite(range.to))return;const pointerPrice=axisSeries.coordinateToPrice(Math.max(0,Math.min(pane?.getHeight()||rect.height,y-top)));const anchor=Number.isFinite(pointerPrice)?pointerPrice:(range.from+range.to)/2,factor=Math.exp(Math.max(-2,Math.min(2,deltaY*.001)));let from=anchor+(range.from-anchor)*factor,to=anchor+(range.to-anchor)*factor;if(scale.options().mode===C.PriceScaleMode.Logarithmic&&from<=0)from=Math.max(Number.MIN_VALUE,Math.min(range.from,to*.001));if(from<to){scale.setAutoScale(false);scale.setVisibleRange({from,to});}return;}
@@ -339,11 +1188,200 @@
     if(Math.abs(horizontalDelta)>0.25&&(event.shiftKey||Math.abs(deltaX)>0.25)){const range=chart.timeScale().getVisibleLogicalRange();if(!range)return;event.preventDefault();event.stopPropagation();const spacing=chart.timeScale().options().barSpacing||6,shift=horizontalDelta/spacing;chart.timeScale().setVisibleLogicalRange({from:range.from+shift,to:range.to+shift});}
   }
   window.addEventListener('wheel',routeWheel,{passive:false,capture:true});
-  function eventPoint(event){const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;const mainHeight=chart.panes()[0]?.getHeight()||rect.height;if(y<0||y>mainHeight)return null;const time=timeValue(chart.timeScale().coordinateToTime(x)),price=(closeLine||candles).coordinateToPrice(y);return time&&Number.isFinite(price)?{time,price}:null;}
-  host.addEventListener('pointerdown',event=>{if(!!document.querySelector('dialog[open]'))return;const point=eventPoint(event);if(!point)return;const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;const hit=[...drawings].reverse().find(d=>{let [x0,x1,y0,y1]=coords(d);if(d.kind==='horizontal'){x0=0;x1=canvas.clientWidth;}return [x0,x1,y0,y1].every(Number.isFinite)&&x>=Math.min(x0,x1)-6&&x<=Math.max(x0,x1)+6&&y>=Math.min(y0,y1)-6&&y<=Math.max(y0,y1)+6;});if(activeTool==='select'){if(!hit)return;event.preventDefault();event.stopPropagation();selectedId=hit.id;if(!hit.isLocked){const [x0,x1,y0,y1]=coords(hit);const d0=Math.hypot(x-x0,y-y0),d1=Math.hypot(x-x1,y-y1);draggingHandle=Math.min(d0,d1)<8?(d0<=d1?'start':'end'):null;pushUndo();draggingId=hit.id;host.setPointerCapture(event.pointerId);dragStart=point;dragCurrent=point;}updateDeleteButtons();scheduleDraw();return;}event.preventDefault();host.setPointerCapture(event.pointerId);dragStart=point;dragCurrent=point;selectedId=null;scheduleDraw();});
-  host.addEventListener('pointermove',event=>{if(!dragStart)return;const point=eventPoint(event);if(!point)return;dragCurrent=point;if(draggingId){const d=drawings.find(x=>x.id===draggingId);if(d&&!d.isLocked){const bars=payload.bars,original=JSON.parse(undoStack.at(-1)||'[]').find(x=>x.id===draggingId);if(original){if(draggingHandle){const target=draggingHandle==='start'?'start':'end';d[`${target}Time`]=point.time;d[`${target}Price`]=point.price;}else{const a=bars.findIndex(b=>String(b.time)===dragStart.time),b=bars.findIndex(x=>String(x.time)===point.time),shift=b-a,i0=bars.findIndex(x=>String(x.time)===original.startTime),i1=bars.findIndex(x=>String(x.time)===original.endTime);d.startTime=String(bars[Math.max(0,Math.min(bars.length-1,i0+shift))].time);d.endTime=String(bars[Math.max(0,Math.min(bars.length-1,i1+shift))].time);const delta=point.price-dragStart.price;d.startPrice=original.startPrice+delta;d.endPrice=original.endPrice+delta;}}}}scheduleDraw();});
-  host.addEventListener('pointerup',event=>{if(!dragStart)return;const end=eventPoint(event)||dragCurrent;if(draggingId){if(end){commitDrawings();}draggingId=null;draggingHandle=null;dragStart=dragCurrent=null;return;}const kind=activeTool;if(end&&kind!=='select'&&end.time&&(kind==='horizontal'||(dragStart.time!==end.time&&Math.abs(dragStart.price-end.price)>Number.EPSILON))){pushUndo();const id=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;drawings.push({id,kind,color:document.getElementById('drawingColor').value,lineWidth:Number(document.getElementById('drawingWidth').value)||1,isLocked:false,startTime:kind==='horizontal'?end.time:dragStart.time,endTime:end.time,startPrice:kind==='horizontal'?end.price:dragStart.price,endPrice:end.price});selectedId=id;commitDrawings();}dragStart=dragCurrent=null;setTool('select');});
-  document.querySelectorAll('[data-tool]').forEach(button=>button.addEventListener('click',()=>setTool(button.dataset.tool)));
+  function eventPoint(event){
+    const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    const mainHeight=chart.panes()[0]?.getHeight()||rect.height;if(y<0||y>mainHeight)return null;
+    const scale=chart.timeScale(),series=closeLine||candles;
+    let price=series.coordinateToPrice(y),time=timeValue(scale.coordinateToTime(x));
+    const bars=payload?.bars||[];
+    if(!time&&bars.length>0){
+      const logical=scale.coordinateToLogical(x);
+      if(logical!==null){
+        const lastIndex=bars.length-1,intraday=/h$|m$/.test(payload.interval||'');
+        if(logical>lastIndex){
+          const diffBars=Math.round(logical-lastIndex),lastBar=bars[lastIndex];
+          time=intraday?String(timeSeconds(lastBar.time)+diffBars*intervalStepSeconds()):addTradingDays(dateLabel(lastBar.time),diffBars);
+        }else if(logical<0){
+          const diffBars=Math.round(-logical),firstBar=bars[0];
+          time=intraday?String(timeSeconds(firstBar.time)-diffBars*intervalStepSeconds()):addTradingDays(dateLabel(firstBar.time),-diffBars);
+        }
+      }
+    }
+    if(mods.magnet&&bars.length>0){
+      const logical=scale.coordinateToLogical(x);
+      if(logical!==null){
+        const idx=Math.max(0,Math.min(bars.length-1,Math.round(logical))),bar=bars[idx];
+        const barX=scale.timeToCoordinate(timePoint(bar.time));
+        if(barX!==null&&Math.abs(x-barX)<=24){
+          const candidates=[bar.open,bar.high,bar.low,bar.close].filter(Number.isFinite);
+          if(candidates.length){
+            let closestPrice=candidates[0],minDist=Math.abs(price-candidates[0]);
+            for(let i=1;i<candidates.length;i++){const d=Math.abs(price-candidates[i]);if(d<minDist){minDist=d;closestPrice=candidates[i];}}
+            price=closestPrice;time=timeValue(bar.time);
+          }
+        }
+      }
+    }
+    return time&&Number.isFinite(price)?{time,price,x,y}:null;
+  }
+  function hitTestDrawing(x,y){
+    if(mods.hideAll)return null;
+    for(let i=drawings.length-1;i>=0;i--){
+      const d=drawings[i];let [x0,x1,y0,y1]=coords(d);const kind=d.kind||'range';
+      if(kind==='horizontal'){if(Number.isFinite(y0)&&Math.abs(y-y0)<=8)return d;}
+      else if(kind==='horizontalRay'){if(Number.isFinite(y0)&&Number.isFinite(x0)&&Math.abs(y-y0)<=8&&x>=x0-6)return d;}
+      else if(kind==='vertical'){if(Number.isFinite(x0)&&Math.abs(x-x0)<=8)return d;}
+      else if(kind==='pin'){
+        if(Number.isFinite(x0)&&Number.isFinite(y0)){
+          if(Math.hypot(x-x0,y-y0)<=16)return d;
+          const text=d.text;
+          const isHovered=activeHoverPin&&activeHoverPin.id===d.id;
+          if((isHovered||selectedId===d.id)&&inlineEditingDrawingId!==d.id&&(text||selectedId===d.id)){
+            const fSize=Number(d.fontSize)||12;
+            const textW=(text||'Nhập ghi chú...').length*fSize*0.65;
+            const bubbleW=Math.max(48,textW+18),bubbleH=Math.max(22,fSize+10),tailH=6;
+            const bx=x0-bubbleW/2,by=y0-10-tailH-bubbleH;
+            if(x>=bx-4&&x<=bx+bubbleW+4&&y>=by-4&&y<=by+bubbleH+tailH+4)return d;
+          }
+        }
+      }
+      else if(kind==='text'){if(Number.isFinite(x0)&&Number.isFinite(y0)){const textW=(d.text||'Văn bản').length*8+20;if(x>=x0-4&&x<=x0+textW+4&&y>=y0-14&&y<=y0+14)return d;}}
+      else if(kind==='priceLabel'){if(Number.isFinite(x0)&&Number.isFinite(y0)&&x>=x0-4&&x<=x0+80&&y>=y0-14&&y<=y0+14)return d;}
+      else if(kind==='trend'||kind==='arrow'){if([x0,x1,y0,y1].every(Number.isFinite)){const dist=d.extendRight?distToRay(x,y,x0,y0,x1,y1):distToSegment(x,y,x0,y0,x1,y1);if(dist<=8)return d;}}
+      else{if([x0,x1,y0,y1].every(Number.isFinite)){const left=Math.min(x0,x1)-6,right=Math.max(x0,x1)+6,top=Math.min(y0,y1)-6,bottom=Math.max(y0,y1)+6;if(x>=left&&x<=right&&y>=top&&y<=bottom)return d;}}
+    }
+    return null;
+  }
+  function getHandleAt(d,x,y){
+    let [x0,x1,y0,y1]=coords(d);const kind=d.kind||'range';
+    if(kind==='horizontal')return Math.abs(y-y0)<=8?'move':null;
+    if(kind==='horizontalRay'){if(Math.hypot(x-x0,y-y0)<=10)return 'start';return Math.abs(y-y0)<=8?'move':null;}
+    if(kind==='vertical'){if(Math.hypot(x-x0,y-canvas.clientHeight/2)<=10)return 'start';return Math.abs(x-x0)<=8?'move':null;}
+    if(kind==='pin'||kind==='text'||kind==='priceLabel')return 'move';
+    if(kind==='range'||kind==='dateRange'||kind==='datePriceRange'||kind==='rectangle'){
+      const left=Math.min(x0,x1),right=Math.max(x0,x1),top=Math.min(y0,y1),bottom=Math.max(y0,y1);
+      if(Math.hypot(x-left,y-top)<=10||Math.hypot(x-right,y-top)<=10||Math.hypot(x-left,y-bottom)<=10||Math.hypot(x-right,y-bottom)<=10)return 'corner';
+      return 'move';
+    }
+    const d0=Math.hypot(x-x0,y-y0),d1=Math.hypot(x-x1,y-y1);
+    if(d0<=10)return 'start';if(d1<=10)return 'end';return 'move';
+  }
+  host.addEventListener('pointerdown',event=>{
+    if(!!document.querySelector('dialog[open]'))return;
+    if(event.target.closest('#drawingTools')||event.target.closest('.drawing-color-popover')||event.target.closest('.floating-mini-popover')||event.target.closest('#inlineDrawingEditor'))return;
+    if(inlineEditingDrawingId){commitInlineText(true);return;}
+    const point=eventPoint(event);if(!point)return;
+    const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    if(activeTool==='ruler'||event.shiftKey){
+      rulerStart=point;rulerCurrent=point;scheduleDraw();return;
+    }
+    const hit=hitTestDrawing(x,y);
+    if(activeTool==='select'){
+      if(!hit){if(selectedId){selectedId=null;updateDeleteButtons();scheduleDraw();}return;}
+      event.preventDefault();event.stopPropagation();selectedId=hit.id;
+      if(!hit.isLocked&&!mods.lockAll){
+        draggingHandle=getHandleAt(hit,x,y);pushUndo();draggingId=hit.id;host.setPointerCapture(event.pointerId);dragStart=point;dragCurrent=point;
+      }
+      updateDeleteButtons();scheduleDraw();return;
+    }
+    event.preventDefault();host.setPointerCapture(event.pointerId);dragStart=point;dragCurrent=point;selectedId=null;scheduleDraw();
+  });
+  host.addEventListener('pointermove',event=>{
+    if(rulerStart){rulerCurrent=eventPoint(event)||rulerCurrent;scheduleDraw();return;}
+    if(!dragStart)return;const point=eventPoint(event);if(!point)return;dragCurrent=point;
+    if(draggingId){
+      const d=drawings.find(x=>x.id===draggingId);
+      if(d&&!d.isLocked&&!mods.lockAll){
+        const bars=payload.bars,original=JSON.parse(undoStack.at(-1)||'[]').find(x=>x.id===draggingId);
+        if(original){
+          if(draggingHandle==='start'){d.startTime=point.time;d.startPrice=point.price;}
+          else if(draggingHandle==='end'){d.endTime=point.time;d.endPrice=point.price;}
+          else if(draggingHandle==='corner'){
+            const closerTime=Math.abs(timeSeconds(original.startTime)-timeSeconds(dragStart.time))<=Math.abs(timeSeconds(original.endTime)-timeSeconds(dragStart.time))?'start':'end';
+            const closerPrice=Math.abs(original.startPrice-dragStart.price)<=Math.abs(original.endPrice-dragStart.price)?'start':'end';
+            d[`${closerTime}Time`]=point.time;d[`${closerPrice}Price`]=point.price;
+          }else{
+            const shiftBars=barIndexForTime(point.time)-barIndexForTime(dragStart.time);
+            function shiftTime(baseTime,shift){
+              if(shift===0)return baseTime;const idx=barIndexForTime(baseTime)+shift,last=bars.length-1,intraday=/h$|m$/.test(payload.interval||'');
+              if(idx>=0&&idx<=last)return String(bars[idx].time);
+              if(idx>last)return intraday?String(timeSeconds(bars[last].time)+(idx-last)*intervalStepSeconds()):addTradingDays(dateLabel(bars[last].time),idx-last);
+              return intraday?String(timeSeconds(bars[0].time)-(-idx)*intervalStepSeconds()):addTradingDays(dateLabel(bars[0].time),idx);
+            }
+            d.startTime=shiftTime(original.startTime,shiftBars);d.endTime=shiftTime(original.endTime,shiftBars);
+            const deltaPrice=point.price-dragStart.price;d.startPrice=Math.max(0.000001,original.startPrice+deltaPrice);d.endPrice=Math.max(0.000001,original.endPrice+deltaPrice);
+          }
+        }
+      }
+    }
+    scheduleDraw();
+  });
+  host.addEventListener('pointerup',event=>{
+    if(rulerStart){
+      if(activeTool==='ruler'&&!mods.stay)setTool('select');
+      rulerStart=rulerCurrent=null;scheduleDraw();return;
+    }
+    if(!dragStart)return;const end=eventPoint(event)||dragCurrent;
+    if(draggingId){if(end)commitDrawings();draggingId=null;draggingHandle=null;dragStart=dragCurrent=null;return;}
+    const kind=activeTool;
+    const isSinglePoint=['horizontal','horizontalRay','vertical','text','pin','priceLabel'].includes(kind);
+    if(end&&kind!=='select'&&kind!=='ruler'&&end.time&&(isSinglePoint||dragStart.time!==end.time||Math.abs(dragStart.price-end.price)>Number.EPSILON)){
+      pushUndo();const id=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
+      const defaultFontSize=(kind==='pin'?12:13);
+      const defaultFontColor='#ffffff';
+      const newD={id,kind,color:'auto',lineWidth:Number(document.getElementById('drawingWidth').value)||1,lineStyle:document.getElementById('drawingLineStyle').value||'solid',extendRight:(kind==='horizontalRay'||globalExtendRight),isLocked:false,startTime:dragStart.time,endTime:isSinglePoint?dragStart.time:end.time,startPrice:dragStart.price,endPrice:isSinglePoint?dragStart.price:end.price,text:kind==='pin'?'Ghi chú mới':kind==='text'?'Văn bản':undefined,fontSize:defaultFontSize,fontColor:defaultFontColor};
+      drawings.push(newD);selectedId=id;commitDrawings();
+      if(kind==='pin'||kind==='text')openDrawingTextEditor(newD);
+    }
+    dragStart=dragCurrent=null;if(!mods.stay)setTool('select');
+  });
+  host.addEventListener('dblclick',event=>{
+    const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    const hit=hitTestDrawing(x,y);
+    if(hit&&['text','pin'].includes(hit.kind)){selectedId=hit.id;updateDeleteButtons();scheduleDraw();openDrawingTextEditor(hit);}
+  });
+  host.addEventListener('pointermove',event=>{
+    const tooltip=document.getElementById('pinTooltip');
+    if(tooltip)tooltip.hidden=true;
+    if(dragStart||activeTool!=='select'||mods.hideAll){
+      if(activeHoverPin){activeHoverPin=null;syncChartInteractionLock();scheduleDraw();}
+      return;
+    }
+    const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+    const hitPin=[...drawings].reverse().find(d=>{
+      if(d.kind!=='pin')return false;
+      const [x0,,y0]=coords(d);
+      if(!Number.isFinite(x0)||!Number.isFinite(y0))return false;
+      if(Math.hypot(x-x0,y-y0)<=16)return true;
+      if(activeHoverPin&&activeHoverPin.id===d.id&&inlineEditingDrawingId!==d.id){
+        const fSize=Number(d.fontSize)||12;
+        const textW=(d.text||'Nhập ghi chú...').length*fSize*0.65;
+        const bubbleW=Math.max(48,textW+18),bubbleH=Math.max(22,fSize+10),tailH=6;
+        const bx=x0-bubbleW/2,by=y0-10-tailH-bubbleH;
+        if(x>=bx-4&&x<=bx+bubbleW+4&&y>=by-4&&y<=by+bubbleH+tailH+6)return true;
+      }
+      return false;
+    })||null;
+    const prevId=activeHoverPin?.id||null,nextId=hitPin?.id||null;
+    if(prevId!==nextId){
+      activeHoverPin=hitPin;
+      syncChartInteractionLock();
+      scheduleDraw();
+    }
+  });
+  host.addEventListener('pointerleave',()=>{
+    const tooltip=document.getElementById('pinTooltip');
+    if(tooltip)tooltip.hidden=true;
+    if(activeHoverPin){activeHoverPin=null;syncChartInteractionLock();scheduleDraw();}
+  });
+  document.getElementById('toolSelect').addEventListener('click',()=>setTool('select'));
+  document.getElementById('toolRuler').addEventListener('click',()=>setTool('ruler'));
+  document.getElementById('modMagnet').addEventListener('click',()=>{mods.magnet=!mods.magnet;persistDrawingPrefs();renderRail();});
+  document.getElementById('modStay').addEventListener('click',()=>{mods.stay=!mods.stay;persistDrawingPrefs();renderRail();});
+  document.getElementById('modLockAll').addEventListener('click',()=>{mods.lockAll=!mods.lockAll;persistDrawingPrefs();renderRail();scheduleDraw();});
+  document.getElementById('modHideAll').addEventListener('click',()=>{mods.hideAll=!mods.hideAll;persistDrawingPrefs();renderRail();scheduleDraw();});
+  document.getElementById('modClearAll').addEventListener('click',()=>{if(!drawings.length)return;pushUndo();drawings=[];selectedId=null;commitDrawings();});
+  renderRail();
   document.getElementById('candleType').addEventListener('click',()=>{if(!payload?.hasOHLC)return;chartType='candles';persistDisplay();render();document.getElementById('chartTypeMenu').open=false;});
   document.getElementById('lineType').addEventListener('click',()=>{chartType='line';persistDisplay();render();document.getElementById('chartTypeMenu').open=false;});
   function setScale(log){logScale=log;chart.applyOptions({rightPriceScale:{mode:log?C.PriceScaleMode.Logarithmic:C.PriceScaleMode.Normal}});persistDisplay();render();document.getElementById('chartTypeMenu').open=false;}
@@ -423,14 +1461,97 @@
   function rollbackIndicatorDialog(){if(!dialogSnapshot)return;if(dialogPreviewTimer)clearTimeout(dialogPreviewTimer);if(dialogBridgeTimer)clearTimeout(dialogBridgeTimer);dialogPreviewTimer=dialogBridgeTimer=null;indicatorSettings=JSON.parse(JSON.stringify(dialogSnapshot.settings));customIndicators=dialogSnapshot.customIndicators.map(item=>({...item}));enabled.clear();dialogSnapshot.enabled.forEach(value=>enabled.add(value));hiddenIndicators.clear();dialogSnapshot.hiddenIndicators.forEach(value=>hiddenIndicators.add(value));editingCustomName=dialogSnapshot.editingCustomName;writeStorage('indicatorSettings',JSON.stringify(indicatorSettings));writeStorage('indicators',JSON.stringify(customIndicators));persistDisplay();if(payload)payload.indicatorSettings=indicatorSettings;syncCustomIndicators(false);render();post({type:'indicatorSettingsChanged',settings:indicatorSettings,periods:indicatorPeriods()});dialogSnapshot=null;}
   document.getElementById('resetIndicator').addEventListener('click',()=>{if(!dialogSnapshot)return;for(const key of indicatorKeys[dialogKind]||[])if(key in indicatorDefaults)indicatorSettings[key]=indicatorDefaults[key];if(dialogKind==='MA'&&surface==='superchart'){const type=dialogMAType,prefix=type.toLowerCase();for(const key of styleKeys.MA.filter(value=>value.startsWith(prefix)))indicatorSettings.componentStyles[key]={...styleDefaults[key],visible:true};customIndicators=customIndicators.map(item=>item.type===type?{...item,period:maPeriods[item.slot-1],source:'close',enabled:true,color:maColors[item.slot-1],style:{...styleDefaults[`${prefix}${item.slot}`],visible:true}}:item);enabled.add(type);}else{for(const key of styleKeys[dialogKind]||[])indicatorSettings.componentStyles[key]={...styleDefaults[key],visible:true};if(dialogKind==='MA'){document.querySelector('[data-key="type"]').value='SMA';document.querySelector('[data-key="period"]').value=20;}}buildIndicatorFields(dialogKind);onIndicatorFormInput();});
   document.getElementById('cancelIndicator').addEventListener('click',()=>{rollbackIndicatorDialog();document.getElementById('indicatorDialog').close();});document.getElementById('closeIndicator').addEventListener('click',()=>document.getElementById('indicatorDialog').close());document.getElementById('indicatorDialog').addEventListener('cancel',()=>{document.querySelectorAll('.style-popover').forEach(node=>node.remove());});
-  document.getElementById('deleteRange').addEventListener('click',()=>{if(!selectedId)return;pushUndo();drawings=drawings.filter(d=>d.id!==selectedId);selectedId=null;commitDrawings();});
-  document.getElementById('lockDrawing').addEventListener('click',()=>{const d=drawings.find(x=>x.id===selectedId);if(!d)return;pushUndo();d.isLocked=!d.isLocked;commitDrawings();});
-  document.getElementById('saveState').addEventListener('click',()=>{if(document.getElementById('saveState').textContent.startsWith('Lỗi'))commitDrawings();});
-  document.getElementById('drawingColor').addEventListener('input',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.color=e.target.value;commitDrawings();}});
-  document.getElementById('drawingWidth').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.lineWidth=Number(e.target.value);commitDrawings();}});
+  document.getElementById('deleteRange').addEventListener('click',()=>{if(!selectedId)return;if(inlineEditingDrawingId===selectedId)commitInlineText(false);pushUndo();drawings=drawings.filter(d=>d.id!==selectedId);selectedId=null;commitDrawings();});
+  document.getElementById('lockDrawing').addEventListener('click',()=>{const d=drawings.find(x=>x.id===selectedId);if(!d)return;if(inlineEditingDrawingId===selectedId)commitInlineText(true);pushUndo();d.isLocked=!d.isLocked;commitDrawings();});
+  document.getElementById('duplicateDrawing').addEventListener('click',()=>duplicateSelectedDrawing());
+  document.getElementById('drawingColorBtn').addEventListener('click',()=>openDrawingColorPopover('color'));
+  document.getElementById('drawingFontColorBtn').addEventListener('click',()=>openDrawingColorPopover('fontColor'));
+  document.getElementById('drawingFontSize').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.fontSize=Number(e.target.value)||13;syncInlineEditorStyle(d);commitDrawings();}});
+  document.getElementById('drawingColor').addEventListener('input',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.color=e.target.value;syncInlineEditorStyle(d);commitDrawings();}});
+  document.getElementById('drawingWidth').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.lineWidth=Number(e.target.value)||1;commitDrawings();}});
+  document.getElementById('drawingLineStyle').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.lineStyle=e.target.value;commitDrawings();}});
+  document.getElementById('extendDrawing').addEventListener('click',()=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.extendRight=!d.extendRight;document.getElementById('extendDrawing').classList.toggle('selected',!!d.extendRight);commitDrawings();}else if(!selectedId){globalExtendRight=!globalExtendRight;document.getElementById('extendDrawing').classList.toggle('selected',globalExtendRight);persistDrawingPrefs();}});
+  document.getElementById('editDrawingText').addEventListener('click',()=>{const d=drawings.find(x=>x.id===selectedId);if(d)openDrawingTextEditor(d);});
+  document.getElementById('drawingFontSizeBtn')?.addEventListener('click',()=>openDrawingMiniPopover('fontSize'));
+  document.getElementById('drawingWidthBtn')?.addEventListener('click',()=>openDrawingMiniPopover('width'));
+  document.getElementById('drawingLineStyleBtn')?.addEventListener('click',()=>openDrawingMiniPopover('style'));
+  const toolsBarEl=document.getElementById('drawingTools');
+  if(toolsBarEl){
+    ['pointerdown','pointerup','mousedown','mouseup','click','dblclick','touchstart','touchend','contextmenu'].forEach(evt=>{
+      toolsBarEl.addEventListener(evt,e=>{
+        if(evt==='mousedown'&&!e.target.matches('select,input,textarea'))e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+  }
+  const dragHandleEl=document.getElementById('drawingDragHandle');
+  if(dragHandleEl&&toolsBarEl){
+    let isDraggingToolbar=false,dragOffsetX=0,dragOffsetY=0;
+    dragHandleEl.addEventListener('pointerdown',e=>{
+      e.stopPropagation();
+      e.preventDefault();
+      isDraggingToolbar=true;
+      dragOffsetX=e.clientX-toolsBarEl.offsetLeft;
+      dragOffsetY=e.clientY-toolsBarEl.offsetTop;
+      dragHandleEl.classList.add('is-dragging');
+      try{dragHandleEl.setPointerCapture(e.pointerId);}catch(_){}
+    });
+    dragHandleEl.addEventListener('pointermove',e=>{
+      if(!isDraggingToolbar)return;
+      e.stopPropagation();
+      e.preventDefault();
+      const chartW=canvas.clientWidth||window.innerWidth;
+      const chartH=canvas.clientHeight||window.innerHeight;
+      const barW=toolsBarEl.offsetWidth||280;
+      const barH=toolsBarEl.offsetHeight||32;
+      let newX=e.clientX-dragOffsetX;
+      let newY=e.clientY-dragOffsetY;
+      newX=Math.max(6,Math.min(chartW-barW-6,newX));
+      newY=Math.max(6,Math.min(chartH-barH-6,newY));
+      toolsBarEl.style.left=`${Math.round(newX)}px`;
+      toolsBarEl.style.top=`${Math.round(newY)}px`;
+      toolbarCustomPos={x:newX,y:newY};
+    });
+    const stopToolbarDrag=e=>{
+      if(!isDraggingToolbar)return;
+      isDraggingToolbar=false;
+      dragHandleEl.classList.remove('is-dragging');
+      try{dragHandleEl.releasePointerCapture(e.pointerId);}catch(_){}
+    };
+    dragHandleEl.addEventListener('pointerup',stopToolbarDrag);
+    dragHandleEl.addEventListener('pointercancel',stopToolbarDrag);
+  }
+  const inlineInput=document.getElementById('inlineDrawingInput');
+  if(inlineInput){
+    inlineInput.addEventListener('input',()=>{
+      autoResizeInlineInput();
+      if(inlineEditingDrawingId){
+        const d=drawings.find(x=>x.id===inlineEditingDrawingId);
+        if(d)positionInlineEditor(d);
+      }
+    });
+    inlineInput.addEventListener('keydown',e=>{
+      if(e.key==='Enter'&&!e.shiftKey){
+        e.preventDefault();
+        commitInlineText(true);
+      }else if(e.key==='Escape'){
+        e.preventDefault();
+        commitInlineText(false);
+      }
+    });
+    ['pointerdown','pointerup','mousedown','mouseup','click','dblclick','touchstart','touchend','wheel'].forEach(evt=>{
+      inlineInput.addEventListener(evt,e=>e.stopPropagation());
+    });
+  }
   document.getElementById('undo').addEventListener('click',()=>{if(!undoStack.length)return;redoStack.push(snapshot());drawings=JSON.parse(undoStack.pop());selectedId=null;commitDrawings();});
   document.getElementById('redo').addEventListener('click',()=>{if(!redoStack.length)return;undoStack.push(snapshot());drawings=JSON.parse(redoStack.pop());selectedId=null;commitDrawings();});
-  window.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||!(e.metaKey||e.ctrlKey)||e.key.toLowerCase()!=='z')return;e.preventDefault();document.getElementById(e.shiftKey?'redo':'undo').click();});
+  window.addEventListener('keydown',e=>{
+    if(e.target.matches('input,textarea,select'))return;
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'){e.preventDefault();document.getElementById(e.shiftKey?'redo':'undo').click();return;}
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='d'&&selectedId){e.preventDefault();duplicateSelectedDrawing();return;}
+    if(e.key==='Delete'||e.key==='Backspace'){if(selectedId){e.preventDefault();pushUndo();drawings=drawings.filter(d=>d.id!==selectedId);selectedId=null;commitDrawings();}return;}
+    if(e.key==='Escape'){closeFlyout();if(inlineEditingDrawingId){commitInlineText(false);return;}if(rulerStart||rulerCurrent){rulerStart=rulerCurrent=null;scheduleDraw();}if(dragStart){dragStart=dragCurrent=null;scheduleDraw();}if(selectedId){selectedId=null;updateDeleteButtons();scheduleDraw();}if(activeTool!=='select')setTool('select');}
+  });
   document.getElementById('insiderToggle').addEventListener('click',()=>post({type:'toggleInsiderMarkers',visible:!payload?.showInsiderMarkers}));
   document.querySelectorAll('[data-ind]').forEach(input=>input.addEventListener('change',()=>toggleIndicator(input.dataset.ind,input.checked)));
   document.querySelectorAll('[data-series]').forEach(input=>input.addEventListener('change',()=>{visibility[input.dataset.series==='Volume'?'volume':'target']=input.checked;persistDisplay();render();}));
@@ -443,6 +1564,7 @@
   customDialog.addEventListener('cancel',event=>{event.preventDefault();closeCustomRange();});
   customForm.addEventListener('submit',event=>{event.preventDefault();const from=document.getElementById('customFrom').value,to=document.getElementById('customTo').value;if(!from||!to||from>to){document.getElementById('customRangeError').textContent='Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.';return;}post({type:'selectCustomRange',from,to});closeCustomRange();});
   window.clearChartData=()=>{const range=chart.timeScale().getVisibleLogicalRange();if(surface==='superchart'&&range&&payload?.bars?.length)pendingSymbolZoom={barCount:range.to-range.from,rightOffset:range.to-(payload.bars.length-1)};payload=null;identity='';indexedValues=new WeakMap();barsByTime.clear();previousCloseByTime.clear();activeHoverTime=null;if(hoverFrame)cancelAnimationFrame(hoverFrame);hoverFrame=0;readout.hidden=true;drawings=[];selectedId=null;candles.setData([]);if(closeLine)closeLine.setData([]);for(const s of [volume,rsi,rsiFill,macd,signal,histogram,stochasticK,stochasticD,sar,...Object.values(series)])if(s)s.setData([]);if(markerPrimitive)markerPrimitive.setMarkers([]);if(targetPriceLine&&targetSeries)targetSeries.removePriceLine(targetPriceLine);targetPriceLine=null;ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);document.getElementById('paneReadout').replaceChildren();document.getElementById('indicatorLegend').replaceChildren();document.getElementById('collapseIndicators').hidden=true;updateDeleteButtons();};
+  window.__setChartDataBase64=b64=>{try{const bin=atob(b64);const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));const jsonStr=new TextDecoder('utf-8').decode(bytes);window.setChartData(JSON.parse(jsonStr));}catch(e){console.error('StockDeck base64 UTF-8 decode failed',e);}};
   window.setChartData=p=>{try{const next=typeof p==='string'?JSON.parse(p):p;
     if(marketTimeZone!==(next.timeZone||'UTC')){marketTimeZone=next.timeZone||'UTC';marketDateFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:marketTimeZone,year:'numeric',month:'2-digit',day:'2-digit'});marketTimeFormatter=new Intl.DateTimeFormat('vi-VN',{timeZone:marketTimeZone,hour:'2-digit',minute:'2-digit',hour12:false});marketFullFormatter=new Intl.DateTimeFormat('vi-VN',{timeZone:marketTimeZone,dateStyle:'short',timeStyle:'short'});}
     const intraday=/h$|m$/.test(next.interval||'');
@@ -450,6 +1572,11 @@
     const changingTimeType=payload&&(/h$|m$/.test(payload.interval||''))!==intraday;if(changingTimeType)window.clearChartData();
     payload=next;indexHoverData();updateReadout();updateToolbarState();chart.applyOptions({localization:{timeFormatter:time=>typeof time==='number'?marketFullFormatter.format(new Date(time*1000)):dateLabel(timeValue(time))},timeScale:{timeVisible:intraday,secondsVisible:false,tickMarkFormatter:intraday?(time,type)=>type>=3?marketTimeFormatter.format(new Date(time*1000)):dateLabel(time):undefined}});document.getElementById('error').style.display='none';render();}catch(error){const details=error instanceof Error?`${error.name}: ${error.message}`:String(error);const panel=document.getElementById('error');panel.style.display='block';panel.textContent=`Không thể cập nhật chart (${details}).`;console.error('StockDeck chart update failed',error);}};
   window.setPriceRanges=ranges=>{drawings=Array.isArray(ranges)?ranges:[];commitDrawings();};
+  window.__getDrawings=()=>drawings;
+  window.__selectDrawing=id=>{selectedId=id;updateDeleteButtons();scheduleDraw();};
+  window.__getSelectedId=()=>selectedId;
+  window.__getToolbarCustomPos=()=>toolbarCustomPos;
+  window.__getCoords=d=>coords(d);
   window.resetChartView=()=>{pendingReset=true;pendingSymbolZoom=null;candles.priceScale().setAutoScale(true);applyRange();saveViewport();};window.disposeChart=()=>{if(viewportSaveTimer)clearTimeout(viewportSaveTimer);resizeObserver.disconnect();chart.remove();};
   const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{scheduleDraw();saveViewport();});chart.subscribeCrosshairMove(onCrosshairMove);let paneSaveTimer=null;const schedulePaneSave=()=>{if(surface!=='superchart')return;if(paneSaveTimer)clearTimeout(paneSaveTimer);paneSaveTimer=setTimeout(persistPaneFactors,120);};document.addEventListener('pointerup',schedulePaneSave,true);document.addEventListener('mouseup',schedulePaneSave,true);window.addEventListener('pagehide',persistPaneFactors);const resizeObserver=new ResizeObserver(resizeCanvas);resizeObserver.observe(host);resizeCanvas();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',e=>chart.applyOptions({layout:{textColor:e.matches?'#d7dce5':'#596273'}}));

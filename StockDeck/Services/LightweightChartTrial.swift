@@ -384,9 +384,16 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
     let endTime: String
     let startPrice: Double
     let endPrice: Double
+    var lineStyle: String?
+    var extendRight: Bool?
+    var text: String?
+    var fontSize: Double?
+    var fontColor: String?
 
     init(id: String, kind: String = "range", color: String = "#1a9b82", lineWidth: Double = 1, isLocked: Bool = false,
-         startTime: String, endTime: String, startPrice: Double, endPrice: Double) {
+         startTime: String, endTime: String, startPrice: Double, endPrice: Double,
+         lineStyle: String? = "solid", extendRight: Bool? = false, text: String? = nil, fontSize: Double? = 13,
+         fontColor: String? = nil) {
         self.id = id
         self.kind = kind
         self.color = color
@@ -396,9 +403,17 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
         self.endTime = endTime
         self.startPrice = startPrice
         self.endPrice = endPrice
+        self.lineStyle = lineStyle
+        self.extendRight = extendRight
+        self.text = text
+        self.fontSize = fontSize
+        self.fontColor = fontColor
     }
 
-    private enum CodingKeys: String, CodingKey { case id, kind, color, lineWidth, isLocked, startTime, endTime, startPrice, endPrice }
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, color, lineWidth, isLocked, startTime, endTime, startPrice, endPrice
+        case lineStyle, extendRight, text, fontSize, fontColor
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -407,10 +422,31 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
         color = try container.decodeIfPresent(String.self, forKey: .color) ?? "#1a9b82"
         lineWidth = try container.decodeIfPresent(Double.self, forKey: .lineWidth) ?? 1
         isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
-        startTime = try container.decode(String.self, forKey: .startTime)
-        endTime = try container.decode(String.self, forKey: .endTime)
+        if let s = try? container.decode(String.self, forKey: .startTime) {
+            startTime = s
+        } else if let intVal = try? container.decode(Int.self, forKey: .startTime) {
+            startTime = String(intVal)
+        } else if let dblVal = try? container.decode(Double.self, forKey: .startTime) {
+            startTime = String(Int(dblVal))
+        } else {
+            startTime = try container.decode(String.self, forKey: .startTime)
+        }
+        if let e = try? container.decode(String.self, forKey: .endTime) {
+            endTime = e
+        } else if let intVal = try? container.decode(Int.self, forKey: .endTime) {
+            endTime = String(intVal)
+        } else if let dblVal = try? container.decode(Double.self, forKey: .endTime) {
+            endTime = String(Int(dblVal))
+        } else {
+            endTime = try container.decode(String.self, forKey: .endTime)
+        }
         startPrice = try container.decode(Double.self, forKey: .startPrice)
         endPrice = try container.decode(Double.self, forKey: .endPrice)
+        lineStyle = try container.decodeIfPresent(String.self, forKey: .lineStyle) ?? "solid"
+        extendRight = try container.decodeIfPresent(Bool.self, forKey: .extendRight) ?? false
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? 13
+        fontColor = try container.decodeIfPresent(String.self, forKey: .fontColor)
     }
 }
 
@@ -419,6 +455,7 @@ actor LightweightChartDrawingStore {
     private let directory: URL
     private let defaults: UserDefaults
     private let legacyPrefix = "stockdeck.lightweightChart.priceRanges.v1."
+    private var memoryCache: [String: [LightweightPriceRange]] = [:]
 
     init(directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -428,14 +465,20 @@ actor LightweightChartDrawingStore {
 
     func load(symbol: String) -> [LightweightPriceRange] {
         let key = symbol.uppercased()
+        if let cached = memoryCache[key] {
+            return cached
+        }
         let url = fileURL(for: key)
         if let data = try? Data(contentsOf: url),
            let values = try? JSONDecoder().decode([LightweightPriceRange].self, from: data) {
-            return values.filter(Self.isValid)
+            let valid = values.filter(Self.isValid)
+            memoryCache[key] = valid
+            return valid
         }
         guard let legacy = defaults.data(forKey: legacyPrefix + key),
               let values = try? JSONDecoder().decode([LightweightPriceRange].self, from: legacy) else { return [] }
         let valid = values.filter(Self.isValid)
+        memoryCache[key] = valid
         do {
             try persist(valid, at: url)
             defaults.removeObject(forKey: legacyPrefix + key)
@@ -447,7 +490,10 @@ actor LightweightChartDrawingStore {
 
     func save(_ ranges: [LightweightPriceRange], symbol: String) throws {
         guard ranges.allSatisfy(Self.isValid) else { throw DrawingStoreError.invalidDrawing }
-        try persist(ranges, at: fileURL(for: symbol.uppercased()))
+        let key = symbol.uppercased()
+        memoryCache[key] = ranges
+        try persist(ranges, at: fileURL(for: key))
+        LightweightChartMath.clearPayloadCache()
     }
 
     private func fileURL(for symbol: String) -> URL {
@@ -465,8 +511,11 @@ actor LightweightChartDrawingStore {
     private static func isValid(_ range: LightweightPriceRange) -> Bool {
         range.startPrice.isFinite && range.endPrice.isFinite && range.startPrice > 0 && range.endPrice > 0
             && !range.startTime.isEmpty && !range.endTime.isEmpty
-            && (1...4).contains(range.lineWidth) && range.color.count == 7 && range.color.first == "#"
-            && range.color.dropFirst().allSatisfy(\.isHexDigit)
+            && (1...4).contains(range.lineWidth)
+            && (range.color == "auto" || (range.color.count == 7 && range.color.first == "#" && range.color.dropFirst().allSatisfy(\.isHexDigit)))
+            && (range.fontColor == nil || range.fontColor == "auto" || (range.fontColor!.count == 7 && range.fontColor!.first == "#" && range.fontColor!.dropFirst().allSatisfy(\.isHexDigit)))
+            && (range.fontSize == nil || (10...28).contains(range.fontSize!))
+            && (range.text == nil || range.text!.count <= 1000)
     }
 
     enum DrawingStoreError: Error { case invalidDrawing }
@@ -545,8 +594,7 @@ enum LightweightChartMath {
         }
         for key in periods.keys.sorted() { hasher.combine(key); hasher.combine(periods[key]) }
         for drawing in drawings {
-            hasher.combine(drawing.id); hasher.combine(drawing.startTime); hasher.combine(drawing.endTime)
-            hasher.combine(drawing.startPrice); hasher.combine(drawing.endPrice)
+            hasher.combine(drawing)
         }
         for point in points {
             hasher.combine(point.date.timeIntervalSince1970); hasher.combine(point.close)
@@ -569,6 +617,13 @@ enum LightweightChartMath {
         if cacheOrder.count > 8 { payloadCache.removeValue(forKey: cacheOrder.removeFirst()) }
         cacheLock.unlock()
         return data
+    }
+
+    static func clearPayloadCache() {
+        cacheLock.lock()
+        payloadCache.removeAll()
+        cacheOrder.removeAll()
+        cacheLock.unlock()
     }
 
     static func aggregate(_ input: [PricePoint], interval: LightweightChartInterval,
@@ -1372,7 +1427,7 @@ struct LightweightChartWebView: NSViewRepresentable {
                 guard let data else { return }
                 let base64 = data.base64EncodedString()
                 guard let self, self.latestRequest == requestID, let webView else { return }
-                _ = try? await webView.evaluateJavaScript("window.setChartData && window.setChartData(JSON.parse(atob('\(base64)')))")
+                _ = try? await webView.evaluateJavaScript("window.__setChartDataBase64 ? window.__setChartDataBase64('\(base64)') : (window.setChartData && window.setChartData(JSON.parse(new TextDecoder('utf-8').decode(Uint8Array.from(atob('\(base64)'), function(c){return c.charCodeAt(0);})))))")
             }
         }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.state = "ready"; sendData(to: webView) }
@@ -1391,7 +1446,7 @@ struct LightweightChartWebView: NSViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             if type == "chartPreferenceChanged", let name = body["name"] as? String,
-               ["display", "indicators", "indicatorSettings", "paneLayout", "timeframes"].contains(name),
+               ["display", "indicators", "indicatorSettings", "paneLayout", "timeframes", "drawingFavorites", "drawingPreferences"].contains(name),
                let value = body["value"] as? String, value.utf8.count < 100_000 {
                 let surface = parent.surface.rawValue
                 let key = "stockdeck.chart.preferences.\(surface).v1"
