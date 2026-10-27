@@ -70,9 +70,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// The regular application that was frontmost before StockDeck's menu bar item was clicked,
     /// used to perform a focus bounce so macOS Dock registers StockDeck at index 0 of Cmd+Tab.
     private var lastActiveApplication: NSRunningApplication?
-    /// Guards the `didBecomeActive` fallback so a click that already opened the
-    /// Alerts tab doesn't fire twice.
-    private var lastAlertActivationAt: Date = .distantPast
     /// When the current refresh started. Nil = no refresh in flight. Used via
     /// `ConnectionSupervisor.refreshIsBlocking` instead of a bare Bool so a
     /// refresh Task cancelled by a sleep/wake race can't leave polling wedged.
@@ -129,13 +126,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             AutoExportService.shared.start()
         }
 
-        // Cold launch from clicking a delivered notification: the system already
-        // routed the response to the delegate (set in willFinishLaunching); the
-        // `.didBecomeActive` observer below is the LSUIElement fallback in case
-        // macOS swallowed the didReceive callback on the banner click.
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(handleBecameActive),
-            name: NSApplication.didBecomeActiveNotification, object: nil)
         // Close the menu-bar popover when the app loses focus (user switches app) so
         // a form/sheet left half-open can't come back unresponsive.
         NotificationCenter.default.addObserver(
@@ -921,30 +911,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleResignedActive() {
         if popover?.isShown ?? false { closePopover() }
-    }
-
-    @objc private func handleBecameActive() {
-        // LSUIElement (menu-bar) apps can lose the `didReceive` callback when a
-        // banner is clicked. Fallback: whenever we just became active, if a
-        // delivered alert notification is still pending on the Notification
-        // Center, treat it as a click on that alert — but only when the user
-        // did NOT just open the menu-bar popover (a real banner click never
-        // opens the popover, so that's our discriminator).
-        let now = Date()
-        guard now.timeIntervalSince(lastAlertActivationAt) > 2 else { return }
-        guard !(popover?.isShown ?? false) else { return }
-        UNUserNotificationCenter.current().getDeliveredNotifications { [weak self] delivered in
-            Task { @MainActor in
-                guard let self else { return }
-                guard !(self.popover?.isShown ?? false) else { return }
-                guard let pending = delivered.first(where: {
-                    now.timeIntervalSince($0.date) < 120 && !$0.request.content.title.isEmpty
-                }) else { return }
-                self.lastAlertActivationAt = now
-                self.openWindowToAlerts()
-                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [pending.request.identifier])
-            }
-        }
     }
 
     @objc func toggleDesktopApp() {
