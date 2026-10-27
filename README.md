@@ -76,6 +76,8 @@ Stocks, ETFs, indices (S&P 500, NASDAQ…), crypto, and forex — anything with 
 
 ## Features
 
+Contributor workflow: [local agent harness](docs/harness/README.md) — scoped tasks, saved progress and test/build receipts.
+
 - **Menu Bar P&L** — See your portfolio performance at a glance, always visible
 - **Desktop Window** — Open a full app window from the menu bar: watchlist, portfolios, live charts, and news, all in sync
 - **Watchlist** — Track any stock by symbol, name, or ISIN with live prices and daily change, with separate Price and after-hours columns you can sort
