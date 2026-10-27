@@ -6,23 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.21</title>
-            <pubDate>Mon, 26 Oct 2026 15:50:25 +0900</pubDate>
-            <sparkle:version>24</sparkle:version>
-            <sparkle:shortVersionString>1.1.21</sparkle:shortVersionString>
+            <title>Version 1.1.22</title>
+            <pubDate>Tue, 27 Oct 2026 14:53:48 +0900</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>1.1.22</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.21</h2>
+<h2>What's New in StockDeck 1.1.22</h2>
 <ul>
-    <li><strong>Improved Superchart:</strong> Add chart hover details, custom date ranges, favorite timeframes, and synchronized chart controls in the table view.</li>
-    <li><strong>Persistent Chart Settings:</strong> Save indicator settings, pane sizes, and toolbar timeframe and timerange choices independently for each chart surface.</li>
-    <li><strong>Portfolio Ordering:</strong> Sort Superchart portfolio symbols by holding market value, with duplicate holdings combined and values converted to the preferred currency.</li>
+    <li><strong>Superchart Drawing Tools:</strong> Add a TradingView-style left drawing toolbar with trendlines, arrows, horizontal/vertical lines, rays, rectangles, price/date ranges, price labels, rulers, and vector note markers.</li>
+    <li><strong>Floating Drawing Toolbar &amp; Inline Note Editor:</strong> Customize colors, font colors, font sizes, line widths (1px–4px), and line styles (solid, dashed, dotted), and edit notes directly on the chart.</li>
+    <li><strong>Favorite Portfolios &amp; Watchlists:</strong> Pin favorite portfolios and watchlists to the Superchart header bar with quick <code>⌘1</code>–<code>⌘9</code> keyboard shortcuts.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.21/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.22/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="U0WclyURB/n/I0CrdQ06K5+MDj99GigBxwapBPNVCk4ufA+gxoeaFHgTPDVR2zxLG80ob43MrHDd8lKMgO7lBA=="
-                       length="10362105"/>
+                       sparkle:edSignature="om/4hyYf3XbjZ9I2EA5sojghfnlofQMRgT+uUZjChf1Vti20Ql26dr5lxFrwFH2Drv7Qe2n1rAfeN4GmyWubDA=="
+                       length="11151477"/>
         </item>
     </channel>
 </rss>
