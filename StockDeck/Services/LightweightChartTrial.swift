@@ -392,7 +392,7 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
 
     init(id: String, kind: String = "range", color: String = "#1a9b82", lineWidth: Double = 1, isLocked: Bool = false,
          startTime: String, endTime: String, startPrice: Double, endPrice: Double,
-         lineStyle: String? = "solid", extendRight: Bool? = false, text: String? = nil, fontSize: Double? = 13,
+         lineStyle: String? = "solid", extendRight: Bool? = false, text: String? = nil, fontSize: Double? = nil,
          fontColor: String? = nil) {
         self.id = id
         self.kind = kind
@@ -406,7 +406,8 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
         self.lineStyle = lineStyle
         self.extendRight = extendRight
         self.text = text
-        self.fontSize = fontSize
+        let isRangeTool = ["range", "dateRange", "datePriceRange", "ruler"].contains(kind)
+        self.fontSize = fontSize ?? (isRangeTool ? 10 : (kind == "pin" ? 12 : 13))
         self.fontColor = fontColor
     }
 
@@ -445,7 +446,14 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
         lineStyle = try container.decodeIfPresent(String.self, forKey: .lineStyle) ?? "solid"
         extendRight = try container.decodeIfPresent(Bool.self, forKey: .extendRight) ?? false
         text = try container.decodeIfPresent(String.self, forKey: .text)
-        fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? 13
+        let isRangeTool = ["range", "dateRange", "datePriceRange", "ruler"].contains(kind)
+        let defaultSize: Double = isRangeTool ? 10 : (kind == "pin" ? 12 : 13)
+        let decodedFontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize)
+        if let decodedFontSize {
+            fontSize = (isRangeTool && decodedFontSize == 13) ? 10 : decodedFontSize
+        } else {
+            fontSize = defaultSize
+        }
         fontColor = try container.decodeIfPresent(String.self, forKey: .fontColor)
     }
 }
@@ -1343,9 +1351,15 @@ struct LightweightChartWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         let surfaceName = surface.rawValue
         let preferenceKey = "stockdeck.chart.preferences.\(surfaceName).v1"
-        let preferences: [String: Any]
+        var preferences: [String: Any]
         if let current = UserDefaults.standard.dictionary(forKey: preferenceKey) {
             preferences = current
+            if surface == .detail && preferences["paneLayout"] == nil,
+               let superchartPrefs = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.superchart.v1"),
+               let layout = superchartPrefs["paneLayout"] {
+                preferences["paneLayout"] = layout
+                UserDefaults.standard.set(preferences, forKey: preferenceKey)
+            }
         } else if surface == .detail,
                   let migrated = UserDefaults.standard.dictionary(forKey: "stockdeck.chart.preferences.superchart.v1") {
             preferences = migrated
