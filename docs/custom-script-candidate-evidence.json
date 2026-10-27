@@ -1,0 +1,954 @@
+{
+  "createdAt": "2026-10-26T09:58:24.441Z",
+  "authorization": "User approved POC with ok thử đi and continuation with tiếp đi; no commit/push/release acceptance",
+  "baselineEvidenceSHA256": "1d0137e2dd49e02af473511443371de16b1f084954d4fd2d6e5a55707377a31a",
+  "baselineCommit": "665b1ffe93590f536a8ac6126107f526c2133be5",
+  "machine": {
+    "cpu": "Apple M1 Pro",
+    "architecture": "arm64",
+    "macOS": "27.0",
+    "swift": "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)\nTarget: arm64-apple-macosx27.0.0",
+    "node": "v24.13.1"
+  },
+  "runtime": {
+    "version": "pinets@0.13.0 + StockDeck POC candidate",
+    "base": "pinets@0.13.0",
+    "license": "AGPL-3.0-only; commercial option not purchased",
+    "installedIntoApp": false,
+    "patchManifest": {
+      "base": "pinets@0.13.0",
+      "createdAt": "2026-10-26T09:58:16.793Z",
+      "patches": [
+        "ema-first-source-seed",
+        "allocation-reduced-parameter-parser",
+        "binary-search-htf-index",
+        "scalar-plot-options-without-series-allocation",
+        "incremental-window-stdev",
+        "live-tail-output-replacement"
+      ],
+      "artifacts": {
+        "pinets.browser.js": {
+          "baseSHA256": "15dac361cde5cba8921cc65e1360d17a942e2d0109515023abc8c5407a0a302e",
+          "patchedFactorySHA256": "965e9113b2d08b5cf81e8b690de41749a362e96aeef344d80e5379c31a22dc00",
+          "patchSHA256": {
+            "ema": "4f7c09d994dd50a16e7a74faee7eed1f71540b9c009e069addaa454a4642b63c",
+            "params": "4e852a2c2675115953b238bce9a40276dd13b01c9b1c3bde74d04b2a11af6566",
+            "htfIndex": "ac61ee18b25139c3ac257942c28c374de7acdebd59f28ce5d7437e91ffbffa17",
+            "plotOptions": "a180e37ea80ccc9970f97447c3f9a0074804242a417890705600e46eb0f1cb71",
+            "stdev": "9accdb9977a0ce507bdb2c8bb09ff051f93cb0ffd67bb021b06c3371b4c17f1f"
+          },
+          "candidateSHA256": "449639feed54fb83c640de25bba0e570d8d8914886030d79af590134bf8a8f7a"
+        },
+        "pinets.es.mjs": {
+          "baseSHA256": "eff9dc0f8699c72b3f4ca6fcf17695f103cce7b041a5ca929e74106f9aeca2aa",
+          "patchedFactorySHA256": "756cf279a81c1c48ef8ac09fa3fb085c6b2088390a520d4f8d23e6a03dd17910",
+          "patchSHA256": {
+            "ema": "4f7c09d994dd50a16e7a74faee7eed1f71540b9c009e069addaa454a4642b63c",
+            "params": "4e852a2c2675115953b238bce9a40276dd13b01c9b1c3bde74d04b2a11af6566",
+            "htfIndex": "ac61ee18b25139c3ac257942c28c374de7acdebd59f28ce5d7437e91ffbffa17",
+            "plotOptions": "a180e37ea80ccc9970f97447c3f9a0074804242a417890705600e46eb0f1cb71",
+            "stdev": "9accdb9977a0ce507bdb2c8bb09ff051f93cb0ffd67bb021b06c3371b4c17f1f"
+          },
+          "candidateSHA256": "57b7da56e61ab9b72adbf02f617cf68b84d75b6d9615266688661e2e19464b56"
+        }
+      }
+    }
+  },
+  "datasets": [
+    {
+      "provider": "Bitstamp public OHLC",
+      "symbol": "BITSTAMP:BTCUSD",
+      "intervalSeconds": 86400,
+      "timezone": "UTC",
+      "session": "24x7",
+      "adjustment": "exchange spot OHLC, no adjustment applied",
+      "count": 5540,
+      "first": 1314316800000,
+      "last": 1792886400000,
+      "missingIntervals": 0,
+      "sha256": "d715394871f1ab90adb9d96e25bf82991729e84a07237fb2b1601bcf4be3aebd",
+      "requests": [
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1314316800&end=1400630400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:54.854Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1400716800&end=1487030400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:55.599Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1487116800&end=1573430400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:56.037Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1573516800&end=1659830400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:56.568Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1659916800&end=1746230400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:56.979Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=86400&limit=1000&start=1746316800&end=1792886400&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:57.421Z",
+          "count": 1000
+        }
+      ]
+    },
+    {
+      "provider": "Bitstamp public OHLC",
+      "symbol": "BITSTAMP:BTCUSD",
+      "intervalSeconds": 3600,
+      "timezone": "UTC",
+      "session": "24x7",
+      "adjustment": "exchange spot OHLC, no adjustment applied",
+      "count": 10000,
+      "first": 1756972800000,
+      "last": 1792969200000,
+      "missingIntervals": 0,
+      "sha256": "bb207d904b0d96cf436e3643bfc1ff2bc38f7417b2f4ad6e3037b17a3798ef15",
+      "requests": [
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1756972800&end=1760569200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:57.851Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1760572800&end=1764169200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:58.349Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1764172800&end=1767769200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:58.773Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1767772800&end=1771369200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:59.213Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1771372800&end=1774969200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:49:59.633Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1774972800&end=1778569200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:50:00.064Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1778572800&end=1782169200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:50:00.562Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1782172800&end=1785769200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:50:01.086Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1785772800&end=1789369200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:50:01.504Z",
+          "count": 1000
+        },
+        {
+          "url": "https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=3600&limit=1000&start=1789372800&end=1792969200&exclude_current_candle=true",
+          "fetchedAt": "2026-10-26T08:50:01.923Z",
+          "count": 1000
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "createdAt": "2026-10-26T09:55:42.704Z",
+    "runtime": "pinets@0.13.0 + StockDeck POC candidate",
+    "node": "v24.13.1",
+    "platform": {
+      "model": "Apple M1 Pro",
+      "arch": "arm64",
+      "macOS": "27.0.0"
+    },
+    "tolerance": {
+      "absolute": 1e-8,
+      "relative": 0.000001
+    },
+    "tradingViewParity": "BLOCKED: no matching input/output export",
+    "results": {
+      "dca": {
+        "sourceSHA256": "af9ef05e6c47f1a7ba3c32b5f34b75e89a32657bfafd701eb2b0a6b9debd7ae4",
+        "bars": 5540,
+        "providerRequests": [
+          {
+            "ticker": "BTCUSD",
+            "timeframe": "D",
+            "from": 1314316800000,
+            "to": 1792972800000
+          }
+        ],
+        "ema": {
+          "samples": 5540,
+          "finiteSamples": 5540,
+          "finiteFailures": 0,
+          "naMismatches": 0,
+          "timeMismatches": 0,
+          "maxAbsoluteError": 5.820766091346741e-11,
+          "firstFailures": [],
+          "lengthMismatch": false,
+          "pass": true
+        },
+        "buy": {
+          "expected": 86,
+          "actual": 86,
+          "mismatches": []
+        },
+        "sell": {
+          "expected": 17,
+          "actual": 17,
+          "mismatches": []
+        },
+        "barColorMismatches": [],
+        "alerts": {
+          "imperative": 0,
+          "conditions": 103,
+          "expectedConditions": 103
+        },
+        "pass": true
+      },
+      "risk": {
+        "sourceSHA256": "bbd46aff5c812e61acb1223ea773bba8e984eda29b6bf5b599b20170241c52d4",
+        "bars": 5540,
+        "providerRequests": [
+          {
+            "ticker": "BTCUSD",
+            "timeframe": "D",
+            "from": 1314316800000,
+            "to": 1792972800000
+          },
+          {
+            "ticker": "BTCUSD",
+            "timeframe": "W",
+            "from": 1311724800000,
+            "to": 1792972800000
+          },
+          {
+            "ticker": "BTCUSD",
+            "timeframe": "W",
+            "from": 1311724800000,
+            "to": 1792972800000
+          }
+        ],
+        "risk": {
+          "samples": 5540,
+          "finiteSamples": 4081,
+          "finiteFailures": 0,
+          "naMismatches": 0,
+          "timeMismatches": 0,
+          "maxAbsoluteError": 2.842170943040401e-14,
+          "firstFailures": [],
+          "lengthMismatch": false,
+          "pass": true
+        },
+        "pass": true
+      }
+    }
+  },
+  "native": {
+    "dca": {
+      "ok": true,
+      "wallMs": 479.992042,
+      "cpuMs": 480.00000000000006,
+      "peakRSSBytes": 66797568,
+      "numericAgainstIndependentReference": {
+        "samples": 5540,
+        "finiteSamples": 5540,
+        "finiteFailures": 0,
+        "naMismatches": 0,
+        "timeMismatches": 0,
+        "maxAbsoluteError": 5.820766091346741e-11,
+        "firstFailures": [],
+        "lengthMismatch": false,
+        "pass": true
+      },
+      "numericAgainstNode": {
+        "samples": 5540,
+        "finiteSamples": 5540,
+        "finiteFailures": 0,
+        "naMismatches": 0,
+        "timeMismatches": 0,
+        "maxAbsoluteError": 0,
+        "firstFailures": [],
+        "lengthMismatch": false,
+        "pass": true
+      },
+      "alertsEqual": true,
+      "signalsEqualToNode": true
+    },
+    "risk": {
+      "ok": true,
+      "wallMs": 1743.162083,
+      "cpuMs": 2000,
+      "peakRSSBytes": 78675968,
+      "numericAgainstIndependentReference": {
+        "samples": 5540,
+        "finiteSamples": 4081,
+        "finiteFailures": 0,
+        "naMismatches": 0,
+        "timeMismatches": 0,
+        "maxAbsoluteError": 2.842170943040401e-14,
+        "firstFailures": [],
+        "lengthMismatch": false,
+        "pass": true
+      },
+      "numericAgainstNode": {
+        "samples": 5540,
+        "finiteSamples": 4081,
+        "finiteFailures": 0,
+        "naMismatches": 0,
+        "timeMismatches": 0,
+        "maxAbsoluteError": 2.4202861936828413e-14,
+        "firstFailures": [],
+        "lengthMismatch": false,
+        "pass": true
+      },
+      "alertsEqual": true
+    }
+  },
+  "performance": [
+    {
+      "name": "dca-hourly-5000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 402.09645899999987,
+        "median": 405.49866699999995,
+        "p95": 420.81891700000006,
+        "max": 420.81891700000006
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 355,
+        "median": 358,
+        "p95": 372,
+        "max": 372
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 410.00000000000006,
+        "median": 420.00000000000006,
+        "p95": 420.00000000000006,
+        "max": 420.00000000000006
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 3,
+        "median": 4,
+        "p95": 5,
+        "max": 6
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 52.46875,
+        "median": 52.90625,
+        "p95": 58.796875,
+        "max": 58.796875
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 358,
+      "outputCharacters": 345728
+    },
+    {
+      "name": "dca-hourly-5000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 1110.234374999999,
+        "median": 1118.3899999999994,
+        "p95": 1143.0082500000008,
+        "max": 1143.0082500000008
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 1052,
+        "median": 1059,
+        "p95": 1087,
+        "max": 1087
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 1200,
+        "median": 1210,
+        "p95": 1230,
+        "max": 1230
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 10,
+        "median": 12,
+        "p95": 14,
+        "max": 16
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 61.65625,
+        "median": 62.03125,
+        "p95": 70.40625,
+        "max": 70.40625
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 1063,
+      "outputCharacters": 1037182
+    },
+    {
+      "name": "dca-hourly-10000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 757.5964999999997,
+        "median": 771.2578329999997,
+        "p95": 1101.5721669999984,
+        "max": 1101.5721669999984
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 695,
+        "median": 710,
+        "p95": 817,
+        "max": 817
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 800,
+        "median": 830.0000000000001,
+        "p95": 890,
+        "max": 890
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 6,
+        "median": 7,
+        "p95": 10,
+        "max": 10
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 64.984375,
+        "median": 68.28125,
+        "p95": 74.75,
+        "max": 74.75
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 702,
+      "outputCharacters": 694781
+    },
+    {
+      "name": "dca-hourly-10000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 2120.8404579999988,
+        "median": 2189.2536660000005,
+        "p95": 2243.958625000003,
+        "max": 2243.958625000003
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 2036,
+        "median": 2104,
+        "p95": 2156,
+        "max": 2156
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 2440,
+        "median": 2530,
+        "p95": 2550.0000000000005,
+        "max": 2550.0000000000005
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 21,
+        "median": 23,
+        "p95": 25,
+        "max": 25
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 79.734375,
+        "median": 87.015625,
+        "p95": 100.21875,
+        "max": 100.21875
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 2066,
+      "outputCharacters": 2084341
+    },
+    {
+      "name": "risk-daily-5000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 1457.1340419999979,
+        "median": 1477.1718330000003,
+        "p95": 1585.0935829999944,
+        "max": 1585.0935829999944
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 1388,
+        "median": 1408,
+        "p95": 1513,
+        "max": 1513
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 1750,
+        "median": 1790,
+        "p95": 1860,
+        "max": 1860
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 20,
+        "median": 23,
+        "p95": 25,
+        "max": 25
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 69.890625,
+        "median": 70.296875,
+        "p95": 80.609375,
+        "max": 80.609375
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 1427,
+      "outputCharacters": 3006663
+    },
+    {
+      "name": "risk-daily-5000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 4406.295416000008,
+        "median": 4455.059458000003,
+        "p95": 4602.828750000001,
+        "max": 4602.828750000001
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 4254,
+        "median": 4307,
+        "p95": 4459,
+        "max": 4459
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 6380,
+        "median": 6490,
+        "p95": 6690,
+        "max": 6690
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 68,
+        "median": 72,
+        "p95": 75,
+        "max": 87
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 124.65625,
+        "median": 140.234375,
+        "p95": 163.40625,
+        "max": 163.40625
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 4283,
+      "outputCharacters": 9019987
+    }
+  ],
+  "baselinePerformance": [
+    {
+      "name": "dca-hourly-5000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 459.9008749999998,
+        "median": 464.9139159999995,
+        "p95": 476.11,
+        "max": 476.11
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 412,
+        "median": 416,
+        "p95": 420,
+        "max": 420
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 480.00000000000006,
+        "median": 490,
+        "p95": 490,
+        "max": 490
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 3,
+        "median": 4,
+        "p95": 5,
+        "max": 5
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 52.953125,
+        "median": 53.109375,
+        "p95": 59.75,
+        "max": 59.75
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 412,
+      "outputCharacters": 331994
+    },
+    {
+      "name": "dca-hourly-5000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 1282.674500000001,
+        "median": 1296.7059579999986,
+        "p95": 1392.9456250000003,
+        "max": 1392.9456250000003
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 1222,
+        "median": 1238,
+        "p95": 1326,
+        "max": 1326
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 1420.0000000000002,
+        "median": 1440.0000000000002,
+        "p95": 1510,
+        "max": 1510
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 10,
+        "median": 12,
+        "p95": 15,
+        "max": 16
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 60.015625,
+        "median": 62.015625,
+        "p95": 70.546875,
+        "max": 70.546875
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 1248,
+      "outputCharacters": 995980
+    },
+    {
+      "name": "dca-hourly-10000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 866.5126670000027,
+        "median": 873.5238329999993,
+        "p95": 930.4492079999982,
+        "max": 930.4492079999982
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 804,
+        "median": 811,
+        "p95": 846,
+        "max": 846
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 930,
+        "median": 940.0000000000001,
+        "p95": 970.0000000000001,
+        "max": 970.0000000000001
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 6,
+        "median": 9,
+        "p95": 11,
+        "max": 12
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 68.015625,
+        "median": 68.140625,
+        "p95": 74.828125,
+        "max": 74.828125
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 808,
+      "outputCharacters": 680743
+    },
+    {
+      "name": "dca-hourly-10000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 2497.928500000002,
+        "median": 2523.0953340000015,
+        "p95": 2632.308458000007,
+        "max": 2632.308458000007
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 2414,
+        "median": 2432,
+        "p95": 2543,
+        "max": 2543
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 2920,
+        "median": 2960,
+        "p95": 2980,
+        "max": 2980
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 23,
+        "median": 25,
+        "p95": 31,
+        "max": 33
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 83.46875,
+        "median": 87.21875,
+        "p95": 99.078125,
+        "max": 99.078125
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 2422,
+      "outputCharacters": 2042227
+    },
+    {
+      "name": "risk-daily-5000",
+      "instances": 1,
+      "coldTotal": 10,
+      "coldSuccesses": 10,
+      "coldTimeouts": 0,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 2192.7646670000104,
+        "median": 2210.186375000005,
+        "p95": 2264.629958999998,
+        "max": 2264.629958999998
+      },
+      "replayMsCompletedOnly": {
+        "samples": 10,
+        "min": 2123,
+        "median": 2135,
+        "p95": 2183,
+        "max": 2183
+      },
+      "cpuMsCompletedOnly": {
+        "samples": 10,
+        "min": 2640,
+        "median": 2660,
+        "p95": 2680,
+        "max": 2680
+      },
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 21,
+        "median": 27,
+        "p95": 39,
+        "max": 47
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 11,
+        "min": 69.6875,
+        "median": 70.609375,
+        "p95": 77.625,
+        "max": 77.625
+      },
+      "cpuRSSUnavailableSamples": 0,
+      "warmSeriesReplayMs": 2114,
+      "outputCharacters": 3006666
+    },
+    {
+      "name": "risk-daily-5000",
+      "instances": 3,
+      "coldTotal": 10,
+      "coldSuccesses": 0,
+      "coldTimeouts": 10,
+      "wallMsIncludingFailures": {
+        "samples": 10,
+        "min": 5004.658083000002,
+        "median": 5006.371666000006,
+        "p95": 5007.270541000005,
+        "max": 5007.270541000005
+      },
+      "replayMsCompletedOnly": null,
+      "cpuMsCompletedOnly": null,
+      "warmCacheAndEncodingMs": {
+        "samples": 30,
+        "min": 71,
+        "median": 76,
+        "p95": 84,
+        "max": 84
+      },
+      "warmSeriesTimedOut": false,
+      "peakRSSMiBReported": {
+        "samples": 1,
+        "min": 166.4375,
+        "median": 166.4375,
+        "p95": 166.4375,
+        "max": 166.4375
+      },
+      "cpuRSSUnavailableSamples": 10,
+      "warmSeriesReplayMs": 6540,
+      "outputCharacters": 9019996
+    }
+  ],
+  "protocol": {
+    "coldProcessesPerScenario": 10,
+    "coldWatchdogMs": 5000,
+    "warmCachedCallsPerScenario": 30,
+    "warmSeriesOverallGuardMs": 35000,
+    "scope": "helper process startup + runtime + normalization/JSON encoding; no chart rendering",
+    "caveats": [
+      "Same original Pine source bytes, immutable data, tolerance, scenario sizes and 5-second cold watchdog as baseline",
+      "Thirty cached calls reuse unchanged context; live update checks use explicit test-only arithmetic fixtures",
+      "Only primary-context live EMA/stdev/var/plot tail and once-per-bar alert retention are regression tested; MTF live contexts remain unverified",
+      "RSS is measured helper peak, not a hard cap or total app memory; failures retain unavailable CPU/RSS as null",
+      "No OS sandbox, complete arbitrary-source preflight, StockDeck IPC/renderer, FPS or same-input TradingView export",
+      "Full PineTS compatibility and distribution-license suitability are not established by these two examples"
+    ]
+  },
+  "checks": {
+    "stockdeckSwiftTests": {
+      "tests": 616,
+      "failures": 0,
+      "logSHA256": "2d08d05c6c04696ca4a8602b5e93d605d3ef1e97b4e9f409e452eeed915064a8"
+    },
+    "stockdeckDevBuild": {
+      "success": true,
+      "logSHA256": "947759f4aecfaf2bc733c13f62b32dc430eef1ca908c72e1251b0e0d9c123375"
+    },
+    "pocHarnessTests": {
+      "tests": 18,
+      "failures": 0,
+      "logSHA256": "b15f4cf3cca71f5950e8e2e9d619c961aefee98a3dc6bc5590e7d5e9ce358684",
+      "scope": "candidate semantics, parser differential fixtures, lookup boundaries, primary live tail, output naming and baseline/watchdog guards"
+    }
+  },
+  "verdict": {
+    "dcaNumeric": "PASS independent reference on captured dataset",
+    "riskNumeric": "PASS independent reference on captured D/W dataset",
+    "nativeNumeric": "PASS reference and Node tolerance",
+    "threeRiskColdBudget": "PASS 10/10 within unchanged 5-second watchdog",
+    "tradingViewParity": "BLOCKED: no matching input/output export",
+    "productionIsolation": "NOT COMPLETE",
+    "chartFPS": "NOT RUN",
+    "nextStage": "M1 remains incomplete: license route, production isolation/preflight, TradingView oracle and app integration gates pending"
+  },
+  "artifacts": {
+    ".gitignore": "362fc5911c3722a2e9c85bcfafda14a63f20c5597ae91a383af580b3ad9405b1",
+    "README.md": "b104e1668ff0c216a1c31645c5921f70ad72a344cdd41fd542d6430c9d552d6d",
+    "benchmark.mjs": "b9c2115f371eb6cb0cb435bd83cb99c4e7ce0d95587f8accc1d837c78900a754",
+    "build-candidate.mjs": "1a1edefdb726d13847e4fde594f53d43d35e1674ecf9edcf808f1163c9675a34",
+    "compare-native.mjs": "3ea83846ebc856b4e2fd57e66eba1ef78e01c87a5b2d805fe7b002bfd68eceac",
+    "create-candidate-evidence.mjs": "9ed4893035b65f01659765d65d2ad0d9b4a7b304969d10c95814d08e825c0937",
+    "create-evidence.mjs": "c33aac84d95db4ff4721e418a4b5b138e724b7b62bd2c2f1c068e105ee4266bb",
+    "fetch-data.mjs": "835adbafe55030c518ccb7ce39458e7bb8428defa987c6ef022416b04f947579",
+    "inspect-runtime.mjs": "b6f85385e84a909e047fc534cc5650e4c7b4124acd940153740597f9e3101930",
+    "jsc-job.js": "4ab477caf9a762cce080ddf92182dadc7acc743df64a5c403c2ad0aa41d73c04",
+    "jsc-runner.swift": "560319994621f7f3abf1b9eb9bc7985822a2971bb7b78a1e7880741357e1bef1",
+    "local-fetch.log": "a5ead7cb1597cf451e9a45c1537d079c391b75e720c2b2d4c4d2f2d1f6b8d61b",
+    "market-data.mjs": "cd5c4a855cabe53c2e3a4c30fc9b72670953d226fa467b59e63c4cd520483a79",
+    "package-lock.json": "4b14f0d77fee5ce8c0f41844642485d66a4a3154a3eed66cc0446e5474fcfd9a",
+    "package.json": "d765b2a3070c5b958a9a0a3ec48c1cbf454df8f9b10990ee75ac3714d07aae11",
+    "patches/ema.js": "4f7c09d994dd50a16e7a74faee7eed1f71540b9c009e069addaa454a4642b63c",
+    "patches/htf-index.js": "ac61ee18b25139c3ac257942c28c374de7acdebd59f28ce5d7437e91ffbffa17",
+    "patches/params.js": "4e852a2c2675115953b238bce9a40276dd13b01c9b1c3bde74d04b2a11af6566",
+    "patches/plot-options.js": "a180e37ea80ccc9970f97447c3f9a0074804242a417890705600e46eb0f1cb71",
+    "patches/stdev.js": "9accdb9977a0ce507bdb2c8bb09ff051f93cb0ffd67bb021b06c3371b4c17f1f",
+    "profile-native.mjs": "21a19af24bdf437a86c04f9c7a4e5284b93b169ddbe48515d410e07a30a1a243",
+    "profile-summary.mjs": "77c0d9c9cd0dba11aebb18516bc6867c5028361980500a00bb247bdc9080ce46",
+    "reference.mjs": "c7a08bfd3afd7bb54a1d2651a88e6de05550f8f1c7828384c36b8825bb425e6c",
+    "runtime-config.mjs": "4ae5df3ac77faa7bef27b0f585dc0d1388393560c8e7e4d25bd94e63411429cd",
+    "smoke-candidate.mjs": "0699ca66eea507ff46df7b51d5979448912c5efa8c99f8dda790b60c06d0fef9",
+    "summarize.mjs": "2ec70c90e1e14452a1cadfa274239d12579f1866b9f7c5259c6f78c3ae076e06",
+    "supervisor.mjs": "1285c59bf0d61791e88e66de4fbbc0754b0a198877808acd7cd7a5ef6272a6d0",
+    "test/candidate.test.mjs": "2ea75f971c38d9ce07a67e5023b9439dcca847ab34c7499ede4917d335b98572",
+    "test/reference.test.mjs": "c688724efdbad5ab7487cc1d29ca00fde48c645db88031fc259b206c4e65c6ee",
+    "test/runtime.test.mjs": "1c312bc0732f6b4ff062511f1ca290460e87d55f1b6bd9d2a0037ae3bd6b188f",
+    "test/watchdog.test.mjs": "db82ad504558bba1203ec13cf73890c14e8f455ba81fcf9ec637ad5d65d4489b",
+    "validate.mjs": "2814c8b5bf0349d0324a59afa9fa134dc3acf3cb3b1ffced614dc7f689595416",
+    "verify-native.mjs": "f4d14b61c266556ef30b5866bd756bff33769f9b342831a00cb377bdc9dd672a",
+    "local/candidate/validation.json": "a4d28ef0d782116e8283c04d280a75b15827b31341df8c4f5f52219327b2374e",
+    "local/candidate/native-comparison.json": "d031fc1cb3272869585708b67e0ebcb22f470ad2072eb20ca80ebab20b8c72c2",
+    "local/candidate/benchmark.json": "55900c841427d8cc2026d1efc0e62f6100ab9e1e586da9a5aada82a2cb473b11",
+    "local/candidate/patch-manifest.json": "ce04fb5a9842791ab957296551cc408f242d7fdf94746dc11e427998cb244064",
+    "local/candidate/harness-tests.log": "b15f4cf3cca71f5950e8e2e9d619c961aefee98a3dc6bc5590e7d5e9ce358684",
+    "local/candidate/pinets.browser.js": "449639feed54fb83c640de25bba0e570d8d8914886030d79af590134bf8a8f7a",
+    "local/candidate/pinets.es.mjs": "57b7da56e61ab9b72adbf02f617cf68b84d75b6d9615266688661e2e19464b56",
+    "local/jsc-runner": "9564432eeb2713cc884131e91437cbd1b15eb8107be9ceb056cd570f12d1caf6",
+    "local/btc-usd-daily.json": "d715394871f1ab90adb9d96e25bf82991729e84a07237fb2b1601bcf4be3aebd",
+    "local/btc-usd-hourly.json": "bb207d904b0d96cf436e3643bfc1ff2bc38f7417b2f4ad6e3037b17a3798ef15"
+  }
+}

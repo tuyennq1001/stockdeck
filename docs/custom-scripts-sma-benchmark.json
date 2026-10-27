@@ -1,0 +1,134 @@
+{
+  "build" : "Swift Debug, bundled JavaScriptCore helper and WKWebView",
+  "dataset" : "Bitstamp BTCUSD daily, 5540 real candles",
+  "date" : "2026-10-26T14:06:53Z",
+  "host" : "Version 27.0 (Build 26A428)",
+  "matchedPoints" : 2500,
+  "nativeMath" : {
+    "maxMs" : 0.86083299999999996,
+    "medianMs" : 0.73639600000000005,
+    "samplesMs" : [
+      0.74650000000000005,
+      0.75424999999999998,
+      0.72329200000000005,
+      0.72599999999999998,
+      0.73324999999999996,
+      0.73404100000000005,
+      0.733792,
+      0.73683299999999996,
+      0.76458300000000001,
+      0.77833300000000005,
+      0.74629100000000004,
+      0.74391700000000005,
+      0.74029199999999995,
+      0.75816600000000001,
+      0.73412500000000003,
+      0.73195900000000003,
+      0.73595900000000003,
+      0.73308300000000004,
+      0.74883299999999997,
+      0.86083299999999996,
+      0.721584,
+      0.71908300000000003,
+      0.74695800000000001,
+      0.74875000000000003,
+      0.76037500000000002,
+      0.73224999999999996,
+      0.73550000000000004,
+      0.73904199999999998,
+      0.73516700000000001,
+      0.734375
+    ]
+  },
+  "period" : 20,
+  "pineColdHelperIncludingIPCAndDecode" : {
+    "maxMs" : 340.42591700000003,
+    "medianMs" : 277.676625,
+    "samplesMs" : [
+      340.42591700000003,
+      316.369125,
+      276.74258300000002,
+      274.26604200000003,
+      278.61066699999998,
+      261.48245800000001,
+      275.307208,
+      262.55708299999998,
+      317.57670899999999,
+      300.70020899999997
+    ]
+  },
+  "pineContextPreparationMs" : 126.061792,
+  "pineJobEncodingMs" : 43.004542000000001,
+  "rendering" : {
+    "builtin" : {
+      "chartCanvasFlushAndCopy" : {
+        "maxMs" : 8,
+        "medianMs" : 6,
+        "samplesMs" : [
+          6,
+          8,
+          6,
+          7,
+          8,
+          5,
+          5,
+          6,
+          5,
+          7
+        ]
+      },
+      "submission" : {
+        "maxMs" : 15,
+        "medianMs" : 13.5,
+        "samplesMs" : [
+          15,
+          13,
+          14,
+          15,
+          14,
+          14,
+          13,
+          12,
+          13,
+          13
+        ]
+      }
+    },
+    "pine" : {
+      "chartCanvasFlushAndCopy" : {
+        "maxMs" : 6,
+        "medianMs" : 4,
+        "samplesMs" : [
+          6,
+          5,
+          5,
+          5,
+          4,
+          4,
+          4,
+          4,
+          3,
+          4
+        ]
+      },
+      "submission" : {
+        "maxMs" : 19,
+        "medianMs" : 17,
+        "samplesMs" : [
+          19,
+          17,
+          17,
+          16,
+          19,
+          18,
+          18,
+          15,
+          16,
+          16
+        ]
+      }
+    }
+  },
+  "scope" : "Cold helper includes startup, compilation, execution and output; rendering measures synchronous JS chart submission and separate chart.takeScreenshot() canvas flush\/composition\/copy, not pure GPU paint or FPS. Native timing is SMA math only. No performance assertions or extrapolation to arbitrary scripts.",
+  "sha256" : "d715394871f1ab90adb9d96e25bf82991729e84a07237fb2b1601bcf4be3aebd"
+}

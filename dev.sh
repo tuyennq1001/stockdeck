@@ -21,12 +21,17 @@ if [ ! -d "$PRODUCTS" ] || [ ! -f "$PRODUCTS/StockDeck" ]; then
         PRODUCTS=".build/$(uname -m)-apple-macosx/debug"
     fi
 fi
+if [ ! -f "$PRODUCTS/PineScriptRunner" ]; then
+    echo "PineScriptRunner target was not built."
+    exit 1
+fi
 
 echo "Assembling DEV app bundle..."
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
 cp "$PRODUCTS/StockDeck" "$APP/Contents/MacOS/StockDeck"
+cp "$PRODUCTS/PineScriptRunner" "$APP/Contents/MacOS/PineScriptRunner"
 cp "StockDeck/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "StockDeck/Resources/AppLogo.png" "$APP/Contents/Resources/AppLogo.png" 2>/dev/null || true
 cp "StockDeck/Resources/AppIcon.png" "$APP/Contents/Resources/AppIcon.png" 2>/dev/null || true
