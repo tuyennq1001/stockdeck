@@ -1491,7 +1491,7 @@ struct LightweightChartWebView: NSViewRepresentable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
             if type == "chartPreferenceChanged", let name = body["name"] as? String,
-               ["display", "indicators", "indicatorSettings", "paneLayout", "timeframes", "drawingFavorites", "drawingPreferences"].contains(name),
+               ["display", "indicators", "indicatorSettings", "paneLayout", "paneScales", "viewports", "timeframes", "drawingFavorites", "drawingPreferences"].contains(name),
                let value = body["value"] as? String, value.utf8.count < 100_000 {
                 let surface = parent.surface.rawValue
                 let key = "stockdeck.chart.preferences.\(surface).v1"

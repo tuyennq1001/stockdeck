@@ -36,35 +36,25 @@ class StockDeckPineChart {
     for (const [id, record] of this.records) if (record.anchor?.getPane().paneIndex() === index) return `Pine:${id}`;
     return null;
   }
-  constrainPaneSizes(focusMode = false, limitPixels = false) {
+  constrainPaneSizes(focusMode = false) {
     if (focusMode) return false;
     const panes = this.chart.panes();
     if (panes.length < 2) return false;
-    // Use the existing panes' units: saved ratios and a new pane's default 1 are not comparable.
     const priceFactor = panes[0].getStretchFactor();
-    let limit = priceFactor / 4, changed = false;
+    let sumOther = 0;
+    for (let index = 0; index < panes.length; index++) {
+      if (!this.paneKey(index)) sumOther += panes[index].getStretchFactor();
+    }
+    let limit = Math.min(priceFactor / 4, sumOther * 0.25);
     for (let index = 1; index < panes.length; index++) {
       if (!this.paneKey(index)) limit = Math.min(limit, panes[index].getStretchFactor());
     }
+    let changed = false;
     for (const record of this.records.values()) {
       if (!record.anchor) continue;
       const pane = record.anchor.getPane();
-      if (pane.getStretchFactor() > limit + Number.EPSILON) {
+      if (pane.getStretchFactor() > limit + 0.001) {
         pane.setStretchFactor(limit); changed = true;
-      }
-    }
-    if (limitPixels) {
-      const heights = panes.map(pane => pane.getHeight());
-      if (heights.some(h => h <= 0)) return changed;
-      let heightLimit = heights.reduce((sum, h) => sum + h, 0) * 0.2;
-      for (let index = 1; index < panes.length; index++) {
-        if (!this.paneKey(index)) heightLimit = Math.min(heightLimit, panes[index].getHeight());
-      }
-      // Match the chart library's minimum pane height while enforcing the visible slot size.
-      heightLimit = Math.max(42, Math.floor(heightLimit));
-      for (const record of this.records.values()) {
-        const pane = record.anchor?.getPane();
-        if (pane && pane.getHeight() > heightLimit + 1) { pane.setHeight(heightLimit); changed = true; }
       }
     }
     return changed;
