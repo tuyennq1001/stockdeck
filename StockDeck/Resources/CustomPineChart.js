@@ -54,7 +54,9 @@ class StockDeckPineChart {
       }
     }
     if (limitPixels) {
-      let heightLimit = panes.reduce((sum, pane) => sum + pane.getHeight(), 0) * 0.2;
+      const heights = panes.map(pane => pane.getHeight());
+      if (heights.some(h => h <= 0)) return changed;
+      let heightLimit = heights.reduce((sum, h) => sum + h, 0) * 0.2;
       for (let index = 1; index < panes.length; index++) {
         if (!this.paneKey(index)) heightLimit = Math.min(heightLimit, panes[index].getHeight());
       }

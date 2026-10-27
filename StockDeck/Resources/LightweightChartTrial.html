@@ -102,7 +102,7 @@
       <button id="drawingFontColorBtn" type="button" class="drawing-color-btn" title="Màu chữ" hidden><span id="drawingFontColorSwatch">A</span></button>
       <input id="drawingFontColor" type="hidden" value="#eeeeee">
       <button id="drawingFontSizeBtn" type="button" class="floating-btn floating-btn-icon" title="Cỡ chữ (13px)" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z"/></svg><span id="drawingFontSizeLabel" class="visually-hidden">13px</span></button>
-      <select id="drawingFontSize" title="Cỡ chữ" style="display:none"><option value="11">11px</option><option value="12">12px</option><option value="13">13px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="24">24px</option></select>
+      <select id="drawingFontSize" title="Cỡ chữ" style="display:none"><option value="9">9px</option><option value="10">10px</option><option value="11">11px</option><option value="12">12px</option><option value="13">13px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="24">24px</option></select>
       <button id="drawingWidthBtn" type="button" class="floating-btn floating-btn-icon" title="Độ dày đường nét (1px)"><span id="drawingWidthPreview" class="width-stroke-preview" style="width:18px;border-top-width:1px"></span><span id="drawingWidthLabel" class="visually-hidden">1px</span></button>
       <select id="drawingWidth" title="Độ dày đường nét" style="display:none"><option value="1">1px</option><option value="2">2px</option><option value="3">3px</option><option value="4">4px</option></select>
       <button id="drawingLineStyleBtn" type="button" class="floating-btn floating-btn-icon" title="Kiểu nét: Liền"><span id="drawingLineStylePreview" class="style-stroke-preview" style="width:18px;border-top-style:solid"></span><span id="drawingLineStyleLabel" class="visually-hidden">Liền</span></button>
@@ -307,13 +307,49 @@
   let savedPaneFactors=null;
   let paneLayout={};try{paneLayout=JSON.parse(readStorage('paneLayout')||'{}')}catch{}
   function paneName(pane,index){return index===0?'Price':rsi?.getPane().paneIndex()===index?'RSI':macd?.getPane().paneIndex()===index?'MACD':stochasticK?.getPane().paneIndex()===index?'Stochastic':pineRenderer.paneKey(index);}
+  function applySavedPaneLayout(fallbackFactors=[]){
+    const panes=chart.panes();
+    if(!panes.length)return;
+    if(savedPaneFactors&&savedPaneFactors.length===panes.length){
+      panes.forEach((pane,index)=>pane.setStretchFactor(savedPaneFactors[index]||1));
+      return;
+    }
+    const savedPrice=Number.isFinite(paneLayout.Price)&&paneLayout.Price>0?paneLayout.Price:null;
+    const factors=panes.map((pane,index)=>{
+      const name=paneName(pane,index);
+      if(name&&Number.isFinite(paneLayout[name])&&paneLayout[name]>0)return paneLayout[name];
+      if(fallbackFactors&&Number.isFinite(fallbackFactors[index])&&fallbackFactors[index]>0)return fallbackFactors[index];
+      if(index===0)return 2;
+      return savedPrice?savedPrice*0.3:1;
+    });
+    const sum=factors.reduce((acc,f)=>acc+f,0)||1;
+    panes.forEach((pane,index)=>pane.setStretchFactor(factors[index]/sum));
+  }
   function persistPaneFactors(){
-    if(surface!=='superchart'||!payload||savedPaneFactors)return;
+    if(!payload||savedPaneFactors)return;
+    const panes=chart.panes();
+    if(panes.length<2)return;
+    const heights=panes.map(p=>p.getHeight());
+    if(heights.some(h=>h<=0))return;
     pineRenderer.constrainPaneSizes(false,true);
-    const panes=chart.panes(),total=panes.reduce((sum,p)=>sum+p.getHeight(),0);if(total<=0||panes.length<2)return;
-    panes.forEach((pane,index)=>{const name=paneName(pane,index);if(name&&pane.getHeight()>0)paneLayout[name]=pane.getHeight()/total;});
-    writeStorage('paneLayout',JSON.stringify(paneLayout));
-    renderIndicatorLegend(payload.indicatorSettings||indicatorSettings);
+    const updatedHeights=panes.map(p=>p.getHeight());
+    const total=updatedHeights.reduce((sum,p)=>sum+p,0);
+    if(total<=0)return;
+    let changed=false;
+    panes.forEach((pane,index)=>{
+      const name=paneName(pane,index);
+      if(name){
+        const ratio=updatedHeights[index]/total;
+        if(Math.abs((paneLayout[name]||0)-ratio)>0.001){
+          paneLayout[name]=ratio;
+          changed=true;
+        }
+      }
+    });
+    if(changed){
+      writeStorage('paneLayout',JSON.stringify(paneLayout));
+      renderIndicatorLegend(payload.indicatorSettings||indicatorSettings);
+    }
   }
   function render(){if(!payload)return;const rangeBefore=chart.timeScale().getVisibleLogicalRange(),bars=payload.bars,next=payload.symbol+'|'+payload.interval+'|'+(payload.visibleFrom||'ALL')+'|'+(payload.visibleTo||''),reset=identity!==next;identity=next;if(reset)candles.priceScale().setAutoScale(true);
     const settings=(dialogSnapshot||dialogBridgeTimer)?indicatorSettings:(payload.indicatorSettings||indicatorSettings);indicatorSettings=settings;writeStorage('indicatorSettings',JSON.stringify(settings));const useLine=!payload.hasOHLC||chartType==='line';
@@ -330,7 +366,7 @@
       if(isVisible('Stochastic')&&payload.hasOHLC){const pane=nextPane++;stochasticK=addPlottedSeries(getStyle(settings,'stochasticK',{color:settings.stochasticKColor,thickness:settings.stochasticLineWidth}),pane,{priceScaleId:'stochastic',autoscaleInfoProvider:()=>({priceRange:{minValue:0,maxValue:100}})});stochasticD=addPlottedSeries(getStyle(settings,'stochasticD',{color:settings.stochasticDColor,thickness:settings.stochasticLineWidth}),pane,{priceScaleId:'stochastic'});}
       for(const name of overlayNames){const config=customIndicators.find(x=>x.name===name),period=config?.period||name.split(' ').at(-1),colors={'20':'#c18c2c','50':'#506fc4','100':'#219875','200':'#9b59b6'};series[name]=addPlottedSeries(config?movingAverageStyle(config,settings):{color:colors[period]||'#9b59b6',thickness:name.startsWith('EMA')?1:2},0,{lastValueVisible:true,priceLineVisible:false});}
       if(isVisible('BB'))for(const [key,styleKey] of [['BB upper','bbUpper'],['BB middle','bbMiddle'],['BB lower','bbLower']])series[key]=addPlottedSeries(getStyle(settings,styleKey,{color:settings.bollingerColor,thickness:settings.bollingerLineWidth,visible:settings[`${styleKey}Visible`]!==false}),0);
-      if(isVisible('SAR')&&payload.hasOHLC)sar=addPlottedSeries(getStyle(settings,'sar',{color:settings.sarColor,thickness:settings.sarDotSize,plotType:'circles'}),0);chart.panes().forEach((pane,index)=>pane.setStretchFactor(paneLayout[paneName(pane,index)]||paneFactors[index]||1));
+      if(isVisible('SAR')&&payload.hasOHLC)sar=addPlottedSeries(getStyle(settings,'sar',{color:settings.sarColor,thickness:settings.sarDotSize,plotType:'circles'}),0);applySavedPaneLayout(paneFactors);
     }
     if(volume)volume.setData(bars.filter(b=>b.volume!=null).map(b=>({time:b.time,value:b.volume,color:Number.isFinite(b.open)?b.close>=b.open?'#1a9b8288':'#d94b5988':'#88888866'})));
     if(rsi){const fillStyle=getStyle(settings,'rsiFill',{color:settings.rsiBackgroundColor,opacity:settings.rsiBackgroundOpacity,visible:settings.rsiBackgroundFillVisible}),fillColor=fillStyle.color||'#9467bd',fillOpacity=fillStyle.visible===false?0:Math.min(100,Math.max(0,Number(fillStyle.opacity??12)))/100,fillHex=fillColor.match(/^#([0-9a-f]{6})$/i)?.[1]||'9467bd',fillRGB=[0,2,4].map(index=>parseInt(fillHex.slice(index,index+2),16)).join(',');rsiFill.applyOptions({baseValue:{type:'price',price:settings.rsiOversold??30},topFillColor1:`rgba(${fillRGB},${fillOpacity})`,topFillColor2:`rgba(${fillRGB},${fillOpacity})`,topLineColor:'transparent',lineVisible:false,visible:fillStyle.visible!==false});rsiFill.setData(payload.rsi.map(point=>({...point,value:settings.rsiOverbought??70})));applyPlottedStyle(rsi,getStyle(settings,'rsi',{color:settings.rsiColor,thickness:settings.rsiLineWidth}));rsi.setData(payload.rsi);for(const line of rsiThresholds)rsi.removePriceLine(line);const levels=[];{const style=getStyle(settings,'rsiLower',{color:settings.rsiOversoldColor,visible:settings.rsiLowerVisible});if(style.visible!==false)levels.push({price:settings.rsiOversold??30,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiOversold??30),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}{const style=getStyle(settings,'rsiMiddle',{color:settings.rsiMiddleColor,visible:settings.rsiMiddleVisible});if(style.visible!==false)levels.push({price:settings.rsiMiddle??50,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiMiddle??50),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}{const style=getStyle(settings,'rsiUpper',{color:settings.rsiOverboughtColor,visible:settings.rsiUpperVisible});if(style.visible!==false)levels.push({price:settings.rsiOverbought??70,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiOverbought??70),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}rsiThresholds=levels.map(({style,...level})=>rsi.createPriceLine({...level,color:colorWithOpacity(style.color,style.opacity??100),lineWidth:style.thickness||1,lineStyle:lineStyleValue(style)}));}
@@ -440,7 +476,31 @@
     appendCustomPineLegend(fragment);legend.append(fragment);schedulePaneLegendLayout();
   }
   let paneLegendFrame=0;
-  function schedulePaneLegendLayout(){if(paneLegendFrame)return;paneLegendFrame=requestAnimationFrame(()=>{paneLegendFrame=0;if(!payload)return;pineRenderer.constrainPaneSizes(savedPaneFactors!==null,true);if(indicatorsCollapsed)return;const panes=chart.panes(),tops=[];let top=0;for(const pane of panes){tops.push(top);top+=pane.getHeight();}const indices={RSI:rsi?.getPane().paneIndex(),MACD:macd?.getPane().paneIndex(),Stochastic:stochasticK?.getPane().paneIndex()};for(const row of document.querySelectorAll('#indicatorLegend .legend-row')){const index=row.dataset.scriptId?pineRenderer.records.get(row.dataset.scriptId)?.anchor?.getPane().paneIndex():indices[row.dataset.indicator];if(index>0&&tops[index]!=null){row.style.position='absolute';row.style.top=`calc(${tops[index]}px - var(--legend-top) + 4px)`;row.style.left='0';}}});}
+  function schedulePaneLegendLayout(){
+    if(paneLegendFrame)return;
+    paneLegendFrame=requestAnimationFrame(()=>{
+      paneLegendFrame=0;
+      if(!payload)return;
+      const panes=chart.panes();
+      if(panes.length>1&&panes.some(p=>p.getHeight()<=0)){
+        schedulePaneLegendLayout();
+        return;
+      }
+      pineRenderer.constrainPaneSizes(savedPaneFactors!==null,true);
+      if(indicatorsCollapsed)return;
+      const tops=[];let top=0;
+      for(const pane of panes){tops.push(top);top+=pane.getHeight();}
+      const indices={RSI:rsi?.getPane().paneIndex(),MACD:macd?.getPane().paneIndex(),Stochastic:stochasticK?.getPane().paneIndex()};
+      for(const row of document.querySelectorAll('#indicatorLegend .legend-row')){
+        const index=row.dataset.scriptId?pineRenderer.records.get(row.dataset.scriptId)?.anchor?.getPane().paneIndex():indices[row.dataset.indicator];
+        if(index>0&&tops[index]!=null){
+          row.style.position='absolute';
+          row.style.top=`calc(${tops[index]}px - var(--legend-top) + 4px)`;
+          row.style.left='0';
+        }
+      }
+    });
+  }
   function deleteIndicator(name){const group=name.startsWith('MA:')?name.slice(3):null;if(surface==='superchart'&&['SMA','EMA'].includes(group)){deletedIndicators.add(group);enabled.delete(group);hiddenIndicators.delete(group);customIndicators=customIndicators.filter(item=>item.type!==group);writeStorage('indicators',JSON.stringify(customIndicators));}else{deletedIndicators.add(name);enabled.delete(name);hiddenIndicators.delete(name);if(customIndicators.some(item=>item.name===name)&&surface!=='superchart'){customIndicators=customIndicators.filter(item=>item.name!==name);writeStorage('indicators',JSON.stringify(customIndicators));syncCustomIndicators();}}persistDisplay();render();}
   function openLegendSettings(name){
     if(name.startsWith('MA:')&&surface==='superchart'){openIndicatorDialog('MA',name.slice(3));return;}
@@ -526,13 +586,28 @@
         const pct=d.startPrice?(delta/d.startPrice*100):0,nBars=Math.abs(barIndexForTime(d.endTime)-barIndexForTime(d.startTime))+1,nDays=calendarDaysBetween(d.startTime,d.endTime);
         let money=v=>(v>=0?'+':'')+v.toFixed(2);try{const fmt=new Intl.NumberFormat(undefined,{style:'currency',currency:payload?.currency||'USD',maximumFractionDigits:payload?.currency==='VND'?0:2});money=v=>(v>=0?'+':'')+fmt.format(v);}catch{}
         const priceText=`${money(delta)} (${pct>=0?'+':''}${pct.toFixed(2)}%)`,timeText=`${nBars} nến · ${nDays} ngày`;
-        const fSize=Number(d.fontSize)||11;
+        const isRangeTool=['range','dateRange','datePriceRange','ruler'].includes(kind);
+        const fSize=(isRangeTool&&(!d.fontSize||d.fontSize===13))?10:(Number(d.fontSize)||(isRangeTool?10:11));
         const lines=kind==='range'?[priceText]:(kind==='dateRange'?[timeText]:[priceText,timeText]);
         if(d.text)lines.unshift(d.text);
-        ctx.font=`bold ${fSize}px -apple-system,BlinkMacSystemFont,sans-serif`;let maxW=0;lines.forEach(l=>{maxW=Math.max(maxW,ctx.measureText(l).width);});
-        const lineH=fSize+5,badgeW=maxW+16,badgeH=lines.length*lineH+8;
-        const badgeX=Math.max(4,Math.min(canvas.clientWidth-badgeW-4,(left+right)/2-badgeW/2)),badgeY=Math.max(4,Math.min(canvas.clientHeight-badgeH-4,(top+bottom)/2-badgeH/2));
-        ctx.setLineDash([]);ctx.fillStyle=effectiveColor;roundRect(ctx,badgeX,badgeY,badgeW,badgeH,4);ctx.fill();ctx.fillStyle=d.fontColor||'#fff';ctx.textAlign='center';lines.forEach((l,i)=>{ctx.fillText(l,badgeX+badgeW/2,badgeY+12+i*lineH);});ctx.textAlign='start';
+        ctx.font=`600 ${fSize}px -apple-system,BlinkMacSystemFont,sans-serif`;let maxW=0;lines.forEach(l=>{maxW=Math.max(maxW,ctx.measureText(l).width);});
+        const lineH=fSize+3,badgeW=maxW+10,badgeH=lines.length*lineH+6;
+        const badgeX=Math.max(4,Math.min(canvas.clientWidth-badgeW-4,(left+right)/2-badgeW/2));
+        let badgeY=(top+bottom)/2-badgeH/2;
+        if(kind==='range'||kind==='datePriceRange'){
+          if(y1>=y0){
+            if(bottom+badgeH+4<=canvas.clientHeight)badgeY=bottom+3;
+            else if(bottom-badgeH>=0)badgeY=bottom-badgeH-3;
+          }else{
+            if(top-badgeH-3>=4)badgeY=top-badgeH-3;
+            else if(top+badgeH+4<=canvas.clientHeight)badgeY=top+3;
+          }
+        }
+        badgeY=Math.max(4,Math.min(canvas.clientHeight-badgeH-4,badgeY));
+        ctx.setLineDash([]);ctx.fillStyle=effectiveColor;roundRect(ctx,badgeX,badgeY,badgeW,badgeH,3);ctx.fill();
+        ctx.fillStyle=d.fontColor||'#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+        lines.forEach((l,i)=>{const lineY=badgeY+3+(i+0.5)*lineH;ctx.fillText(l,badgeX+badgeW/2,lineY);});
+        ctx.textAlign='start';ctx.textBaseline='alphabetic';
       }
     }else if(kind==='horizontal'||kind==='horizontalRay'){
       const startX=kind==='horizontal'?0:x0,endX=canvas.clientWidth;ctx.beginPath();ctx.moveTo(startX,y0);ctx.lineTo(endX,y0);ctx.stroke();
@@ -778,7 +853,9 @@
     const fontSizeBtn=document.getElementById('drawingFontSizeBtn');
     if(fontSizeBtn)fontSizeBtn.hidden=!showFont;
     const fontSizeSelect=document.getElementById('drawingFontSize');
-    const curFontSize=selected.fontSize!==undefined?selected.fontSize:(isNote?12:13);
+    const isRangeTool=['range','dateRange','datePriceRange','ruler'].includes(selected.kind);
+    const defaultSizeForSelected=isRangeTool?10:(isNote?12:13);
+    const curFontSize=(selected.fontSize!==undefined&&selected.fontSize!==null&&!(isRangeTool&&selected.fontSize===13))?selected.fontSize:defaultSizeForSelected;
     if(fontSizeSelect){
       fontSizeSelect.hidden=true;
       fontSizeSelect.value=String(curFontSize);
@@ -1024,7 +1101,7 @@
       ];
     }else if(type==='fontSize'){
       btn=document.getElementById('drawingFontSizeBtn');
-      items=[11,12,13,14,16,18,20,24].map(s=>({val:s,label:`${s}px`}));
+      items=[9,10,11,12,13,14,16,18,20,24].map(s=>({val:s,label:`${s}px`}));
     }
     if(!btn)return;
 
@@ -1377,7 +1454,8 @@
     const isSinglePoint=['horizontal','horizontalRay','vertical','text','pin','priceLabel'].includes(kind);
     if(end&&kind!=='select'&&kind!=='ruler'&&end.time&&(isSinglePoint||dragStart.time!==end.time||Math.abs(dragStart.price-end.price)>Number.EPSILON)){
       pushUndo();const id=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
-      const defaultFontSize=(kind==='pin'?12:13);
+      const isRangeTool=['range','dateRange','datePriceRange','ruler'].includes(kind);
+      const defaultFontSize=isRangeTool?10:(kind==='pin'?12:13);
       const defaultFontColor='#ffffff';
       const newD={id,kind,color:'auto',lineWidth:Number(document.getElementById('drawingWidth').value)||1,lineStyle:document.getElementById('drawingLineStyle').value||'solid',extendRight:(kind==='horizontalRay'||globalExtendRight),isLocked:false,startTime:dragStart.time,endTime:isSinglePoint?dragStart.time:end.time,startPrice:dragStart.price,endPrice:isSinglePoint?dragStart.price:end.price,text:kind==='pin'?'Ghi chú mới':kind==='text'?'Văn bản':undefined,fontSize:defaultFontSize,fontColor:defaultFontColor};
       drawings.push(newD);selectedId=id;commitDrawings();
@@ -1516,7 +1594,7 @@
   document.getElementById('duplicateDrawing').addEventListener('click',()=>duplicateSelectedDrawing());
   document.getElementById('drawingColorBtn').addEventListener('click',()=>openDrawingColorPopover('color'));
   document.getElementById('drawingFontColorBtn').addEventListener('click',()=>openDrawingColorPopover('fontColor'));
-  document.getElementById('drawingFontSize').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.fontSize=Number(e.target.value)||13;syncInlineEditorStyle(d);commitDrawings();}});
+  document.getElementById('drawingFontSize').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();const isRangeTool=['range','dateRange','datePriceRange','ruler'].includes(d.kind);d.fontSize=Number(e.target.value)||(isRangeTool?10:13);syncInlineEditorStyle(d);commitDrawings();}});
   document.getElementById('drawingColor').addEventListener('input',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.color=e.target.value;syncInlineEditorStyle(d);commitDrawings();}});
   document.getElementById('drawingWidth').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.lineWidth=Number(e.target.value)||1;commitDrawings();}});
   document.getElementById('drawingLineStyle').addEventListener('change',e=>{const d=drawings.find(x=>x.id===selectedId);if(d&&!d.isLocked){pushUndo();d.lineStyle=e.target.value;commitDrawings();}});
@@ -1662,8 +1740,8 @@
   window.__getSelectedId=()=>selectedId;
   window.__getToolbarCustomPos=()=>toolbarCustomPos;
   window.__getCoords=d=>coords(d);
-  window.resetChartView=()=>{pendingReset=true;pendingSymbolZoom=null;candles.priceScale().setAutoScale(true);applyRange();saveViewport();};window.disposeChart=()=>{if(viewportSaveTimer)clearTimeout(viewportSaveTimer);if(paneLegendFrame)cancelAnimationFrame(paneLegendFrame);resizeObserver.disconnect();chart.remove();};
-  const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{scheduleDraw();saveViewport();});chart.subscribeCrosshairMove(onCrosshairMove);let paneSaveTimer=null;const schedulePaneSave=()=>{if(surface!=='superchart')return;if(paneSaveTimer)clearTimeout(paneSaveTimer);paneSaveTimer=setTimeout(persistPaneFactors,120);};document.addEventListener('pointerup',schedulePaneSave,true);document.addEventListener('mouseup',schedulePaneSave,true);window.addEventListener('pagehide',persistPaneFactors);const resizeObserver=new ResizeObserver(resizeCanvas);resizeObserver.observe(host);resizeCanvas();
+  window.resetChartView=()=>{pendingReset=true;pendingSymbolZoom=null;candles.priceScale().setAutoScale(true);applyRange();saveViewport();};window.disposeChart=()=>{if(paneSaveTimer){clearTimeout(paneSaveTimer);persistPaneFactors();}if(viewportSaveTimer)clearTimeout(viewportSaveTimer);if(paneLegendFrame)cancelAnimationFrame(paneLegendFrame);resizeObserver.disconnect();chart.remove();};
+  const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{scheduleDraw();saveViewport();});chart.subscribeCrosshairMove(onCrosshairMove);let paneSaveTimer=null;const schedulePaneSave=e=>{if(e?.target?.closest?.('.toolbar, .draw-rail, dialog, .menu-panel, .floating-mini-popover, .style-popover'))return;if(paneSaveTimer)clearTimeout(paneSaveTimer);paneSaveTimer=setTimeout(persistPaneFactors,120);};document.addEventListener('pointerup',schedulePaneSave,true);document.addEventListener('mouseup',schedulePaneSave,true);window.addEventListener('pagehide',persistPaneFactors);const resizeObserver=new ResizeObserver(resizeCanvas);resizeObserver.observe(host);resizeCanvas();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',e=>{chart.applyOptions({layout:{textColor:e.matches?'#d7dce5':'#596273'}});pineRenderer.setDarkMode(e.matches);if(payload)render();});
 })();
 </script></body></html>

@@ -441,4 +441,83 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         XCTAssertEqual(panesAfterClear, paneCountBeforePine)
         XCTAssertTrue(messages.filter { $0["type"] as? String == "jsError" }.isEmpty)
     }
+
+    func testRSIPaneLayoutPersistenceAcrossColdStartAndSurfaces() async throws {
+        let keys = ["stockdeck.chart.preferences.superchart.v1", "stockdeck.chart.preferences.detail.v1"]
+        let originals = keys.map { UserDefaults.standard.object(forKey: $0) }
+        keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        defer { native = nil; for (key, value) in zip(keys, originals) { UserDefaults.standard.set(value, forKey: key) } }
+
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("StockDeck/Resources")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("LightweightCharts"), to: directory.appendingPathComponent("LightweightCharts"))
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("CustomPineChart.js"), to: directory.appendingPathComponent("CustomPineChart.js"))
+
+        var html = try String(contentsOf: resources.appendingPathComponent("LightweightChartTrial.html"))
+        html = html.replacingOccurrences(of: "const chart=C.createChart", with: "const chart=window.testChart=C.createChart")
+        html = html.replacingOccurrences(of: "const pineRenderer=new StockDeckPineChart(chart,C,candles,{dark});",
+            with: "const pineRenderer=window.testPineRenderer=new StockDeckPineChart(chart,C,candles,{dark});")
+        html = html.replacingOccurrences(of: "const surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';",
+            with: "let surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';window.testSetSurface=value=>{surface=value};")
+
+        let file = directory.appendingPathComponent("chart.html")
+        try html.write(to: file, atomically: true, encoding: .utf8)
+
+        // 1. Test cold start with a saved paneLayout (Price: 0.60, RSI: 0.25, MACD: 0.15)
+        let customLayout = "{\"Price\":0.6,\"RSI\":0.25,\"MACD\":0.15}"
+        let preferencesData = try JSONSerialization.data(withJSONObject: ["paneLayout": customLayout])
+
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.userContentController.add(self, name: "chart")
+        config.userContentController.addUserScript(WKUserScript(
+            source: "window.stockDeckPreferences=\(String(data: preferencesData, encoding: .utf8)!);window.stockDeckChartSurface='superchart';window.onerror=(message)=>window.webkit.messageHandlers.chart.postMessage({type:'jsError',message:String(message)});",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 1000, height: 740), configuration: config)
+        let window = NSWindow(contentRect: web.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = web
+        window.orderFront(nil)
+        defer { window.orderOut(nil); config.userContentController.removeScriptMessageHandler(forName: "chart") }
+
+        web.loadFileURL(file, allowingReadAccessTo: directory)
+        for _ in 0..<100 {
+            if (try? await web.evaluateJavaScript("typeof window.setChartData==='function'")) as? Bool == true { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        // Simulate app cold launch: first empty points (hasOHLC = false), then points arrive (hasOHLC = true)
+        let emptyPayload = LightweightChartMath.payload(points: [], interval: .day, symbol: "TEST", currency: "USD", periods: [:], showsRangeControls: true)
+        let emptyJSON = String(data: try JSONEncoder().encode(emptyPayload), encoding: .utf8)!
+        _ = try await web.evaluateJavaScript("window.setChartData(\(emptyJSON))")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        var points: [PricePoint] = []
+        for i in 0..<100 {
+            let baseDate = Date(timeIntervalSince1970: 1_700_000_000 + Double(i) * 86400)
+            let offset = Double(i % 13)
+            points.append(PricePoint(date: baseDate, close: 105 + offset, open: 100 + offset, high: 115 + offset, low: 95 + offset))
+        }
+        let fullPayload = LightweightChartMath.payload(points: points, interval: .day, symbol: "TEST", currency: "USD", periods: [:], showsRangeControls: true)
+        let fullJSON = String(data: try JSONEncoder().encode(fullPayload), encoding: .utf8)!
+        _ = try await web.evaluateJavaScript("window.setChartData(\(fullJSON))")
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        // Force a layout pass and verify restored ratio
+        _ = try await web.evaluateJavaScript("window.testChart.takeScreenshot()!==null")
+        let rawHeights = try await web.evaluateJavaScript("window.testChart.panes().map(p=>p.getHeight())") as? [Double]
+        let heights = try XCTUnwrap(rawHeights)
+        let total = heights.reduce(0, +)
+        let rsiRatio = heights[1] / total
+        XCTAssertEqual(rsiRatio, 0.25, accuracy: 0.03, "RSI pane proportion must be preserved across cold start without being clamped to 48px")
+
+        // 2. Test detail surface: resizing on detail saves paneLayout
+        _ = try await web.evaluateJavaScript("window.testSetSurface('detail');window.testChart.panes()[1].setHeight(180);window.testChart.takeScreenshot()!==null;document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let detailLayoutMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneLayout" }
+        XCTAssertNotNil(detailLayoutMsg, "Detail surface must capture and persist paneLayout changes")
+    }
 }

@@ -33,7 +33,7 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
         XCTAssertEqual(decoded.lineStyle, "solid")
         XCTAssertEqual(decoded.extendRight, false)
         XCTAssertNil(decoded.text)
-        XCTAssertEqual(decoded.fontSize, 13)
+        XCTAssertEqual(decoded.fontSize, 10)
     }
 
     func testPriceRangeNewFieldsRoundTrip() throws {
@@ -432,6 +432,16 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
             XCTAssertEqual(fontColorRes["popoverOpened"] as? Bool, true)
             XCTAssertEqual(fontColorRes["fontColor"] as? String, "#38bdf8", "Range font color should update to #38bdf8")
             XCTAssertEqual(fontColorRes["popoverRemoved"] as? Bool, true, "Popover should close after color selection")
+
+            let initialRangeFontSize = try await web.evaluateJavaScript("""
+            (function() {
+                const labelText = document.getElementById('drawingFontSizeLabel')?.textContent;
+                const selectVal = document.getElementById('drawingFontSize')?.value;
+                return { labelText, selectVal };
+            })()
+            """) as? [String: Any]
+            XCTAssertEqual(initialRangeFontSize?["labelText"] as? String, "10px", "Range without explicit font size must default to 10px")
+            XCTAssertEqual(initialRangeFontSize?["selectVal"] as? String, "10", "Range font select value must be 10")
         } catch {
             XCTFail("Step 4 failed: \(error)")
             return
@@ -443,12 +453,16 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
             document.getElementById('drawingFontSizeBtn').click();
             const pop = document.querySelector('.floating-mini-popover');
             if (!pop) return { popoverOpened: false };
+            const has9px = [...pop.querySelectorAll('.popover-item')].some(el => el.textContent.includes('9px'));
+            const has10px = [...pop.querySelectorAll('.popover-item')].some(el => el.textContent.includes('10px'));
             const item18 = [...pop.querySelectorAll('.popover-item')].find(el => el.textContent.includes('18px'));
             if (item18) item18.click();
             const d = window.__getDrawings().find(x => x.id === 'range-1');
             const labelText = document.getElementById('drawingFontSizeLabel')?.textContent;
             return {
                 popoverOpened: true,
+                has9px,
+                has10px,
                 fontSize: d ? d.fontSize : null,
                 labelText,
                 popoverRemoved: document.querySelector('.floating-mini-popover') === null
@@ -461,6 +475,8 @@ final class SuperchartDrawingAndFavoritesTests: XCTestCase {
                 return
             }
             XCTAssertEqual(fontSizeRes["popoverOpened"] as? Bool, true)
+            XCTAssertEqual(fontSizeRes["has9px"] as? Bool, true, "Font size popover must contain 9px option")
+            XCTAssertEqual(fontSizeRes["has10px"] as? Bool, true, "Font size popover must contain 10px option")
             XCTAssertEqual(fontSizeRes["fontSize"] as? Double, 18, "Range font size should update to 18px")
             XCTAssertEqual(fontSizeRes["labelText"] as? String, "18px", "Label text should be 18px")
             XCTAssertEqual(fontSizeRes["popoverRemoved"] as? Bool, true)
