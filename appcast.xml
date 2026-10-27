@@ -6,23 +6,24 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.22</title>
-            <pubDate>Tue, 27 Oct 2026 14:53:48 +0900</pubDate>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>1.1.22</sparkle:shortVersionString>
+            <title>Version 1.1.23</title>
+            <pubDate>Tue, 27 Oct 2026 17:49:39 +0900</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>1.1.23</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.22</h2>
+<h2>What's New in StockDeck 1.1.23</h2>
 <ul>
-    <li><strong>Superchart Drawing Tools:</strong> Add a TradingView-style left drawing toolbar with trendlines, arrows, horizontal/vertical lines, rays, rectangles, price/date ranges, price labels, rulers, and vector note markers.</li>
-    <li><strong>Floating Drawing Toolbar &amp; Inline Note Editor:</strong> Customize colors, font colors, font sizes, line widths (1px–4px), and line styles (solid, dashed, dotted), and edit notes directly on the chart.</li>
-    <li><strong>Favorite Portfolios &amp; Watchlists:</strong> Pin favorite portfolios and watchlists to the Superchart header bar with quick <code>⌘1</code>–<code>⌘9</code> keyboard shortcuts.</li>
+    <li><strong>Compact Price Range &amp; Measurement Badges:</strong> Reduced default font size for Price Range, Date &amp; Price Range, and Ruler tools to 10px semibold with compact padding, preventing large badges from obscuring candlesticks.</li>
+    <li><strong>Smart Badge Placement:</strong> Measurement labels now position cleanly at the destination target edge (bottom on drops, top on rallies), keeping the interior price action completely visible.</li>
+    <li><strong>Expanded Font Size Options:</strong> Added 9px and 10px options to the floating toolbar font size popup for flexible label styling.</li>
+    <li><strong>Indicator Pane Persistence:</strong> Customized indicator pane sizes (RSI, MACD) now persist reliably across surfaces and cold restarts.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.22/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.23/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="om/4hyYf3XbjZ9I2EA5sojghfnlofQMRgT+uUZjChf1Vti20Ql26dr5lxFrwFH2Drv7Qe2n1rAfeN4GmyWubDA=="
-                       length="11151477"/>
+                       sparkle:edSignature="8ZUZv70paDUdXHOTIaKB+8Fk+6LdL0208vGc6NYuT7BAeIO1nACJmySvEcEZzz5LAZpNJV8pTm6FXrD50ThQCA=="
+                       length="11152426"/>
         </item>
     </channel>
 </rss>
