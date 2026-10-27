@@ -78,6 +78,11 @@ struct SuperchartWorkspaceView: View {
     @State private var listWidth = UserDefaults.standard.object(forKey: "stockdeck.superchart.listWidth") as? CGFloat ?? 300
     @State private var isListCollapsed = UserDefaults.standard.bool(forKey: "stockdeck.superchart.listCollapsed")
     @State private var listDragOrigin: CGFloat?
+    @State private var favoriteSourceIDs: [String] = []
+    @State private var sourceShortcuts: [String: String] = [:]
+    @State private var editingShortcutID: String? = nil
+    @State private var editingShortcutText = ""
+    @State private var isShortcutEditorPresented = false
     @StateObject private var pineWorkspace = PineScriptWorkspace()
     @State private var showsPineScripts = false
     @State private var selectedPineSettings: CustomPineIndicator?
@@ -243,6 +248,20 @@ struct SuperchartWorkspaceView: View {
 
         }
         .background(DS.ground)
+        .alert("Đổi tên Shortcut", isPresented: $isShortcutEditorPresented) {
+            TextField("Tên hiển thị trên thanh Shortcut", text: $editingShortcutText)
+            Button("Lưu") {
+                if let id = editingShortcutID {
+                    saveShortcutAlias(id, alias: editingShortcutText)
+                }
+                editingShortcutID = nil
+            }
+            Button("Hủy", role: .cancel) {
+                editingShortcutID = nil
+            }
+        } message: {
+            Text("Nhập tên ngắn gọn hiển thị trên thanh nút Shortcut của Superchart:")
+        }
         .sheet(isPresented: $showsPineScripts) {
             CustomPineScriptsView(library: pineWorkspace.library)
         }
@@ -272,6 +291,7 @@ struct SuperchartWorkspaceView: View {
             }
         }
         .task {
+            loadFavoritesAndShortcuts()
             if let sourceID = UserDefaults.standard.string(forKey: "stockdeck.superchart.source"),
                let savedSource = source(from: sourceID) { source = savedSource }
             if let saved = UserDefaults.standard.string(forKey: "stockdeck.superchart.symbol"),
@@ -355,6 +375,34 @@ struct SuperchartWorkspaceView: View {
             .accessibilityLabel("Nguồn: \(sourceTitle), \(sourceKindTitle)")
             .popover(isPresented: $isSourcePickerPresented, arrowEdge: .top) {
                 sourcePicker
+            }
+
+            if !favoriteShortcutItems.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(favoriteShortcutItems) { item in
+                            Button {
+                                selectSource(item.source)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: item.icon)
+                                        .font(.system(size: 9, weight: .semibold))
+                                    Text(verbatim: item.displayName)
+                                        .font(.inter(11, weight: item.isSelected ? .bold : .medium, relativeTo: .caption))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(item.isSelected ? DS.brand : DS.hairline.opacity(0.6))
+                                .foregroundStyle(item.isSelected ? Color.white : DS.ink)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .help(item.fullName)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                }
             }
 
             TextField("Tìm trong nguồn…", text: $query)
@@ -454,6 +502,7 @@ struct SuperchartWorkspaceView: View {
                     if sourcePickerShowsPortfolios {
                         if matchesSourceQuery("Tất cả danh mục") {
                             sourcePickerRow("Tất cả danh mục", icon: "briefcase",
+                                            sourceID: "all-portfolios",
                                             selected: source == .allPortfolios) {
                                 selectSource(.allPortfolios)
                             }
@@ -463,7 +512,9 @@ struct SuperchartWorkspaceView: View {
                             ContentUnavailableView("Không tìm thấy danh mục", systemImage: "magnifyingglass")
                         }
                         ForEach(storageService.portfolios.filter { matchesSourceQuery($0.name) }) { portfolio in
+                            let idStr = "portfolio:\(portfolio.id.uuidString)"
                             sourcePickerRow(portfolio.name, icon: "briefcase",
+                                            sourceID: idStr,
                                             selected: source == .portfolio(portfolio.id)) {
                                 selectSource(.portfolio(portfolio.id))
                             }
@@ -473,7 +524,9 @@ struct SuperchartWorkspaceView: View {
                             ContentUnavailableView("Không tìm thấy danh sách", systemImage: "magnifyingglass")
                         }
                         ForEach(storageService.watchlists.filter { matchesSourceQuery($0.name) }) { watchlist in
+                            let idStr = "watchlist:\(watchlist.id.uuidString)"
                             sourcePickerRow(watchlist.name, icon: "star",
+                                            sourceID: idStr,
                                             selected: source == .watchlist(watchlist.id)) {
                                 selectSource(.watchlist(watchlist.id))
                             }
@@ -484,7 +537,7 @@ struct SuperchartWorkspaceView: View {
             .frame(maxHeight: 300)
         }
         .padding(12)
-        .frame(width: 300)
+        .frame(width: 320)
     }
 
     private func matchesSourceQuery(_ name: String) -> Bool {
@@ -498,32 +551,132 @@ struct SuperchartWorkspaceView: View {
         sourceQuery = ""
     }
 
-    private func sourcePickerRow(_ title: String, icon: String, selected: Bool,
+    private func sourcePickerRow(_ title: String, icon: String, sourceID: String, selected: Bool,
                                  action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(selected ? DS.brand : DS.inkTertiary)
-                    .frame(width: 18)
-                Text(title)
-                    .font(.inter(12, weight: selected ? .semibold : .regular, relativeTo: .body))
-                    .foregroundStyle(selected ? DS.brand : DS.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if selected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DS.brand)
-                }
+        let isFav = favoriteSourceIDs.contains(sourceID)
+        let alias = sourceShortcuts[sourceID]
+        return HStack(spacing: 6) {
+            Button {
+                toggleFavoriteSource(sourceID)
+            } label: {
+                Image(systemName: isFav ? "star.fill" : "star")
+                    .font(.system(size: 12))
+                    .foregroundStyle(isFav ? Color.orange : DS.inkTertiary)
+                    .frame(width: 20, height: 28)
             }
-            .padding(.horizontal, 8)
-            .frame(height: 32)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? DS.brand.opacity(0.10) : .clear)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(isFav ? "Bỏ ghim khỏi thanh Shortcut" : "Ghim lên thanh Shortcut")
+
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(selected ? DS.brand : DS.inkTertiary)
+                        .frame(width: 16)
+                    Text(title)
+                        .font(.inter(12, weight: selected ? .semibold : .regular, relativeTo: .body))
+                        .foregroundStyle(selected ? DS.brand : DS.ink)
+                        .lineLimit(1)
+                    if let alias, alias != title {
+                        Text(verbatim: "→ \(alias)")
+                            .font(DS.micro)
+                            .foregroundStyle(DS.inkTertiary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(DS.brand)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                editingShortcutID = sourceID
+                editingShortcutText = sourceShortcuts[sourceID] ?? title
+                isShortcutEditorPresented = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.inkTertiary)
+                    .frame(width: 20, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help("Đổi tên hiển thị trên thanh Shortcut")
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .frame(height: 32)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? DS.brand.opacity(0.10) : .clear)
+    }
+
+    private struct SuperchartShortcutItem: Identifiable {
+        let id: String
+        let source: SuperchartSource
+        let displayName: String
+        let fullName: String
+        let icon: String
+        let isSelected: Bool
+    }
+
+    private var favoriteShortcutItems: [SuperchartShortcutItem] {
+        favoriteSourceIDs.compactMap { id -> SuperchartShortcutItem? in
+            guard let src = source(from: id) else { return nil }
+            let isSelected = src.id == source.id
+            let fullName: String
+            let icon: String
+            switch src {
+            case .watchlist(let uuid):
+                guard let wl = storageService.watchlists.first(where: { $0.id == uuid }) else { return nil }
+                fullName = wl.name
+                icon = "star.fill"
+            case .portfolio(let uuid):
+                guard let pf = storageService.portfolios.first(where: { $0.id == uuid }) else { return nil }
+                fullName = pf.name
+                icon = "briefcase.fill"
+            case .allPortfolios:
+                fullName = "Tất cả danh mục"
+                icon = "briefcase.fill"
+            }
+            let alias = sourceShortcuts[id] ?? fullName
+            return SuperchartShortcutItem(id: id, source: src, displayName: alias, fullName: fullName, icon: icon, isSelected: isSelected)
+        }
+    }
+
+    private func loadFavoritesAndShortcuts() {
+        if let savedFavs = UserDefaults.standard.stringArray(forKey: "stockdeck.superchart.favoriteSources.v1") {
+            favoriteSourceIDs = savedFavs
+        } else {
+            let defaults = storageService.watchlists.prefix(2).map { "watchlist:\($0.id.uuidString)" }
+            favoriteSourceIDs = defaults
+            UserDefaults.standard.set(defaults, forKey: "stockdeck.superchart.favoriteSources.v1")
+        }
+        if let savedShortcuts = UserDefaults.standard.dictionary(forKey: "stockdeck.superchart.sourceShortcuts.v1") as? [String: String] {
+            sourceShortcuts = savedShortcuts
+        }
+    }
+
+    private func toggleFavoriteSource(_ id: String) {
+        if favoriteSourceIDs.contains(id) {
+            favoriteSourceIDs.removeAll { $0 == id }
+        } else {
+            favoriteSourceIDs.append(id)
+        }
+        UserDefaults.standard.set(favoriteSourceIDs, forKey: "stockdeck.superchart.favoriteSources.v1")
+    }
+
+    private func saveShortcutAlias(_ id: String, alias: String) {
+        let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            sourceShortcuts.removeValue(forKey: id)
+        } else {
+            sourceShortcuts[id] = trimmed
+        }
+        UserDefaults.standard.set(sourceShortcuts, forKey: "stockdeck.superchart.sourceShortcuts.v1")
     }
 
     private var sourceIcon: String {

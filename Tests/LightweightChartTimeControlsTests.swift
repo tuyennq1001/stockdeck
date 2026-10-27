@@ -84,6 +84,38 @@ final class LightweightChartTimeControlsTests: XCTestCase {
         XCTAssertNotEqual(payload(to: date(2025, 2, 1)), payload(to: date(2025, 4, 1)))
     }
 
+    func testPayloadCacheDifferentiatesDrawingAttributesAndFontSize() {
+        let points = [PricePoint(date: date(2025, 1, 1), close: 100), PricePoint(date: date(2025, 1, 2), close: 105)]
+        let d1 = LightweightPriceRange(
+            id: "note-1", kind: "pin", color: "#2962ff", lineWidth: 1, isLocked: false,
+            startTime: "2025-01-01", endTime: "2025-01-01", startPrice: 100, endPrice: 100,
+            text: "Initial text", fontSize: 13, fontColor: "#ffffff"
+        )
+        let p1 = LightweightChartMath.encodedPayload(points: points, interval: .day, symbol: "AAPL", currency: "USD",
+            periods: [:], visibleFrom: points.first?.date, markers: [], targetPrice: nil, drawings: [d1])
+
+        let d2 = LightweightPriceRange(
+            id: "note-1", kind: "pin", color: "#2962ff", lineWidth: 1, isLocked: false,
+            startTime: "2025-01-01", endTime: "2025-01-01", startPrice: 100, endPrice: 100,
+            text: "Initial text", fontSize: 18, fontColor: "#ffffff"
+        )
+        let p2 = LightweightChartMath.encodedPayload(points: points, interval: .day, symbol: "AAPL", currency: "USD",
+            periods: [:], visibleFrom: points.first?.date, markers: [], targetPrice: nil, drawings: [d2])
+
+        XCTAssertNotNil(p1)
+        XCTAssertNotNil(p2)
+        XCTAssertNotEqual(p1, p2, "Changing drawing fontSize from 13 to 18 must yield a different payload and not hit stale cache")
+
+        let d3 = LightweightPriceRange(
+            id: "note-1", kind: "pin", color: "#ef4444", lineWidth: 1, isLocked: false,
+            startTime: "2025-01-01", endTime: "2025-01-01", startPrice: 100, endPrice: 100,
+            text: "Initial text", fontSize: 18, fontColor: "#ffffff"
+        )
+        let p3 = LightweightChartMath.encodedPayload(points: points, interval: .day, symbol: "AAPL", currency: "USD",
+            periods: [:], visibleFrom: points.first?.date, markers: [], targetPrice: nil, drawings: [d3])
+        XCTAssertNotEqual(p2, p3, "Changing drawing color must yield a different payload")
+    }
+
     func testIntradayRequestKeepsMarketIdentity() {
         XCTAssertEqual(SuperchartIntradayLoader.requestSymbol(for: "ACB"), "ACB.VN")
         XCTAssertEqual(SuperchartIntradayLoader.requestSymbol(for: "NET.HN"), "NET.VN")
