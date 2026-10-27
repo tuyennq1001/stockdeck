@@ -80,10 +80,11 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         let data = try JSONSerialization.data(withJSONObject: changed["settings"]!)
         let settings = try JSONDecoder().decode(LightweightIndicatorSettings.self, from: data)
         XCTAssertEqual(settings.componentStyles["rsi"]?.color, "#ef3340")
-        _ = try await web.evaluateJavaScript("const length=document.querySelector('[data-key=rsiPeriod]');length.value='21';length.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('closeIndicator').click();window.testChart.panes()[1].setHeight(120);document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
+        _ = try await web.evaluateJavaScript("const length=document.querySelector('[data-key=rsiPeriod]');length.value='21';length.dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('closeIndicator').click();window.testChart.panes()[1].setHeight(120);window.testChart.takeScreenshot();document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
         let chartGesturesRestored = try await web.evaluateJavaScript("window.testChart.options().handleScale.mouseWheel===true") as? Bool
         XCTAssertEqual(chartGesturesRestored, true, "Closing indicator settings must restore chart zoom")
         try await Task.sleep(nanoseconds: 400_000_000)
+        _ = try await web.evaluateJavaScript("window.testChart.takeScreenshot()!==null")
         let layoutMessage = try XCTUnwrap(messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneLayout" })
         let layout = try XCTUnwrap(layoutMessage["value"] as? String)
         let heightResult = try await web.evaluateJavaScript("window.testChart.panes().map(p=>p.getHeight())")
@@ -462,13 +463,16 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
             with: "const pineRenderer=window.testPineRenderer=new StockDeckPineChart(chart,C,candles,{dark});")
         html = html.replacingOccurrences(of: "const surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';",
             with: "let surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';window.testSetSurface=value=>{surface=value};")
+        html = html.replacingOccurrences(of: "window.__getCoords=d=>coords(d);",
+            with: "window.__getCoords=d=>coords(d);window.testRsi=()=>rsi;window.testCandles=()=>candles;window.testPaneScales=()=>paneScales;window.testViewports=()=>viewports;")
 
         let file = directory.appendingPathComponent("chart.html")
         try html.write(to: file, atomically: true, encoding: .utf8)
 
-        // 1. Test cold start with a saved paneLayout (Price: 0.60, RSI: 0.25, MACD: 0.15)
+        // 1. Test cold start with a saved paneLayout (Price: 0.60, RSI: 0.25, MACD: 0.15) and saved paneScales
         let customLayout = "{\"Price\":0.6,\"RSI\":0.25,\"MACD\":0.15}"
-        let preferencesData = try JSONSerialization.data(withJSONObject: ["paneLayout": customLayout])
+        let customScales = "{\"RSI\":{\"from\":15,\"to\":85}}"
+        let preferencesData = try JSONSerialization.data(withJSONObject: ["paneLayout": customLayout, "paneScales": customScales])
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
@@ -482,6 +486,10 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         window.contentView = web
         window.orderFront(nil)
         defer { window.orderOut(nil); config.userContentController.removeScriptMessageHandler(forName: "chart") }
+
+        func coordinator(for web: WKWebView) -> LightweightChartWebView.Coordinator {
+            LightweightChartWebView.Coordinator(parent: LightweightChartWebView(symbol: "TEST", interval: .day, points: points, currency: "USD", visibleFrom: nil, markers: [], targetPrice: nil, showInsiderMarkers: true, selectedRange: "3M", showsRangeControls: true, availableRanges: [], onSelectRange: { _ in }, onSelectInterval: { _ in }, webView: .constant(web), state: .constant("ready")))
+        }
 
         web.loadFileURL(file, allowingReadAccessTo: directory)
         for _ in 0..<100 {
@@ -501,6 +509,7 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
             let offset = Double(i % 13)
             points.append(PricePoint(date: baseDate, close: 105 + offset, open: 100 + offset, high: 115 + offset, low: 95 + offset))
         }
+        native = coordinator(for: web)
         let fullPayload = LightweightChartMath.payload(points: points, interval: .day, symbol: "TEST", currency: "USD", periods: [:], showsRangeControls: true)
         let fullJSON = String(data: try JSONEncoder().encode(fullPayload), encoding: .utf8)!
         _ = try await web.evaluateJavaScript("window.setChartData(\(fullJSON))")
@@ -514,10 +523,69 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         let rsiRatio = heights[1] / total
         XCTAssertEqual(rsiRatio, 0.25, accuracy: 0.03, "RSI pane proportion must be preserved across cold start without being clamped to 48px")
 
+        _ = try await web.evaluateJavaScript("""
+        (()=>{
+            const seps = Array.from(document.querySelectorAll('div')).filter(d=>d.style.cursor==='row-resize' && d.offsetHeight > 0);
+            const sep = seps[0];
+            const r = sep.getBoundingClientRect();
+            sep.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, clientX: r.x + 50, clientY: r.y + 4, pageY: r.y + 4, button: 0}));
+            document.documentElement.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, cancelable: true, clientX: r.x + 50, clientY: r.y + 104, pageY: r.y + 104, button: 0}));
+            document.documentElement.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, clientX: r.x + 50, clientY: r.y + 104, pageY: r.y + 104, button: 0}));
+        })()
+        """)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let lastLayoutMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneLayout" }
+        XCTAssertNotNil(lastLayoutMsg, "Dragging pane divider must capture and persist updated paneLayout")
+        let draggedLayoutVal = try XCTUnwrap(lastLayoutMsg?["value"] as? String)
+        let draggedLayout = try JSONSerialization.jsonObject(with: Data(draggedLayoutVal.utf8)) as! [String: Double]
+        XCTAssertEqual(try XCTUnwrap(draggedLayout["RSI"]), 0.091, accuracy: 0.02, "Dragged RSI pane ratio must reflect actual mouse movement")
+        let rsiScale = try await web.evaluateJavaScript("(()=>{const s=window.testRsi()?.priceScale();return s?{autoScale:s.options().autoScale,range:s.getVisibleRange()}:null})()") as? [String: Any]
+        let autoScale = rsiScale?["autoScale"] as? Bool
+        XCTAssertEqual(autoScale, false, "RSI priceScale must have autoScale disabled when restored from paneScales")
+        if let range = rsiScale?["range"] as? [String: Double] {
+            XCTAssertEqual(range["from"] ?? 0, 15, accuracy: 1.0)
+            XCTAssertEqual(range["to"] ?? 0, 85, accuracy: 1.0)
+        } else {
+            XCTFail("RSI visible range should be present")
+        }
+
         // 2. Test detail surface: resizing on detail saves paneLayout
         _ = try await web.evaluateJavaScript("window.testSetSurface('detail');window.testChart.panes()[1].setHeight(180);window.testChart.takeScreenshot()!==null;document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
         try await Task.sleep(nanoseconds: 400_000_000)
         let detailLayoutMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneLayout" }
         XCTAssertNotNil(detailLayoutMsg, "Detail surface must capture and persist paneLayout changes")
+
+        // 3. Test modifying RSI price scale saves paneScales
+        _ = try await web.evaluateJavaScript("const s=window.testRsi().priceScale();s.setAutoScale(false);s.setVisibleRange({from:10,to:95});document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let scalesMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneScales" }
+        XCTAssertNotNil(scalesMsg, "Adjusting RSI scale range must persist paneScales")
+        let scalesVal = try XCTUnwrap(scalesMsg?["value"] as? String)
+        XCTAssertTrue(scalesVal.contains("\"RSI\""))
+        let storedScales = UserDefaults.standard.dictionary(forKey: keys[0])?["paneScales"] as? String
+        XCTAssertNotNil(storedScales, "paneScales must be saved to native UserDefaults")
+
+        // 4. Test modifying Price scale saves per-symbol in paneScales
+        _ = try await web.evaluateJavaScript("const ps=window.testCandles().priceScale();ps.setAutoScale(false);ps.setVisibleRange({from:90,to:120});document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let priceScalesMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "paneScales" }
+        let priceScalesVal = try XCTUnwrap(priceScalesMsg?["value"] as? String)
+        XCTAssertTrue(priceScalesVal.contains("\"TEST\"") && priceScalesVal.contains("\"Price\""), "Price scale must be saved per-symbol in paneScales")
+
+        // 5. Test zooming/panning X-axis saves viewports to UserDefaults
+        _ = try await web.evaluateJavaScript("window.testChart.timeScale().setVisibleLogicalRange({from:15,to:45});")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let viewportMsg = messages.last { $0["type"] as? String == "chartPreferenceChanged" && $0["name"] as? String == "viewports" }
+        XCTAssertNotNil(viewportMsg, "Adjusting X-axis logical range must persist viewports")
+        let storedViewports = UserDefaults.standard.dictionary(forKey: keys[0])?["viewports"] as? String
+        XCTAssertNotNil(storedViewports, "viewports must be saved to native UserDefaults")
+
+        // 6. Test resetChartView restores autoScale and clears stored scale
+        _ = try await web.evaluateJavaScript("window.resetChartView()")
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let rsiResetAutoScale = try await web.evaluateJavaScript("window.testRsi()?.priceScale().options().autoScale") as? Bool
+        XCTAssertEqual(rsiResetAutoScale, true, "resetChartView must restore RSI autoScale to true")
+        let priceResetAutoScale = try await web.evaluateJavaScript("window.testCandles()?.priceScale().options().autoScale") as? Bool
+        XCTAssertEqual(priceResetAutoScale, true, "resetChartView must restore Price autoScale to true")
     }
 }

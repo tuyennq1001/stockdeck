@@ -104,15 +104,12 @@ pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
 sleep 0.2
 
 echo "Launching StockDeck DEV..."
-# Launch via `open` (Finder-style): macOS 26 registers the Menu Bar item
-# correctly and keeps the process alive, which a raw binary launch does not.
-# By default the desktop window auto-opens so the app is visibly running.
-# The Menu Bar icon itself is governed by macOS 26's per-app Control Center
-# toggle (System Settings → Control Center → Menu Bar items): if it is missing
-# or hidden, enable it there; bumping Bundle ID / autosave name does not help.
+# Register this exact bundle with LaunchServices so it takes priority over any other worktree builds
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$PWD/$APP" 2>/dev/null || true
+
 SD_OPEN_WINDOW="${SD_OPEN_WINDOW:-0}"
 if [ "$SD_OPEN_WINDOW" = "1" ]; then
-    /usr/bin/open --env SD_OPEN_WINDOW=1 "$PWD/$APP"
+    /usr/bin/open -n -a "$PWD/$APP" --env SD_OPEN_WINDOW=1
 else
-    /usr/bin/open --env SD_OPEN_WINDOW=0 "$PWD/$APP"
+    /usr/bin/open -n -a "$PWD/$APP" --env SD_OPEN_WINDOW=0
 fi

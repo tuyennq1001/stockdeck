@@ -294,9 +294,10 @@
   function dateLabel(value){if(/^\d{4}-\d{2}-\d{2}$/.test(String(value)))return String(value);const seconds=timeSeconds(value);if(!Number.isFinite(seconds))return '';if(!marketDateFormatter)return new Date(seconds*1000).toISOString().slice(0,10);const parts=marketDateFormatter.formatToParts(new Date(seconds*1000)),get=type=>parts.find(part=>part.type===type)?.value;return `${get('year')}-${get('month')}-${get('day')}`;}
   function applyRange(){if(!payload?.bars.length)return;const bars=payload.bars,n=bars.length;if(!payload.visibleFrom&&!payload.visibleTo){chart.timeScale().fitContent();return;}let first=bars.findIndex(b=>timeSeconds(b.time)>=timeSeconds(payload.visibleFrom));let last=payload.visibleTo?bars.findLastIndex(b=>timeSeconds(b.time)<=timeSeconds(payload.visibleTo)):n-1;if(first<0||last<first){document.getElementById('rangeStatus').textContent='Khoảng chọn nằm ngoài lịch sử hiện có.';return;}chart.timeScale().setVisibleLogicalRange({from:Math.max(0,first-1),to:last+Math.max(1,Math.round((last-first)*.02))});}
 
+  let viewports={};try{viewports=JSON.parse(readStorage('viewports')||'{}')}catch{}
   function viewportKey(){return `stockdeck.chart.viewport.v1.${surface}.${payload?.symbol}.${payload?.interval}`;}
-  function saveViewport(){if(viewportSaveTimer)clearTimeout(viewportSaveTimer);viewportSaveTimer=setTimeout(()=>{const range=chart.timeScale().getVisibleLogicalRange();if(!range||!payload)return;try{localStorage.setItem(viewportKey(),JSON.stringify(range));}catch{}},250);}
-  function restoreViewport(){try{const range=JSON.parse(localStorage.getItem(viewportKey())||'null'),lastIndex=(payload?.bars?.length||0)-1;if(!range||!Number.isFinite(range.from)||!Number.isFinite(range.to)||range.from>=range.to||range.to<0||range.from>lastIndex)return false;chart.timeScale().setVisibleLogicalRange(range);return true;}catch{return false;}}
+  function saveViewport(){if(viewportSaveTimer)clearTimeout(viewportSaveTimer);viewportSaveTimer=setTimeout(()=>{const range=chart.timeScale().getVisibleLogicalRange();if(!range||!payload?.symbol)return;const key=viewportKey();try{localStorage.setItem(key,JSON.stringify(range));}catch{}const cur=viewports[key];if(!cur||Math.abs(cur.from-range.from)>0.1||Math.abs(cur.to-range.to)>0.1){viewports[key]={from:range.from,to:range.to};const keys=Object.keys(viewports);if(keys.length>100)delete viewports[keys[0]];writeStorage('viewports',JSON.stringify(viewports));}},250);}
+  function restoreViewport(){try{const key=viewportKey(),stored=viewports[key]||JSON.parse(localStorage.getItem(key)||'null'),lastIndex=(payload?.bars?.length||0)-1;if(!stored||!Number.isFinite(stored.from)||!Number.isFinite(stored.to)||stored.from>=stored.to||stored.to<0||stored.from>lastIndex)return false;chart.timeScale().setVisibleLogicalRange(stored);return true;}catch{return false;}}
   function updateMarkerState(){const button=document.getElementById('insiderToggle');button.classList.toggle('selected',!!payload?.showInsiderMarkers);}
   function getStyle(settings,key,fallback={}){const style={...(styleDefaults[key]||{}),...fallback,...(settings.componentStyles?.[key]||{})};if(key==='rsi')style.visible=true;return style;}
   function movingAverageStyle(item,settings){return surface==='superchart'?getStyle(settings,movingAverageStyleKey(item),{color:item.style?.color||item.color||'#c18c2c',thickness:item.style?.thickness||item.lineWidth||2,...item.style}):(item?.style||{color:item?.color||'#9b59b6',thickness:item?.lineWidth||2});}
@@ -306,7 +307,99 @@
   function applyPlottedStyle(series,style){if(!series)return;const color=colorWithOpacity(style.color||'#9467bd',style.opacity??100),width=style.thickness||1;series.applyOptions({color,lineColor:color,lineWidth:width,lineStyle:lineStyleValue(style),lineType:style.plotType==='step'?C.LineType.WithSteps:C.LineType.Simple,visible:style.visible!==false,lineVisible:!['circles','histogram'].includes(style.plotType),pointMarkersVisible:style.plotType==='circles',pointMarkersRadius:Math.max(2,width),topColor:colorWithOpacity(style.color||'#9467bd',Math.min(24,Number(style.opacity??100))),bottomColor:colorWithOpacity(style.color||'#9467bd',0)});}
   let savedPaneFactors=null;
   let paneLayout={};try{paneLayout=JSON.parse(readStorage('paneLayout')||'{}')}catch{}
+  let paneScales={};try{paneScales=JSON.parse(readStorage('paneScales')||'{}')}catch{}
   function paneName(pane,index){return index===0?'Price':rsi?.getPane().paneIndex()===index?'RSI':macd?.getPane().paneIndex()===index?'MACD':stochasticK?.getPane().paneIndex()===index?'Stochastic':pineRenderer.paneKey(index);}
+  function applySavedPaneScales(){
+    const list=[['RSI',rsi],['Stochastic',stochasticK]];
+    for(const [name,series] of list){
+      if(!series||!paneScales[name])continue;
+      const r=paneScales[name];
+      if(Number.isFinite(r.from)&&Number.isFinite(r.to)&&r.from<r.to){
+        const scale=series.priceScale();
+        scale.setAutoScale(false);
+        scale.setVisibleRange({from:r.from,to:r.to});
+      }
+    }
+    const sym=payload?.symbol;
+    if(sym&&paneScales.symbols?.[sym]){
+      const symScales=paneScales.symbols[sym];
+      const priceSeries=closeLine||candles;
+      if(priceSeries&&symScales.Price){
+        const r=symScales.Price;
+        if(Number.isFinite(r.from)&&Number.isFinite(r.to)&&r.from<r.to){
+          const scale=priceSeries.priceScale();
+          scale.setAutoScale(false);
+          scale.setVisibleRange({from:r.from,to:r.to});
+        }
+      }
+      if(macd&&symScales.MACD){
+        const r=symScales.MACD;
+        if(Number.isFinite(r.from)&&Number.isFinite(r.to)&&r.from<r.to){
+          const scale=macd.priceScale();
+          scale.setAutoScale(false);
+          scale.setVisibleRange({from:r.from,to:r.to});
+        }
+      }
+    }else if(macd&&paneScales.MACD){
+      const r=paneScales.MACD;
+      if(Number.isFinite(r.from)&&Number.isFinite(r.to)&&r.from<r.to){
+        const scale=macd.priceScale();
+        scale.setAutoScale(false);
+        scale.setVisibleRange({from:r.from,to:r.to});
+      }
+    }
+  }
+  function persistPaneScales(){
+    if(!payload)return;
+    const scales={RSI:rsi?.priceScale(),Stochastic:stochasticK?.priceScale()};
+    let changed=false;
+    for(const [name,scale] of Object.entries(scales)){
+      if(!scale)continue;
+      const opts=scale.options();
+      if(opts.autoScale===false){
+        const range=scale.getVisibleRange();
+        if(range&&Number.isFinite(range.from)&&Number.isFinite(range.to)&&range.from<range.to){
+          const cur=paneScales[name];
+          if(!cur||Math.abs(cur.from-range.from)>0.01||Math.abs(cur.to-range.to)>0.01){
+            paneScales[name]={from:range.from,to:range.to};
+            changed=true;
+          }
+        }
+      }else if(paneScales[name]){
+        delete paneScales[name];
+        changed=true;
+      }
+    }
+    const sym=payload.symbol;
+    if(sym){
+      paneScales.symbols=paneScales.symbols||{};
+      const symScales=paneScales.symbols[sym]||{};
+      const priceSeries=closeLine||candles;
+      const symList=[['Price',priceSeries?.priceScale()],['MACD',macd?.priceScale()]];
+      for(const [name,scale] of symList){
+        if(!scale)continue;
+        const opts=scale.options();
+        if(opts.autoScale===false){
+          const range=scale.getVisibleRange();
+          if(range&&Number.isFinite(range.from)&&Number.isFinite(range.to)&&range.from<range.to){
+            const cur=symScales[name];
+            if(!cur||Math.abs(cur.from-range.from)>0.001||Math.abs(cur.to-range.to)>0.001){
+              symScales[name]={from:range.from,to:range.to};
+              paneScales.symbols[sym]=symScales;
+              changed=true;
+            }
+          }
+        }else if(symScales[name]){
+          delete symScales[name];
+          if(!Object.keys(symScales).length)delete paneScales.symbols[sym];
+          changed=true;
+        }
+      }
+    }
+    if(changed){
+      writeStorage('paneScales',JSON.stringify(paneScales));
+    }
+  }
   function applySavedPaneLayout(fallbackFactors=[]){
     const panes=chart.panes();
     if(!panes.length)return;
@@ -319,7 +412,8 @@
       const name=paneName(pane,index);
       if(name&&Number.isFinite(paneLayout[name])&&paneLayout[name]>0)return paneLayout[name];
       if(fallbackFactors&&Number.isFinite(fallbackFactors[index])&&fallbackFactors[index]>0)return fallbackFactors[index];
-      if(index===0)return 2;
+      if(index===0)return savedPrice||2;
+      if(name&&name.startsWith('Pine:'))return (savedPrice||2)/5;
       return savedPrice?savedPrice*0.3:1;
     });
     const sum=factors.reduce((acc,f)=>acc+f,0)||1;
@@ -327,28 +421,35 @@
   }
   function persistPaneFactors(){
     if(!payload||savedPaneFactors)return;
+    persistPaneScales();
     const panes=chart.panes();
     if(panes.length<2)return;
-    const heights=panes.map(p=>p.getHeight());
-    if(heights.some(h=>h<=0))return;
-    pineRenderer.constrainPaneSizes(false,true);
-    const updatedHeights=panes.map(p=>p.getHeight());
-    const total=updatedHeights.reduce((sum,p)=>sum+p,0);
+    pineRenderer.constrainPaneSizes(false);
+    const factors=panes.map(p=>p.getStretchFactor());
+    if(factors.some(f=>!Number.isFinite(f)||f<=0))return;
+    const total=factors.reduce((sum,f)=>sum+f,0);
     if(total<=0)return;
     let changed=false;
     panes.forEach((pane,index)=>{
       const name=paneName(pane,index);
       if(name){
-        const ratio=updatedHeights[index]/total;
+        const ratio=factors[index]/total;
         if(Math.abs((paneLayout[name]||0)-ratio)>0.001){
           paneLayout[name]=ratio;
           changed=true;
         }
       }
     });
+    const activePineKeys=new Set(panes.map((p,i)=>paneName(p,i)).filter(n=>n&&n.startsWith('Pine:')));
+    for(const key of Object.keys(paneLayout)){
+      if(key.startsWith('Pine:')&&!activePineKeys.has(key)){
+        delete paneLayout[key];
+        changed=true;
+      }
+    }
     if(changed){
       writeStorage('paneLayout',JSON.stringify(paneLayout));
-      renderIndicatorLegend(payload.indicatorSettings||indicatorSettings);
+      schedulePaneLegendLayout();
     }
   }
   function render(){if(!payload)return;const rangeBefore=chart.timeScale().getVisibleLogicalRange(),bars=payload.bars,next=payload.symbol+'|'+payload.interval+'|'+(payload.visibleFrom||'ALL')+'|'+(payload.visibleTo||''),reset=identity!==next;identity=next;if(reset)candles.priceScale().setAutoScale(true);
@@ -357,16 +458,17 @@
     const plotStructure=[...Object.entries(settings.componentStyles||{}).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,v.plotType]),...customIndicators.map(item=>[item.name,item.style?.plotType])];const structure=JSON.stringify([useLine,visibility.volume,isVisible('RSI'),isVisible('MACD'),plotStructure,
       isVisible('Stochastic')&&payload.hasOHLC,isVisible('BB'),isVisible('SAR')&&payload.hasOHLC,overlayNames]);
     const rebuild=structure!==lastStructure;lastStructure=structure;
+    let paneFactors=[];
     if(useLine){candles.setData([]);if(!closeLine)closeLine=chart.addSeries(C.LineSeries,{color:'#16816d',lineWidth:2});closeLine.setData(bars.map(b=>({time:b.time,value:b.close})));}
     else{if(closeLine){chart.removeSeries(closeLine);closeLine=null;}candles.setData(bars.filter(b=>[b.open,b.high,b.low].every(Number.isFinite)));}
-    if(rebuild){pineRenderer.clear();const paneFactors=chart.panes().map(pane=>pane.getStretchFactor());for(const s of [volume,rsi,rsiFill,macd,signal,histogram,stochasticK,stochasticD,sar,...Object.values(series)])if(s)chart.removeSeries(s);volume=rsi=rsiFill=macd=signal=histogram=stochasticK=stochasticD=sar=null;Object.keys(series).forEach(k=>delete series[k]);rsiThresholds=[];stochasticThresholds=[];let nextPane=1;
+    if(rebuild){pineRenderer.clear();paneFactors=chart.panes().map(pane=>pane.getStretchFactor());for(const s of [volume,rsi,rsiFill,macd,signal,histogram,stochasticK,stochasticD,sar,...Object.values(series)])if(s)chart.removeSeries(s);volume=rsi=rsiFill=macd=signal=histogram=stochasticK=stochasticD=sar=null;Object.keys(series).forEach(k=>delete series[k]);rsiThresholds=[];stochasticThresholds=[];let nextPane=1;
       if(visibility.volume){volume=chart.addSeries(C.HistogramSeries,{priceFormat:{type:'volume'},priceScaleId:'volume',lastValueVisible:false,priceLineVisible:false},0);chart.priceScale('volume').applyOptions({scaleMargins:{top:.82,bottom:0},visible:false});}
       if(isVisible('RSI')){const pane=nextPane++;rsiFill=chart.addSeries(C.BaselineSeries,{baseValue:{type:'price',price:settings.rsiOversold??30},topFillColor1:'rgba(148,103,189,.12)',topFillColor2:'rgba(148,103,189,.12)',bottomFillColor1:'transparent',bottomFillColor2:'transparent',topLineColor:'transparent',bottomLineColor:'transparent',lineVisible:false,lastValueVisible:false,priceLineVisible:false,crosshairMarkerVisible:false,priceScaleId:'rsi',autoscaleInfoProvider:()=>({priceRange:{minValue:0,maxValue:100}})},pane);rsi=addPlottedSeries(getStyle(settings,'rsi',{color:settings.rsiColor,lineWidth:settings.rsiLineWidth}),pane,{priceScaleId:'rsi',autoscaleInfoProvider:()=>({priceRange:{minValue:0,maxValue:100}})});}
       if(isVisible('MACD')){const pane=nextPane++;macd=addPlottedSeries(getStyle(settings,'macd',{color:settings.macdColor,thickness:settings.macdLineWidth,visible:settings.macdLineEnabled}),pane,{priceScaleId:'macd'});signal=addPlottedSeries(getStyle(settings,'signal',{color:settings.signalColor,visible:settings.signalLineEnabled}),pane,{priceScaleId:'macd'});histogram=chart.addSeries(C.HistogramSeries,{priceScaleId:'macd',priceFormat:{type:'price',precision:3,minMove:.001},lastValueVisible:false,priceLineVisible:false,visible:(settings.componentStyles?.macdHistogram?.visible ?? (settings.histogramEnabled!==false))},pane);}
       if(isVisible('Stochastic')&&payload.hasOHLC){const pane=nextPane++;stochasticK=addPlottedSeries(getStyle(settings,'stochasticK',{color:settings.stochasticKColor,thickness:settings.stochasticLineWidth}),pane,{priceScaleId:'stochastic',autoscaleInfoProvider:()=>({priceRange:{minValue:0,maxValue:100}})});stochasticD=addPlottedSeries(getStyle(settings,'stochasticD',{color:settings.stochasticDColor,thickness:settings.stochasticLineWidth}),pane,{priceScaleId:'stochastic'});}
       for(const name of overlayNames){const config=customIndicators.find(x=>x.name===name),period=config?.period||name.split(' ').at(-1),colors={'20':'#c18c2c','50':'#506fc4','100':'#219875','200':'#9b59b6'};series[name]=addPlottedSeries(config?movingAverageStyle(config,settings):{color:colors[period]||'#9b59b6',thickness:name.startsWith('EMA')?1:2},0,{lastValueVisible:true,priceLineVisible:false});}
       if(isVisible('BB'))for(const [key,styleKey] of [['BB upper','bbUpper'],['BB middle','bbMiddle'],['BB lower','bbLower']])series[key]=addPlottedSeries(getStyle(settings,styleKey,{color:settings.bollingerColor,thickness:settings.bollingerLineWidth,visible:settings[`${styleKey}Visible`]!==false}),0);
-      if(isVisible('SAR')&&payload.hasOHLC)sar=addPlottedSeries(getStyle(settings,'sar',{color:settings.sarColor,thickness:settings.sarDotSize,plotType:'circles'}),0);applySavedPaneLayout(paneFactors);
+      if(isVisible('SAR')&&payload.hasOHLC)sar=addPlottedSeries(getStyle(settings,'sar',{color:settings.sarColor,thickness:settings.sarDotSize,plotType:'circles'}),0);
     }
     if(volume)volume.setData(bars.filter(b=>b.volume!=null).map(b=>({time:b.time,value:b.volume,color:Number.isFinite(b.open)?b.close>=b.open?'#1a9b8288':'#d94b5988':'#88888866'})));
     if(rsi){const fillStyle=getStyle(settings,'rsiFill',{color:settings.rsiBackgroundColor,opacity:settings.rsiBackgroundOpacity,visible:settings.rsiBackgroundFillVisible}),fillColor=fillStyle.color||'#9467bd',fillOpacity=fillStyle.visible===false?0:Math.min(100,Math.max(0,Number(fillStyle.opacity??12)))/100,fillHex=fillColor.match(/^#([0-9a-f]{6})$/i)?.[1]||'9467bd',fillRGB=[0,2,4].map(index=>parseInt(fillHex.slice(index,index+2),16)).join(',');rsiFill.applyOptions({baseValue:{type:'price',price:settings.rsiOversold??30},topFillColor1:`rgba(${fillRGB},${fillOpacity})`,topFillColor2:`rgba(${fillRGB},${fillOpacity})`,topLineColor:'transparent',lineVisible:false,visible:fillStyle.visible!==false});rsiFill.setData(payload.rsi.map(point=>({...point,value:settings.rsiOverbought??70})));applyPlottedStyle(rsi,getStyle(settings,'rsi',{color:settings.rsiColor,thickness:settings.rsiLineWidth}));rsi.setData(payload.rsi);for(const line of rsiThresholds)rsi.removePriceLine(line);const levels=[];{const style=getStyle(settings,'rsiLower',{color:settings.rsiOversoldColor,visible:settings.rsiLowerVisible});if(style.visible!==false)levels.push({price:settings.rsiOversold??30,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiOversold??30),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}{const style=getStyle(settings,'rsiMiddle',{color:settings.rsiMiddleColor,visible:settings.rsiMiddleVisible});if(style.visible!==false)levels.push({price:settings.rsiMiddle??50,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiMiddle??50),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}{const style=getStyle(settings,'rsiUpper',{color:settings.rsiOverboughtColor,visible:settings.rsiUpperVisible});if(style.visible!==false)levels.push({price:settings.rsiOverbought??70,color:colorWithOpacity(style.color,style.opacity??100),title:String(settings.rsiOverbought??70),axisLabelVisible:settings.rsiAxisLabelsVisible!==false,style});}rsiThresholds=levels.map(({style,...level})=>rsi.createPriceLine({...level,color:colorWithOpacity(style.color,style.opacity??100),lineWidth:style.thickness||1,lineStyle:lineStyleValue(style)}));}
@@ -377,6 +479,8 @@
     if(stochasticK&&stochasticD){applyPlottedStyle(stochasticK,getStyle(settings,'stochasticK',{color:settings.stochasticKColor,thickness:settings.stochasticLineWidth}));applyPlottedStyle(stochasticD,getStyle(settings,'stochasticD',{color:settings.stochasticDColor,thickness:settings.stochasticLineWidth}));stochasticK.setData(payload.stochasticK);stochasticD.setData(payload.stochasticD);for(const line of stochasticThresholds){stochasticK.removePriceLine(line);}stochasticThresholds=[['stochasticLower',settings.stochasticOversold??20],['stochasticUpper',settings.stochasticOverbought??80]].filter(([key])=>getStyle(settings,key).visible!==false).map(([key,price])=>{const style=getStyle(settings,key);return stochasticK.createPriceLine({price,color:colorWithOpacity(style.color,style.opacity??100),lineWidth:style.thickness||1,lineStyle:lineStyleValue(style),axisLabelVisible:false,title:''});});}
     const priceSeries=closeLine||candles;
     updateAllPriceMarkers(applyPineRendering());
+    if(rebuild)applySavedPaneLayout(paneFactors);
+    applySavedPaneScales();
     if(targetPriceLine&&targetSeries)targetSeries.removePriceLine(targetPriceLine);targetPriceLine=null;targetSeries=priceSeries;if(visibility.target&&Number.isFinite(payload.targetPrice)&&payload.targetPrice>0)targetPriceLine=priceSeries.createPriceLine({price:payload.targetPrice,color:'#1a9b82',lineStyle:C.LineStyle.Dashed,lineWidth:1,title:'🎯 Buy'});
     renderPaneReadout(settings);
     document.getElementById('rsiSummary').textContent=`${settings.rsiPeriod||14} · ${settings.rsiOversold??30}/${settings.rsiOverbought??70}`;document.getElementById('macdSummary').textContent=`${settings.macdFast||12}/${settings.macdSlow||26}/${settings.macdSignal||9}`;
@@ -486,7 +590,7 @@
         schedulePaneLegendLayout();
         return;
       }
-      pineRenderer.constrainPaneSizes(savedPaneFactors!==null,true);
+      pineRenderer.constrainPaneSizes(savedPaneFactors!==null);
       if(indicatorsCollapsed)return;
       const tops=[];let top=0;
       for(const pane of panes){tops.push(top);top+=pane.getHeight();}
@@ -1310,7 +1414,7 @@
   }
   function routeWheel(event){if(!!document.querySelector('dialog[open]')||activeTool!=='select'||!payload)return;const rect=host.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top,plotWidth=chart.timeScale().width();if(x<0||x>rect.width||y<0||y>rect.height)return;
     const deltaUnit=event.deltaMode===1?16:event.deltaMode===2?rect.height:1,deltaY=event.deltaY*deltaUnit,deltaX=event.deltaX*deltaUnit;
-    if(x>=plotWidth){event.preventDefault();event.stopPropagation();const panes=chart.panes();let top=0,paneIndex=panes.findIndex(pane=>{const height=pane.getHeight(),inside=y>=top&&y<=top+height;if(!inside)top+=height;return inside;});if(paneIndex<0){paneIndex=0;top=0;}const pane=panes[paneIndex],seriesInPane=pane?.getSeries()||[candles],axisSeries=seriesInPane.find(series=>series!==volume&&series.priceScale()?.getVisibleRange())||seriesInPane[0]||candles,scale=axisSeries.priceScale(),range=scale.getVisibleRange();if(!range||!Number.isFinite(range.from)||!Number.isFinite(range.to))return;const pointerPrice=axisSeries.coordinateToPrice(Math.max(0,Math.min(pane?.getHeight()||rect.height,y-top)));const anchor=Number.isFinite(pointerPrice)?pointerPrice:(range.from+range.to)/2,factor=Math.exp(Math.max(-2,Math.min(2,deltaY*.001)));let from=anchor+(range.from-anchor)*factor,to=anchor+(range.to-anchor)*factor;if(scale.options().mode===C.PriceScaleMode.Logarithmic&&from<=0)from=Math.max(Number.MIN_VALUE,Math.min(range.from,to*.001));if(from<to){scale.setAutoScale(false);scale.setVisibleRange({from,to});}return;}
+    if(x>=plotWidth){event.preventDefault();event.stopPropagation();const panes=chart.panes();let top=0,paneIndex=panes.findIndex(pane=>{const height=pane.getHeight(),inside=y>=top&&y<=top+height;if(!inside)top+=height;return inside;});if(paneIndex<0){paneIndex=0;top=0;}const pane=panes[paneIndex],seriesInPane=pane?.getSeries()||[candles],axisSeries=seriesInPane.find(series=>series!==volume&&series.priceScale()?.getVisibleRange())||seriesInPane[0]||candles,scale=axisSeries.priceScale(),range=scale.getVisibleRange();if(!range||!Number.isFinite(range.from)||!Number.isFinite(range.to))return;const pointerPrice=axisSeries.coordinateToPrice(Math.max(0,Math.min(pane?.getHeight()||rect.height,y-top)));const anchor=Number.isFinite(pointerPrice)?pointerPrice:(range.from+range.to)/2,factor=Math.exp(Math.max(-2,Math.min(2,deltaY*.001)));let from=anchor+(range.from-anchor)*factor,to=anchor+(range.to-anchor)*factor;if(scale.options().mode===C.PriceScaleMode.Logarithmic&&from<=0)from=Math.max(Number.MIN_VALUE,Math.min(range.from,to*.001));if(from<to){scale.setAutoScale(false);scale.setVisibleRange({from,to});schedulePaneSave();}return;}
     const horizontalDelta=event.shiftKey&&!deltaX?deltaY:deltaX;
     if(Math.abs(horizontalDelta)>0.25&&(event.shiftKey||Math.abs(deltaX)>0.25)){const range=chart.timeScale().getVisibleLogicalRange();if(!range)return;event.preventDefault();event.stopPropagation();const spacing=chart.timeScale().options().barSpacing||6,shift=horizontalDelta/spacing;chart.timeScale().setVisibleLogicalRange({from:range.from+shift,to:range.to+shift});}
   }
@@ -1740,8 +1844,8 @@
   window.__getSelectedId=()=>selectedId;
   window.__getToolbarCustomPos=()=>toolbarCustomPos;
   window.__getCoords=d=>coords(d);
-  window.resetChartView=()=>{pendingReset=true;pendingSymbolZoom=null;candles.priceScale().setAutoScale(true);applyRange();saveViewport();};window.disposeChart=()=>{if(paneSaveTimer){clearTimeout(paneSaveTimer);persistPaneFactors();}if(viewportSaveTimer)clearTimeout(viewportSaveTimer);if(paneLegendFrame)cancelAnimationFrame(paneLegendFrame);resizeObserver.disconnect();chart.remove();};
-  const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{scheduleDraw();saveViewport();});chart.subscribeCrosshairMove(onCrosshairMove);let paneSaveTimer=null;const schedulePaneSave=e=>{if(e?.target?.closest?.('.toolbar, .draw-rail, dialog, .menu-panel, .floating-mini-popover, .style-popover'))return;if(paneSaveTimer)clearTimeout(paneSaveTimer);paneSaveTimer=setTimeout(persistPaneFactors,120);};document.addEventListener('pointerup',schedulePaneSave,true);document.addEventListener('mouseup',schedulePaneSave,true);window.addEventListener('pagehide',persistPaneFactors);const resizeObserver=new ResizeObserver(resizeCanvas);resizeObserver.observe(host);resizeCanvas();
+  window.resetChartView=()=>{pendingReset=true;pendingSymbolZoom=null;candles.priceScale().setAutoScale(true);if(closeLine)closeLine.priceScale().setAutoScale(true);if(rsi)rsi.priceScale().setAutoScale(true);if(stochasticK)stochasticK.priceScale().setAutoScale(true);if(macd)macd.priceScale().setAutoScale(true);delete paneScales.RSI;delete paneScales.Stochastic;delete paneScales.MACD;if(payload?.symbol&&paneScales.symbols)delete paneScales.symbols[payload.symbol];writeStorage('paneScales',JSON.stringify(paneScales));const key=viewportKey();delete viewports[key];try{localStorage.removeItem(key);}catch{}writeStorage('viewports',JSON.stringify(viewports));applyRange();saveViewport();};window.disposeChart=()=>{if(paneSaveTimer){clearTimeout(paneSaveTimer);persistPaneFactors();}else{persistPaneScales();}if(viewportSaveTimer)clearTimeout(viewportSaveTimer);if(paneLegendFrame)cancelAnimationFrame(paneLegendFrame);resizeObserver.disconnect();chart.remove();};
+  const onCrosshairMove=param=>{scheduleDraw();scheduleReadoutUpdate(param);};chart.timeScale().subscribeVisibleLogicalRangeChange(()=>{scheduleDraw();saveViewport();});chart.subscribeCrosshairMove(onCrosshairMove);let paneSaveTimer=null;const schedulePaneSave=e=>{if(e?.target?.closest?.('.toolbar, .draw-rail, dialog, .menu-panel, .floating-mini-popover, .style-popover'))return;if(paneSaveTimer)clearTimeout(paneSaveTimer);paneSaveTimer=setTimeout(persistPaneFactors,60);};document.addEventListener('pointerup',schedulePaneSave,true);document.addEventListener('mouseup',schedulePaneSave,true);window.addEventListener('blur',persistPaneFactors);window.addEventListener('pagehide',persistPaneFactors);const resizeObserver=new ResizeObserver(resizeCanvas);resizeObserver.observe(host);resizeCanvas();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change',e=>{chart.applyOptions({layout:{textColor:e.matches?'#d7dce5':'#596273'}});pineRenderer.setDarkMode(e.matches);if(payload)render();});
 })();
 </script></body></html>
