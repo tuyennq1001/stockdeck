@@ -38,7 +38,7 @@ enum LightweightChartInterval: String, CaseIterable, Identifiable {
 
 enum LightweightChartRangePreset: String, CaseIterable {
     case oneDay = "1D", fiveDays = "5D"
-    case oneMonth = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", oneYear = "1Y"
+    case oneMonth = "1M", threeMonths = "3M", sixMonths = "6M", ytd = "YTD", oneYear = "1Y", twoYears = "2Y"
     case threeYears = "3Y", fiveYears = "5Y", sevenYears = "7Y", tenYears = "10Y", all = "All"
 
     var automaticInterval: LightweightChartInterval? {
@@ -46,7 +46,7 @@ enum LightweightChartRangePreset: String, CaseIterable {
         case .oneDay: .fiveMinutes
         case .fiveDays: .thirtyMinutes
         case .oneMonth, .threeMonths, .sixMonths, .ytd, .oneYear: .day
-        case .threeYears, .fiveYears: .week
+        case .twoYears, .threeYears, .fiveYears: .week
         case .sevenYears, .tenYears: .month
         case .all: nil
         }
@@ -57,9 +57,9 @@ enum LightweightChartRangePreset: String, CaseIterable {
         case .fiveMinutes: .oneDay
         case .thirtyMinutes: .fiveDays
         case .hour, .fourHours, .sixHours: .oneMonth
-        case .day: .threeMonths
-        case .week: .oneYear
-        case .month, .quarter, .halfYear, .year: .fiveYears
+        case .day: .oneYear
+        case .week: .twoYears
+        case .month, .quarter, .halfYear, .year: .sevenYears
         }
     }
 }
@@ -705,7 +705,7 @@ enum LightweightChartMath {
         for (name, period) in periods where period > 0 {
             let values: [Double?]
             let components = name.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-            if components.count == 3, components[0].hasPrefix("MA ") {
+            if components.count == 3 {
                 let source = components[2]
                 guard source == "close" || hasOHLC else {
                     lines[name] = []
@@ -742,7 +742,7 @@ enum LightweightChartMath {
                 }
             }
             let sourceBars: [LightweightBar]
-            if components.count == 3, components[0].hasPrefix("MA ") {
+            if components.count == 3 {
                 switch components[2] {
                 case "open": sourceBars = bars.filter { $0.open != nil }
                 case "high": sourceBars = bars.filter { $0.high != nil }
@@ -1093,7 +1093,7 @@ struct LightweightPriceChartView: View {
     var onManagePineScripts: () -> Void = {}
     var onCustomPineAction: (UUID, String) -> Void = { _, _ in }
     var onPineInput: (PineChartInput) -> Void = { _ in }
-    private static let allRanges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "7Y", "10Y", "All"]
+    private static let allRanges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "All"]
     @State private var interval: LightweightChartInterval = .day
     @State private var webView: WKWebView?
     @State private var state = "loading"
@@ -1126,6 +1126,7 @@ struct LightweightPriceChartView: View {
         case "6M": return calendar.date(byAdding: .month, value: -6, to: now)
         case "YTD": return calendar.date(from: calendar.dateComponents([.year], from: now))
         case "1Y": return calendar.date(byAdding: .year, value: -1, to: now)
+        case "2Y": return calendar.date(byAdding: .year, value: -2, to: now)
         case "3Y": return calendar.date(byAdding: .year, value: -3, to: now)
         case "5Y": return calendar.date(byAdding: .year, value: -5, to: now)
         case "7Y": return calendar.date(byAdding: .year, value: -7, to: now)
@@ -1164,7 +1165,7 @@ struct LightweightPriceChartView: View {
 
     private var availableRanges: [String] {
         Self.allRanges.filter { range in
-            !["3Y", "5Y", "7Y", "10Y"].contains(range) || hasHistoryCoverage(for: range)
+            !["2Y", "3Y", "5Y", "7Y", "10Y"].contains(range) || hasHistoryCoverage(for: range)
         }
     }
 
@@ -1445,10 +1446,14 @@ struct LightweightChartWebView: NSViewRepresentable {
             let availableRanges = parent.availableRanges
             let pineIndicators = parent.pineIndicators, pineMenuItems = parent.pineMenuItems
             let indicatorSettings = self.indicatorSettings
-            var periods = parent.surface == .superchart
-                ? ["MA 1|SMA|close": 20, "MA 2|SMA|close": 50, "MA 3|SMA|close": 100, "MA 4|SMA|close": 200]
-                : ["SMA 20": 20, "SMA 50": 50, "SMA 100": 100, "SMA 200": 200,
-                   "EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200]
+            var periods: [String: Int] = [
+                "SMA MA 1|SMA|close": 20, "SMA MA 2|SMA|close": 50, "SMA MA 3|SMA|close": 100, "SMA MA 4|SMA|close": 200,
+                "EMA MA 1|EMA|close": 20, "EMA MA 2|EMA|close": 50, "EMA MA 3|EMA|close": 100, "EMA MA 4|EMA|close": 200,
+                "MA 1|SMA|close": 20, "MA 2|SMA|close": 50, "MA 3|SMA|close": 100, "MA 4|SMA|close": 200,
+                "MA 1|EMA|close": 20, "MA 2|EMA|close": 50, "MA 3|EMA|close": 100, "MA 4|EMA|close": 200,
+                "SMA 20": 20, "SMA 50": 50, "SMA 100": 100, "SMA 200": 200,
+                "EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200
+            ]
             periods.merge(indicatorPeriods) { _, new in new }
             Task { [weak self, weak webView] in
                 let drawings = await LightweightChartDrawingStore.shared.load(symbol: symbol)

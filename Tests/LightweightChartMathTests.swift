@@ -191,9 +191,11 @@ final class LightweightChartMathTests: XCTestCase {
         XCTAssertEqual(LightweightChartRangePreset(rawValue: "5Y")?.automaticInterval, .week)
         XCTAssertEqual(LightweightChartRangePreset(rawValue: "10Y")?.automaticInterval, .month)
         XCTAssertEqual(LightweightChartRangePreset(rawValue: "1Y")?.automaticInterval, .day)
-        XCTAssertEqual(LightweightChartRangePreset.range(for: .day), .threeMonths)
-        XCTAssertEqual(LightweightChartRangePreset.range(for: .week), .oneYear)
-        XCTAssertEqual(LightweightChartRangePreset.range(for: .month), .fiveYears)
+        XCTAssertEqual(LightweightChartRangePreset(rawValue: "2Y")?.automaticInterval, .week)
+        XCTAssertEqual(LightweightChartRangePreset.range(for: .day), .oneYear)
+        XCTAssertEqual(LightweightChartRangePreset.range(for: .week), .twoYears)
+        XCTAssertEqual(LightweightChartRangePreset.range(for: .month), .sevenYears)
+        XCTAssertEqual(LightweightChartRangePreset.range(for: .year), .sevenYears)
         XCTAssertNil(LightweightChartRangePreset.all.automaticInterval)
     }
 

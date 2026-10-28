@@ -320,7 +320,7 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         ])
         let toolbarMenu = try await favoritesReload.evaluateJavaScript("!document.getElementById('pineScriptsMenu').hidden&&document.getElementById('pineScriptsMenu').previousElementSibling.id==='indicatorMenu'") as? Bool
         XCTAssertEqual(toolbarMenu, true, "Scripts belongs next to Indicators on the chart toolbar")
-        let activeMenuItem = try await favoritesReload.evaluateJavaScript("(()=>{const b=document.querySelector('[data-pine-script-id=\"\(attachedID.uuidString)\"]');return !b.disabled&&b.textContent==='✓ DCA'&&b.getAttribute('aria-pressed')==='true'&&b.title==='Gỡ khỏi chart'})()") as? Bool
+        let activeMenuItem = try await favoritesReload.evaluateJavaScript("(()=>{const b=document.querySelector('[data-pine-script-id=\"\(attachedID.uuidString)\"]');return !b.disabled&&b.textContent==='DCA'&&b.title==='Thêm DCA vào chart'})()") as? Bool
         XCTAssertEqual(activeMenuItem, true)
         let attachedBefore = messages.filter { $0["action"] as? String == "attach" }.count
         _ = try await favoritesReload.evaluateJavaScript("document.getElementById('pineScriptsMenu').open=true;const b=document.querySelector('[data-pine-script-id=\"\(installedID.uuidString)\"]');b.click();b.click();document.querySelector('[data-pine-manage]').click()")
@@ -331,24 +331,12 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         XCTAssertEqual(messages.last?["type"] as? String, "managePineScripts")
         XCTAssertEqual(routedAttachments, [installedID], "The native bridge must route menu selection to the workspace")
         XCTAssertEqual(managementOpens, 1)
-        let removesBefore = messages.filter { $0["action"] as? String == "remove" }.count
-        _ = try await favoritesReload.evaluateJavaScript("(()=>{const b=document.querySelector('[data-pine-script-id=\"\(attachedID.uuidString)\"]');b.click();b.click()})()")
-        try await Task.sleep(for: .milliseconds(30))
-        let removeMessages = messages.filter { $0["action"] as? String == "remove" }
-        XCTAssertEqual(removeMessages.count, removesBefore + 1, "Double clicks must not detach twice")
-        XCTAssertEqual(routedRemovals, [attachedID], "Unchecking must invoke the existing native removal action")
-        try await publishMenu([
-            PineScriptMenuItem(id: installedID, name: "Đường SMA <20>", attached: true),
-            PineScriptMenuItem(id: attachedID, name: "DCA", attached: false)
-        ])
-        let unchecked = try await favoritesReload.evaluateJavaScript("(()=>{const b=document.querySelector('[data-pine-script-id=\"\(attachedID.uuidString)\"]');return !b.disabled&&b.textContent==='DCA'&&b.getAttribute('aria-pressed')==='false'&&b.title==='Thêm vào chart'})()") as? Bool
-        XCTAssertEqual(unchecked, true, "Native state must clear the checkmark and allow reattachment")
         _ = try await favoritesReload.evaluateJavaScript("document.querySelector('[data-pine-script-id=\"\(attachedID.uuidString)\"]').click()")
         try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(routedAttachments, [installedID, attachedID], "An unchecked library script can be added again")
+        XCTAssertEqual(routedAttachments, [installedID, attachedID], "Selecting an indicator from the menu must always attach")
         native = nil
         try await publishMenu([PineScriptMenuItem(id: installedID, name: "Tên mới", attached: true)])
-        let renamedMenu = try await favoritesReload.evaluateJavaScript("document.querySelectorAll('[data-pine-script-id]').length===1&&document.querySelector('[data-pine-script-id]').textContent==='✓ Tên mới'") as? Bool
+        let renamedMenu = try await favoritesReload.evaluateJavaScript("document.querySelectorAll('[data-pine-script-id]').length===1&&document.querySelector('[data-pine-script-id]').textContent==='Tên mới'") as? Bool
         XCTAssertEqual(renamedMenu, true, "Renames and library deletion must refresh the menu")
         try await publishMenu([])
         let emptyMenu = try await favoritesReload.evaluateJavaScript("document.getElementById('pineScriptsOptions').textContent.includes('Chưa có script')&&!!document.querySelector('[data-pine-manage]')") as? Bool
@@ -403,11 +391,24 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         XCTAssertEqual(pineUnicode, pineIndicators[0].title, "UTF-8 must survive the native bridge")
         let missingRiskValue = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend .legend-value[title^=\"Risk without history:\"]')?.textContent") as? String
         XCTAssertEqual(missingRiskValue, "—", "An empty plot must remain visible as missing data, never disappear or become zero")
+        // Test pine-toggle on legend
+        _ = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend [data-action=pine-toggle]').click()")
+        let pineIsHidden = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend').classList.contains('is-hidden')") as? Bool
+        XCTAssertEqual(pineIsHidden, true, "Pine legend must be marked is-hidden when toggled off")
+
+        let pineHasEyeSlash = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend [data-action=pine-toggle]').innerHTML.includes('M9.88')") as? Bool
+        XCTAssertEqual(pineHasEyeSlash, true, "Pine legend toggle button must show eyeSlash icon when hidden")
+
+        _ = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend [data-action=pine-toggle]').click()")
+        let pineRestored = try await favoritesReload.evaluateJavaScript("!document.querySelector('.pine-legend').classList.contains('is-hidden')") as? Bool
+        XCTAssertEqual(pineRestored, true, "Pine legend must restore normal visibility when toggled on")
+
         _ = try await favoritesReload.evaluateJavaScript("document.querySelector('.pine-legend [data-action=pine-settings]').click();document.querySelector('.pine-legend [data-action=pine-remove]').click()")
         try await Task.sleep(for: .milliseconds(30))
-        XCTAssertEqual(messages.last?["type"] as? String, "customPineAction")
-        XCTAssertEqual(messages.last?["id"] as? String, pineIDs[0].uuidString)
-        XCTAssertEqual(messages.last?["action"] as? String, "remove")
+        let lastPineAction = messages.last { $0["type"] as? String == "customPineAction" }
+        XCTAssertEqual(lastPineAction?["type"] as? String, "customPineAction")
+        XCTAssertEqual(lastPineAction?["id"] as? String, pineIDs[0].uuidString)
+        XCTAssertEqual(lastPineAction?["action"] as? String, "remove")
         let remaining = try JSONEncoder().encode([pineIndicators[2]]).base64EncodedString()
         _ = try await favoritesReload.evaluateJavaScript("window.setCustomPineIndicators(window.decodeStockDeckJSON('\(remaining)'))")
         let panesAfterRemoval = try await favoritesReload.evaluateJavaScript("window.testChart.panes().length") as? Int
@@ -587,5 +588,153 @@ final class ChartWebPersistenceTests: XCTestCase, WKScriptMessageHandler {
         XCTAssertEqual(rsiResetAutoScale, true, "resetChartView must restore RSI autoScale to true")
         let priceResetAutoScale = try await web.evaluateJavaScript("window.testCandles()?.priceScale().options().autoScale") as? Bool
         XCTAssertEqual(priceResetAutoScale, true, "resetChartView must restore Price autoScale to true")
+    }
+
+    func testAsynchronousBarsLoadForcesResetAndFitsRange() async throws {
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("StockDeck/Resources")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("LightweightCharts"), to: directory.appendingPathComponent("LightweightCharts"))
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("CustomPineChart.js"), to: directory.appendingPathComponent("CustomPineChart.js"))
+
+        var html = try String(contentsOf: resources.appendingPathComponent("LightweightChartTrial.html"))
+        html = html.replacingOccurrences(of: "const chart=C.createChart", with: "const chart=window.testChart=C.createChart")
+        html = html.replacingOccurrences(of: "const surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';",
+            with: "let surface=window.stockDeckChartSurface==='superchart'?'superchart':'detail';window.testSetSurface=value=>{surface=value};")
+
+        let file = directory.appendingPathComponent("chart.html")
+        try html.write(to: file, atomically: true, encoding: .utf8)
+
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.userContentController.add(self, name: "chart")
+        config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckChartSurface='detail';window.onerror=(msg,url,line)=>window.webkit.messageHandlers.chart.postMessage({type:'jsError',message:msg+' at line '+line});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
+        let window = NSWindow(contentRect: web.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = web
+        window.orderFront(nil)
+        defer { window.orderOut(nil); config.userContentController.removeScriptMessageHandler(forName: "chart") }
+
+        web.loadFileURL(file, allowingReadAccessTo: directory)
+        for _ in 0..<100 {
+            if (try? await web.evaluateJavaScript("typeof window.setChartData==='function'")) as? Bool == true { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        // 1. Initial async state: empty bars
+        let emptyPayload = LightweightChartMath.payload(points: [], interval: .day, symbol: "VOO", currency: "USD", periods: [:], showsRangeControls: true)
+        let emptyJson = String(data: try JSONEncoder().encode(emptyPayload), encoding: .utf8)!
+        _ = try await web.evaluateJavaScript("window.setChartData(\(emptyJson));")
+
+        // 2. Data arrives asynchronously (100 bars)
+        let points = (0..<100).map { PricePoint(date: Date(timeIntervalSince1970: 1_700_000_000 + Double($0)*86400), close: 400 + Double($0 % 10)) }
+        let fullPayload = LightweightChartMath.payload(points: points, interval: .day, symbol: "VOO", currency: "USD", periods: [:], showsRangeControls: true)
+        let fullJson = String(data: try JSONEncoder().encode(fullPayload), encoding: .utf8)!
+        _ = try await web.evaluateJavaScript("window.setChartData(\(fullJson));")
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        // 3. Verify visible logical range spans the actual candles
+        let rangeResult = try await web.evaluateJavaScript("window.testChart.timeScale().getVisibleLogicalRange()")
+        let range = try XCTUnwrap(rangeResult as? [String: Double])
+        let to = try XCTUnwrap(range["to"])
+        let from = try XCTUnwrap(range["from"])
+
+        XCTAssertGreaterThan(to, 50.0, "Chart viewport must fit or restore the actual candles, not 0-bar range")
+        XCTAssertLessThan(from, 50.0, "Chart viewport start must span the data range")
+    }
+
+    func testDetailSurfaceSMAToggleDrawsMovingAverageSeries() async throws {
+        let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("StockDeck/Resources")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("LightweightCharts"), to: directory.appendingPathComponent("LightweightCharts"))
+        try FileManager.default.copyItem(at: resources.appendingPathComponent("CustomPineChart.js"), to: directory.appendingPathComponent("CustomPineChart.js"))
+
+        var html = try String(contentsOf: resources.appendingPathComponent("LightweightChartTrial.html"))
+        html = html.replacingOccurrences(of: "const chart=C.createChart", with: "const chart=window.testChart=C.createChart")
+
+        let file = directory.appendingPathComponent("chart.html")
+        try html.write(to: file, atomically: true, encoding: .utf8)
+
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .nonPersistent()
+        config.userContentController.add(self, name: "chart")
+        config.userContentController.addUserScript(WKUserScript(source: "window.stockDeckChartSurface='detail';window.onerror=(msg,url,line)=>window.webkit.messageHandlers.chart.postMessage({type:'jsError',message:msg+' at line '+line});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), configuration: config)
+        let window = NSWindow(contentRect: web.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = web
+        window.orderFront(nil)
+        defer { window.orderOut(nil); config.userContentController.removeScriptMessageHandler(forName: "chart") }
+
+        web.loadFileURL(file, allowingReadAccessTo: directory)
+        for _ in 0..<100 {
+            if (try? await web.evaluateJavaScript("typeof window.setChartData==='function'")) as? Bool == true { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        let points = (0..<100).map { PricePoint(date: Date(timeIntervalSince1970: 1_700_000_000 + Double($0)*86400), close: 400 + Double($0 % 10)) }
+        let periods: [String: Int] = [
+            "SMA MA 1|SMA|close": 20, "SMA MA 2|SMA|close": 50, "SMA MA 3|SMA|close": 100, "SMA MA 4|SMA|close": 200
+        ]
+        let payload = LightweightChartMath.payload(points: points, interval: .day, symbol: "VOO", currency: "USD", periods: periods, showsRangeControls: true)
+        let json = String(data: try JSONEncoder().encode(payload), encoding: .utf8)!
+        _ = try await web.evaluateJavaScript("window.setChartData(\(json));")
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        // Verify SMA indicator is present on legend by default in detail surface
+        let isSMAPresent = try await web.evaluateJavaScript("!!document.querySelector('[data-indicator=\"MA:SMA\"]')") as? Bool
+        XCTAssertEqual(isSMAPresent, true, "SMA must be present on legend by default in detail surface")
+
+        // Verify series count in main price pane includes the candles plus SMA series
+        let seriesCount = try await web.evaluateJavaScript("window.testChart.panes()[0].getSeries().length") as? Int
+        XCTAssertGreaterThan(seriesCount ?? 0, 1, "Main price pane must render SMA line series in detail surface")
+
+        // 1. Hide SMA via eye toggle button on legend
+        _ = try await web.evaluateJavaScript("document.querySelector('[data-indicator=\"MA:SMA\"] [data-action=\"toggle\"]').click()")
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let isHidden = try await web.evaluateJavaScript("document.querySelector('[data-indicator=\"MA:SMA\"]').classList.contains('is-hidden')") as? Bool
+        XCTAssertEqual(isHidden, true, "SMA legend row must have is-hidden class when toggled off")
+
+        let hasEyeSlash = try await web.evaluateJavaScript("document.querySelector('[data-indicator=\"MA:SMA\"] [data-action=\"toggle\"]').innerHTML.includes('M9.88')") as? Bool
+        XCTAssertEqual(hasEyeSlash, true, "Eye button must display eyeSlash icon when hidden")
+
+        let hiddenSeriesCount = try await web.evaluateJavaScript("window.testChart.panes()[0].getSeries().length") as? Int
+        XCTAssertEqual(hiddenSeriesCount, 3, "SMA lines must be removed when hidden (leaving 3 base series: candles, closeLine, volume)")
+
+        // 2. Show SMA again via eye toggle
+        _ = try await web.evaluateJavaScript("document.querySelector('[data-indicator=\"MA:SMA\"] [data-action=\"toggle\"]').click()")
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let restoredSeriesCount = try await web.evaluateJavaScript("window.testChart.panes()[0].getSeries().length") as? Int
+        XCTAssertEqual(restoredSeriesCount, 7, "All 4 SMA lines must be restored when shown (total 7 series)")
+
+        // 3. Delete SMA via delete button on legend
+        _ = try await web.evaluateJavaScript("document.querySelector('[data-indicator=\"MA:SMA\"] [data-action=\"delete\"]').click()")
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let isSMADeleted = try await web.evaluateJavaScript("!document.querySelector('[data-indicator=\"MA:SMA\"]')") as? Bool
+        XCTAssertEqual(isSMADeleted, true, "SMA row must be completely removed from legend after delete")
+
+        let deletedSeriesCount = try await web.evaluateJavaScript("window.testChart.panes()[0].getSeries().length") as? Int
+        XCTAssertEqual(deletedSeriesCount, 3, "SMA lines must be completely removed from chart after delete")
+
+        // 4. Re-add SMA from indicator menu
+        _ = try await web.evaluateJavaScript("document.querySelector('[data-ind=\"SMA\"]').click()")
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let readdedSMA = try await web.evaluateJavaScript("!!document.querySelector('[data-indicator=\"MA:SMA\"]')") as? Bool
+        XCTAssertEqual(readdedSMA, true, "Clicking SMA in indicator menu must re-add SMA to legend and chart")
+
+        let readdedSeriesCount = try await web.evaluateJavaScript("window.testChart.panes()[0].getSeries().length") as? Int
+        XCTAssertEqual(readdedSeriesCount, 7, "All 4 SMA lines must be drawn on chart after re-adding from menu")
     }
 }
