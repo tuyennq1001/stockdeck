@@ -209,7 +209,12 @@ struct WatchlistWideView: View {
             // One batched spark request fills every row's sparkline.
             await stockService.ensureSparklines(for: storageService.watchlist)
         }
-        .onChange(of: storageService.selectedWatchlistId) { _, _ in
+        .onChange(of: storageService.selectedWatchlistId) { _, newId in
+            if let newId {
+                viewModel.selectWatchlist(id: newId)
+            } else {
+                viewModel.setActive(true)
+            }
             selectedSymbols.removeAll()
             activeDetailSymbol = nil
             draggingSymbol = nil

@@ -171,7 +171,7 @@ struct PortfolioWindowView: View {
 
     @ViewBuilder
     private var workspaceContent: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             modeRail
             switch workspaceMode {
             case .superchart:
@@ -198,12 +198,11 @@ struct PortfolioWindowView: View {
                     .id("settings")
                     .transition(.opacity.combined(with: .offset(y: 6)))
             case .index:
-                NavigationSplitView {
+                HStack(spacing: 0) {
                     sidebar
-                        .navigationSplitViewColumnWidth(min: 224, ideal: 240, max: 280)
-                } detail: {
+                        .frame(width: 240)
                     detail
-                        .frame(minWidth: 640)
+                        .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
                         .id(String(describing: selection))
                         .transition(.opacity.combined(with: .offset(y: 6)))
                 }
@@ -231,8 +230,6 @@ struct PortfolioWindowView: View {
                 sidebarSummaryCache.setup(stockService: stockService, storageService: storageService)
                 await sidebarSummaryCache.refresh()
             }
-            .toolbar(removing: .sidebarToggle)
-            .toolbarBackground(.hidden, for: .windowToolbar)
             .frame(minWidth: 1000, minHeight: 680)
             .preferredColorScheme(storageService.appearanceMode.colorScheme)
             // Clicking an alert notification lands the user on the Alerts tab.
@@ -393,7 +390,7 @@ struct PortfolioWindowView: View {
     // MARK: - Sidebar
 
     private var modeRail: some View {
-        ZStack(alignment: .trailing) {
+        ZStack(alignment: .topTrailing) {
             Rectangle()
                 .fill(DS.hairline)
                 .frame(width: 1)
@@ -402,21 +399,24 @@ struct PortfolioWindowView: View {
                 ModeRailTabButton(mode: .index, selected: workspaceMode == .index) {
                     workspaceMode = .index
                 }
-                if workspaceMode != .index && workspaceMode != .superchart {
-                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
-                }
+                DS.ink.opacity(workspaceMode == .index || workspaceMode == .superchart ? 0 : 0.12)
+                    .frame(width: 12, height: 1)
+                    .padding(.vertical, 1)
+
                 ModeRailTabButton(mode: .superchart, selected: workspaceMode == .superchart) {
                     workspaceMode = .superchart
                 }
-                if workspaceMode != .superchart && workspaceMode != .news {
-                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
-                }
+                DS.ink.opacity(workspaceMode == .superchart || workspaceMode == .news ? 0 : 0.12)
+                    .frame(width: 12, height: 1)
+                    .padding(.vertical, 1)
+
                 ModeRailTabButton(mode: .news, selected: workspaceMode == .news) {
                     workspaceMode = .news
                 }
-                if workspaceMode != .news && workspaceMode != .aiInsight {
-                    DS.ink.opacity(0.12).frame(width: 12, height: 1).padding(.vertical, 1)
-                }
+                DS.ink.opacity(workspaceMode == .news || workspaceMode == .aiInsight ? 0 : 0.12)
+                    .frame(width: 12, height: 1)
+                    .padding(.vertical, 1)
+
                 ModeRailTabButton(mode: .aiInsight, selected: workspaceMode == .aiInsight) {
                     workspaceMode = .aiInsight
                 }
@@ -426,7 +426,7 @@ struct PortfolioWindowView: View {
                 }
                 .padding(.bottom, 14)
             }
-            .padding(.top, 14)
+            .padding(.top, 38)
             .padding(.leading, 4)
         }
         .frame(minWidth: 36, maxWidth: 36, maxHeight: .infinity)
@@ -443,7 +443,7 @@ struct PortfolioWindowView: View {
             Button(action: action) {
                 VerticalModeTabLayout {
                     Text(verbatim: mode.rawValue)
-                        .font(.inter(11, weight: selected ? .semibold : .medium, relativeTo: .caption))
+                        .font(.inter(11, weight: .semibold, relativeTo: .caption))
                         .fixedSize()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -507,10 +507,12 @@ struct PortfolioWindowView: View {
                         navNamespace: navNamespace,
                         onSelect: { wl in
                             storageService.selectedWatchlistId = wl.id
+                            watchlistViewModel.selectWatchlist(id: wl.id)
                             navigate(to: .watchlist)
                         },
                         onAddSymbol: { wl in
                             storageService.selectedWatchlistId = wl.id
+                            watchlistViewModel.selectWatchlist(id: wl.id)
                             showSearch = true
                         },
                         onRename: { wl in

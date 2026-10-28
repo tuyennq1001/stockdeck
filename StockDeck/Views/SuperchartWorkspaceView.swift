@@ -337,11 +337,17 @@ struct SuperchartWorkspaceView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.top, 24)
+        .padding(.bottom, 12)
+        .background(WindowDragArea())
     }
 
     private var symbolList: some View {
         VStack(spacing: 0) {
+            Color.clear
+                .frame(height: 28)
+                .background(WindowDragArea())
+
             Button {
                 if case .portfolio = source { sourcePickerShowsPortfolios = true }
                 else if source == .allPortfolios { sourcePickerShowsPortfolios = true }

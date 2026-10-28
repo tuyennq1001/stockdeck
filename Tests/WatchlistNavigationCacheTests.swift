@@ -70,6 +70,46 @@ final class WatchlistNavigationCacheTests: XCTestCase {
         storage.deleteWatchlist(id: secondWatchlist.id)
     }
 
+    func testSelectingWatchlistViaStorageServicePublishesImmediatelyToViewModel() async {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("watchlist-storage-switch-\(UUID().uuidString).json")
+        let storage = StorageService(fileURL: fileURL)
+        let service = StockService.shared
+        let firstSymbol = "SWITCH-A-\(UUID().uuidString)"
+        let secondSymbol = "SWITCH-B-\(UUID().uuidString)"
+        let firstWatchlistID = storage.currentWatchlist.id
+        storage.addToWatchlist(firstSymbol)
+        service.quotes[firstSymbol] = StockQuote(symbol: firstSymbol, name: "First", price: 10)
+
+        let viewModel = WatchlistViewModel()
+        viewModel.setup(stockService: service, storageService: storage)
+        await waitUntil { !viewModel.snapshot.isLoading && viewModel.rows.contains(where: { $0.symbol == firstSymbol }) }
+
+        let secondWatchlist = storage.createWatchlist(name: "Second")
+        storage.selectWatchlist(id: secondWatchlist.id)
+        storage.addToWatchlist(secondSymbol)
+        service.quotes[secondSymbol] = StockQuote(symbol: secondSymbol, name: "Second", price: 20)
+        await waitUntil { !viewModel.snapshot.isLoading && viewModel.rows.contains(where: { $0.symbol == secondSymbol }) }
+
+        // Now switch via storageService.selectWatchlist(id:) or selectedWatchlistId directly
+        storage.selectWatchlist(id: firstWatchlistID)
+        await waitUntil { viewModel.snapshot.scope == firstWatchlistID && viewModel.rows.map(\.symbol) == [firstSymbol] }
+
+        XCTAssertEqual(viewModel.snapshot.scope, firstWatchlistID)
+        XCTAssertEqual(viewModel.rows.map(\.symbol), [firstSymbol])
+
+        storage.selectedWatchlistId = secondWatchlist.id
+        await waitUntil { viewModel.snapshot.scope == secondWatchlist.id && viewModel.rows.map(\.symbol) == [secondSymbol] }
+
+        XCTAssertEqual(viewModel.snapshot.scope, secondWatchlist.id)
+        XCTAssertEqual(viewModel.rows.map(\.symbol), [secondSymbol])
+
+        viewModel.setActive(false)
+        service.quotes[firstSymbol] = nil
+        service.quotes[secondSymbol] = nil
+        storage.deleteWatchlist(id: secondWatchlist.id)
+    }
+
     func testSetupReactivatesPersistentModelWithCachedRowsImmediately() async {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("watchlist-tab-cache-\(UUID().uuidString).json")
