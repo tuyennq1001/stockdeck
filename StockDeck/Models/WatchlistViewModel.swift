@@ -89,9 +89,15 @@ final class WatchlistViewModel {
             .sink { [weak self] _ in self?.invalidate() }
             .store(in: &cancellables)
 
+        // Watchlist selection should immediately switch snapshots without delay.
+        storageService.$selectedWatchlistId
+            .sink { [weak self] _ in self?.invalidate() }
+            .store(in: &cancellables)
+
         // Only storage fields used to build rows or choose their order invalidate
         // the snapshot; view-only settings remain local to the view.
         Publishers.MergeMany([
+            storageService.$selectedWatchlistId.map { _ in () }.eraseToAnyPublisher(),
             storageService.$watchlists.map { _ in () }.eraseToAnyPublisher(),
             storageService.$stockTargets.map { _ in () }.eraseToAnyPublisher(),
             storageService.$symbolType.map { _ in () }.eraseToAnyPublisher(),
