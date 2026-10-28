@@ -145,7 +145,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // still hide it later from Control Center.
         let statusItemName = "StockDeck.MainStatusItem.v5"
         let statusItemVisibleKey = "NSStatusItem VisibleCC \(statusItemName)"
+        let standardVisibleKey = "NSStatusItem Visible \(statusItemName)"
         UserDefaults.standard.set(true, forKey: statusItemVisibleKey)
+        UserDefaults.standard.set(true, forKey: standardVisibleKey)
         statusItem?.autosaveName = statusItemName
         statusItem?.isVisible = true
 
@@ -538,6 +540,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateMenuBarTitle() {
+        statusItem?.isVisible = true
         let displayMode = storageService.menuBarDisplay
 
         if displayMode == "ticker" || displayMode == "tickerPortfolio" {
@@ -546,14 +549,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             stopTickerTimer()
         }
 
+        let image = menuBarImage
+        let button = statusItem?.button
+
         // Icon only
         if displayMode == "icon" {
-            statusItem?.button?.attributedTitle = NSAttributedString(string: "")
-            let button = statusItem?.button
-            let image = menuBarImage
+            button?.attributedTitle = NSAttributedString(string: "")
             button?.image = image
+            button?.imagePosition = .imageOnly
             button?.title = image == nil ? " SD" : ""
-            statusItem?.isVisible = true
             return
         }
 
@@ -742,14 +746,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             color = totalPnl >= 0 ? upColor : downColor
         }
 
-        statusItem?.button?.image = nil
-        statusItem?.button?.title = title
+        button?.image = image
+        button?.imagePosition = image != nil ? .imageLeading : .noImage
+        button?.title = title
 
         let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
             .font: FontRegistration.monospacedDigitsFont(size: menuBarFontSize, weight: .medium)
         ]
-        statusItem?.button?.attributedTitle = NSAttributedString(string: title, attributes: attrs)
+        button?.attributedTitle = NSAttributedString(string: title, attributes: attrs)
     }
 
     @objc private func handlePopoverClosed() {

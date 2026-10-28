@@ -96,11 +96,11 @@ if [ "${SD_BUILD_ONLY:-0}" = "1" ]; then
 fi
 
 echo "Killing old StockDeck process instances..."
-pkill -15 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
-pkill -15 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
+killall -15 StockDeck 2>/dev/null || true
+pkill -15 -f "StockDeck" 2>/dev/null || true
 sleep 0.3
-pkill -9 -f "StockDeck-Dev\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
-pkill -9 -f "StockDeck\.app/Contents/MacOS/StockDeck" 2>/dev/null || true
+killall -9 StockDeck 2>/dev/null || true
+pkill -9 -f "StockDeck" 2>/dev/null || true
 sleep 0.2
 
 echo "Launching StockDeck DEV..."
