@@ -395,8 +395,8 @@ final class WatchlistViewModel {
             let q = inputs.quotes[symbol]
             let rate = q.flatMap { inputs.priceRates[$0.currency] } ?? 1.0
             let ext: Double? = q.flatMap { $0.isExtendedHours ? $0.effectivePrice * rate : nil }
-            let pHist = inputs.priceHistory[symbol] ?? []
-            let wHist = inputs.history[symbol] ?? []
+            let pHist = PriceHistory.sanitizeSplitAnomalies(inputs.priceHistory[symbol] ?? [])
+            let wHist = PriceHistory.sanitizeSplitAnomalies(inputs.history[symbol] ?? [])
             let history: [PricePoint]
             if pHist.isEmpty {
                 history = wHist
@@ -413,7 +413,7 @@ final class WatchlistViewModel {
                     history = pHist.count >= wHist.count ? pHist : wHist
                 }
             }
-            let allTimeHistory = inputs.historyMax[symbol] ?? []
+            let allTimeHistory = PriceHistory.sanitizeSplitAnomalies(inputs.historyMax[symbol] ?? [])
             
             func series(covering boundary: Date) -> [PricePoint] {
                 if let first = history.first?.date, first <= boundary {
