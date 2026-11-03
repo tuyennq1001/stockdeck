@@ -6,24 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.25</title>
-            <pubDate>Wed, 28 Oct 2026 13:03:10 +0900</pubDate>
-            <sparkle:version>28</sparkle:version>
-            <sparkle:shortVersionString>1.1.25</sparkle:shortVersionString>
+            <title>Version 1.1.26</title>
+            <pubDate>Wed, 04 Nov 2026 06:56:16 +0900</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>1.1.26</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.25</h2>
+<h2>What's New in StockDeck 1.1.26</h2>
 <ul>
-    <li><strong>Window Titlebar & Traffic Lights Stability:</strong> Fixed titlebar layout and traffic lights jumping when switching between Index and other workspace tabs.</li>
-    <li><strong>Mode Rail Alignment:</strong> Locked button geometry and divider spacing in the mode rail, ensuring zero layout shift for "Index" and "Superchart" tabs.</li>
-    <li><strong>Instant Watchlist Switching:</strong> Fixed symbol table sync when switching between watchlists from the sidebar.</li>
-    <li><strong>Superchart Header Clearance:</strong> Added top clearance in the Superchart symbol list to prevent overlap with macOS window control traffic lights.</li>
+    <li><strong>Split Anomaly Sanitization:</strong> Automatically detects and filters unadjusted split cliffs and double-adjusted split pockets from historical chart data (e.g. 1489.T ATH calculation).</li>
+    <li><strong>Cross-Market Cache Self-Healing:</strong> Automatically detects and purges stale history cache when a severe price scale mismatch occurs with the live quote (e.g. US NET vs HNX NET).</li>
+    <li><strong>Watchlist ATH & Metric Accuracy:</strong> Ensures From ATH, 3M, 6M, and YTD performance metrics consistently reflect clean single-market price series.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.25/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.26/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="4xXF8GIHmfXdZwG6c+ML5DJ7gLRiUuTBxh4W+DkNPxRsXCWmYRRJibxW4TYH3cayi7Fcb5X6SpntpWrmXrulBw=="
-                       length="11152576"/>
+                       sparkle:edSignature="ZbpbGlT5vGTGlvd6Z/IUDwbE/wq8oEyb5FnyWvD+it7mfKi5BDHzxa9FVciipOnhIRqASpmJrbuVLNgigLKNBQ=="
+                       length="11159495"/>
         </item>
     </channel>
 </rss>
