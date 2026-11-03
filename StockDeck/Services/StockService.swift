@@ -663,6 +663,52 @@ class StockService: ObservableObject {
                 self.quotes[alias.uppercased()] = quote
             }
         }
+        purgeScaleMismatchedHistoryIfNeeded(for: symbols)
+    }
+
+    /// Automatically purges and refetches history for symbols whose cached history
+    /// exhibits a severe price scale mismatch relative to the live quote
+    /// (e.g. cross-market ticker collisions like US NET vs HNX NET).
+    private func purgeScaleMismatchedHistoryIfNeeded(for symbols: [String]) {
+        var purgedSymbols: [String] = []
+        for sym in symbols {
+            guard let q = quotes[sym] ?? quotes[sym.uppercased()], q.price > 0 else { continue }
+            let daily = priceHistory[sym] ?? priceHistory[sym.uppercased()] ?? []
+            let spark = watchlistHistory[sym] ?? watchlistHistory[sym.uppercased()] ?? []
+            let maxPts = priceHistoryMax[sym] ?? priceHistoryMax[sym.uppercased()] ?? []
+
+            let lastDaily = daily.last?.close ?? 0
+            let lastSpark = spark.last?.close ?? 0
+            let lastMax = maxPts.last?.close ?? 0
+
+            let dailyMismatch = lastDaily > 0 && (lastDaily / q.price > 3.0 || lastDaily / q.price < 0.33)
+            let sparkMismatch = lastSpark > 0 && (lastSpark / q.price > 3.0 || lastSpark / q.price < 0.33)
+            let maxMismatch = lastMax > 0 && (lastMax / q.price > 3.0 || lastMax / q.price < 0.33)
+
+            if dailyMismatch || sparkMismatch || maxMismatch {
+                priceHistory.removeValue(forKey: sym)
+                priceHistory.removeValue(forKey: sym.uppercased())
+                watchlistHistory.removeValue(forKey: sym)
+                watchlistHistory.removeValue(forKey: sym.uppercased())
+                priceHistoryMax.removeValue(forKey: sym)
+                priceHistoryMax.removeValue(forKey: sym.uppercased())
+                priceHistoryFetchedAt.removeValue(forKey: sym)
+                priceHistoryFetchedAt.removeValue(forKey: sym.uppercased())
+                priceHistoryMaxAt.removeValue(forKey: sym)
+                priceHistoryMaxAt.removeValue(forKey: sym.uppercased())
+                purgedSymbols.append(sym)
+            }
+        }
+        if !purgedSymbols.isEmpty {
+            scheduleHistoryCacheSave()
+            Task { [weak self] in
+                await self?.loadSparklines(for: purgedSymbols, force: true)
+                for sym in purgedSymbols {
+                    await self?.ensurePriceHistory(for: sym)
+                    await self?.ensurePriceHistoryMax(for: sym)
+                }
+            }
+        }
     }
 
     nonisolated private static let symbolAliases: [String: String] = [
@@ -1813,28 +1859,53 @@ class StockService: ObservableObject {
         guard let decoded else { return }
         let now = Date()
         for (key, entry) in decoded where !entry.points.isEmpty && entry.fetchedAt <= now {
-            let hasVol = entry.points.contains(where: { ($0.volume ?? 0) > 0 })
+            var pts = PriceHistory.sanitizeSplitAnomalies(entry.points)
+            // Guard against single-bar high/open split anomalies in cached points:
+            pts = pts.map { pt in
+                var h = pt.high
+                var o = pt.open
+                var l = pt.low
+                if let high = h, high > pt.close * 3.0 { h = pt.close }
+                if let open = o, open > pt.close * 3.0 { o = pt.close }
+                if let low = l, low > 0, low < pt.close * 0.25 { l = pt.close }
+                return PricePoint(date: pt.date, close: pt.close, open: o, high: h, low: l, volume: pt.volume)
+            }
+            let hasVol = pts.contains(where: { ($0.volume ?? 0) > 0 })
             if key.hasPrefix("daily:"), priceHistoryFetchedAt[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
-                priceHistory[symbol] = entry.points
+                priceHistory[symbol] = pts
                 if hasVol || isJapaneseMutualFund(symbol) {
                     priceHistoryFetchedAt[symbol] = entry.fetchedAt
                 }
             } else if key.hasPrefix("max:"), priceHistoryMaxAt[String(key.dropFirst(4))] == nil {
                 let symbol = String(key.dropFirst(4))
-                priceHistoryMax[symbol] = entry.points
+                priceHistoryMax[symbol] = pts
                 if hasVol || isJapaneseMutualFund(symbol) {
                     priceHistoryMaxAt[symbol] = entry.fetchedAt
                 }
             } else if key.hasPrefix("spark:"), watchlistHistory[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
-                watchlistHistory[symbol] = entry.points
+                watchlistHistory[symbol] = pts
             }
         }
 
         // Self-heal: ensure watchlistHistory and priceHistory are in sync with the freshest available series
         var didHeal = false
         for (symbol, daily) in priceHistory where !daily.isEmpty {
+            // Check scale mismatch against existing quote if available
+            if let q = quotes[symbol] ?? quotes[symbol.uppercased()], q.price > 0, let lastClose = daily.last?.close, lastClose > 0 {
+                let ratio = lastClose / q.price
+                if ratio > 3.0 || ratio < 0.33 {
+                    priceHistory.removeValue(forKey: symbol)
+                    watchlistHistory.removeValue(forKey: symbol)
+                    priceHistoryMax.removeValue(forKey: symbol)
+                    priceHistoryFetchedAt.removeValue(forKey: symbol)
+                    priceHistoryMaxAt.removeValue(forKey: symbol)
+                    didHeal = true
+                    continue
+                }
+            }
+
             let spark = watchlistHistory[symbol] ?? []
             let dailyLast = daily.last?.date ?? .distantPast
             let sparkLast = spark.last?.date ?? .distantPast
@@ -2491,12 +2562,21 @@ class StockService: ObservableObject {
         if let at = priceHistoryFetchedAt[symbol],
            Date().timeIntervalSince(at) < 21600,
            let points = priceHistory[symbol], !points.isEmpty {
+            let scaleMismatch: Bool
+            if let q = quotes[symbol] ?? quotes[symbol.uppercased()], q.price > 0, let last = points.last?.close, last > 0 {
+                let ratio = last / q.price
+                scaleMismatch = ratio > 3.0 || ratio < 0.33
+            } else {
+                scaleMismatch = false
+            }
             // Self-healing: if cached Vietnamese stock history only has ~1 year (from previous version <= 300 points),
             // bypass cache to upgrade to the full 10-year history
             if isVietnameseStock(symbol) && points.count <= 300 {
                 // proceed to re-fetch
             } else if !isJapaneseMutualFund(symbol) && !points.contains(where: { ($0.volume ?? 0) > 0 }) {
                 // proceed to re-fetch to upgrade cached points with full OHLCV and volume
+            } else if scaleMismatch {
+                // proceed to re-fetch to purge scale-mismatched or cross-market contaminated history
             } else {
                 return
             }
@@ -2668,7 +2748,16 @@ class StockService: ObservableObject {
         if let at = priceHistoryMaxAt[symbol],
            Date().timeIntervalSince(at) < 21600,
            let points = priceHistoryMax[symbol], !points.isEmpty {
-            return
+            let scaleMismatch: Bool
+            if let q = quotes[symbol] ?? quotes[symbol.uppercased()], q.price > 0, let last = points.last?.close, last > 0 {
+                let ratio = last / q.price
+                scaleMismatch = ratio > 3.0 || ratio < 0.33
+            } else {
+                scaleMismatch = false
+            }
+            if !scaleMismatch {
+                return
+            }
         }
 
         if isJapaneseMutualFund(symbol) {
@@ -2712,11 +2801,20 @@ class StockService: ObservableObject {
         // interval=1mo&range=max request when the daily series is missing.
         await ensurePriceHistory(for: symbol)
         if let daily = priceHistory[symbol], !daily.isEmpty {
-            let monthly = PriceHistory.deriveMonthly(from: daily)
-            if !monthly.isEmpty {
-                priceHistoryMax[symbol] = monthly
-                priceHistoryMaxAt[symbol] = Date()
-                return
+            let scaleMismatch: Bool
+            if let q = quotes[symbol] ?? quotes[symbol.uppercased()], q.price > 0, let last = daily.last?.close, last > 0 {
+                let ratio = last / q.price
+                scaleMismatch = ratio > 3.0 || ratio < 0.33
+            } else {
+                scaleMismatch = false
+            }
+            if !scaleMismatch {
+                let monthly = PriceHistory.deriveMonthly(from: daily)
+                if !monthly.isEmpty {
+                    priceHistoryMax[symbol] = monthly
+                    priceHistoryMaxAt[symbol] = Date()
+                    return
+                }
             }
         }
 
@@ -3006,17 +3104,31 @@ class StockService: ObservableObject {
                     for (symbol, points) in parsed where !points.isEmpty {
                         let existingWatchlist = watchlistHistory[symbol] ?? []
                         let existingHasVol = existingWatchlist.contains(where: { ($0.volume ?? 0) > 0 })
-                        if !existingHasVol || existingWatchlist.isEmpty {
+
+                        let scaleMismatch: Bool
+                        if let oldLast = existingWatchlist.last?.close, let newLast = points.last?.close, oldLast > 0, newLast > 0 {
+                            let ratio = oldLast / newLast
+                            scaleMismatch = ratio > 3.0 || ratio < 0.33
+                        } else {
+                            scaleMismatch = false
+                        }
+
+                        if !existingHasVol || existingWatchlist.isEmpty || scaleMismatch {
                             watchlistHistory[symbol] = points
                         }
-                        if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
+                        if scaleMismatch || priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
                             priceHistory[symbol] = points
-                            // Do not stamp priceHistoryFetchedAt from sparkline: spark data lacks OHLC and volume.
+                            if scaleMismatch {
+                                priceHistoryFetchedAt.removeValue(forKey: symbol)
+                            }
                         }
-                        if priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
+                        if scaleMismatch || priceHistoryMax[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true) {
                             let monthly = PriceHistory.deriveMonthly(from: points)
                             if !monthly.isEmpty {
                                 priceHistoryMax[symbol] = monthly
+                                if scaleMismatch {
+                                    priceHistoryMaxAt.removeValue(forKey: symbol)
+                                }
                             }
                         }
                     }

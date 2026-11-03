@@ -76,7 +76,109 @@ enum PriceHistory {
             result.append(PricePoint(date: date, close: close, open: open, high: high, low: low, volume: volume))
         }
 
-        return result.sorted { $0.date < $1.date }
+        let sorted = result.sorted { $0.date < $1.date }
+        return sanitizeSplitAnomalies(sorted)
+    }
+
+    /// Sanitizes multi-bar split anomalies common in Yahoo Finance aggregate data:
+    /// 1. Leading unadjusted split segment (e.g. first 1-5 bars missed split adjustment and remain 10x-30x higher or lower than the rest).
+    /// 2. Isolated pockets (1-3 bars) around split dates that were double-divided or missed adjustment before reverting.
+    static func sanitizeSplitAnomalies(_ points: [PricePoint]) -> [PricePoint] {
+        let n = points.count
+        guard n >= 4 else { return points }
+
+        var result = points
+
+        // 1. Check leading cliff (first k bars, 1 <= k <= 5, with unadjusted split)
+        let maxK = min(6, n - 2)
+        for k in 1..<maxK {
+            let nextSlice = result[k..<min(k + 5, n)].map(\.close).filter { $0.isFinite && $0 > 0 }
+            guard nextSlice.count >= 2 else { continue }
+            let baseline = nextSlice.reduce(0.0, +) / Double(nextSlice.count)
+            guard baseline > 0 else { continue }
+
+            let leadSlice = result[0..<k].map(\.close).filter { $0.isFinite && $0 > 0 }
+            guard leadSlice.count == k else { continue }
+
+            let lastLead = leadSlice[k - 1]
+            let ratio = lastLead / baseline
+            if ratio > 3.0 || ratio < 0.33 {
+                let allMatch = leadSlice.allSatisfy { c in
+                    ratio > 3.0 ? (c / baseline > 3.0) : (c / baseline < 0.33)
+                }
+                let nextMin = nextSlice.min() ?? baseline
+                let nextMax = nextSlice.max() ?? baseline
+                let nextStable = nextMin > 0 && (nextMax / nextMin < 2.0)
+                if allMatch && nextStable {
+                    let kClose = result[k].close
+                    guard kClose > 0 else { continue }
+                    let factor = lastLead / kClose
+                    guard factor.isFinite && factor > 0 else { continue }
+                    for j in 0..<k {
+                        let pt = result[j]
+                        let c = pt.close / factor
+                        let o = pt.open.map { $0 / factor }
+                        let h = pt.high.map { $0 / factor }
+                        let l = pt.low.map { $0 / factor }
+                        result[j] = PricePoint(date: pt.date, close: c, open: o, high: h, low: l, volume: pt.volume)
+                    }
+                    break
+                }
+            }
+        }
+
+        // 2. Check isolated pockets (1 to 3 bars) that jump or crash and immediately revert
+        var i = 1
+        while i < result.count - 2 {
+            let prevClose = result[i - 1].close
+            guard prevClose.isFinite, prevClose > 0 else {
+                i += 1
+                continue
+            }
+
+            var foundPocket = false
+            for plen in [1, 2, 3] {
+                guard i + plen < result.count else { continue }
+                let pocketCloses = result[i..<(i + plen)].map(\.close)
+                guard pocketCloses.allSatisfy({ $0.isFinite && $0 > 0 }) else { continue }
+                let nextClose = result[i + plen].close
+                guard nextClose.isFinite, nextClose > 0 else { continue }
+
+                // Surrounding baseline bars before & after pocket must be reasonably consistent
+                let minNeighbor = min(prevClose, nextClose)
+                let maxNeighbor = max(prevClose, nextClose)
+                guard minNeighbor > 0, (maxNeighbor / minNeighbor) < 1.75 else { continue }
+
+                let baseline = (prevClose + nextClose) / 2.0
+                guard baseline > 0 else { continue }
+                let ratios = pocketCloses.map { $0 / baseline }
+
+                let allHigh = ratios.allSatisfy { $0 > 3.0 }
+                let allLow = ratios.allSatisfy { $0 < 0.33 }
+                if allHigh || allLow {
+                    let avgRatio = ratios.reduce(0.0, +) / Double(ratios.count)
+                    guard avgRatio.isFinite && avgRatio > 0 else { continue }
+                    for p in 0..<plen {
+                        let idx = i + p
+                        let pt = result[idx]
+                        let c = pt.close / avgRatio
+                        let o = pt.open.map { $0 / avgRatio }
+                        let h = pt.high.map { $0 / avgRatio }
+                        let l = pt.low.map { $0 / avgRatio }
+                        result[idx] = PricePoint(date: pt.date, close: c, open: o, high: h, low: l, volume: pt.volume)
+                    }
+                    i += plen
+                    foundPocket = true
+                    break
+                }
+            }
+
+            if !foundPocket {
+                i += 1
+            }
+        }
+
+        return result
     }
 
     /// Percentage move from the market close at (or immediately before) a
@@ -109,7 +211,8 @@ enum PriceHistory {
     /// Preserves the true monthly open (first day), high (monthly max),
     /// low (monthly min), close (last day), and total volume.
     static func deriveMonthly(from daily: [PricePoint], calendar: Calendar = .current) -> [PricePoint] {
-        let sorted = daily.sorted { $0.date < $1.date }
+        let sanitized = sanitizeSplitAnomalies(daily)
+        let sorted = sanitized.sorted { $0.date < $1.date }
         struct MonthlyBucket {
             var open: Double?
             var high: Double
