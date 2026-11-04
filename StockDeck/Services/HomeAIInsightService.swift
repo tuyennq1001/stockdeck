@@ -8,7 +8,7 @@ final class HomeAIInsightService {
 
     private init() {}
 
-    struct SymbolCandidate {
+    struct SymbolCandidate: Equatable, Sendable {
         let symbol: String
         let name: String
         let price: Double
@@ -120,6 +120,49 @@ final class HomeAIInsightService {
             "GLXY", "MSTU", "MSTX", "CONL"
         ]
         return proxies.contains(clean)
+    }
+
+    /// Selects a balanced set of top mover candidates across market categories:
+    /// - US: top 4 movers (to form a balanced 2x2 grid on desktop without wasted space)
+    /// - JP: top 2 movers (if present)
+    /// - VN: top 2 movers (if present)
+    /// - Crypto: BTC + top 1 altcoin (if present)
+    nonisolated static func selectMovers(
+        stockCandidates: [SymbolCandidate],
+        cryptoCandidates: [SymbolCandidate]
+    ) -> [SymbolCandidate] {
+        let usStocks = stockCandidates.filter { $0.marketCategory == .us }
+            .sorted { abs($0.changePercent) > abs($1.changePercent) }
+        let jpStocks = stockCandidates.filter { $0.marketCategory == .japan }
+            .sorted { abs($0.changePercent) > abs($1.changePercent) }
+        let vnStocks = stockCandidates.filter { $0.marketCategory == .vietnam }
+            .sorted { abs($0.changePercent) > abs($1.changePercent) }
+
+        var sortedCrypto: [SymbolCandidate] = []
+        if let btc = cryptoCandidates.first(where: { $0.symbol.uppercased() == "BTC" }) {
+            sortedCrypto.append(btc)
+        }
+        let altcoins = cryptoCandidates.filter { $0.symbol.uppercased() != "BTC" }
+            .sorted { abs($0.changePercent) > abs($1.changePercent) }
+        sortedCrypto.append(contentsOf: altcoins)
+
+        var selectedMovers: [SymbolCandidate] = []
+        selectedMovers.append(contentsOf: usStocks.prefix(4))
+        selectedMovers.append(contentsOf: jpStocks.prefix(2))
+        selectedMovers.append(contentsOf: vnStocks.prefix(2))
+
+        if let btc = sortedCrypto.first(where: { $0.symbol.uppercased() == "BTC" }) {
+            selectedMovers.append(btc)
+        }
+        if let topAlt = sortedCrypto.first(where: { $0.symbol.uppercased() != "BTC" }) {
+            selectedMovers.append(topAlt)
+        }
+
+        if selectedMovers.isEmpty {
+            selectedMovers = Array((stockCandidates + cryptoCandidates).prefix(6))
+        }
+
+        return selectedMovers
     }
 
     struct MultiDayTrend {
@@ -276,44 +319,11 @@ final class HomeAIInsightService {
             ))
         }
 
-        // Group stocks by market category
-        let usStocks = stockCandidates.filter { $0.marketCategory == .us }
-            .sorted { abs($0.changePercent) > abs($1.changePercent) }
-        let jpStocks = stockCandidates.filter { $0.marketCategory == .japan }
-            .sorted { abs($0.changePercent) > abs($1.changePercent) }
-        let vnStocks = stockCandidates.filter { $0.marketCategory == .vietnam }
-            .sorted { abs($0.changePercent) > abs($1.changePercent) }
-
-        // Sort crypto: BTC first, then remaining altcoins sorted by abs(changePercent) descending
-        var sortedCrypto: [SymbolCandidate] = []
-        if let btc = cryptoCandidates.first(where: { $0.symbol.uppercased() == "BTC" }) {
-            sortedCrypto.append(btc)
-        }
-        let altcoins = cryptoCandidates.filter { $0.symbol.uppercased() != "BTC" }
-            .sorted { abs($0.changePercent) > abs($1.changePercent) }
-        sortedCrypto.append(contentsOf: altcoins)
-
-        // Balanced selection per market section:
-        // - US: top 2-3 movers
-        // - JP: top 1-2 movers (if present)
-        // - VN: top 1-2 movers (if present)
-        // - Crypto: BTC + top 1 altcoin (if present)
-        var selectedMovers: [SymbolCandidate] = []
-        selectedMovers.append(contentsOf: usStocks.prefix(3))
-        selectedMovers.append(contentsOf: jpStocks.prefix(2))
-        selectedMovers.append(contentsOf: vnStocks.prefix(2))
-
-        if let btc = sortedCrypto.first(where: { $0.symbol.uppercased() == "BTC" }) {
-            selectedMovers.append(btc)
-        }
-        if let topAlt = sortedCrypto.first(where: { $0.symbol.uppercased() != "BTC" }) {
-            selectedMovers.append(topAlt)
-        }
-
-        // If total is empty (fallback), take whatever candidates exist
-        if selectedMovers.isEmpty {
-            selectedMovers = Array((stockCandidates + cryptoCandidates).prefix(5))
-        }
+        // Select movers across market categories (US top 4 for 2x2 grid, JP/VN top 2, Crypto BTC + 1 alt)
+        let selectedMovers = Self.selectMovers(
+            stockCandidates: stockCandidates,
+            cryptoCandidates: cryptoCandidates
+        )
 
         // 3. Fetch benchmark quotes for active markets to provide macro context
         let activeMarkets = Set(selectedMovers.map(\.marketCategory))

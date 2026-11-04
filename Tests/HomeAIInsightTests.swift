@@ -541,4 +541,76 @@ final class HomeAIInsightTests: XCTestCase {
         XCTAssertEqual(decoded.language, "vi")
         XCTAssertEqual(decoded.portfolioSummary, insight.portfolioSummary)
     }
+
+    func testSelectMoversPicksTopFourUSStocks() {
+        let usCandidates: [HomeAIInsightService.SymbolCandidate] = [
+            .init(symbol: "^VIX", name: "VIX", price: 17.52, changePercent: -15.88, currency: "USD", marketCategory: .us),
+            .init(symbol: "IREN", name: "IREN Limited", price: 21.27, changePercent: -13.04, currency: "USD", marketCategory: .us),
+            .init(symbol: "SOXL", name: "SOXL", price: 64.63, changePercent: -11.61, currency: "USD", marketCategory: .us),
+            .init(symbol: "NVDA", name: "Nvidia", price: 140.0, changePercent: 9.50, currency: "USD", marketCategory: .us),
+            .init(symbol: "AAPL", name: "Apple", price: 230.0, changePercent: 1.20, currency: "USD", marketCategory: .us),
+            .init(symbol: "MSFT", name: "Microsoft", price: 420.0, changePercent: -0.80, currency: "USD", marketCategory: .us),
+        ]
+
+        let selected = HomeAIInsightService.selectMovers(
+            stockCandidates: usCandidates,
+            cryptoCandidates: []
+        )
+
+        XCTAssertEqual(selected.count, 4, "US candidates should take top 4 movers to form a 2x2 grid")
+        XCTAssertEqual(selected[0].symbol, "^VIX")
+        XCTAssertEqual(selected[1].symbol, "IREN")
+        XCTAssertEqual(selected[2].symbol, "SOXL")
+        XCTAssertEqual(selected[3].symbol, "NVDA")
+    }
+
+    func testSelectMoversWithFewerThanFourUSStocks() {
+        let usCandidates: [HomeAIInsightService.SymbolCandidate] = [
+            .init(symbol: "^VIX", name: "VIX", price: 17.52, changePercent: -15.88, currency: "USD", marketCategory: .us),
+            .init(symbol: "IREN", name: "IREN Limited", price: 21.27, changePercent: -13.04, currency: "USD", marketCategory: .us),
+            .init(symbol: "SOXL", name: "SOXL", price: 64.63, changePercent: -11.61, currency: "USD", marketCategory: .us),
+        ]
+
+        let selected = HomeAIInsightService.selectMovers(
+            stockCandidates: usCandidates,
+            cryptoCandidates: []
+        )
+
+        XCTAssertEqual(selected.count, 3, "When fewer than 4 stocks exist, only return actual tracked symbols without fake data")
+        XCTAssertEqual(selected.map(\.symbol), ["^VIX", "IREN", "SOXL"])
+    }
+
+    func testSelectMoversBalancedAcrossMarkets() {
+        let usCandidates: [HomeAIInsightService.SymbolCandidate] = (1...6).map { i in
+            .init(symbol: "US\(i)", name: "US \(i)", price: 100, changePercent: Double(i * 2), currency: "USD", marketCategory: .us)
+        }
+        let jpCandidates: [HomeAIInsightService.SymbolCandidate] = (1...4).map { i in
+            .init(symbol: "JP\(i)", name: "JP \(i)", price: 1000, changePercent: Double(i * 3), currency: "JPY", marketCategory: .japan)
+        }
+        let vnCandidates: [HomeAIInsightService.SymbolCandidate] = (1...4).map { i in
+            .init(symbol: "VN\(i)", name: "VN \(i)", price: 50000, changePercent: Double(i), currency: "VND", marketCategory: .vietnam)
+        }
+        let cryptoCandidates: [HomeAIInsightService.SymbolCandidate] = [
+            .init(symbol: "BTC", name: "Bitcoin", price: 65000, changePercent: 1.5, currency: "USD", isCrypto: true, marketCategory: .crypto),
+            .init(symbol: "SOL", name: "Solana", price: 150, changePercent: 8.0, currency: "USD", isCrypto: true, marketCategory: .crypto),
+            .init(symbol: "ETH", name: "Ethereum", price: 3000, changePercent: 3.0, currency: "USD", isCrypto: true, marketCategory: .crypto),
+        ]
+
+        let selected = HomeAIInsightService.selectMovers(
+            stockCandidates: usCandidates + jpCandidates + vnCandidates,
+            cryptoCandidates: cryptoCandidates
+        )
+
+        let usSelected = selected.filter { $0.marketCategory == .us }
+        let jpSelected = selected.filter { $0.marketCategory == .japan }
+        let vnSelected = selected.filter { $0.marketCategory == .vietnam }
+        let cryptoSelected = selected.filter { $0.marketCategory == .crypto }
+
+        XCTAssertEqual(usSelected.count, 4, "US should take top 4")
+        XCTAssertEqual(jpSelected.count, 2, "JP should take top 2")
+        XCTAssertEqual(vnSelected.count, 2, "VN should take top 2")
+        XCTAssertEqual(cryptoSelected.count, 2, "Crypto should take BTC + top 1 altcoin")
+        XCTAssertEqual(cryptoSelected[0].symbol, "BTC")
+        XCTAssertEqual(cryptoSelected[1].symbol, "SOL")
+    }
 }
