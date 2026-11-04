@@ -6,23 +6,22 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.26</title>
-            <pubDate>Wed, 04 Nov 2026 06:56:16 +0900</pubDate>
-            <sparkle:version>29</sparkle:version>
-            <sparkle:shortVersionString>1.1.26</sparkle:shortVersionString>
+            <title>Version 1.1.27</title>
+            <pubDate>Thu, 05 Nov 2026 08:52:25 +0900</pubDate>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>1.1.27</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.26</h2>
+<h2>What's New in StockDeck 1.1.27</h2>
 <ul>
-    <li><strong>Split Anomaly Sanitization:</strong> Automatically detects and filters unadjusted split cliffs and double-adjusted split pockets from historical chart data (e.g. 1489.T ATH calculation).</li>
-    <li><strong>Cross-Market Cache Self-Healing:</strong> Automatically detects and purges stale history cache when a severe price scale mismatch occurs with the live quote (e.g. US NET vs HNX NET).</li>
-    <li><strong>Watchlist ATH & Metric Accuracy:</strong> Ensures From ATH, 3M, 6M, and YTD performance metrics consistently reflect clean single-market price series.</li>
+    <li><strong>AI Daily Insights Grid Layout:</strong> Expanded US market mover candidate count from 3 to 4, displaying a balanced 2x2 card grid on wide screens without empty space.</li>
+    <li><strong>Honest Data Selection:</strong> Retains actual tracked portfolio and watchlist movers sorted by highest absolute price volatility, ensuring reliable, non-synthetic insights.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.26/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.27/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="ZbpbGlT5vGTGlvd6Z/IUDwbE/wq8oEyb5FnyWvD+it7mfKi5BDHzxa9FVciipOnhIRqASpmJrbuVLNgigLKNBQ=="
-                       length="11159495"/>
+                       sparkle:edSignature="sw/1ZIeaonuV+mBzr1IiSZ2oxNfUKtwgz6DgWh/5mrHIZ7iMyTbuGUAGOOfVe1MBpeMCHoTIczx6UZ+Lo5OkBA=="
+                       length="11159596"/>
         </item>
     </channel>
 </rss>
