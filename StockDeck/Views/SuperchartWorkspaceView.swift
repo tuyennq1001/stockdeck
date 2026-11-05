@@ -110,9 +110,7 @@ struct SuperchartWorkspaceView: View {
 
     private func orderedPortfolioSymbols(in portfolios: [Portfolio]) -> [String] {
         let entries = portfolios.flatMap(\.holdings).filter { $0.quantity != 0 }.map { holding in
-            let quote = stockService.quotes[holding.symbol]
-                ?? stockService.quotes[holding.symbol.uppercased()]
-                ?? quoteByCanonical[StockService.canonicalSymbol(for: holding.symbol)]
+            let quote = lookupQuote(for: holding.symbol)
             guard let quote, quote.price.isFinite else {
                 return SuperchartPortfolioSymbolOrdering.Entry(symbol: holding.symbol, marketValue: nil)
             }
@@ -132,17 +130,16 @@ struct SuperchartWorkspaceView: View {
         return sourceSymbols.filter { $0.localizedCaseInsensitiveContains(needle) }
     }
 
-    private var selectedQuote: StockQuote? {
-        guard let symbol = selectedSymbol else { return nil }
+    private func lookupQuote(for symbol: String) -> StockQuote? {
+        if let direct = stockService.quotes[symbol] { return direct }
         let canonical = StockService.canonicalSymbol(for: symbol)
-        return stockService.quotes[symbol] ?? stockService.quotes[canonical] ?? quoteByCanonical[canonical]
+        if let byCanonical = stockService.quotes[canonical] { return byCanonical }
+        return stockService.quotes.values.first { StockService.canonicalSymbol(for: $0.symbol) == canonical }
     }
 
-    private var quoteByCanonical: [String: StockQuote] {
-        stockService.quotes.values.reduce(into: [:]) { result, quote in
-            let key = StockService.canonicalSymbol(for: quote.symbol)
-            if result[key] == nil { result[key] = quote }
-        }
+    private var selectedQuote: StockQuote? {
+        guard let symbol = selectedSymbol else { return nil }
+        return lookupQuote(for: symbol)
     }
 
     private var selectedHistory: [PricePoint] {
@@ -165,6 +162,7 @@ struct SuperchartWorkspaceView: View {
     private var selectedInsiderMarkers: [LightweightChartMarker] {
         guard storageService.showInsiderMarkers, let symbol = selectedSymbol,
               insiderService.hasExecutedChartTrades(for: symbol) else { return [] }
+        let cal = LightweightChartMath.calendar(for: symbol)
         let history = selectedMaxHistory.isEmpty ? selectedHistory : selectedMaxHistory
         let transactions = insiderService.getTransactions(for: symbol,
             startDate: history.first?.date, endDate: history.last?.date,
@@ -172,11 +170,11 @@ struct SuperchartWorkspaceView: View {
             .filter { $0.isOpenMarket && !$0.isPendingPlan && $0.shares > 0 }
             .filter { !storageService.excludeInsider10b51 || !$0.isRule10b51 }
         let groups = Dictionary(grouping: transactions) { transaction in
-            "\(LightweightChartMath.tradingDay(transaction.transactionDate, symbol: symbol))_\(transaction.isBuy)"
+            "\(LightweightChartMath.tradingDay(transaction.transactionDate, using: cal))_\(transaction.isBuy)"
         }
         return groups.keys.sorted().compactMap { key in
             guard let group = groups[key], let trade = group.first else { return nil }
-            return LightweightChartMarker(time: LightweightChartMath.tradingDay(trade.transactionDate, symbol: symbol),
+            return LightweightChartMarker(time: LightweightChartMath.tradingDay(trade.transactionDate, using: cal),
                 position: trade.isBuy ? "belowBar" : "aboveBar",
                 color: trade.isBuy ? "#1a9b82" : "#d94b59",
                 shape: trade.isBuy ? "arrowUp" : "arrowDown",
@@ -288,6 +286,16 @@ struct SuperchartWorkspaceView: View {
                 await stockService.ensurePriceHistory(for: symbol)
                 await stockService.ensurePriceHistoryMax(for: symbol)
                 if insiderService.isEligibleSymbol(symbol) { await insiderService.ensureTransactions(for: symbol) }
+            }
+        }
+        .task(id: source.id) {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            let symbolsToWarm = Array(sourceSymbols.prefix(24))
+            for sym in symbolsToWarm {
+                guard !Task.isCancelled else { break }
+                if sym == selectedSymbol { continue }
+                await stockService.ensurePriceHistory(for: sym)
+                try? await Task.sleep(nanoseconds: 50_000_000)
             }
         }
         .task {
@@ -444,37 +452,20 @@ struct SuperchartWorkspaceView: View {
 
     private func row(_ symbol: String) -> some View {
         let canonical = StockService.canonicalSymbol(for: symbol)
-        let quote = stockService.quotes[symbol] ?? stockService.quotes[canonical] ?? quoteByCanonical[canonical]
+        let quote = lookupQuote(for: symbol)
         let selected = StockService.canonicalSymbol(for: selectedSymbol ?? "") == canonical
-        return Button { selectedSymbol = symbol } label: {
-            HStack(spacing: 4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: symbol).font(.inter(12, weight: .semibold, relativeTo: .body)).foregroundStyle(DS.ink)
-                    if let name = quote?.name, name != symbol {
-                        Text(name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Text(quote.map {
-                    "\(StorageService.currencySymbol(for: $0.currency))\(StorageService.formatNumber($0.price, decimals: StorageService.defaultDecimals(for: $0.currency)))"
-                } ?? "—")
-                    .font(.inter(11, weight: .medium, relativeTo: .caption).monospacedDigit())
-                    .foregroundStyle(DS.ink).frame(width: 76, alignment: .trailing)
-                Text(quote.map { ($0.changePercent / 100).formatted(.percent.precision(.fractionLength(2))) } ?? "—")
-                    .font(.inter(10, weight: .medium, relativeTo: .caption).monospacedDigit())
-                    .foregroundStyle(quote.map { DS.pnlColor($0.changePercent) } ?? DS.inkTertiary)
-                    .frame(width: 60, alignment: .trailing)
-                Text(quote?.extendedChangePercent.map { ($0 / 100).formatted(.percent.precision(.fractionLength(2))) } ?? "—")
-                    .font(.inter(10, weight: .medium, relativeTo: .caption).monospacedDigit())
-                    .foregroundStyle(DS.inkSecondary).frame(width: 56, alignment: .trailing)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(selected ? DS.brand.opacity(0.10) : .clear)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .overlay(alignment: .bottom) { Rectangle().fill(DS.hairline).frame(height: 1) }
+
+        return SuperchartSymbolRowView(
+            symbol: symbol,
+            name: quote?.name,
+            currency: quote?.currency,
+            price: quote?.price,
+            changePercent: quote?.changePercent,
+            extendedChangePercent: quote?.extendedChangePercent,
+            isSelected: selected,
+            onSelect: { selectedSymbol = symbol }
+        )
+        .equatable()
     }
 
     private var sourceTitle: String {
@@ -711,5 +702,64 @@ struct SuperchartWorkspaceView: View {
         case "portfolio" where storageService.portfolios.contains(where: { $0.id == uuid }): return .portfolio(uuid)
         default: return nil
         }
+    }
+}
+
+struct SuperchartSymbolRowView: View, Equatable {
+    let symbol: String
+    let name: String?
+    let currency: String?
+    let price: Double?
+    let changePercent: Double?
+    let extendedChangePercent: Double?
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    static func == (lhs: SuperchartSymbolRowView, rhs: SuperchartSymbolRowView) -> Bool {
+        lhs.symbol == rhs.symbol &&
+        lhs.name == rhs.name &&
+        lhs.currency == rhs.currency &&
+        lhs.price == rhs.price &&
+        lhs.changePercent == rhs.changePercent &&
+        lhs.extendedChangePercent == rhs.extendedChangePercent &&
+        lhs.isSelected == rhs.isSelected
+    }
+
+    var body: some View {
+        let priceText: String = {
+            guard let price, let currency else { return "—" }
+            return "\(StorageService.currencySymbol(for: currency))\(StorageService.formatNumber(price, decimals: StorageService.defaultDecimals(for: currency)))"
+        }()
+        let changeText = changePercent.map { String(format: "%.2f%%", $0) } ?? "—"
+        let changeColor = changePercent.map { DS.pnlColor($0) } ?? DS.inkTertiary
+        let extText = extendedChangePercent.map { String(format: "%.2f%%", $0) } ?? "—"
+
+        Button(action: onSelect) {
+            HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: symbol).font(.inter(12, weight: .semibold, relativeTo: .body)).foregroundStyle(DS.ink)
+                    if let name, name != symbol {
+                        Text(name).font(DS.micro).foregroundStyle(DS.inkTertiary).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(verbatim: priceText)
+                    .font(.inter(11, weight: .medium, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.ink).frame(width: 76, alignment: .trailing)
+                Text(verbatim: changeText)
+                    .font(.inter(10, weight: .medium, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(changeColor)
+                    .frame(width: 60, alignment: .trailing)
+                Text(verbatim: extText)
+                    .font(.inter(10, weight: .medium, relativeTo: .caption).monospacedDigit())
+                    .foregroundStyle(DS.inkSecondary).frame(width: 56, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(isSelected ? DS.brand.opacity(0.10) : .clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) { Rectangle().fill(DS.hairline).frame(height: 1) }
     }
 }

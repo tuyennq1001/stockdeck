@@ -29,6 +29,34 @@ struct PineChartInput: Equatable {
     var error: String? = nil
 }
 
+struct PineChartInputSignature: Equatable {
+    let symbol: String
+    let interval: LightweightChartInterval
+    let pointsCount: Int
+    let firstDate: Date?
+    let lastDate: Date?
+    let lastClose: Double?
+    let dailyPointsCount: Int
+    let dailyLastDate: Date?
+    let dailyLastClose: Double?
+    let loading: Bool
+    let error: String?
+
+    init(_ input: PineChartInput) {
+        self.symbol = input.symbol
+        self.interval = input.interval
+        self.pointsCount = input.points.count
+        self.firstDate = input.points.first?.date
+        self.lastDate = input.points.last?.date
+        self.lastClose = input.points.last?.close
+        self.dailyPointsCount = input.dailyPoints.count
+        self.dailyLastDate = input.dailyPoints.last?.date
+        self.dailyLastClose = input.dailyPoints.last?.close
+        self.loading = input.loading
+        self.error = input.error
+    }
+}
+
 struct PineExecutionBar: Codable {
     let openTime: Double
     let closeTime: Double
@@ -192,10 +220,18 @@ final class PineScriptWorkspace: ObservableObject {
     }
     func setInput(_ value: PineChartInput) {
         guard input != value else { return }
-        input = value; preparation?.cancel(); contextID = UUID(); context = nil; contextError = nil
+        input = value
+        if activeIDs.isEmpty {
+            if !indicators.isEmpty {
+                preparation?.cancel(); contextID = UUID(); context = nil; contextError = nil
+                results = [:]; errors = [:]; publish()
+            }
+            return
+        }
+        preparation?.cancel(); contextID = UUID(); context = nil; contextError = nil
         for id in activeIDs { invalidate(id) }
         results = [:]; errors = [:]; publish()
-        guard !value.loading, !activeIDs.isEmpty else { return }
+        guard !value.loading else { return }
         let revision = contextID, prepare = prepare
         preparation = Task { [weak self] in
             do {
@@ -284,9 +320,14 @@ final class PineScriptWorkspace: ObservableObject {
     }
     private func publish() {
         let attached = Set(activeIDs)
-        menuItems = snapshot.map { PineScriptMenuItem(id: $0.id, name: $0.name, attached: attached.contains($0.id)) }
+        let newMenuItems = snapshot.map { PineScriptMenuItem(id: $0.id, name: $0.name, attached: attached.contains($0.id)) }
+        if menuItems != newMenuItems { menuItems = newMenuItems }
+        if activeIDs.isEmpty {
+            if !indicators.isEmpty { indicators = [] }
+            return
+        }
         let times = context?.timeMap ?? [:]
-        indicators = activeIDs.compactMap { id in
+        indicators = activeIDs.compactMap { id -> CustomPineIndicator? in
             guard let script = snapshot.first(where: { $0.id == id }) else { return nil }
             let result = results[id], prefs = style(for: script)
             let plots = (result?.plots ?? [:]).keys.sorted().compactMap { key -> CustomPinePlot? in

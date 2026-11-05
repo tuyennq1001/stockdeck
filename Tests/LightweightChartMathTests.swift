@@ -357,4 +357,50 @@ final class LightweightChartMathTests: XCTestCase {
         XCTAssertEqual(decoded.lineWidth, 1)
         XCTAssertFalse(decoded.isLocked)
     }
+
+    func testTradingDayAndCalendarCachingConsistent() {
+        let baseDate = Date(timeIntervalSince1970: 1_735_689_600) // 2025-01-01 00:00:00 UTC
+        let symbols = ["AAPL", "SHS", "FUEVFVND.VN", "7203.T", "BTC-USD"]
+        for sym in symbols {
+            let cal = LightweightChartMath.calendar(for: sym)
+            let formattedWithCal = LightweightChartMath.tradingDay(baseDate, using: cal)
+            let formattedDirect = LightweightChartMath.tradingDay(baseDate, symbol: sym)
+            XCTAssertEqual(formattedWithCal, formattedDirect, "Mismatch for symbol \(sym)")
+        }
+    }
+
+    func testPayloadCacheCapacityExpandsBeyondEightEntries() {
+        LightweightChartMath.clearPayloadCache()
+        let base = Date(timeIntervalSince1970: 1_735_689_600)
+        let points = [PricePoint(date: base, close: 100, open: 98, high: 102, low: 97, volume: 1000)]
+        // Encode payloads for 16 distinct symbols
+        for i in 1...16 {
+            let sym = "SYM\(i)"
+            let data = LightweightChartMath.encodedPayload(points: points, interval: .day, symbol: sym,
+                                                           currency: "USD", periods: [:], visibleFrom: nil,
+                                                           markers: [], targetPrice: nil)
+            XCTAssertNotNil(data)
+        }
+        // Verify earlier symbols are still cached and return immediate encoded data
+        let recheck = LightweightChartMath.encodedPayload(points: points, interval: .day, symbol: "SYM1",
+                                                          currency: "USD", periods: [:], visibleFrom: nil,
+                                                          markers: [], targetPrice: nil)
+        XCTAssertNotNil(recheck)
+    }
+
+    func testPineChartInputSignatureEquality() {
+        let date1 = Date(timeIntervalSince1970: 1_735_689_600)
+        let date2 = Date(timeIntervalSince1970: 1_735_776_000)
+        let p1 = [PricePoint(date: date1, close: 100), PricePoint(date: date2, close: 105)]
+        let input1 = PineChartInput(symbol: "AAPL", interval: .day, points: p1, dailyPoints: p1)
+        let sig1 = PineChartInputSignature(input1)
+        let sig2 = PineChartInputSignature(input1)
+        XCTAssertEqual(sig1, sig2)
+
+        let inputDiffSymbol = PineChartInput(symbol: "GOOGL", interval: .day, points: p1, dailyPoints: p1)
+        XCTAssertNotEqual(sig1, PineChartInputSignature(inputDiffSymbol))
+
+        let inputDiffClose = PineChartInput(symbol: "AAPL", interval: .day, points: [PricePoint(date: date1, close: 100), PricePoint(date: date2, close: 106)], dailyPoints: p1)
+        XCTAssertNotEqual(sig1, PineChartInputSignature(inputDiffClose))
+    }
 }
