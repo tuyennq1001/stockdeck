@@ -58,7 +58,7 @@ class StockService: ObservableObject {
     /// 1M/1Y/5Y/10Y ranges. Cached ~1h.
     @Published var priceHistory: [String: [PricePoint]] = [:] {
         didSet {
-            let changed = changedSymbols(from: oldValue, to: priceHistory)
+            let changed = changedHistorySymbols(from: oldValue, to: priceHistory)
             guard !changed.isEmpty else { return }
             historyRevision &+= 1
             publish(kind: .dailyHistory, symbols: changed)
@@ -69,7 +69,7 @@ class StockService: ObservableObject {
     /// own monthly series and the shorter ranges need the daily 2y series.)
     @Published var priceHistoryMax: [String: [PricePoint]] = [:] {
         didSet {
-            let changed = changedSymbols(from: oldValue, to: priceHistoryMax)
+            let changed = changedHistorySymbols(from: oldValue, to: priceHistoryMax)
             guard !changed.isEmpty else { return }
             historyRevision &+= 1
             publish(kind: .maxHistory, symbols: changed)
@@ -78,7 +78,7 @@ class StockService: ObservableObject {
     /// Intraday (5-minute) closes for the "24H" chart range. Cached ~5min.
     @Published var intradayHistory: [String: [PricePoint]] = [:] {
         didSet {
-            let changed = changedSymbols(from: oldValue, to: intradayHistory)
+            let changed = changedHistorySymbols(from: oldValue, to: intradayHistory)
             guard !changed.isEmpty else { return }
             publish(kind: .intradayHistory, symbols: changed)
         }
@@ -87,7 +87,7 @@ class StockService: ObservableObject {
     /// sparklines and the 1M / 3M / YTD performance columns.
     @Published var watchlistHistory: [String: [PricePoint]] = [:] {
         didSet {
-            let changed = changedSymbols(from: oldValue, to: watchlistHistory)
+            let changed = changedHistorySymbols(from: oldValue, to: watchlistHistory)
             guard !changed.isEmpty else { return }
             historyRevision &+= 1
             publish(kind: .watchlistHistory, symbols: changed)
@@ -101,12 +101,54 @@ class StockService: ObservableObject {
         revisionsByKindAndSymbol[kind]?[Self.canonicalSymbol(for: symbol)] ?? 0
     }
 
+    private func changedHistorySymbols(
+        from old: [String: [PricePoint]], to new: [String: [PricePoint]]
+    ) -> Set<String> {
+        if old.isEmpty && new.isEmpty { return [] }
+        if old.isEmpty { return Set(new.keys.map(Self.canonicalSymbol(for:))).filter { !$0.isEmpty } }
+        if new.isEmpty { return Set(old.keys.map(Self.canonicalSymbol(for:))).filter { !$0.isEmpty } }
+        var changed = Set<String>()
+        for (k, v) in new {
+            guard let oldV = old[k] else {
+                changed.insert(Self.canonicalSymbol(for: k))
+                continue
+            }
+            if oldV.count != v.count ||
+                oldV.last?.date != v.last?.date ||
+                oldV.last?.close != v.last?.close ||
+                oldV.first?.date != v.first?.date ||
+                oldV != v {
+                changed.insert(Self.canonicalSymbol(for: k))
+            }
+        }
+        if old.count > new.count {
+            for k in old.keys where new[k] == nil {
+                changed.insert(Self.canonicalSymbol(for: k))
+            }
+        }
+        return changed.filter { !$0.isEmpty }
+    }
+
     private func changedSymbols<Value: Equatable>(
         from old: [String: Value], to new: [String: Value]
     ) -> Set<String> {
-        let keys = Set(old.keys).union(new.keys)
-        return Set(keys.filter { old[$0] != new[$0] }.map(Self.canonicalSymbol(for:)))
-            .filter { !$0.isEmpty }
+        if old.isEmpty && new.isEmpty { return [] }
+        if old.isEmpty { return Set(new.keys.map(Self.canonicalSymbol(for:))).filter { !$0.isEmpty } }
+        if new.isEmpty { return Set(old.keys.map(Self.canonicalSymbol(for:))).filter { !$0.isEmpty } }
+        var changed = Set<String>()
+        for (k, v) in new {
+            if let oldV = old[k] {
+                if oldV != v { changed.insert(Self.canonicalSymbol(for: k)) }
+            } else {
+                changed.insert(Self.canonicalSymbol(for: k))
+            }
+        }
+        if old.count > new.count {
+            for k in old.keys where new[k] == nil {
+                changed.insert(Self.canonicalSymbol(for: k))
+            }
+        }
+        return changed.filter { !$0.isEmpty }
     }
 
     private func publishQuoteChanges(from old: [String: StockQuote], to new: [String: StockQuote]) {
@@ -1845,6 +1887,10 @@ class StockService: ObservableObject {
         await loadHistoryCache()
     }
 
+    nonisolated private static func hasOHLCOrVolume(_ points: [PricePoint]) -> Bool {
+        points.suffix(32).contains { ($0.volume ?? 0) > 0 || ($0.open != nil && $0.high != nil && $0.low != nil && $0.high != $0.low) }
+    }
+
     /// Loads the on-disk history cache into memory. Entries are reused for as
     /// long as their fetch timestamp is still inside the corresponding TTL, so
     /// relaunching the app shortly after a fetch issues no network requests.
@@ -1870,7 +1916,7 @@ class StockService: ObservableObject {
                 if let low = l, low > 0, low < pt.close * 0.25 { l = pt.close }
                 return PricePoint(date: pt.date, close: pt.close, open: o, high: h, low: l, volume: pt.volume)
             }
-            let hasVol = pts.contains(where: { ($0.volume ?? 0) > 0 })
+            let hasVol = Self.hasOHLCOrVolume(pts)
             if key.hasPrefix("daily:"), priceHistoryFetchedAt[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
                 priceHistory[symbol] = pts
@@ -1880,9 +1926,7 @@ class StockService: ObservableObject {
             } else if key.hasPrefix("max:"), priceHistoryMaxAt[String(key.dropFirst(4))] == nil {
                 let symbol = String(key.dropFirst(4))
                 priceHistoryMax[symbol] = pts
-                if hasVol || isJapaneseMutualFund(symbol) {
-                    priceHistoryMaxAt[symbol] = entry.fetchedAt
-                }
+                priceHistoryMaxAt[symbol] = entry.fetchedAt
             } else if key.hasPrefix("spark:"), watchlistHistory[String(key.dropFirst(6))] == nil {
                 let symbol = String(key.dropFirst(6))
                 watchlistHistory[symbol] = pts
@@ -1909,8 +1953,8 @@ class StockService: ObservableObject {
             let spark = watchlistHistory[symbol] ?? []
             let dailyLast = daily.last?.date ?? .distantPast
             let sparkLast = spark.last?.date ?? .distantPast
-            let dailyHasVol = daily.contains(where: { ($0.volume ?? 0) > 0 })
-            let sparkHasVol = spark.contains(where: { ($0.volume ?? 0) > 0 })
+            let dailyHasVol = Self.hasOHLCOrVolume(daily)
+            let sparkHasVol = Self.hasOHLCOrVolume(spark)
             if spark.isEmpty || (dailyHasVol && !sparkHasVol) || dailyLast > sparkLast || (dailyLast == sparkLast && daily.count > spark.count) {
                 watchlistHistory[symbol] = daily
                 didHeal = true
@@ -1926,6 +1970,7 @@ class StockService: ObservableObject {
                     let stitched = olderBars + monthlyDerived
                     if stitched != existingMax {
                         priceHistoryMax[symbol] = stitched
+                        priceHistoryMaxAt[symbol] = priceHistoryFetchedAt[symbol] ?? now
                         didHeal = true
                     }
                 }
@@ -1934,7 +1979,7 @@ class StockService: ObservableObject {
         for (symbol, spark) in watchlistHistory where !spark.isEmpty {
             if priceHistory[symbol] == nil || (priceHistory[symbol]?.isEmpty ?? true) {
                 priceHistory[symbol] = spark
-                let sparkHasVol = spark.contains(where: { ($0.volume ?? 0) > 0 })
+                let sparkHasVol = Self.hasOHLCOrVolume(spark)
                 if sparkHasVol || isJapaneseMutualFund(symbol) {
                     priceHistoryFetchedAt[symbol] = sparkFetchedAt ?? Date()
                 }
@@ -2573,7 +2618,7 @@ class StockService: ObservableObject {
             // bypass cache to upgrade to the full 10-year history
             if isVietnameseStock(symbol) && points.count <= 300 {
                 // proceed to re-fetch
-            } else if !isJapaneseMutualFund(symbol) && !points.contains(where: { ($0.volume ?? 0) > 0 }) {
+            } else if !isJapaneseMutualFund(symbol) && !Self.hasOHLCOrVolume(points) {
                 // proceed to re-fetch to upgrade cached points with full OHLCV and volume
             } else if scaleMismatch {
                 // proceed to re-fetch to purge scale-mismatched or cross-market contaminated history
@@ -2723,9 +2768,10 @@ class StockService: ObservableObject {
         guard let primary = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y"),
               let fallback = URL(string: "https://query2.finance.yahoo.com/v8/finance/chart/\(encoded)?interval=1d&range=10y") else { return }
         guard let data = await fetchYahooChart(url: primary, fallback: fallback) else { return }
-        do {
-            let response = try JSONDecoder().decode(YahooChartResponse.self, from: data)
-            guard let result = response.chart.result?.first else { return }
+        let needMonthly = priceHistoryMax[symbol] == nil || priceHistoryMaxAt[symbol] == nil || (priceHistoryMax[symbol]?.isEmpty ?? true)
+        let parsed = await Task.detached(priority: .userInitiated) { () -> ([PricePoint], [PricePoint])? in
+            guard let response = try? JSONDecoder().decode(YahooChartResponse.self, from: data),
+                  let result = response.chart.result?.first else { return nil }
             let q = result.indicators?.quote?.first
             let points = PriceHistory.points(timestamps: result.timestamp ?? [],
                                              closes: q?.close ?? [],
@@ -2733,13 +2779,20 @@ class StockService: ObservableObject {
                                              highs: q?.high,
                                              lows: q?.low,
                                              volumes: q?.volume)
-            guard !points.isEmpty else { return }
+            guard !points.isEmpty else { return nil }
+            let monthly = needMonthly ? PriceHistory.deriveMonthly(from: points) : []
+            return (points, monthly)
+        }.value
+        if let (points, monthly) = parsed {
+            let now = Date()
             priceHistory[symbol] = points
             watchlistHistory[symbol] = points
-            priceHistoryFetchedAt[symbol] = Date()
+            priceHistoryFetchedAt[symbol] = now
+            if !monthly.isEmpty {
+                priceHistoryMax[symbol] = monthly
+                priceHistoryMaxAt[symbol] = now
+            }
             scheduleHistoryCacheSave()
-        } catch {
-            // Non-fatal: the detail view keeps its placeholder band.
         }
     }
 
@@ -3103,7 +3156,7 @@ class StockService: ObservableObject {
                     let parsed = try YahooSparkParser.parse(data)
                     for (symbol, points) in parsed where !points.isEmpty {
                         let existingWatchlist = watchlistHistory[symbol] ?? []
-                        let existingHasVol = existingWatchlist.contains(where: { ($0.volume ?? 0) > 0 })
+                        let existingHasVol = Self.hasOHLCOrVolume(existingWatchlist)
 
                         let scaleMismatch: Bool
                         if let oldLast = existingWatchlist.last?.close, let newLast = points.last?.close, oldLast > 0, newLast > 0 {

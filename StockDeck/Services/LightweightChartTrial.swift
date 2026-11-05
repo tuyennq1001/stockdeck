@@ -553,6 +553,38 @@ enum LightweightChartMath {
     private static let cacheLock = NSLock()
     private static var payloadCache: [Int: Data] = [:]
     private static var cacheOrder: [Int] = []
+    private static var calendarCache: [String: Calendar] = [:]
+    private static let calendarLock = NSLock()
+
+    static func calendar(for symbol: String) -> Calendar {
+        let schedule = MarketCategory.marketSchedule(for: symbol)
+        let id = schedule.timeZone.identifier
+        calendarLock.lock()
+        if let existing = calendarCache[id] {
+            calendarLock.unlock()
+            return existing
+        }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = schedule.timeZone
+        calendarCache[id] = cal
+        calendarLock.unlock()
+        return cal
+    }
+
+    @inline(__always)
+    static func tradingDay(_ date: Date, using calendar: Calendar) -> String {
+        let day = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
+    }
+
+    static func tradingDay(_ date: Date, symbol: String) -> String {
+        tradingDay(date, using: calendar(for: symbol))
+    }
+
+    @inline(__always)
+    static func chartTime(_ date: Date, interval: LightweightChartInterval, symbol: String, calendar: Calendar) -> String {
+        interval.isIntraday ? String(Int(date.timeIntervalSince1970)) : tradingDay(date, using: calendar)
+    }
 
     static func encodedPayload(points: [PricePoint], interval: LightweightChartInterval, symbol: String,
                               currency: String, periods: [String: Int], visibleFrom: Date?,
@@ -604,9 +636,25 @@ enum LightweightChartMath {
         for drawing in drawings {
             hasher.combine(drawing)
         }
-        for point in points {
-            hasher.combine(point.date.timeIntervalSince1970); hasher.combine(point.close)
-            hasher.combine(point.open); hasher.combine(point.high); hasher.combine(point.low); hasher.combine(point.volume)
+        hasher.combine(points.count)
+        if points.count <= 32 {
+            for point in points {
+                hasher.combine(point.date.timeIntervalSince1970); hasher.combine(point.close)
+                hasher.combine(point.open); hasher.combine(point.high); hasher.combine(point.low); hasher.combine(point.volume)
+            }
+        } else {
+            let step = max(1, (points.count - 1) / 8)
+            var idx = 0
+            while idx < points.count {
+                let point = points[idx]
+                hasher.combine(point.date.timeIntervalSince1970); hasher.combine(point.close)
+                hasher.combine(point.open); hasher.combine(point.high); hasher.combine(point.low); hasher.combine(point.volume)
+                idx += step
+            }
+            if let last = points.last {
+                hasher.combine(last.date.timeIntervalSince1970); hasher.combine(last.close)
+                hasher.combine(last.open); hasher.combine(last.high); hasher.combine(last.low); hasher.combine(last.volume)
+            }
         }
         let key = hasher.finalize()
         cacheLock.lock()
@@ -622,7 +670,7 @@ enum LightweightChartMath {
         payloadCache[key] = data
         cacheOrder.removeAll { $0 == key }
         cacheOrder.append(key)
-        if cacheOrder.count > 8 { payloadCache.removeValue(forKey: cacheOrder.removeFirst()) }
+        if cacheOrder.count > 48 { payloadCache.removeValue(forKey: cacheOrder.removeFirst()) }
         cacheLock.unlock()
         return data
     }
@@ -635,10 +683,10 @@ enum LightweightChartMath {
     }
 
     static func aggregate(_ input: [PricePoint], interval: LightweightChartInterval,
-                          symbol: String, calendar: Calendar = .current) -> [PricePoint] {
+                          symbol: String, calendar: Calendar? = nil) -> [PricePoint] {
         let ordered = deduplicate(input).sorted { $0.date < $1.date }
         guard interval != .day else { return deduplicate(ordered) }
-        var cal = calendar
+        var cal = calendar ?? self.calendar(for: symbol)
         let schedule = MarketCategory.marketSchedule(for: symbol)
         cal.timeZone = schedule.timeZone
         cal.firstWeekday = 2
@@ -687,10 +735,11 @@ enum LightweightChartMath {
                         selectedRange: String = "3M", showsRangeControls: Bool = false,
                         availableRanges: [String] = [], visibleTo: Date? = nil) -> LightweightChartPayload {
         let settings = indicatorSettings.validated()
-        let grouped = aggregate(points, interval: interval, symbol: symbol)
+        let cal = calendar(for: symbol)
+        let grouped = aggregate(points, interval: interval, symbol: symbol, calendar: cal)
         let bars = grouped.compactMap { point -> LightweightBar? in
             guard valid(point) else { return nil }
-            return LightweightBar(time: chartTime(point.date, interval: interval, symbol: symbol),
+            return LightweightBar(time: chartTime(point.date, interval: interval, symbol: symbol, calendar: cal),
                                   open: point.open, high: point.high, low: point.low,
                                   close: point.close, volume: point.volume.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil })
         }
@@ -775,7 +824,7 @@ enum LightweightChartMath {
         var markerTimes: [String: String] = [:]
         if interval.isIntraday {
             for (point, bar) in zip(grouped, bars) {
-                let day = tradingDay(point.date, symbol: symbol)
+                let day = tradingDay(point.date, using: cal)
                 if markerTimes[day] == nil { markerTimes[day] = bar.time }
             }
         }
@@ -785,8 +834,8 @@ enum LightweightChartMath {
         } : markers
         return LightweightChartPayload(symbol: symbol, currency: currency,
             timeZone: MarketCategory.marketSchedule(for: symbol).timeZone.identifier, interval: interval.rawValue,
-            bars: bars, visibleFrom: visibleFrom.map { chartTime($0, interval: interval, symbol: symbol) },
-            visibleTo: visibleTo.map { chartTime($0, interval: interval, symbol: symbol) },
+            bars: bars, visibleFrom: visibleFrom.map { chartTime($0, interval: interval, symbol: symbol, calendar: cal) },
+            visibleTo: visibleTo.map { chartTime($0, interval: interval, symbol: symbol, calendar: cal) },
             markers: displayMarkers, targetPrice: targetPrice.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
             showInsiderMarkers: showInsiderMarkers, drawings: drawings,
             hasOHLC: hasOHLC, lines: lines, rsi: indicatorPoints(rsi(closes, settings.rsiPeriod)),
@@ -954,15 +1003,9 @@ enum LightweightChartMath {
     }
 
     static func chartTime(_ date: Date, interval: LightweightChartInterval, symbol: String) -> String {
-        interval.isIntraday ? String(Int(date.timeIntervalSince1970)) : tradingDay(date, symbol: symbol)
+        chartTime(date, interval: interval, symbol: symbol, calendar: calendar(for: symbol))
     }
     private static func valid(_ point: PricePoint) -> Bool { point.close.isFinite && point.close > 0 }
-    static func tradingDay(_ date: Date, symbol: String) -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
-        let day = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
-    }
     private static func deduplicate(_ points: [PricePoint]) -> [PricePoint] {
         var map: [Date: PricePoint] = [:]
         for point in points where valid(point) {
@@ -982,13 +1025,12 @@ struct LightweightCustomRange: Equatable, Codable {
     let to: String
 
     func dates(symbol: String) -> (Date, Date)? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
+        let calendar = LightweightChartMath.calendar(for: symbol)
         func date(_ text: String) -> Date? {
             let parts = text.split(separator: "-").compactMap { Int($0) }
             guard parts.count == 3, text.count == 10,
                   let value = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])),
-                  LightweightChartMath.tradingDay(value, symbol: symbol) == text else { return nil }
+                  LightweightChartMath.tradingDay(value, using: calendar) == text else { return nil }
             return value
         }
         guard let start = date(from), let end = date(to), start <= end,
@@ -1105,20 +1147,24 @@ struct LightweightPriceChartView: View {
     @State private var intradayError: String?
     @State private var loadingIntraday = false
     @State private var intradayReload = 0
-    private var hasOHLC: Bool { activePoints.contains { point in
-        guard let open = point.open, let high = point.high, let low = point.low else { return false }
-        return open.isFinite && high.isFinite && low.isFinite && high >= max(open, point.close) && low <= min(open, point.close)
-    } }
+    private var hasOHLC: Bool {
+        activePoints.suffix(32).contains { point in
+            guard let open = point.open, let high = point.high, let low = point.low else { return false }
+            return open.isFinite && high.isFinite && low.isFinite && high >= max(open, point.close) && low <= min(open, point.close)
+        } || activePoints.prefix(32).contains { point in
+            guard let open = point.open, let high = point.high, let low = point.low else { return false }
+            return open.isFinite && high.isFinite && low.isFinite && high >= max(open, point.close) && low <= min(open, point.close)
+        }
+    }
 
     private var rangeStart: Date? {
         if selectedRange == "Custom" { return customRange?.dates(symbol: symbol)?.0 }
         if selectedRange == "All" { return nil }
         let now = activePoints.last?.date ?? Date()
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = MarketCategory.marketSchedule(for: symbol).timeZone
+        let calendar = LightweightChartMath.calendar(for: symbol)
         switch selectedRange {
         case "1D", "5D":
-            let days = Array(Set(activePoints.map { calendar.startOfDay(for: $0.date) })).sorted()
+            let days = Array(Set(activePoints.suffix(64).map { calendar.startOfDay(for: $0.date) })).sorted()
             let count = selectedRange == "1D" ? 1 : 5
             return days.isEmpty ? nil : days[max(0, days.count - count)]
         case "1M": return calendar.date(byAdding: .month, value: -1, to: now)
@@ -1230,8 +1276,8 @@ struct LightweightPriceChartView: View {
                 .font(.system(size: 9)).foregroundStyle(DS.inkTertiary).frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: pineInput, initial: true) { _, input in
-            onPineInput(input)
+        .onChange(of: PineChartInputSignature(pineInput), initial: true) { _, _ in
+            onPineInput(pineInput)
         }
         .task(id: "\(symbol)|\(interval.isIntraday)|\(intradayReload)") {
             guard interval.isIntraday else { loadingIntraday = false; return }
@@ -1300,7 +1346,18 @@ struct LightweightPriceChartView: View {
     }
 
     private func restoreView(for symbol: String) {
-        guard restoredViewForSymbol != symbol else { return }
+        if selectedRange == "Custom" {
+            if customRange?.dates(symbol: symbol) == nil {
+                customRange = nil
+                skipRangeAutoSelection = selectedRange != "3M"
+                selectedRange = "3M"
+                interval = LightweightChartRangePreset.threeMonths.automaticInterval
+                    ?? LightweightChartInterval.automatic(visibleFrom: nil, points: maxPoints.isEmpty ? points : maxPoints)
+                persistView()
+            }
+            return
+        }
+        guard restoredViewForSymbol == nil else { return }
         restoredViewForSymbol = symbol
         customRange = nil
         if let saved = LightweightChartViewSelectionStore.load(symbol: symbol, surface: surface) {
@@ -1390,7 +1447,7 @@ struct LightweightChartWebView: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.parent = self
         let symbolChanged = context.coordinator.lastSymbol.map { $0 != symbol } ?? false
-        if symbolChanged { view.evaluateJavaScript("window.clearChartData?.()") }
+        if symbolChanged && points.isEmpty { view.evaluateJavaScript("window.clearChartData?.()") }
         context.coordinator.lastSymbol = symbol
         context.coordinator.sendData(to: view)
     }
@@ -1404,9 +1461,29 @@ struct LightweightChartWebView: NSViewRepresentable {
     }
 
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate {
+        struct DataSignature: Equatable {
+            let symbol: String
+            let interval: LightweightChartInterval
+            let pointsCount: Int
+            let firstDate: Date?
+            let lastDate: Date?
+            let lastClose: Double?
+            let lastOpen: Double?
+            let lastVolume: Double?
+            let selectedRange: String
+            let availableRanges: [String]
+            let visibleFrom: Date?
+            let visibleTo: Date?
+            let markersCount: Int
+            let showInsiderMarkers: Bool
+            let targetPrice: Double?
+            let pineIndicatorsCount: Int
+            let pineMenuItemsCount: Int
+        }
         var parent: LightweightChartWebView
         private var indicatorPeriods: [String: Int] = [:]
         var lastSymbol: String?
+        private var lastSentSignature: DataSignature?
         private var indicatorSettings: LightweightIndicatorSettings
         private static let legacyIndicatorSettingsKey = "stockdeck.lightweightChart.indicatorSettings.v1"
         init(parent: LightweightChartWebView) {
@@ -1434,8 +1511,6 @@ struct LightweightChartWebView: NSViewRepresentable {
         }
         func sendData(to webView: WKWebView) {
             guard webView.url != nil else { return }
-            let requestID = UUID()
-            latestRequest = requestID
             let points = parent.points, interval = parent.interval, symbol = parent.symbol, currency = parent.currency
             let visibleFrom = parent.visibleFrom, visibleTo = parent.visibleTo, markers = parent.markers, targetPrice = parent.targetPrice
             let showInsiderMarkers = parent.showInsiderMarkers
@@ -1446,13 +1521,34 @@ struct LightweightChartWebView: NSViewRepresentable {
             let availableRanges = parent.availableRanges
             let pineIndicators = parent.pineIndicators, pineMenuItems = parent.pineMenuItems
             let indicatorSettings = self.indicatorSettings
+
+            let signature = DataSignature(
+                symbol: symbol,
+                interval: interval,
+                pointsCount: points.count,
+                firstDate: points.first?.date,
+                lastDate: points.last?.date,
+                lastClose: points.last?.close,
+                lastOpen: points.last?.open,
+                lastVolume: points.last?.volume,
+                selectedRange: selectedRange,
+                availableRanges: availableRanges,
+                visibleFrom: visibleFrom,
+                visibleTo: visibleTo,
+                markersCount: markers.count,
+                showInsiderMarkers: showInsiderMarkers,
+                targetPrice: targetPrice,
+                pineIndicatorsCount: pineIndicators.count,
+                pineMenuItemsCount: pineMenuItems.count
+            )
+            if lastSentSignature == signature { return }
+            lastSentSignature = signature
+
+            let requestID = UUID()
+            latestRequest = requestID
             var periods: [String: Int] = [
                 "SMA MA 1|SMA|close": 20, "SMA MA 2|SMA|close": 50, "SMA MA 3|SMA|close": 100, "SMA MA 4|SMA|close": 200,
-                "EMA MA 1|EMA|close": 20, "EMA MA 2|EMA|close": 50, "EMA MA 3|EMA|close": 100, "EMA MA 4|EMA|close": 200,
-                "MA 1|SMA|close": 20, "MA 2|SMA|close": 50, "MA 3|SMA|close": 100, "MA 4|SMA|close": 200,
-                "MA 1|EMA|close": 20, "MA 2|EMA|close": 50, "MA 3|EMA|close": 100, "MA 4|EMA|close": 200,
-                "SMA 20": 20, "SMA 50": 50, "SMA 100": 100, "SMA 200": 200,
-                "EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200
+                "EMA MA 1|EMA|close": 20, "EMA MA 2|EMA|close": 50, "EMA MA 3|EMA|close": 100, "EMA MA 4|EMA|close": 200
             ]
             periods.merge(indicatorPeriods) { _, new in new }
             Task { [weak self, weak webView] in
@@ -1469,18 +1565,17 @@ struct LightweightChartWebView: NSViewRepresentable {
                 }.value
                 guard let base64 = encoded.0 else { return }
                 guard let self, self.latestRequest == requestID, let webView else { return }
-                _ = try? await webView.evaluateJavaScript("window.setChartData && window.setChartData(window.decodeStockDeckJSON('\(base64)'))")
+                var js = "window.setChartData && window.setChartData(window.decodeStockDeckJSON('\(base64)'));"
                 if let plots = encoded.1 {
-                    guard self.latestRequest == requestID else { return }
-                    _ = try? await webView.evaluateJavaScript("window.setCustomPineIndicators?.(window.decodeStockDeckJSON('\(plots)'))")
+                    js += "window.setCustomPineIndicators?.(window.decodeStockDeckJSON('\(plots)'));"
                 }
                 if let menu = encoded.2 {
-                    guard self.latestRequest == requestID else { return }
-                    _ = try? await webView.evaluateJavaScript("window.setPineScriptsMenu?.(window.decodeStockDeckJSON('\(menu)'))")
+                    js += "window.setPineScriptsMenu?.(window.decodeStockDeckJSON('\(menu)'));"
                 }
+                _ = try? await webView.evaluateJavaScript(js)
             }
         }
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.state = "ready"; sendData(to: webView) }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.state = "ready"; lastSentSignature = nil; sendData(to: webView) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { parent.state = "error" }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { parent.state = "error" }
         func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
@@ -1516,9 +1611,11 @@ struct LightweightChartWebView: NSViewRepresentable {
                 if let data = try? JSONEncoder().encode(indicatorSettings) {
                     UserDefaults.standard.set(data, forKey: Self.indicatorSettingsKey(surface: parent.surface))
                 }
+                lastSentSignature = nil
                 if let webView = parent.webView { sendData(to: webView) }
             } else if type == "indicatorConfigChanged", let raw = body["periods"] as? [String: Int] {
                 indicatorPeriods = raw.filter { (1...2_000).contains($0.value) }
+                lastSentSignature = nil
                 if let webView = parent.webView { sendData(to: webView) }
             } else if type == "toggleInsiderMarkers" {
                 StorageService.shared.showInsiderMarkers = body["visible"] as? Bool ?? !StorageService.shared.showInsiderMarkers
