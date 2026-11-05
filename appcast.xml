@@ -6,22 +6,23 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.27</title>
-            <pubDate>Thu, 05 Nov 2026 08:52:25 +0900</pubDate>
-            <sparkle:version>30</sparkle:version>
-            <sparkle:shortVersionString>1.1.27</sparkle:shortVersionString>
+            <title>Version 1.1.28</title>
+            <pubDate>Thu, 05 Nov 2026 11:15:19 +0900</pubDate>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>1.1.28</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.27</h2>
+<h2>What's New in StockDeck 1.1.28</h2>
 <ul>
-    <li><strong>AI Daily Insights Grid Layout:</strong> Expanded US market mover candidate count from 3 to 4, displaying a balanced 2x2 card grid on wide screens without empty space.</li>
-    <li><strong>Honest Data Selection:</strong> Retains actual tracked portfolio and watchlist movers sorted by highest absolute price volatility, ensuring reliable, non-synthetic insights.</li>
+    <li><strong>RSI Technical Indicator Polish:</strong> Cleaned up redundant in-chart title badges on 70/50/30 threshold lines to match TradingView standards, while keeping threshold axis labels cleanly linked to the setting.</li>
+    <li><strong>Live RSI Current Value Badge:</strong> Added a prominent live RSI value badge on the vertical price scale that tracks real-time price changes.</li>
+    <li><strong>Superchart Performance:</strong> Optimized symbol switching on Superchart to eliminate UI lag and ensure smooth rendering.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.27/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.28/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="sw/1ZIeaonuV+mBzr1IiSZ2oxNfUKtwgz6DgWh/5mrHIZ7iMyTbuGUAGOOfVe1MBpeMCHoTIczx6UZ+Lo5OkBA=="
-                       length="11159596"/>
+                       sparkle:edSignature="ptiL8nQDpfpnjYgEoV3WGB2uxnSv+A6vVZu4qkIceD/MrBidHzxAax2EPDE2xXRzRL+te1Yyqq4EjQf+nc4kDw=="
+                       length="11173071"/>
         </item>
     </channel>
 </rss>
