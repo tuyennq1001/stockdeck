@@ -71,6 +71,18 @@ struct LightweightBar: Codable {
     let volume: Double?
 }
 
+struct LightweightChartAlertLine: Codable, Hashable, Sendable {
+    let price: Double
+    let title: String
+    let color: String
+
+    init(price: Double, title: String = "🔔 Alert", color: String = "#e67e22") {
+        self.price = price
+        self.title = title
+        self.color = color
+    }
+}
+
 struct LightweightChartPayload: Encodable {
     let symbol: String
     let currency: String
@@ -81,6 +93,7 @@ struct LightweightChartPayload: Encodable {
     let visibleTo: String?
     let markers: [LightweightChartMarker]
     let targetPrice: Double?
+    let alertLines: [LightweightChartAlertLine]?
     let showInsiderMarkers: Bool
     let drawings: [LightweightPriceRange]
     let hasOHLC: Bool
@@ -589,6 +602,7 @@ enum LightweightChartMath {
     static func encodedPayload(points: [PricePoint], interval: LightweightChartInterval, symbol: String,
                               currency: String, periods: [String: Int], visibleFrom: Date?,
                               markers: [LightweightChartMarker], targetPrice: Double?,
+                              alertLines: [LightweightChartAlertLine] = [],
                               showInsiderMarkers: Bool = true,
                               drawings: [LightweightPriceRange] = [],
                               indicatorSettings: LightweightIndicatorSettings = .init(),
@@ -597,6 +611,7 @@ enum LightweightChartMath {
         var hasher = Hasher()
         hasher.combine(symbol); hasher.combine(currency); hasher.combine(interval.rawValue)
         hasher.combine(visibleFrom?.timeIntervalSince1970); hasher.combine(visibleTo?.timeIntervalSince1970); hasher.combine(targetPrice)
+        hasher.combine(alertLines)
         hasher.combine(showInsiderMarkers)
         hasher.combine(selectedRange); hasher.combine(showsRangeControls)
         for range in availableRanges { hasher.combine(range) }
@@ -662,6 +677,7 @@ enum LightweightChartMath {
         cacheLock.unlock()
         let value = payload(points: points, interval: interval, symbol: symbol, currency: currency,
                             periods: periods, visibleFrom: visibleFrom, markers: markers, targetPrice: targetPrice,
+                            alertLines: alertLines,
                             showInsiderMarkers: showInsiderMarkers, drawings: drawings, indicatorSettings: settings,
                             selectedRange: selectedRange, showsRangeControls: showsRangeControls,
                             availableRanges: availableRanges, visibleTo: visibleTo)
@@ -729,6 +745,7 @@ enum LightweightChartMath {
     static func payload(points: [PricePoint], interval: LightweightChartInterval, symbol: String,
                         currency: String, periods: [String: Int], visibleFrom: Date? = nil,
                         markers: [LightweightChartMarker] = [], targetPrice: Double? = nil,
+                        alertLines: [LightweightChartAlertLine] = [],
                         showInsiderMarkers: Bool = true,
                         drawings: [LightweightPriceRange] = [],
                         indicatorSettings: LightweightIndicatorSettings = .init(),
@@ -837,6 +854,7 @@ enum LightweightChartMath {
             bars: bars, visibleFrom: visibleFrom.map { chartTime($0, interval: interval, symbol: symbol, calendar: cal) },
             visibleTo: visibleTo.map { chartTime($0, interval: interval, symbol: symbol, calendar: cal) },
             markers: displayMarkers, targetPrice: targetPrice.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
+            alertLines: alertLines.isEmpty ? nil : alertLines,
             showInsiderMarkers: showInsiderMarkers, drawings: drawings,
             hasOHLC: hasOHLC, lines: lines, rsi: indicatorPoints(rsi(closes, settings.rsiPeriod)),
             macd: indicatorPoints(macdValues.macd), signal: indicatorPoints(macdValues.signal),
@@ -1125,6 +1143,7 @@ struct LightweightPriceChartView: View {
     let visibleFrom: Date?
     let markers: [LightweightChartMarker]
     let targetPrice: Double?
+    var alertLines: [LightweightChartAlertLine] = []
     let isLoading: Bool
     let retry: () -> Void
     @Binding var selectedRange: String
@@ -1249,7 +1268,7 @@ struct LightweightPriceChartView: View {
                     if showsRangePicker || interval.isIntraday || !activePoints.isEmpty || webView != nil {
                         LightweightChartWebView(symbol: symbol, interval: activeInterval, points: activePoints,
                             currency: currency, visibleFrom: rangeStart, markers: markers,
-                            targetPrice: targetPrice, showInsiderMarkers: StorageService.shared.showInsiderMarkers,
+                            targetPrice: targetPrice, alertLines: alertLines, showInsiderMarkers: StorageService.shared.showInsiderMarkers,
                             selectedRange: selectedRange, showsRangeControls: showsRangePicker, surface: surface,
                             pineIndicators: pineIndicators, pineMenuItems: pineMenuItems, onManagePineScripts: onManagePineScripts,
                             onCustomPineAction: onCustomPineAction,
@@ -1388,6 +1407,7 @@ struct LightweightChartWebView: NSViewRepresentable {
     let visibleFrom: Date?
     let markers: [LightweightChartMarker]
     let targetPrice: Double?
+    var alertLines: [LightweightChartAlertLine] = []
     let showInsiderMarkers: Bool
     let selectedRange: String
     let showsRangeControls: Bool
@@ -1477,6 +1497,7 @@ struct LightweightChartWebView: NSViewRepresentable {
             let markersCount: Int
             let showInsiderMarkers: Bool
             let targetPrice: Double?
+            let alertLines: [LightweightChartAlertLine]
             let pineIndicatorsCount: Int
             let pineMenuItemsCount: Int
         }
@@ -1512,7 +1533,7 @@ struct LightweightChartWebView: NSViewRepresentable {
         func sendData(to webView: WKWebView) {
             guard webView.url != nil else { return }
             let points = parent.points, interval = parent.interval, symbol = parent.symbol, currency = parent.currency
-            let visibleFrom = parent.visibleFrom, visibleTo = parent.visibleTo, markers = parent.markers, targetPrice = parent.targetPrice
+            let visibleFrom = parent.visibleFrom, visibleTo = parent.visibleTo, markers = parent.markers, targetPrice = parent.targetPrice, alertLines = parent.alertLines
             let showInsiderMarkers = parent.showInsiderMarkers
             let selectedRange = parent.selectedRange
             // Detail charts use the same full controls as Superchart, but keep
@@ -1538,6 +1559,7 @@ struct LightweightChartWebView: NSViewRepresentable {
                 markersCount: markers.count,
                 showInsiderMarkers: showInsiderMarkers,
                 targetPrice: targetPrice,
+                alertLines: alertLines,
                 pineIndicatorsCount: pineIndicators.count,
                 pineMenuItemsCount: pineMenuItems.count
             )
@@ -1557,6 +1579,7 @@ struct LightweightChartWebView: NSViewRepresentable {
                     let data = LightweightChartMath.encodedPayload(points: points, interval: interval, symbol: symbol,
                         currency: currency, periods: periods,
                         visibleFrom: visibleFrom, markers: markers, targetPrice: targetPrice,
+                        alertLines: alertLines,
                         showInsiderMarkers: showInsiderMarkers, drawings: drawings,
                         indicatorSettings: indicatorSettings, selectedRange: selectedRange,
                         showsRangeControls: showsRangeControls, availableRanges: availableRanges, visibleTo: visibleTo)
