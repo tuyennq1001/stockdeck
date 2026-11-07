@@ -34,21 +34,51 @@ struct PortfolioWindowView: View {
         case portfolio(UUID)
     }
 
+    /// Sub-destinations within the Utilities workspace tab.
+    enum UtilityDestination: String, CaseIterable, Identifiable {
+        case aiReview = "AI Review"
+        case earnings = "Lịch Earnings"
+        case alerts = "Quản lý Alerts"
+        case importExport = "iCloud Sync & Import"
+
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .aiReview: return "sparkles"
+            case .earnings: return "calendar"
+            case .alerts: return "bell"
+            case .importExport: return "arrow.triangle.2.circlepath.icloud"
+            }
+        }
+
+        var helpText: String {
+            switch self {
+            case .aiReview: return "Đánh giá danh mục & cổ phiếu bằng AI"
+            case .earnings: return "Lịch công bố báo cáo tài chính"
+            case .alerts: return "Quản lý cảnh báo giá & webhook"
+            case .importExport: return "iCloud Sync, sao lưu & nhập dữ liệu"
+            }
+        }
+    }
+
     /// Top-level workspace modes presented on the left mode rail.
     enum WorkspaceMode: String, CaseIterable {
-        case index = "Index"
-        case superchart = "Superchart"
+        case portfolio = "Portfolio"
+        case watchlist = "Watchlist"
+        case utilities = "Utilities"
         case news = "News"
         case aiInsight = "AI Insight"
         case settings = "Settings"
 
         var keyboardShortcutKey: KeyEquivalent {
             switch self {
-            case .index: return "1"
-            case .superchart: return "2"
-            case .news: return "3"
-            case .aiInsight: return "4"
-            case .settings: return "5"
+            case .portfolio: return "1"
+            case .watchlist: return "2"
+            case .utilities: return "3"
+            case .news: return "4"
+            case .aiInsight: return "5"
+            case .settings: return "6"
             }
         }
 
@@ -61,7 +91,9 @@ struct PortfolioWindowView: View {
     typealias Scope = PortfolioScope
 
     @State private var selection: Nav = PortfolioWindowView.initialSelection()
+    @State private var utilitySelection: UtilityDestination = .aiReview
     @AppStorage("stockdeck.workspaceMode") private var workspaceMode: WorkspaceMode = PortfolioWindowView.initialWorkspaceMode()
+    @AppStorage("stockdeck.index.sidebarCollapsed") private var isSidebarCollapsed = false
     @State private var superchartSymbol: String?
     @State private var portfolioPath = NavigationPath()
 
@@ -69,8 +101,12 @@ struct PortfolioWindowView: View {
     /// each pane can be screenshotted deterministically.
     static func initialWorkspaceMode() -> WorkspaceMode {
         switch ProcessInfo.processInfo.environment["SD_OPEN_TAB"] {
-        case "superchart":
-            return .superchart
+        case "portfolio", "portfolios":
+            return .portfolio
+        case "watchlist", "superchart":
+            return .watchlist
+        case "utilities", "alerts", "earnings", "aiReview", "importExport":
+            return .utilities
         case "news":
             return .news
         case "home", "insights", "aiInsight", "ai_insight":
@@ -78,14 +114,14 @@ struct PortfolioWindowView: View {
         case "settings":
             return .settings
         default:
-            if let raw = UserDefaults.standard.string(forKey: "stockdeck.workspaceMode"),
-               let saved = WorkspaceMode(rawValue: raw) {
-                return saved
+            if let raw = UserDefaults.standard.string(forKey: "stockdeck.workspaceMode") {
+                if raw == "Index" { return .portfolio }
+                if raw == "Superchart" { return .watchlist }
+                if let saved = WorkspaceMode(rawValue: raw) {
+                    return saved
+                }
             }
-            if UserDefaults.standard.bool(forKey: "stockdeck.superchart.workspaceEnabled") {
-                return .superchart
-            }
-            return .index
+            return .portfolio
         }
     }
 
@@ -174,14 +210,37 @@ struct PortfolioWindowView: View {
         HStack(alignment: .top, spacing: 0) {
             modeRail
             switch workspaceMode {
-            case .superchart:
-                SuperchartWorkspaceView(stockService: stockService,
+            case .portfolio:
+                HStack(spacing: 0) {
+                    portfolioSidebar
+                        .frame(width: 240)
+                    portfolioDetail
+                        .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                        .id(String(describing: selection))
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+                .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
+            case .watchlist:
+                SuperchartWorkspaceView(
+                    stockService: stockService,
                     selectedSymbol: $superchartSymbol,
                     initialSource: sourceForCurrentSelection(),
-                    onSelectSource: selectSuperchartSource)
-                    .frame(minWidth: 430, maxWidth: .infinity, maxHeight: .infinity)
-                    .id("superchart")
-                    .transition(.opacity.combined(with: .offset(y: 6)))
+                    watchlistViewModel: watchlistViewModel,
+                    onSelectSource: selectSuperchartSource
+                )
+                .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                .id("watchlist_unified")
+                .transition(.opacity.combined(with: .offset(y: 6)))
+            case .utilities:
+                HStack(spacing: 0) {
+                    utilitiesSidebar
+                        .frame(width: 240)
+                    utilityDetail
+                        .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
+                        .id(utilitySelection.rawValue)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+                .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
             case .news:
                 HomeWideView(mode: .news, showModePicker: false, onOpenSettings: { workspaceMode = .settings })
                     .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
@@ -197,16 +256,6 @@ struct PortfolioWindowView: View {
                     .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
                     .id("settings")
                     .transition(.opacity.combined(with: .offset(y: 6)))
-            case .index:
-                HStack(spacing: 0) {
-                    sidebar
-                        .frame(width: 240)
-                    detail
-                        .frame(minWidth: 640, maxWidth: .infinity, maxHeight: .infinity)
-                        .id(String(describing: selection))
-                        .transition(.opacity.combined(with: .offset(y: 6)))
-                }
-                .frame(minWidth: 920, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -223,9 +272,6 @@ struct PortfolioWindowView: View {
             }
             .animation(.easeOut(duration: 0.22), value: workspaceMode)
             .animation(.easeOut(duration: 0.22), value: selection)
-            .onChange(of: workspaceMode) { _, newMode in
-                UserDefaults.standard.set(newMode == .superchart, forKey: "stockdeck.superchart.workspaceEnabled")
-            }
             .task {
                 sidebarSummaryCache.setup(stockService: stockService, storageService: storageService)
                 await sidebarSummaryCache.refresh()
@@ -365,14 +411,15 @@ struct PortfolioWindowView: View {
     }
 
     /// Invisible buttons that give the window native keyboard shortcuts:
-    /// ⌘1 Index · ⌘2 Superchart · ⌘3 News · ⌘4 AI Insight · ⌘5 Settings · ⌘R Refresh · ⌘N New portfolio · ⌘W Close window.
+    /// ⌘1 Portfolio · ⌘2 Watchlist · ⌘3 Utilities · ⌘4 News · ⌘5 AI Insight · ⌘6 Settings · ⌘R Refresh · ⌘N New portfolio · ⌘W Close window.
     private var keyboardShortcuts: some View {
         Group {
-            Button("") { workspaceMode = .index }.keyboardShortcut("1", modifiers: .command)
-            Button("") { workspaceMode = .superchart }.keyboardShortcut("2", modifiers: .command)
-            Button("") { workspaceMode = .news }.keyboardShortcut("3", modifiers: .command)
-            Button("") { workspaceMode = .aiInsight }.keyboardShortcut("4", modifiers: .command)
-            Button("") { workspaceMode = .settings }.keyboardShortcut("5", modifiers: .command)
+            Button("") { workspaceMode = .portfolio }.keyboardShortcut("1", modifiers: .command)
+            Button("") { workspaceMode = .watchlist }.keyboardShortcut("2", modifiers: .command)
+            Button("") { workspaceMode = .utilities }.keyboardShortcut("3", modifiers: .command)
+            Button("") { workspaceMode = .news }.keyboardShortcut("4", modifiers: .command)
+            Button("") { workspaceMode = .aiInsight }.keyboardShortcut("5", modifiers: .command)
+            Button("") { workspaceMode = .settings }.keyboardShortcut("6", modifiers: .command)
             Button("") {
                 Task {
                     await storageService.waitUntilRestored()
@@ -396,17 +443,24 @@ struct PortfolioWindowView: View {
                 .frame(width: 1)
 
             VStack(spacing: 2) {
-                ModeRailTabButton(mode: .index, selected: workspaceMode == .index) {
-                    workspaceMode = .index
+                ModeRailTabButton(mode: .portfolio, selected: workspaceMode == .portfolio) {
+                    workspaceMode = .portfolio
                 }
-                DS.ink.opacity(workspaceMode == .index || workspaceMode == .superchart ? 0 : 0.12)
+                DS.ink.opacity(workspaceMode == .portfolio || workspaceMode == .watchlist ? 0 : 0.12)
                     .frame(width: 12, height: 1)
                     .padding(.vertical, 1)
 
-                ModeRailTabButton(mode: .superchart, selected: workspaceMode == .superchart) {
-                    workspaceMode = .superchart
+                ModeRailTabButton(mode: .watchlist, selected: workspaceMode == .watchlist) {
+                    workspaceMode = .watchlist
                 }
-                DS.ink.opacity(workspaceMode == .superchart || workspaceMode == .news ? 0 : 0.12)
+                DS.ink.opacity(workspaceMode == .watchlist || workspaceMode == .utilities ? 0 : 0.12)
+                    .frame(width: 12, height: 1)
+                    .padding(.vertical, 1)
+
+                ModeRailTabButton(mode: .utilities, selected: workspaceMode == .utilities) {
+                    workspaceMode = .utilities
+                }
+                DS.ink.opacity(workspaceMode == .utilities || workspaceMode == .news ? 0 : 0.12)
                     .frame(width: 12, height: 1)
                     .padding(.vertical, 1)
 
@@ -482,6 +536,91 @@ struct PortfolioWindowView: View {
             .accessibilityLabel("\(mode.rawValue)  \(mode.shortcutLabel)")
             .accessibilityAddTraits(selected ? .isSelected : [])
         }
+    }
+
+    private var portfolioSidebar: some View {
+        VStack(spacing: 0) {
+            // Top-right support icons, in the traffic-light clearance band (lights
+            // sit on the left, so these stay clear of them).
+            HStack(spacing: 6) {
+                Spacer()
+                SupportButton(icon: "star", title: "Star", hoverTint: DS.gold,
+                              url: "https://github.com/tuyennq1001/stockdeck", compact: true)
+                SupportButton(icon: "heart", title: "Sponsor", hoverTint: Color(red: 0.86, green: 0.30, blue: 0.46),
+                              url: "https://github.com/sponsors/tuyennq1001", compact: true)
+            }
+            .padding(.top, 12).padding(.trailing, 12).padding(.bottom, 2)
+            brand
+            Divider().overlay(DS.hairline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    portfoliosHeader
+                    let allStats = portfolioStats(for: storageService.portfolios)
+                    NavRow(icon: "square.grid.2x2", title: "All Portfolios",
+                           trailing: allStats.text,
+                           trailingTint: DS.pnlColor(allStats.percent),
+                           helpText: "Combined view of every portfolio",
+                           selected: selection == .portfoliosAll, namespace: navNamespace) { navigate(to: .portfoliosAll) }
+                    SidebarPortfoliosSection(
+                        storageService: storageService,
+                        selectedPortfolioId: {
+                            if case .portfolio(let id) = selection { return id }
+                            return nil
+                        }(),
+                        navNamespace: navNamespace,
+                        statsProvider: { portfolio in portfolioStats(for: [portfolio]) },
+                        onSelect: { portfolio in navigate(to: .portfolio(portfolio.id)) },
+                        onAddHolding: { portfolio in addHoldingTarget = AddHoldingTarget(portfolioId: portfolio.id, symbol: nil) },
+                        onRename: { portfolio in renameTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) },
+                        onNotifications: { portfolio in notifTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) },
+                        onDelete: { portfolio in deletePortfolioTarget = PortfolioRef(id: portfolio.id, name: portfolio.name) }
+                    )
+                }
+                .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 12)
+            }
+            let totals = sidebarTotals
+            let secCurr = storageService.secondaryCurrency
+            let secRate = !secCurr.isEmpty && secCurr != storageService.preferredCurrency
+                ? stockService.rate(from: storageService.preferredCurrency, to: secCurr)
+                : 0
+            TotalFooter(value: totals.value,
+                        cost: totals.cost,
+                        pnl: totals.pnl,
+                        currency: storageService.preferredCurrency,
+                        decimals: storageService.amountDecimals,
+                        secondaryCurrency: secCurr,
+                        secondaryRate: secRate)
+            quitRow
+        }
+        .background(DS.ground)
+        .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
+    }
+
+    private var utilitiesSidebar: some View {
+        VStack(spacing: 0) {
+            brand
+            Divider().overlay(DS.hairline)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 3) {
+                    utilitiesHeader
+                    ForEach(UtilityDestination.allCases) { util in
+                        NavRow(
+                            icon: util.icon,
+                            title: util.rawValue,
+                            helpText: util.helpText,
+                            selected: utilitySelection == util,
+                            namespace: navNamespace
+                        ) {
+                            utilitySelection = util
+                        }
+                    }
+                }
+                .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 12)
+            }
+            quitRow
+        }
+        .background(DS.ground)
+        .overlay(alignment: .trailing) { DS.hairline.frame(width: 1) }
     }
 
     private var sidebar: some View {
@@ -713,7 +852,7 @@ struct PortfolioWindowView: View {
     private var brand: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                Button { workspaceMode = .index } label: {
+                Button { workspaceMode = .portfolio } label: {
                     HStack(spacing: 10) {
                         BrandMark(size: 30)
                         VStack(alignment: .leading, spacing: 1) {
@@ -740,20 +879,34 @@ struct PortfolioWindowView: View {
         return "v\(v)\(dev)"
     }
 
-    // MARK: - Detail
+    // MARK: - Detail Views
 
-    @ViewBuilder private var detail: some View {
+    @ViewBuilder private var portfolioDetail: some View {
         switch selection {
-        case .home, .insights:
-            HomeWideView(mode: .insights, showModePicker: false, onOpenSettings: { navigate(to: .settings) })
-                .id("home_insights")
-        case .news:
-            HomeWideView(mode: .news, showModePicker: false, onOpenSettings: { navigate(to: .settings) })
-                .id("home_news")
-        case .watchlist:
-            WatchlistWideView(stockService: stockService, viewModel: watchlistViewModel, showSearch: $showSearch)
-        case .settings:
-            SettingsWideView()
+        case .portfolio(let id):
+            NavigationStack(path: $portfolioPath) {
+                PortfolioOverview(scope: .portfolio(id), stockService: stockService)
+                    .id(id)
+            }
+        default:
+            NavigationStack(path: $portfolioPath) {
+                PortfolioOverview(scope: .all, stockService: stockService)
+                    .id("all")
+            }
+        }
+    }
+
+    @ViewBuilder private var utilityDetail: some View {
+        switch utilitySelection {
+        case .aiReview:
+            AIReviewWideView(onOpenSettings: { workspaceMode = .settings })
+                .id("ai_review_wide")
+        case .earnings:
+            EarningsCalendarView()
+                .id("earnings_calendar_wide")
+        case .alerts:
+            AlertsWideView()
+                .id("alerts_wide")
         case .importExport:
             ImportExportWideView(
                 onImportStandard: { importStandard() },
@@ -769,29 +922,19 @@ struct PortfolioWindowView: View {
                 onExportTransactions: { exportTransactions(storageService.portfolios) },
                 onExportTransactionsMD: { exportTransactionsMD(storageService.portfolios) }
             )
-        case .portfoliosAll:
-            NavigationStack(path: $portfolioPath) {
-                PortfolioOverview(scope: .all, stockService: stockService)
-                    .id("all")
-            }
-        case .portfolio(let id):
-            NavigationStack(path: $portfolioPath) {
-                PortfolioOverview(scope: .portfolio(id), stockService: stockService)
-                    .id(id)
-            }
-        case .aiReview:
-            AIReviewWideView(onOpenSettings: { navigate(to: .settings) })
-        case .earnings:
-            EarningsCalendarView()
-        case .alerts:
-            AlertsWideView()
+            .id("import_export_wide")
         }
+    }
+
+    @ViewBuilder private var detail: some View {
+        portfolioDetail
     }
 
     /// Sidebar navigation always exits a pushed portfolio detail first. Keeping
     /// this path explicit avoids SwiftUI retaining a stale HoldingDetailView when
     /// the user switches directly to a watchlist or another sidebar destination.
     private func navigate(to destination: Nav) {
+        portfolioPath = NavigationPath()
         switch destination {
         case .home, .insights:
             workspaceMode = .aiInsight
@@ -799,10 +942,31 @@ struct PortfolioWindowView: View {
             workspaceMode = .news
         case .settings:
             workspaceMode = .settings
-        default:
-            workspaceMode = .index
-            portfolioPath = NavigationPath()
-            selection = destination
+        case .watchlist:
+            workspaceMode = .watchlist
+            selection = .watchlist
+        case .portfoliosAll:
+            workspaceMode = .portfolio
+            selection = .portfoliosAll
+        case .portfolio(let id):
+            workspaceMode = .portfolio
+            selection = .portfolio(id)
+        case .aiReview:
+            workspaceMode = .utilities
+            utilitySelection = .aiReview
+            selection = .aiReview
+        case .earnings:
+            workspaceMode = .utilities
+            utilitySelection = .earnings
+            selection = .earnings
+        case .alerts:
+            workspaceMode = .utilities
+            utilitySelection = .alerts
+            selection = .alerts
+        case .importExport:
+            workspaceMode = .utilities
+            utilitySelection = .importExport
+            selection = .importExport
         }
     }
 

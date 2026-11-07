@@ -3672,6 +3672,24 @@ class StockService: ObservableObject {
         return "USD"
     }
 
+    /// Determines the natural market benchmark for performance & Alpha comparison.
+    /// - Vietnamese stocks → VN-Index (`^VNINDEX.VN`)
+    /// - Japanese stocks & funds → Nikkei 225 (`^N225`)
+    /// - US & other global stocks → S&P 500 (`^GSPC`)
+    nonisolated static func benchmarkSymbol(for symbol: String) -> (symbol: String, name: String) {
+        let upper = symbol.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if upper == "^VNINDEX.VN" || upper == "^VNINDEX" || upper == "VNINDEX" || upper == "^N225" {
+            return ("^GSPC", "S&P 500")
+        }
+        if isVietnameseStock(symbol) {
+            return ("^VNINDEX.VN", "VN-Index")
+        }
+        if isJapaneseStock(symbol) || isJapaneseMutualFund(symbol) || containsJapaneseCharacters(symbol) {
+            return ("^N225", "Nikkei 225")
+        }
+        return ("^GSPC", "S&P 500")
+    }
+
     func detectedCurrency(for symbol: String) -> String {
         Self.detectedCurrency(for: symbol, quotes: quotes)
     }
@@ -4390,8 +4408,12 @@ class StockService: ObservableObject {
                     let params = Self.smartNewsParameters(symbol: symbol, displayName: name)
                     group.addTask { [weak self] in
                         guard let self else { return [] }
-                        let direct = await self.fetchYahooNews(symbol: symbol)
-                        if !direct.isEmpty { return direct }
+                        let isVN = Self.isVietnameseStock(symbol)
+                        let isJP = Self.isJapaneseStock(symbol) || Self.isJapaneseMutualFund(symbol)
+                        if !isVN && !isJP {
+                            let direct = await self.fetchYahooNews(symbol: symbol)
+                            if !direct.isEmpty { return direct }
+                        }
                         return await self.fetchNewsChunk(
                             query: params.query,
                             sourceSymbol: symbol,
@@ -4542,7 +4564,11 @@ class StockService: ObservableObject {
 
     private func fetchYahooNews(symbol: String) async -> [NewsArticle] {
         let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !cleanSymbol.isEmpty, !cleanSymbol.hasSuffix(".VN") else { return [] }
+        guard !cleanSymbol.isEmpty,
+              !cleanSymbol.hasSuffix(".VN"),
+              !Self.isVietnameseStock(cleanSymbol),
+              !Self.isJapaneseStock(cleanSymbol),
+              !Self.isJapaneseMutualFund(cleanSymbol) else { return [] }
         guard let url = URL(string: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=\(cleanSymbol)&region=US&lang=en-US") else { return [] }
         do {
             let (data, response) = try await session.data(from: url)
@@ -4575,9 +4601,11 @@ class StockService: ObservableObject {
 
         let name = displayName ?? quotes[key]?.displayName ?? quotes[symbol]?.name
         let params = Self.smartNewsParameters(symbol: symbol, displayName: name, marketCategory: marketCategory)
+        let isVN = Self.isVietnameseStock(key) || Self.isVietnameseStock(symbol)
+        let isJP = Self.isJapaneseStock(key) || Self.isJapaneseMutualFund(key) || Self.isJapaneseStock(symbol)
 
-        // Run both Yahoo RSS and targeted Google News RSS concurrently
-        async let yahooTask = fetchYahooNews(symbol: key)
+        // Run targeted news fetching: skip Yahoo US RSS for Vietnamese and Japanese stocks
+        async let yahooTask: [NewsArticle] = (isVN || isJP) ? [] : fetchYahooNews(symbol: key)
         async let googleTask = fetchNewsChunk(
             query: params.query,
             sourceSymbol: key,
@@ -4601,6 +4629,17 @@ class StockService: ObservableObject {
             var s = 0
             let titleUp = article.title.uppercased()
             let contentUp = article.content.uppercased()
+
+            if isVN {
+                // Negative filter for Vietnamese stocks: reject articles from international ticker collisions
+                // (e.g. ACB colliding with Aurora Cannabis Inc on US exchanges)
+                let forbiddenKeywords = ["AURORA CANNABIS", "CANNA", "MARIJUANA", "ORGANIGRAM", "HEMP"]
+                for badKw in forbiddenKeywords {
+                    if titleUp.contains(badKw) || contentUp.contains(badKw) {
+                        return -999
+                    }
+                }
+            }
 
             if titleUp.contains(cleanTicker) { s += 100 }
             if !cleanNameUpper.isEmpty && cleanNameUpper != cleanTicker && titleUp.contains(cleanNameUpper) { s += 100 }
@@ -4633,6 +4672,7 @@ class StockService: ObservableObject {
         var seen = Set<String>()
         var deduped: [NewsArticle] = []
         for item in scored {
+            guard item.score >= 0 else { continue }
             let a = item.article
             guard GoogleNewsRSSParser.isRelevantForNumericTicker(ticker: key, title: a.title, content: a.content) else {
                 continue
