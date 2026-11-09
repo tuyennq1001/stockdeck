@@ -1,65 +1,83 @@
 import SwiftUI
 import AppKit
 
-/// Design tokens for the StockDeck desktop window — the "private banking" light
-/// editorial system: warm paper ground, white card stock, one sober emerald,
-/// generous whitespace, immaculate numeric typography. The window is pinned to
-/// the light appearance; dark branches are kept only as a safety net for sheets
-/// that may inherit the system appearance.
+/// Design tokens for the StockDeck desktop window:
+/// - Dark (Default): "Obsidian Slate Financial Terminal" — 4-tier navy-slate ground,
+///   elevated cards, crisp 12% white micro-hairline borders, AAA high-contrast ink,
+///   Electric Blue accents, Emerald Mint gains, Crimson Coral losses.
+/// - Light (Classic): "Private Banking" — warm paper ground, white card stock,
+///   warm near-black ink, sober emerald.
 enum DS {
     // MARK: Surfaces
-    /// Window/detail ground — warm paper.
+    /// Window/detail ground: #0E1117 (Obsidian Ground) in dark, warm paper in light.
     static let ground = dynamic(light: NSColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1),
-                                dark: NSColor(white: 0.09, alpha: 1))
-    /// Sidebar flat tint — a hair darker than the ground.
+                                dark: NSColor(srgbRed: 14/255.0, green: 17/255.0, blue: 23/255.0, alpha: 1))
+    /// Sidebar flat tint: #161B22 (Surface Layer 1) in dark.
     static let sidebarBG = dynamic(light: NSColor(red: 0.957, green: 0.945, blue: 0.918, alpha: 1),
-                                   dark: NSColor(white: 0.11, alpha: 1))
-    /// Mode rail tabstrip surface — slightly deeper tone behind tabs like Chrome tabstrip.
+                                   dark: NSColor(srgbRed: 22/255.0, green: 27/255.0, blue: 34/255.0, alpha: 1))
+    /// Mode rail tabstrip surface: #161B22 (Surface Layer 1) in dark.
     static let tabstripBG = dynamic(light: NSColor(red: 0.914, green: 0.894, blue: 0.847, alpha: 1),
-                                    dark: NSColor(white: 0.065, alpha: 1))
-    /// Card stock.
-    static let card = dynamic(light: .white, dark: NSColor(white: 0.13, alpha: 1))
-    /// Inset wells, chart placeholders, thumbnails.
+                                    dark: NSColor(srgbRed: 22/255.0, green: 27/255.0, blue: 34/255.0, alpha: 1))
+    /// Card stock / elevated container: #21262D (Elevated Layer 2) in dark.
+    static let card = dynamic(light: .white,
+                              dark: NSColor(srgbRed: 33/255.0, green: 38/255.0, blue: 45/255.0, alpha: 1))
+    /// Inset wells, hover states, active rows: #29303B (Surface Hover / Active Layer 3) in dark.
     static let cardAlt = dynamic(light: NSColor(red: 0.961, green: 0.949, blue: 0.925, alpha: 1),
-                                 dark: NSColor(white: 0.17, alpha: 1))
-    /// Borders and dividers — warm, near-invisible.
+                                 dark: NSColor(srgbRed: 41/255.0, green: 48/255.0, blue: 59/255.0, alpha: 1))
+    /// Borders and hairline frames: micro-hairline 12% white in dark.
     static let hairline = dynamic(light: NSColor(red: 0.102, green: 0.090, blue: 0.059, alpha: 0.07),
-                                  dark: NSColor(white: 1, alpha: 0.10))
+                                  dark: NSColor(white: 1.0, alpha: 0.12))
+    /// Subtle divider between matrix rows or list items: 6% white in dark.
+    static let subtleDivider = dynamic(light: NSColor(red: 0.102, green: 0.090, blue: 0.059, alpha: 0.04),
+                                       dark: NSColor(white: 1.0, alpha: 0.06))
 
     // MARK: Ink
-    /// Warm near-black for display text.
+    /// High-contrast primary ink: #F0F6FC in dark, warm near-black in light.
     static let ink = dynamic(light: NSColor(red: 0.110, green: 0.102, blue: 0.082, alpha: 1),
-                             dark: NSColor(white: 0.94, alpha: 1))
-    /// Warm secondary gray (instead of the blue-ish system secondary).
+                             dark: NSColor(srgbRed: 240/255.0, green: 246/255.0, blue: 252/255.0, alpha: 1))
+    /// Slate secondary gray: #8B949E in dark.
     static let inkSecondary = dynamic(light: NSColor(red: 0.431, green: 0.416, blue: 0.376, alpha: 1),
-                                      dark: NSColor(red: 0.64, green: 0.62, blue: 0.58, alpha: 1))
-    /// Captions, placeholders, timestamps.
+                                      dark: NSColor(srgbRed: 139/255.0, green: 148/255.0, blue: 158/255.0, alpha: 1))
+    /// Tertiary captions, placeholders, timestamps: #6E7681 in dark.
     static let inkTertiary = dynamic(light: NSColor(red: 0.608, green: 0.588, blue: 0.541, alpha: 1),
-                                     dark: NSColor(red: 0.50, green: 0.485, blue: 0.45, alpha: 1))
+                                     dark: NSColor(srgbRed: 110/255.0, green: 118/255.0, blue: 129/255.0, alpha: 1))
 
     // MARK: Accents
-    /// Brand emerald — selection, links, the mark.
-    static let brand = Color(red: 0.110, green: 0.451, blue: 0.369)
-    /// Gains — sober emerald (default when no custom gain color is set).
-    static let upDefault = Color(red: 0.129, green: 0.522, blue: 0.400)
-    /// Losses — muted terracotta (default when no custom loss color is set).
-    static let downDefault = Color(red: 0.761, green: 0.290, blue: 0.267)
+    /// Brand electric blue in dark (#388BFD), brand emerald in light (#1C735E).
+    static let brand = dynamicColor(light: Color(red: 0.110, green: 0.451, blue: 0.369),
+                                    dark: Color(red: 56/255.0, green: 139/255.0, blue: 253/255.0))
+    /// Gains — Emerald Mint #3FB950 in dark, Sober Emerald #218566 in light (default when no custom gain color is set).
+    static let upDefault = dynamic(light: NSColor(red: 0.129, green: 0.522, blue: 0.400, alpha: 1),
+                                   dark: NSColor(srgbRed: 63/255.0, green: 185/255.0, blue: 80/255.0, alpha: 1))
+    /// Losses — Crimson Coral #F85149 in dark, Muted Terracotta #C24A44 in light (default when no custom loss color is set).
+    static let downDefault = dynamic(light: NSColor(red: 0.761, green: 0.290, blue: 0.267, alpha: 1),
+                                     dark: NSColor(srgbRed: 248/255.0, green: 81/255.0, blue: 73/255.0, alpha: 1))
 
     /// Gain color used across the whole app. Honors the user's custom gain color
-    /// (Settings → Colors) when set, otherwise the emerald default. Views that
+    /// (Settings → Colors) when set, otherwise the Emerald Mint default. Views that
     /// show P&L observe StorageService, so changing the color re-renders them.
     @MainActor static var up: Color {
         let s = StorageService.shared
         return s.gainColorHex.isEmpty ? upDefault : Color(nsColor: s.gainColor)
     }
     /// Loss color used across the whole app. Custom loss color when set, else the
-    /// terracotta default.
+    /// Crimson Coral default.
     @MainActor static var down: Color {
         let s = StorageService.shared
         return s.lossColorHex.isEmpty ? downDefault : Color(nsColor: s.lossColor)
     }
-    @MainActor static var upSoft: Color { up.opacity(0.10) }
-    @MainActor static var downSoft: Color { down.opacity(0.10) }
+    @MainActor static var upSoft: Color { up.opacity(0.12) }
+    @MainActor static var downSoft: Color { down.opacity(0.12) }
+    static var brandSoft: Color { brand.opacity(0.15) }
+
+    /// Price alert amber accent: #D29922.
+    static let amber = Color(red: 210/255.0, green: 153/255.0, blue: 34/255.0)
+    static var amberSoft: Color { amber.opacity(0.18) }
+
+    /// Buy target green accent: #3FB950.
+    static let buyTarget = Color(red: 63/255.0, green: 185/255.0, blue: 80/255.0)
+    static var buyTargetSoft: Color { buyTarget.opacity(0.20) }
+
     /// The one reserved luxury accent: FEATURED label and concentration warnings.
     static let gold = Color(red: 0.722, green: 0.573, blue: 0.247)
 
@@ -111,18 +129,22 @@ enum DS {
     private static func dynamic(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: .init(name: nil) { $0.isDarkMode ? dark : light })
     }
+
+    private static func dynamicColor(light: Color, dark: Color) -> Color {
+        Color(nsColor: .init(name: nil) { $0.isDarkMode ? NSColor(dark) : NSColor(light) })
+    }
 }
 
 extension NSAppearance {
     fileprivate var isDarkMode: Bool { bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 }
 
-/// The window ground: warm paper with a whisper of brand emerald in one corner.
+/// The window ground: obsidian navy-slate in dark with a subtle electric blue glow, or warm paper with emerald in light.
 struct AppBackground: View {
     var body: some View {
         ZStack {
             DS.ground
-            RadialGradient(colors: [DS.brand.opacity(0.045), .clear],
+            RadialGradient(colors: [DS.brand.opacity(0.04), .clear],
                            center: .topLeading, startRadius: 0, endRadius: 700)
         }
         .ignoresSafeArea()
@@ -140,7 +162,7 @@ extension View {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(DS.card)
-                    .shadow(color: .black.opacity(elevated ? 0.07 : 0.035),
+                    .shadow(color: .black.opacity(elevated ? 0.08 : 0.035),
                             radius: elevated ? 12 : 8, x: 0, y: elevated ? 6 : 3)
                     .shadow(color: .black.opacity(0.02), radius: 1, x: 0, y: 1)
             )
@@ -539,7 +561,34 @@ struct ChangePill: View {
         .foregroundStyle(DS.pnlColor(value))
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(Capsule().fill(value >= 0 ? DS.upSoft : DS.downSoft))
+        .overlay(
+            Capsule()
+                .strokeBorder((value >= 0 ? DS.up : DS.down).opacity(0.30), lineWidth: 1)
+        )
         .animation(.spring(response: 0.4, dampingFraction: 0.9), value: text)
+    }
+}
+
+/// Standardized cockpit-style capsule pill with 12% fill background and 30% border stroke.
+struct MetricPill: View {
+    let text: String
+    var color: Color
+    var icon: String? = nil
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text(verbatim: text)
+                .font(.inter(11, weight: .semibold, relativeTo: .caption).monospacedDigit())
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(Capsule().fill(color.opacity(0.12)))
+        .overlay(Capsule().strokeBorder(color.opacity(0.30), lineWidth: 1))
     }
 }
 
@@ -552,8 +601,8 @@ struct Tag: View {
             .font(DS.micro)
             .foregroundStyle(color)
             .padding(.horizontal, 5).padding(.vertical, 1.5)
-            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .strokeBorder(color.opacity(0.45), lineWidth: 1))
+            .background(Capsule().fill(color.opacity(0.12)))
+            .overlay(Capsule().strokeBorder(color.opacity(0.30), lineWidth: 1))
     }
 }
 

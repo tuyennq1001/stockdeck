@@ -160,20 +160,20 @@ struct LightweightIndicatorSettings: Codable, Equatable {
 
     static let defaultComponentStyles: [String: ComponentStyle] = [
         "rsi": .init(color: "#9467bd", thickness: 2),
-        "rsiUpper": .init(color: "#d95f59", thickness: 1, lineStyle: "dashed"),
-        "rsiMiddle": .init(color: "#858b98", thickness: 1, lineStyle: "dashed"),
-        "rsiLower": .init(color: "#16816d", thickness: 1, lineStyle: "dashed"),
+        "rsiUpper": .init(color: "#f85149", thickness: 1, lineStyle: "dashed"),
+        "rsiMiddle": .init(color: "#8b949e", thickness: 1, lineStyle: "dashed"),
+        "rsiLower": .init(color: "#3fb950", thickness: 1, lineStyle: "dashed"),
         "rsiFill": .init(color: "#9467bd", opacity: 12, thickness: 1),
-        "macd": .init(color: "#4183c4", thickness: 2),
+        "macd": .init(color: "#388bfd", thickness: 2),
         "signal": .init(color: "#da9147", thickness: 1),
-        "macdHistogram": .init(color: "#1a9b82", plotType: "histogram"),
+        "macdHistogram": .init(color: "#3fb950", plotType: "histogram"),
         "bbUpper": .init(color: "#8a78bd", thickness: 1),
         "bbMiddle": .init(color: "#8a78bd", thickness: 1, lineStyle: "dashed"),
         "bbLower": .init(color: "#8a78bd", thickness: 1),
         "bbFill": .init(color: "#8a78bd", opacity: 10),
         "stochasticK": .init(color: "#9467bd", thickness: 2),
         "stochasticD": .init(color: "#da9147", thickness: 2),
-        "sar": .init(color: "#16816d", thickness: 2, plotType: "circles")
+        "sar": .init(color: "#3fb950", thickness: 2, plotType: "circles")
     ]
 
     var componentStyles = LightweightIndicatorSettings.defaultComponentStyles
@@ -403,7 +403,7 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
     var fontSize: Double?
     var fontColor: String?
 
-    init(id: String, kind: String = "range", color: String = "#1a9b82", lineWidth: Double = 1, isLocked: Bool = false,
+    init(id: String, kind: String = "range", color: String = "#3fb950", lineWidth: Double = 1, isLocked: Bool = false,
          startTime: String, endTime: String, startPrice: Double, endPrice: Double,
          lineStyle: String? = "solid", extendRight: Bool? = false, text: String? = nil, fontSize: Double? = nil,
          fontColor: String? = nil) {
@@ -433,7 +433,7 @@ struct LightweightPriceRange: Codable, Hashable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "range"
-        color = try container.decodeIfPresent(String.self, forKey: .color) ?? "#1a9b82"
+        color = try container.decodeIfPresent(String.self, forKey: .color) ?? "#3fb950"
         lineWidth = try container.decodeIfPresent(Double.self, forKey: .lineWidth) ?? 1
         isLocked = try container.decodeIfPresent(Bool.self, forKey: .isLocked) ?? false
         if let s = try? container.decode(String.self, forKey: .startTime) {

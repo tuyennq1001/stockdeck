@@ -45,12 +45,26 @@ extension Color {
 }
 
 extension StorageService {
-    /// Resolved gain color for the menu bar (system green until a custom one is set).
+    /// Resolved gain color for the menu bar (Emerald Mint #3FB950 in dark, Sober Emerald #218566 in light until a custom one is set).
     var gainColor: NSColor {
-        gainColorHex.isEmpty ? .systemGreen : (NSColor(hexString: gainColorHex) ?? .systemGreen)
+        if !gainColorHex.isEmpty, let custom = NSColor(hexString: gainColorHex) {
+            return custom
+        }
+        return NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? (NSColor(hexString: "#3FB950") ?? .systemGreen)
+                : NSColor(red: 0.129, green: 0.522, blue: 0.400, alpha: 1)
+        }
     }
-    /// Resolved loss color for the menu bar (system red until a custom one is set).
+    /// Resolved loss color for the menu bar (Crimson Coral #F85149 in dark, Muted Terracotta #C24A44 in light until a custom one is set).
     var lossColor: NSColor {
-        lossColorHex.isEmpty ? .systemRed : (NSColor(hexString: lossColorHex) ?? .systemRed)
+        if !lossColorHex.isEmpty, let custom = NSColor(hexString: lossColorHex) {
+            return custom
+        }
+        return NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? (NSColor(hexString: "#F85149") ?? .systemRed)
+                : NSColor(red: 0.761, green: 0.290, blue: 0.267, alpha: 1)
+        }
     }
 }

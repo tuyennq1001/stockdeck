@@ -1055,7 +1055,7 @@ private struct SettingsContentView: View {
                 DSPicker(options: AppearanceMode.allCases.map { ($0, $0.label) },
                          selection: Binding(get: { storageService.appearanceMode },
                                             set: { storageService.appearanceMode = $0 }),
-                         width: 160)
+                         width: 240)
             }
             SettingDivider()
             SettingRow("Font") {
