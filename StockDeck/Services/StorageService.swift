@@ -1805,8 +1805,8 @@ class StorageService: ObservableObject {
         prefetchLogo(symbol)
     }
 
-    func removeFromWatchlist(_ symbol: String) {
-        let activeId = currentWatchlist.id
+    func removeFromWatchlist(_ symbol: String, watchlistId: UUID? = nil) {
+        let activeId = watchlistId ?? currentWatchlist.id
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         watchlists[idx].symbols.removeAll { $0 == symbol }
     }
@@ -1851,8 +1851,8 @@ class StorageService: ObservableObject {
         return searchResults + localResults.filter { !existingIdentities.contains($0.watchlistSymbol) }
     }
 
-    func removeMultipleFromWatchlist(_ symbols: Set<String>) {
-        let activeId = currentWatchlist.id
+    func removeMultipleFromWatchlist(_ symbols: Set<String>, watchlistId: UUID? = nil) {
+        let activeId = watchlistId ?? currentWatchlist.id
         guard let idx = watchlists.firstIndex(where: { $0.id == activeId }) else { return }
         watchlists[idx].symbols.removeAll { symbols.contains($0) }
     }
@@ -1952,9 +1952,10 @@ class StorageService: ObservableObject {
         _ group: Set<String>,
         relativeTo targetSymbol: String,
         placement: InsertPlacement,
-        in displayedOrder: [String]? = nil
+        in displayedOrder: [String]? = nil,
+        watchlistId: UUID? = nil
     ) -> [String]? {
-        let activeId = currentWatchlist.id
+        let activeId = watchlistId ?? currentWatchlist.id
         guard let wlIndex = watchlists.firstIndex(where: { $0.id == activeId }) else { return nil }
         let existing = watchlists[wlIndex].symbols
         let baseOrder: [String]

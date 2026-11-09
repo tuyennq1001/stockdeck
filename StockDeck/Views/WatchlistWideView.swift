@@ -9,6 +9,13 @@ struct WatchlistWideView: View {
     @EnvironmentObject var storageService: StorageService
     let viewModel: WatchlistViewModel
     @Binding var showSearch: Bool
+    var isSidebarCollapsed: Binding<Bool>? = nil
+
+    enum ViewMode: String, CaseIterable {
+        case table = "table"
+        case chart = "chart"
+    }
+    @AppStorage("stockdeck.watchlist.viewMode") private var viewMode: ViewMode = .table
 
     typealias SortKey = WatchlistSortKey
 
@@ -162,41 +169,49 @@ struct WatchlistWideView: View {
     }
 
     var body: some View {
-        PageScaffold(storageService.currentWatchlist.name) {
+        Group {
             if storageService.watchlist.isEmpty {
-                emptyState
-            } else {
-                HStack(alignment: .top, spacing: 0) {
-                    table
-                        .frame(width: activeDetailSymbol != nil ? WCol.frozenWidth : nil)
-                        .frame(maxWidth: activeDetailSymbol != nil ? WCol.frozenWidth : .infinity, maxHeight: .infinity)
-
-                    if activeDetailSymbol != nil {
-                        HStack(spacing: 0) {
-                            Divider().overlay(DS.hairline)
-                            if let sym = activeDetailSymbol, let q = stockService.quotes[sym] {
-                                WatchlistSideDetailPane(
-                                    symbol: sym,
-                                    quote: q,
-                                    onSetBuyTarget: { targetSymbol = TargetTarget(symbol: sym) },
-                                    onAddToPortfolio: { addToPortfolio = $0 },
-                                    onClose: {
-                                        withAnimation(.easeInOut(duration: 0.2)) {
-                                            activeDetailSymbol = nil
-                                        }
-                                    }
-                                )
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                        }
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
+                PageScaffold(storageService.currentWatchlist.name) {
+                    emptyState
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .premiumCard()
-                .padding(.horizontal, DS.gutter)
-                .padding(.bottom, DS.gutter)
-                .frame(maxWidth: DS.contentMaxWidth + DS.gutter * 2)
+            } else if viewMode == .chart {
+                SuperchartWorkspaceView(
+                    stockService: stockService,
+                    selectedSymbol: Binding(
+                        get: { activeDetailSymbol ?? storageService.watchlist.first },
+                        set: { activeDetailSymbol = $0 }
+                    ),
+                    initialSource: .watchlist(storageService.currentWatchlist.id),
+                    watchlistViewModel: viewModel,
+                    isSidebarCollapsed: isSidebarCollapsed?.wrappedValue ?? false,
+                    onToggleSidebar: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isSidebarCollapsed?.wrappedValue.toggle()
+                        }
+                    },
+                    onSwitchToTable: {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            viewMode = .table
+                            isSidebarCollapsed?.wrappedValue = false
+                        }
+                    },
+                    onSelectSource: { source in
+                        if case .watchlist(let id) = source {
+                            storageService.selectedWatchlistId = id
+                            viewModel.selectWatchlist(id: id)
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                PageScaffold(storageService.currentWatchlist.name) {
+                    table
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .premiumCard()
+                        .padding(.horizontal, DS.gutter)
+                        .padding(.bottom, DS.gutter)
+                        .frame(maxWidth: DS.contentMaxWidth + DS.gutter * 2)
+                }
             }
         }
         .navigationTitle(storageService.currentWatchlist.name)
@@ -423,6 +438,42 @@ struct WatchlistWideView: View {
                 .pointingHandCursor()
                 .help("Customize watchlist columns")
 
+                HStack(spacing: 2) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            viewMode = .table
+                            isSidebarCollapsed?.wrappedValue = false
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "tablecells").font(.system(size: 11))
+                            Text("Bảng").font(.inter(11.5, weight: viewMode == .table ? .bold : .medium, relativeTo: .caption))
+                        }
+                        .foregroundStyle(viewMode == .table ? DS.brand : DS.inkSecondary)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(Capsule().fill(viewMode == .table ? DS.brand.opacity(0.12) : Color.clear))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            viewMode = .chart
+                            isSidebarCollapsed?.wrappedValue = true
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.xyaxis.line").font(.system(size: 11))
+                            Text("Biểu đồ").font(.inter(11.5, weight: viewMode == .chart ? .bold : .medium, relativeTo: .caption))
+                        }
+                        .foregroundStyle(viewMode == .chart ? DS.brand : DS.inkSecondary)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background(Capsule().fill(viewMode == .chart ? DS.brand.opacity(0.12) : Color.clear))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(2)
+                .background(Capsule().fill(DS.cardAlt))
+
                 addButton
             }
         }
@@ -499,15 +550,10 @@ struct WatchlistWideView: View {
     }
 
     private func handleRowClick(_ symbol: String) {
-        // Selection is handled exclusively by the row checkboxes; clicking a row
-        // only opens the detail chart.
-        guard activeDetailSymbol != symbol else { return }
-        if activeDetailSymbol == nil {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                activeDetailSymbol = symbol
-            }
-        } else {
-            activeDetailSymbol = symbol
+        activeDetailSymbol = symbol
+        withAnimation(.easeInOut(duration: 0.18)) {
+            viewMode = .chart
+            isSidebarCollapsed?.wrappedValue = true
         }
     }
 
@@ -519,7 +565,7 @@ struct WatchlistWideView: View {
         }
     }
 
-    private var isCompact: Bool { activeDetailSymbol != nil }
+    private var isCompact: Bool { false }
 
     /// The header checkbox: select or clear all watchlist rows.
     private var selectAllButton: some View {
@@ -651,8 +697,10 @@ struct WatchlistWideView: View {
 
         if count == 1 {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    activeDetailSymbol = row.symbol
+                activeDetailSymbol = row.symbol
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    viewMode = .chart
+                    isSidebarCollapsed?.wrappedValue = true
                 }
             } label: { Label("View Chart", systemImage: "chart.xyaxis.line") }
         }

@@ -13,27 +13,33 @@ struct ProfitabilityRiskCard: View {
                     leftLabel: "ROE",
                     leftValue: roeText,
                     leftLoading: isLoadingStats && keyStats == nil,
+                    leftHelp: "Tỷ suất sinh lời trên vốn chủ sở hữu = Lợi nhuận ròng / Vốn chủ sở hữu.",
                     rightLabel: "ROA",
                     rightValue: roaText,
-                    rightLoading: isLoadingStats && keyStats == nil
+                    rightLoading: isLoadingStats && keyStats == nil,
+                    rightHelp: "Tỷ suất sinh lời trên tổng tài sản = Lợi nhuận ròng / Tổng tài sản."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "ROIC",
                     leftValue: roicText,
                     leftLoading: isLoadingStats && keyStats == nil,
+                    leftHelp: "Tỷ suất sinh lời trên vốn đầu tư.",
                     rightLabel: "Profit Margin",
                     rightValue: marginText,
-                    rightLoading: isLoadingStats && keyStats == nil
+                    rightLoading: isLoadingStats && keyStats == nil,
+                    rightHelp: "Biên lợi nhuận ròng = Lợi nhuận sau thuế / Doanh thu."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "D/E",
                     leftValue: debtToEquityText,
                     leftLoading: isLoadingStats && keyStats == nil,
+                    leftHelp: "Tỷ lệ Nợ / Vốn chủ sở hữu, thể hiện mức độ đòn bẩy tài chính.",
                     rightLabel: "Beta",
                     rightValue: betaText,
-                    rightLoading: isLoadingStats && keyStats == nil
+                    rightLoading: isLoadingStats && keyStats == nil,
+                    rightHelp: "Hệ số biến động giá so với thị trường chung (S&P 500 = 1.0). Beta > 1: biến động mạnh hơn; Beta < 1: ít biến động hơn."
                 )
             }
         }
@@ -91,23 +97,25 @@ struct ProfitabilityRiskCard: View {
         leftLabel: String,
         leftValue: String,
         leftLoading: Bool,
+        leftHelp: String? = nil,
         rightLabel: String,
         rightValue: String,
-        rightLoading: Bool
+        rightLoading: Bool,
+        rightHelp: String? = nil
     ) -> some View {
         HStack(spacing: 16) {
-            metricCell(label: leftLabel, value: leftValue, isLoading: leftLoading)
+            metricCell(label: leftLabel, value: leftValue, isLoading: leftLoading, help: leftHelp)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
                 .overlay(DS.hairline.opacity(0.6))
                 .frame(height: 16)
-            metricCell(label: rightLabel, value: rightValue, isLoading: rightLoading)
+            metricCell(label: rightLabel, value: rightValue, isLoading: rightLoading, help: rightHelp)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 8)
     }
 
-    private func metricCell(label: String, value: String, isLoading: Bool) -> some View {
+    private func metricCell(label: String, value: String, isLoading: Bool, help: String? = nil) -> some View {
         HStack(alignment: .center) {
             Text(verbatim: label)
                 .font(DS.caption)
@@ -125,5 +133,7 @@ struct ProfitabilityRiskCard: View {
                     .minimumScaleFactor(0.85)
             }
         }
+        .contentShape(Rectangle())
+        .help(help ?? "")
     }
 }

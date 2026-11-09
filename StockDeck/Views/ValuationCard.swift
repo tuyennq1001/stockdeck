@@ -135,27 +135,37 @@ struct ValuationCard: View {
             VStack(spacing: 0) {
                 metricRow(
                     leftLabel: "P/E (TTM)", leftValue: trailingPEText,
-                    rightLabel: "Forward P/E", rightValue: forwardPEText
+                    leftHelp: "Tỷ số Giá / Lợi nhuận (12 tháng gần nhất). Đo lường mức định giá so với lợi nhuận kiếm được.",
+                    rightLabel: "Forward P/E", rightValue: forwardPEText,
+                    rightHelp: "Tỷ số Giá / Lợi nhuận dự phóng cho các quý tương lai."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "P/B", leftValue: priceToBookText,
-                    rightLabel: "Book Value", rightValue: bookValueText
+                    leftHelp: "Tỷ số Giá / Giá trị sổ sách. So sánh giá trị thị trường với giá trị tài sản ròng trên báo cáo.",
+                    rightLabel: "Book Value", rightValue: bookValueText,
+                    rightHelp: "Giá trị sổ sách trên mỗi cổ phiếu."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "EPS (TTM)", leftValue: epsTrailingText,
-                    rightLabel: "EPS (Forward)", rightValue: epsForwardText
+                    leftHelp: "Lợi nhuận trên mỗi cổ phiếu trong 12 tháng gần nhất.",
+                    rightLabel: "EPS (Forward)", rightValue: epsForwardText,
+                    rightHelp: "Lợi nhuận dự phóng trên mỗi cổ phiếu cho các quý tương lai."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "PEG", leftValue: pegText, leftLoading: isLoadingStats && keyStats == nil,
-                    rightLabel: "EV/EBITDA", rightValue: evEbitdaText, rightLoading: isLoadingStats && keyStats == nil
+                    leftHelp: "P/E chia cho Tốc độ tăng trưởng EPS. PEG < 1 thường biểu thị cổ phiếu đang bị định giá thấp so với tiềm năng tăng trưởng.",
+                    rightLabel: "EV/EBITDA", rightValue: evEbitdaText, rightLoading: isLoadingStats && keyStats == nil,
+                    rightHelp: "Giá trị doanh nghiệp / Lợi nhuận trước lãi vay, thuế và khấu hao."
                 )
                 rowDivider
                 metricRow(
                     leftLabel: "Div Yield", leftValue: dividendYieldText,
-                    rightLabel: "Market Cap", rightValue: marketCapText
+                    leftHelp: "Tỷ suất cổ tức = Cổ tức trả hàng năm / Giá cổ phiếu.",
+                    rightLabel: "Market Cap", rightValue: marketCapText,
+                    rightHelp: "Vốn hóa thị trường = Giá cổ phiếu × Tổng số cổ phiếu lưu hành."
                 )
             }
         }
@@ -171,23 +181,25 @@ struct ValuationCard: View {
         leftLabel: String,
         leftValue: String,
         leftLoading: Bool = false,
+        leftHelp: String? = nil,
         rightLabel: String,
         rightValue: String,
-        rightLoading: Bool = false
+        rightLoading: Bool = false,
+        rightHelp: String? = nil
     ) -> some View {
         HStack(spacing: 16) {
-            metricCell(label: leftLabel, value: leftValue, isLoading: leftLoading)
+            metricCell(label: leftLabel, value: leftValue, isLoading: leftLoading, help: leftHelp)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
                 .overlay(DS.hairline.opacity(0.6))
                 .frame(height: 16)
-            metricCell(label: rightLabel, value: rightValue, isLoading: rightLoading)
+            metricCell(label: rightLabel, value: rightValue, isLoading: rightLoading, help: rightHelp)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 8)
     }
 
-    private func metricCell(label: String, value: String, isLoading: Bool = false) -> some View {
+    private func metricCell(label: String, value: String, isLoading: Bool = false, help: String? = nil) -> some View {
         HStack(alignment: .center) {
             Text(verbatim: label)
                 .font(DS.caption)
@@ -205,5 +217,7 @@ struct ValuationCard: View {
                     .minimumScaleFactor(0.85)
             }
         }
+        .contentShape(Rectangle())
+        .help(help ?? "")
     }
 }
