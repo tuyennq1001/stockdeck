@@ -25,9 +25,14 @@ final class AppearanceModeTests: XCTestCase {
         XCTAssertNil((AppearanceMode(rawValue: "chartreuse") ?? .system).colorScheme)
     }
 
-    func testDefaultIsLight() {
-        // The shipped default must not change the look for users happy with 1.9.x:
-        // stay light by default, but let anyone opt into System or Dark.
-        XCTAssertEqual(AppearanceMode.default, .light)
+    func testDefaultIsDark() {
+        // Obsidian Slate Financial Terminal is the default theme
+        XCTAssertEqual(AppearanceMode.default, .dark)
+    }
+
+    func testLabels() {
+        XCTAssertEqual(AppearanceMode.dark.label, "Obsidian Slate (Terminal)")
+        XCTAssertEqual(AppearanceMode.light.label, "Private Banking (Classic)")
+        XCTAssertEqual(AppearanceMode.system.label, "System")
     }
 }

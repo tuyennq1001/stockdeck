@@ -353,7 +353,7 @@ final class LightweightChartMathTests: XCTestCase {
         let data = Data(#"{"id":"old","startTime":"2025-01-06","endTime":"2025-01-10","startPrice":10,"endPrice":12}"#.utf8)
         let decoded = try JSONDecoder().decode(LightweightPriceRange.self, from: data)
         XCTAssertEqual(decoded.kind, "range")
-        XCTAssertEqual(decoded.color, "#1a9b82")
+        XCTAssertEqual(decoded.color, "#3fb950")
         XCTAssertEqual(decoded.lineWidth, 1)
         XCTAssertFalse(decoded.isLocked)
     }

@@ -332,11 +332,10 @@ struct SettingsView: View {
                         set: { storageService.appearanceMode = $0 }
                     )) {
                         ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                            Text(mode.label).tag(mode)
+                            Text(verbatim: mode.label).tag(mode)
                         }
                     }
-                    .pickerStyle(.segmented)
-                    caption("Follow the system, or force Light or Dark.")
+                    caption("Follow the system, or choose between Obsidian Slate (Terminal) and Private Banking (Classic).")
 
                     subHeader("Font")
                     Picker("Font family", selection: $storageService.fontFamily) {
