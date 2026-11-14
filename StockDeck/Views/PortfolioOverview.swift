@@ -498,6 +498,7 @@ struct PortfolioOverview: View {
 
     private var dailyPnlRows: [DailyPnlRow] {
         _ = viewModel.historicalRowsRevision
+        _ = viewModel.valuationRevision
         return viewModel.dailyPnlRows(for: dailyPnlRange)
     }
 

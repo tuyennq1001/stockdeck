@@ -41,10 +41,54 @@ struct DailyPnlRow: Identifiable, Equatable {
 enum DailyPnl {
     static let defaultDayCount = 365
 
+    private static func makeDayFormatter() -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }
+
+    private static func realizedForDay(
+        _ trades: [ClosedTrade]?,
+        rateBySymbol: [String: Double]
+    ) -> (realized: Double, costBasis: Double, hasRealized: Bool) {
+        guard let trades, !trades.isEmpty else { return (0, 0, false) }
+        var realized = 0.0
+        var costBasis = 0.0
+        for ct in trades {
+            let rate = rateBySymbol[ct.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
+            realized += ct.realizedPnl * rate
+            costBasis += ct.costBasis * rate
+        }
+        return (realized, costBasis, true)
+    }
+
+    private static func makeTodayRow(
+        day: Date,
+        label: String,
+        summary: TodayPerformance.Summary,
+        closedTradesForToday: [ClosedTrade]?,
+        rateBySymbol: [String: Double]
+    ) -> DailyPnlRow {
+        let realizedStats = realizedForDay(closedTradesForToday, rateBySymbol: rateBySymbol)
+        let totalPnl = summary.gain + realizedStats.realized
+        let prevTotalValue = summary.previousCloseValue + realizedStats.costBasis
+        let pct: Double? = abs(prevTotalValue) >= 0.01 ? totalPnl / abs(prevTotalValue) * 100 : nil
+        return DailyPnlRow(
+            date: day,
+            label: label,
+            pnl: totalPnl,
+            unrealizedPnl: summary.gain,
+            realizedPnl: realizedStats.hasRealized ? realizedStats.realized : nil,
+            pnlPercent: pct
+        )
+    }
+
     static func rows(holdings: [Holding],
                      closedTrades: [ClosedTrade] = [],
                      historyBySymbol: [String: [PricePoint]],
                      rateBySymbol: [String: Double],
+                     todaySummary: TodayPerformance.Summary? = nil,
                      today: Date = Date(),
                      calendar: Calendar = .current,
                      dayCount: Int = defaultDayCount) -> [DailyPnlRow] {
@@ -92,7 +136,7 @@ enum DailyPnl {
             let end = endOfDay(day)
             var pnl = 0.0
             var value = 0.0
-            var anyData = !(closedTradesByDay[day]?.isEmpty ?? true)
+            var anyData = !(closedTradesByDay[day]?.isEmpty ?? true) || (day == todayStart && todaySummary != nil)
             for h in holdings {
                 let ownedFrom = h.purchaseDate ?? earliestKnownPurchase
                 if let ownedFrom, ownedFrom > end { continue }
@@ -125,12 +169,22 @@ enum DailyPnl {
         // entire gain since purchase piles onto one day), so we rebase it
         // against the actual price that preceded the day in the real history.
         // When even that isn't available the day is skipped entirely.
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
+        let formatter = makeDayFormatter()
 
         var result: [DailyPnlRow] = []
         for (index, day) in keptDays.enumerated() {
+            let label = formatter.string(from: day)
+            if day == todayStart, let todaySummary {
+                result.append(makeTodayRow(
+                    day: day,
+                    label: label,
+                    summary: todaySummary,
+                    closedTradesForToday: closedTradesByDay[day],
+                    rateBySymbol: rateBySymbol
+                ))
+                continue
+            }
+
             var own: Double = 0
             var prevTotalValue: Double = 0
             
@@ -187,28 +241,50 @@ enum DailyPnl {
                 }
             }
             
-            var realizedToday = 0.0
-            var hasRealized = false
-            if let trades = closedTradesByDay[day] {
-                for ct in trades {
-                    let rate = rateBySymbol[ct.symbol].flatMap { $0.isFinite ? $0 : nil } ?? 1.0
-                    realizedToday += ct.realizedPnl * rate
-                    hasRealized = true
-                    prevTotalValue += ct.costBasis * rate
-                }
-            }
-            
-            let totalPnl = own + realizedToday
+            let realizedStats = realizedForDay(closedTradesByDay[day], rateBySymbol: rateBySymbol)
+            prevTotalValue += realizedStats.costBasis
+            let totalPnl = own + realizedStats.realized
             let pct: Double? = abs(prevTotalValue) >= 0.01 ? totalPnl / abs(prevTotalValue) * 100 : nil
             result.append(DailyPnlRow(
                 date: day,
-                label: formatter.string(from: day),
+                label: label,
                 pnl: totalPnl,
                 unrealizedPnl: own,
-                realizedPnl: hasRealized ? realizedToday : nil,
+                realizedPnl: realizedStats.hasRealized ? realizedStats.realized : nil,
                 pnlPercent: pct
             ))
         }
         return result
+    }
+
+    static func updatingTodayRow(
+        in rows: [DailyPnlRow],
+        with todaySummary: TodayPerformance.Summary,
+        closedTrades: [ClosedTrade] = [],
+        rateBySymbol: [String: Double] = [:],
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [DailyPnlRow] {
+        let todayStart = calendar.startOfDay(for: today)
+        let todayClosed = closedTrades.filter { trade in
+            guard let sellDate = trade.sellDate else { return false }
+            return calendar.isDate(sellDate, inSameDayAs: todayStart)
+        }
+        let formatter = makeDayFormatter()
+        let updatedToday = makeTodayRow(
+            day: todayStart,
+            label: formatter.string(from: todayStart),
+            summary: todaySummary,
+            closedTradesForToday: todayClosed,
+            rateBySymbol: rateBySymbol
+        )
+        var out = rows
+        if let first = out.first, calendar.isDate(first.date, inSameDayAs: todayStart) {
+            if first == updatedToday { return rows }
+            out[0] = updatedToday
+        } else {
+            out.insert(updatedToday, at: 0)
+        }
+        return out
     }
 }
