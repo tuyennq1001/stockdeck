@@ -158,11 +158,20 @@ enum TodayPerformance {
         var isMarketActiveToday: Bool = true
     }
 
-    static func totals(_ inputs: [Input]) -> (gain: Double, percent: Double) {
+    struct Summary: Sendable, Equatable {
+        let gain: Double
+        let percent: Double
+        let previousCloseValue: Double
+    }
+
+    static func summary(_ inputs: [Input]) -> Summary {
         var gain = 0.0
         var previousCloseValue = 0.0
 
         for input in inputs {
+            guard input.regularPrice.isFinite,
+                  input.previousClose.isFinite,
+                  input.rate.isFinite else { continue }
             let scale = input.holding.isJapaneseFund ? 10000.0 : 1.0
             if input.isMarketActiveToday {
                 gain += ((input.regularPrice - input.previousClose) / scale)
@@ -179,7 +188,12 @@ enum TodayPerformance {
         let percent = abs(previousCloseValue) >= 0.01
             ? (gain / abs(previousCloseValue)) * 100
             : 0
-        return (gain, percent)
+        return Summary(gain: gain, percent: percent, previousCloseValue: previousCloseValue)
+    }
+
+    static func totals(_ inputs: [Input]) -> (gain: Double, percent: Double) {
+        let result = summary(inputs)
+        return (result.gain, result.percent)
     }
 }
 

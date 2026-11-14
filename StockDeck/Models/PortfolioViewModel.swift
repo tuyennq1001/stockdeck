@@ -393,14 +393,27 @@ final class PortfolioViewModel {
         let totalPnlPercent: Double
         let dayChangeValue: Double
         let dayChangePercent: Double
+        let dayPreviousCloseValue: Double
+        let hasTodayLiveQuotes: Bool
         let secondaryTotalValue: Double?
         let secondaryTotalPnl: Double?
         let secondaryDayChangeValue: Double?
         let secondaryCurrencySymbol: String?
 
+        var todaySummary: TodayPerformance.Summary? {
+            hasTodayLiveQuotes
+                ? TodayPerformance.Summary(
+                    gain: dayChangeValue,
+                    percent: dayChangePercent,
+                    previousCloseValue: dayPreviousCloseValue
+                )
+                : nil
+        }
+
         static let empty = ValuationBundle(
             totalValue: 0, totalCost: 0, totalPnl: 0,
             totalPnlPercent: 0, dayChangeValue: 0, dayChangePercent: 0,
+            dayPreviousCloseValue: 0, hasTodayLiveQuotes: false,
             secondaryTotalValue: nil, secondaryTotalPnl: nil,
             secondaryDayChangeValue: nil, secondaryCurrencySymbol: nil
         )
@@ -582,11 +595,13 @@ final class PortfolioViewModel {
         let totalCost = bySymbol.values.reduce(0) { $0 + $1.cost }
         let totalPnl = bySymbol.values.reduce(0) { $0 + $1.pnl }
         let pnlPercent = abs(totalCost) >= 0.01 ? totalPnl / abs(totalCost) * 100 : 0
-        let today = TodayPerformance.totals(todayInputs)
+        let today = TodayPerformance.summary(todayInputs)
         let secondary = snapshot.secondaryRate.flatMap { $0 > 0 ? $0 : nil }
         let totals = ValuationBundle(
             totalValue: totalValue, totalCost: totalCost, totalPnl: totalPnl,
             totalPnlPercent: pnlPercent, dayChangeValue: today.gain, dayChangePercent: today.percent,
+            dayPreviousCloseValue: today.previousCloseValue,
+            hasTodayLiveQuotes: !todayInputs.isEmpty,
             secondaryTotalValue: secondary.map { totalValue * $0 },
             secondaryTotalPnl: secondary.map { totalPnl * $0 },
             secondaryDayChangeValue: secondary.map { today.gain * $0 },
@@ -1069,10 +1084,56 @@ final class PortfolioViewModel {
         return PortfolioBackfill.series(holdings: hs, historyBySymbol: hist, rateBySymbol: rate)
     }
 
+    private func buildRateBySymbol(
+        holdings: [Holding],
+        closedTrades: [ClosedTrade],
+        stockService: StockService
+    ) -> [String: Double] {
+        let targetCurrency = storageService?.preferredCurrency ?? StorageService.shared.preferredCurrency
+        var rateBySymbol: [String: Double] = [:]
+        for h in holdings {
+            rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol), to: targetCurrency)
+        }
+        for ct in closedTrades {
+            if rateBySymbol[ct.symbol] == nil {
+                rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol), to: targetCurrency)
+            }
+        }
+        return rateBySymbol
+    }
+
     /// Daily value curve (2y) for 1M/1Y; monthly full history for 3Y, 5Y, and "All".
     /// Uses the unified valueSeries representing the true market value trajectory of the portfolio.
     func dailyPnlRows(for range: DailyPnlRange) -> [DailyPnlRow] {
-        if let cached = dailyPnlCache[range] { return cached }
+        let now = Date()
+        let calendar = Calendar.current
+        if let cached = dailyPnlCache[range] {
+            if let first = cached.first, !calendar.isDate(first.date, inSameDayAs: now) {
+                // Midnight rolled over while the window stayed open: drop stale day caches.
+                dailyPnlTasks.values.forEach { $0.cancel() }
+                dailyPnlTasks.removeAll()
+                dailyPnlCache.removeAll(keepingCapacity: true)
+            } else if let summary = valuationCache.todaySummary, let stockService {
+                let closed = portfolios.flatMap { $0.closedTrades }
+                let hasTodayClosed = closed.contains {
+                    guard let sellDate = $0.sellDate else { return false }
+                    return calendar.isDate(sellDate, inSameDayAs: now)
+                }
+                let rates = hasTodayClosed
+                    ? buildRateBySymbol(holdings: [], closedTrades: closed, stockService: stockService)
+                    : [:]
+                return DailyPnl.updatingTodayRow(
+                    in: cached,
+                    with: summary,
+                    closedTrades: closed,
+                    rateBySymbol: rates,
+                    today: now,
+                    calendar: calendar
+                )
+            } else {
+                return cached
+            }
+        }
         guard dailyPnlTasks[range] == nil, let stockService else { return [] }
         let hs = portfolios.flatMap { $0.holdings }
         let closed = portfolios.flatMap { $0.closedTrades }
@@ -1080,26 +1141,19 @@ final class PortfolioViewModel {
         for h in hs {
             histBySymbol[h.symbol] = stockService.priceHistory[h.symbol] ?? []
         }
-        var rateBySymbol: [String: Double] = [:]
-        for h in hs {
-            rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-        }
-        for ct in closed {
-            if rateBySymbol[ct.symbol] == nil {
-                rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
-            }
-        }
+        let rateBySymbol = buildRateBySymbol(holdings: hs, closedTrades: closed, stockService: stockService)
         let snapshot = HistoricalRowsSnapshot(
             holdings: hs, closedTrades: closed, historyBySymbol: histBySymbol,
-            rateBySymbol: rateBySymbol, dayCount: range.dayCount,
-            monthCount: 0, today: Date(), calendar: .current
+            rateBySymbol: rateBySymbol, todaySummary: valuationCache.todaySummary,
+            dayCount: range.dayCount, monthCount: 0, today: now, calendar: calendar
         )
         let generation = historicalRowsGeneration
         dailyPnlTasks[range] = Task { [weak self] in
             let rows = await Task.detached(priority: .userInitiated) {
                 DailyPnl.rows(holdings: snapshot.holdings, closedTrades: snapshot.closedTrades,
                               historyBySymbol: snapshot.historyBySymbol, rateBySymbol: snapshot.rateBySymbol,
-                              today: snapshot.today, calendar: snapshot.calendar, dayCount: snapshot.dayCount)
+                              todaySummary: snapshot.todaySummary, today: snapshot.today,
+                              calendar: snapshot.calendar, dayCount: snapshot.dayCount)
             }.value
             guard let self, !Task.isCancelled, self.historicalRowsGeneration == generation else { return }
             self.dailyPnlTasks.removeValue(forKey: range)
@@ -1135,18 +1189,10 @@ final class PortfolioViewModel {
             let historySpan = MonthlyPnl.monthCount(for: histBySymbol, today: today, calendar: calendar, maxMonths: 240)
             monthCount = min(max(span, historySpan), 240)
         }
-        var rateBySymbol: [String: Double] = [:]
-        for h in hs {
-            rateBySymbol[h.symbol] = stockService.rate(from: stockService.detectedCurrency(for: h.symbol))
-        }
-        for ct in closed {
-            if rateBySymbol[ct.symbol] == nil {
-                rateBySymbol[ct.symbol] = stockService.rate(from: stockService.detectedCurrency(for: ct.symbol))
-            }
-        }
+        let rateBySymbol = buildRateBySymbol(holdings: hs, closedTrades: closed, stockService: stockService)
         let snapshot = HistoricalRowsSnapshot(
             holdings: hs, closedTrades: closed, historyBySymbol: histBySymbol,
-            rateBySymbol: rateBySymbol, dayCount: 0,
+            rateBySymbol: rateBySymbol, todaySummary: nil, dayCount: 0,
             monthCount: monthCount, today: Date(), calendar: .current
         )
         let generation = historicalRowsGeneration
@@ -1169,6 +1215,7 @@ final class PortfolioViewModel {
         let closedTrades: [ClosedTrade]
         let historyBySymbol: [String: [PricePoint]]
         let rateBySymbol: [String: Double]
+        let todaySummary: TodayPerformance.Summary?
         let dayCount: Int
         let monthCount: Int
         let today: Date
