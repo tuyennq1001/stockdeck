@@ -2367,22 +2367,41 @@ class StorageService: ObservableObject {
         let existingTransactions = portfolios[pIndex].transactions
 
         for newT in newTrades {
-            if isDuplicateClosedTrade(newT, in: currentClosed, transactions: existingTransactions) {
-                continue
-            }
-
             if newT.buyPrice <= 0, newT.buyDate == nil, newT.quantity > 0 {
+                let unresolvedIndices = unresolvedMatchingIndices(for: newT, in: currentClosed)
+                let eligibleHoldings = eligibleHoldingIndices(for: newT, in: currentHoldings)
+
+                // Reconcile stuck unresolved ClosedTrade placeholders when eligible holdings still exist.
+                if !unresolvedIndices.isEmpty && !eligibleHoldings.isEmpty {
+                    for idx in unresolvedIndices.sorted(by: >) {
+                        currentClosed.remove(at: idx)
+                    }
+                    let resolved = resolveStandaloneSell(newT, against: &currentHoldings)
+                    for trade in resolved where !hasExactClosedTradeMatch(trade, in: currentClosed) {
+                        currentClosed.append(trade)
+                    }
+                    continue
+                }
+
+                if isDuplicateClosedTrade(newT, in: currentClosed, transactions: existingTransactions) {
+                    continue
+                }
+
                 let resolved = resolveStandaloneSell(newT, against: &currentHoldings)
-                for trade in resolved where !isDuplicateClosedTrade(trade, in: currentClosed, transactions: existingTransactions) {
+                for trade in resolved where !hasExactClosedTradeMatch(trade, in: currentClosed) {
                     currentClosed.append(trade)
                 }
-            } else {
+            } else if !hasExactClosedTradeMatch(newT, in: currentClosed) {
                 currentClosed.append(newT)
             }
         }
 
         portfolios[pIndex].closedTrades = currentClosed
         portfolios[pIndex].holdings = currentHoldings
+    }
+
+    private func symbolsMatch(_ lhs: String, _ rhs: String) -> Bool {
+        StockService.canonicalSymbol(for: lhs) == StockService.canonicalSymbol(for: rhs)
     }
 
     private func normalizedAccount(_ account: String?) -> String? {
@@ -2403,14 +2422,15 @@ class StorageService: ObservableObject {
         }
     }
 
-    private func isDuplicateClosedTrade(
-        _ newT: ClosedTrade,
-        in currentClosed: [ClosedTrade],
-        transactions: [Transaction]
-    ) -> Bool {
-        let exactMatch = currentClosed.contains {
+    private func isEligiblePurchaseDate(_ purchaseDate: Date?, sellDate: Date?) -> Bool {
+        guard let sellDate, let purchaseDate else { return true }
+        return Calendar.current.startOfDay(for: purchaseDate) <= Calendar.current.startOfDay(for: sellDate)
+    }
+
+    private func hasExactClosedTradeMatch(_ newT: ClosedTrade, in currentClosed: [ClosedTrade]) -> Bool {
+        currentClosed.contains {
             $0.id == newT.id || (
-                $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                symbolsMatch($0.symbol, newT.symbol)
                 && abs($0.quantity - newT.quantity) < 1e-6
                 && abs($0.buyPrice - newT.buyPrice) < 1e-4
                 && abs($0.sellPrice - newT.sellPrice) < 1e-4
@@ -2418,14 +2438,55 @@ class StorageService: ObservableObject {
                 && $0.buyDate == newT.buyDate
             )
         }
-        if exactMatch { return true }
+    }
+
+    private func unresolvedMatchingIndices(for newT: ClosedTrade, in currentClosed: [ClosedTrade]) -> [Int] {
+        let targetAccount = normalizedAccount(newT.account)
+        return currentClosed.indices.filter { idx in
+            let existing = currentClosed[idx]
+            return existing.buyPrice <= 0
+                && existing.buyDate == nil
+                && symbolsMatch(existing.symbol, newT.symbol)
+                && normalizedAccount(existing.account) == targetAccount
+                && abs(existing.sellPrice - newT.sellPrice) < 1e-4
+                && isSameDay(existing.sellDate, newT.sellDate)
+                && abs(existing.quantity - newT.quantity) < 1e-6
+        }
+    }
+
+    private func eligibleHoldingIndices(for newT: ClosedTrade, in holdings: [Holding]) -> [Int] {
+        let targetAccount = normalizedAccount(newT.account)
+        let candidateIndices = holdings.indices.filter { idx in
+            let h = holdings[idx]
+            return h.quantity > 1e-6
+                && symbolsMatch(h.symbol, newT.symbol)
+                && isEligiblePurchaseDate(h.purchaseDate, sellDate: newT.sellDate)
+        }
+
+        if let targetAccount {
+            let exact = candidateIndices.filter { normalizedAccount(holdings[$0].account) == targetAccount }
+            if !exact.isEmpty { return exact }
+            // Fallback only to legacy/manual holdings without account info; never match a different named account.
+            return candidateIndices.filter { normalizedAccount(holdings[$0].account) == nil }
+        } else {
+            let nilAccount = candidateIndices.filter { normalizedAccount(holdings[$0].account) == nil }
+            return nilAccount.isEmpty ? candidateIndices : nilAccount
+        }
+    }
+
+    private func isDuplicateClosedTrade(
+        _ newT: ClosedTrade,
+        in currentClosed: [ClosedTrade],
+        transactions: [Transaction]
+    ) -> Bool {
+        if hasExactClosedTradeMatch(newT, in: currentClosed) { return true }
 
         guard newT.buyPrice <= 0, newT.buyDate == nil else { return false }
 
         let targetAccount = normalizedAccount(newT.account)
         let hasMatchingSellTx = transactions.contains { tx in
             tx.type == .sell
-                && tx.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                && symbolsMatch(tx.symbol, newT.symbol)
                 && normalizedAccount(tx.account) == targetAccount
                 && abs(tx.price - newT.sellPrice) < 1e-4
                 && abs(tx.quantity - newT.quantity) < 1e-6
@@ -2435,7 +2496,7 @@ class StorageService: ObservableObject {
 
         let existingClosedQty = currentClosed
             .filter {
-                $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                symbolsMatch($0.symbol, newT.symbol)
                     && normalizedAccount($0.account) == targetAccount
                     && abs($0.sellPrice - newT.sellPrice) < 1e-4
                     && isSameDay($0.sellDate, newT.sellDate)
@@ -2447,19 +2508,7 @@ class StorageService: ObservableObject {
 
     /// Matches a standalone imported sell trade against existing holdings in FIFO order.
     private func resolveStandaloneSell(_ newT: ClosedTrade, against holdings: inout [Holding]) -> [ClosedTrade] {
-        let targetAccount = normalizedAccount(newT.account)
-        let symbolIndices = holdings.indices.filter {
-            holdings[$0].quantity > 1e-6
-                && holdings[$0].symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
-        }
-
-        let accountMatchedIndices: [Int]
-        if let targetAccount {
-            accountMatchedIndices = symbolIndices.filter { normalizedAccount(holdings[$0].account) == targetAccount }
-        } else {
-            let nilAccountIndices = symbolIndices.filter { normalizedAccount(holdings[$0].account) == nil }
-            accountMatchedIndices = nilAccountIndices.isEmpty ? symbolIndices : nilAccountIndices
-        }
+        let accountMatchedIndices = eligibleHoldingIndices(for: newT, in: holdings)
 
         let fifoIndices = accountMatchedIndices.sorted { lhs, rhs in
             let lDate = holdings[lhs].purchaseDate ?? .distantPast
