@@ -6,22 +6,22 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.30</title>
-            <pubDate>Sun, 15 Nov 2026 07:14:30 +0900</pubDate>
-            <sparkle:version>33</sparkle:version>
-            <sparkle:shortVersionString>1.1.30</sparkle:shortVersionString>
+            <title>Version 1.1.31</title>
+            <pubDate>Wed, 18 Nov 2026 10:44:47 +0900</pubDate>
+            <sparkle:version>34</sparkle:version>
+            <sparkle:shortVersionString>1.1.31</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.30</h2>
+<h2>What's New in StockDeck 1.1.31</h2>
 <ul>
-    <li><strong>Live Daily PnL Alignment:</strong> Aligned today's Daily PnL chart bar directly with live Today performance and today's realized closed trades so mixed crypto and US stock sessions no longer drop to zero on cached price history.</li>
-    <li><strong>Real-Time Quote &amp; Rollover Sync:</strong> Updated the Daily PnL chart dynamically as regular market quotes arrive and handled midnight session rollovers cleanly.</li>
+    <li><strong>FIFO Deduction on Standalone Sell Imports:</strong> Importing a standalone sell transaction (without its original buy lot in the same file) now matches and deducts existing holdings in FIFO order and fills in the real buy price, buy date, and realized P&amp;L.</li>
+    <li><strong>Re-Import Deduplication:</strong> Re-importing the same sell transaction no longer double-deducts remaining holdings or creates duplicate closed trades.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.30/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.31/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="Ph1YBUenMOwPWIQrcBtIFZTLEE0/imQWpjymSfBl4keEqzbIRbczhh4iosk1desS1P1IHm7qsM8NKCNuRPMRAA=="
-                       length="11357471"/>
+                       sparkle:edSignature="eg4aAmKeZtdhaoxpCliNwMpJ5y4p+pPlXJaA0h7EEaSJOCgpMpXx9gN9+WY1u4SVIXwf8oxvGNni5cpzQEnCDQ=="
+                       length="11364831"/>
         </item>
     </channel>
 </rss>
