@@ -2363,22 +2363,156 @@ class StorageService: ObservableObject {
               !portfolios[pIndex].isReadOnly else { return }
 
         var currentClosed = portfolios[pIndex].closedTrades
+        var currentHoldings = portfolios[pIndex].holdings
+        let existingTransactions = portfolios[pIndex].transactions
+
         for newT in newTrades {
-            let isDuplicate = currentClosed.contains {
-                $0.id == newT.id || (
-                    $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
-                    && abs($0.quantity - newT.quantity) < 1e-6
-                    && abs($0.buyPrice - newT.buyPrice) < 1e-4
-                    && abs($0.sellPrice - newT.sellPrice) < 1e-4
-                    && $0.sellDate == newT.sellDate
-                    && $0.buyDate == newT.buyDate
-                )
+            if isDuplicateClosedTrade(newT, in: currentClosed, transactions: existingTransactions) {
+                continue
             }
-            if !isDuplicate {
+
+            if newT.buyPrice <= 0, newT.buyDate == nil, newT.quantity > 0 {
+                let resolved = resolveStandaloneSell(newT, against: &currentHoldings)
+                for trade in resolved where !isDuplicateClosedTrade(trade, in: currentClosed, transactions: existingTransactions) {
+                    currentClosed.append(trade)
+                }
+            } else {
                 currentClosed.append(newT)
             }
         }
+
         portfolios[pIndex].closedTrades = currentClosed
+        portfolios[pIndex].holdings = currentHoldings
+    }
+
+    private func normalizedAccount(_ account: String?) -> String? {
+        guard let trimmed = account?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private func isSameDay(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil):
+            return true
+        case let (l?, r?):
+            return Calendar.current.isDate(l, inSameDayAs: r)
+        default:
+            return false
+        }
+    }
+
+    private func isDuplicateClosedTrade(
+        _ newT: ClosedTrade,
+        in currentClosed: [ClosedTrade],
+        transactions: [Transaction]
+    ) -> Bool {
+        let exactMatch = currentClosed.contains {
+            $0.id == newT.id || (
+                $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                && abs($0.quantity - newT.quantity) < 1e-6
+                && abs($0.buyPrice - newT.buyPrice) < 1e-4
+                && abs($0.sellPrice - newT.sellPrice) < 1e-4
+                && $0.sellDate == newT.sellDate
+                && $0.buyDate == newT.buyDate
+            )
+        }
+        if exactMatch { return true }
+
+        guard newT.buyPrice <= 0, newT.buyDate == nil else { return false }
+
+        let targetAccount = normalizedAccount(newT.account)
+        let hasMatchingSellTx = transactions.contains { tx in
+            tx.type == .sell
+                && tx.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                && normalizedAccount(tx.account) == targetAccount
+                && abs(tx.price - newT.sellPrice) < 1e-4
+                && abs(tx.quantity - newT.quantity) < 1e-6
+                && isSameDay(tx.date, newT.sellDate)
+        }
+        if hasMatchingSellTx { return true }
+
+        let existingClosedQty = currentClosed
+            .filter {
+                $0.symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+                    && normalizedAccount($0.account) == targetAccount
+                    && abs($0.sellPrice - newT.sellPrice) < 1e-4
+                    && isSameDay($0.sellDate, newT.sellDate)
+            }
+            .reduce(0.0) { $0 + $1.quantity }
+
+        return existingClosedQty + 1e-6 >= newT.quantity
+    }
+
+    /// Matches a standalone imported sell trade against existing holdings in FIFO order.
+    private func resolveStandaloneSell(_ newT: ClosedTrade, against holdings: inout [Holding]) -> [ClosedTrade] {
+        let targetAccount = normalizedAccount(newT.account)
+        let symbolIndices = holdings.indices.filter {
+            holdings[$0].quantity > 1e-6
+                && holdings[$0].symbol.caseInsensitiveCompare(newT.symbol) == .orderedSame
+        }
+
+        let accountMatchedIndices: [Int]
+        if let targetAccount {
+            accountMatchedIndices = symbolIndices.filter { normalizedAccount(holdings[$0].account) == targetAccount }
+        } else {
+            let nilAccountIndices = symbolIndices.filter { normalizedAccount(holdings[$0].account) == nil }
+            accountMatchedIndices = nilAccountIndices.isEmpty ? symbolIndices : nilAccountIndices
+        }
+
+        let fifoIndices = accountMatchedIndices.sorted { lhs, rhs in
+            let lDate = holdings[lhs].purchaseDate ?? .distantPast
+            let rDate = holdings[rhs].purchaseDate ?? .distantPast
+            if lDate != rDate { return lDate < rDate }
+            return lhs < rhs
+        }
+
+        var remainingToClose = newT.quantity
+        var resolved: [ClosedTrade] = []
+        var depletedIndices: [Int] = []
+
+        for idx in fifoIndices {
+            guard remainingToClose > 1e-6 else { break }
+            let lot = holdings[idx]
+            let matchedQty = min(lot.quantity, remainingToClose)
+
+            resolved.append(ClosedTrade(
+                symbol: newT.symbol,
+                quantity: matchedQty,
+                buyPrice: lot.avgPrice,
+                sellPrice: newT.sellPrice,
+                buyDate: lot.purchaseDate,
+                sellDate: newT.sellDate,
+                account: newT.account ?? lot.account,
+                leverage: newT.leverage ?? lot.leverage
+            ))
+
+            holdings[idx].quantity -= matchedQty
+            if holdings[idx].quantity <= 1e-6 {
+                depletedIndices.append(idx)
+            }
+            remainingToClose -= matchedQty
+        }
+
+        for idx in depletedIndices.sorted(by: >) {
+            holdings.remove(at: idx)
+        }
+
+        if remainingToClose > 1e-6 {
+            resolved.append(ClosedTrade(
+                symbol: newT.symbol,
+                quantity: remainingToClose,
+                buyPrice: 0.0,
+                sellPrice: newT.sellPrice,
+                buyDate: nil,
+                sellDate: newT.sellDate,
+                account: newT.account,
+                leverage: newT.leverage
+            ))
+        }
+
+        return resolved
     }
 
     func removeClosedTrade(from portfolioId: UUID, tradeId: UUID) {
