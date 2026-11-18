@@ -6,22 +6,22 @@
         <description>StockDeck update feed</description>
         <language>en</language>
         <item>
-            <title>Version 1.1.31</title>
-            <pubDate>Wed, 18 Nov 2026 10:44:47 +0900</pubDate>
-            <sparkle:version>34</sparkle:version>
-            <sparkle:shortVersionString>1.1.31</sparkle:shortVersionString>
+            <title>Version 1.1.32</title>
+            <pubDate>Wed, 18 Nov 2026 11:39:47 +0900</pubDate>
+            <sparkle:version>35</sparkle:version>
+            <sparkle:shortVersionString>1.1.32</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-<h2>What's New in StockDeck 1.1.31</h2>
+<h2>What's New in StockDeck 1.1.32</h2>
 <ul>
-    <li><strong>FIFO Deduction on Standalone Sell Imports:</strong> Importing a standalone sell transaction (without its original buy lot in the same file) now matches and deducts existing holdings in FIFO order and fills in the real buy price, buy date, and realized P&amp;L.</li>
-    <li><strong>Re-Import Deduplication:</strong> Re-importing the same sell transaction no longer double-deducts remaining holdings or creates duplicate closed trades.</li>
+    <li><strong>Auto-Reconcile Stuck Sell Trades on Re-Import:</strong> Re-importing a standalone sell trade now automatically repairs any pre-existing unresolved closed trade placeholder (missing buy cost), deducts matching holdings in FIFO order, and populates the real buy price and realized P&amp;L.</li>
+    <li><strong>Legacy Account Fallback &amp; Purchase Date Guard:</strong> Standalone sell matching now safely falls back to legacy or manually added lots without account info while never crossing named accounts or matching lots purchased after the sell date.</li>
 </ul>
             ]]></description>
-            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.31/StockDeck.zip"
+            <enclosure url="https://github.com/tuyennq1001/stockdeck/releases/download/v1.1.32/StockDeck.zip"
                        type="application/octet-stream"
-                       sparkle:edSignature="eg4aAmKeZtdhaoxpCliNwMpJ5y4p+pPlXJaA0h7EEaSJOCgpMpXx9gN9+WY1u4SVIXwf8oxvGNni5cpzQEnCDQ=="
-                       length="11364831"/>
+                       sparkle:edSignature="hSHpuwOWIM4KdUCPQInL/ZjN/pp7YlVo6gnNvSHk00mPIvDbMc8t+mKiyDlVJbZULgVXbiS2DwoAoy+YXSRfCQ=="
+                       length="11367271"/>
         </item>
     </channel>
 </rss>

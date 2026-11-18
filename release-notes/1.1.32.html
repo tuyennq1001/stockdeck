@@ -1,0 +1,5 @@
+<h2>What's New in StockDeck 1.1.32</h2>
+<ul>
+    <li><strong>Auto-Reconcile Stuck Sell Trades on Re-Import:</strong> Re-importing a standalone sell trade now automatically repairs any pre-existing unresolved closed trade placeholder (missing buy cost), deducts matching holdings in FIFO order, and populates the real buy price and realized P&amp;L.</li>
+    <li><strong>Legacy Account Fallback &amp; Purchase Date Guard:</strong> Standalone sell matching now safely falls back to legacy or manually added lots without account info while never crossing named accounts or matching lots purchased after the sell date.</li>
+</ul>
