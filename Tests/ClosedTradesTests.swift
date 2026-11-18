@@ -443,5 +443,111 @@ final class ClosedTradesTests: XCTestCase {
         XCTAssertEqual(updated.closedTrades[1].quantity, 200, accuracy: 1e-6)
         XCTAssertEqual(updated.closedTrades[1].buyPrice, 175.0, accuracy: 1e-4)
     }
+
+    @MainActor
+    func testReimportingSellReconcilesPreexistingUnresolvedClosedTradeAndLegacyNilAccountHolding() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = StorageService(fileURL: tempDir.appendingPathComponent("test.json"))
+        let portfolio = storage.createPortfolio(name: "Test")
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let buyDate = try XCTUnwrap(df.date(from: "2026-04-02"))
+        let sellDate = try XCTUnwrap(df.date(from: "2026-11-13"))
+
+        // Legacy holding with account == nil + another holding in a different named account
+        storage.addHoldingsBatch([
+            Holding(symbol: "201A.T", quantity: 700, avgPrice: 170.0, purchaseDate: buyDate, account: nil),
+            Holding(symbol: "201A.T", quantity: 300, avgPrice: 150.0, purchaseDate: buyDate, account: "特定")
+        ], to: portfolio.id)
+
+        // Pre-existing stuck unresolved ClosedTrade from before v1.1.31
+        let pIndex = try XCTUnwrap(storage.portfolios.firstIndex(where: { $0.id == portfolio.id }))
+        storage.portfolios[pIndex].closedTrades.append(ClosedTrade(
+            symbol: "201A.T",
+            quantity: 700,
+            buyPrice: 0.0,
+            sellPrice: 195.5,
+            buyDate: nil,
+            sellDate: sellDate,
+            account: "NISA成長投資枠"
+        ))
+
+        let reimportedSell = ClosedTrade(
+            symbol: "201A.T",
+            quantity: 700,
+            buyPrice: 0.0,
+            sellPrice: 195.5,
+            buyDate: nil,
+            sellDate: sellDate,
+            account: "NISA成長投資枠"
+        )
+        let reimportedTx = Transaction(
+            date: sellDate,
+            symbol: "201A.T",
+            type: .sell,
+            quantity: 700,
+            price: 195.5,
+            amount: 700 * 195.5,
+            currency: "JPY",
+            account: "NISA成長投資枠"
+        )
+
+        storage.addClosedTradesBatch([reimportedSell], to: portfolio.id)
+        storage.addTransactionsBatch([reimportedTx], to: portfolio.id)
+
+        // Re-importing a second time must be a no-op
+        storage.addClosedTradesBatch([reimportedSell], to: portfolio.id)
+        storage.addTransactionsBatch([reimportedTx], to: portfolio.id)
+
+        let updated = try XCTUnwrap(storage.portfolios.first(where: { $0.id == portfolio.id }))
+        XCTAssertEqual(updated.holdings.count, 1)
+        XCTAssertEqual(updated.holdings[0].account, "特定")
+        XCTAssertEqual(updated.holdings[0].quantity, 300, accuracy: 1e-6)
+
+        XCTAssertEqual(updated.closedTrades.count, 1)
+        XCTAssertEqual(updated.closedTrades[0].buyPrice, 170.0, accuracy: 1e-4)
+        XCTAssertEqual(updated.closedTrades[0].buyDate, buyDate)
+        XCTAssertEqual(updated.closedTrades[0].realizedPnl, (195.5 - 170.0) * 700.0, accuracy: 1e-4)
+    }
+
+    @MainActor
+    func testStandaloneSellDoesNotMatchFutureHoldingBoughtAfterSellDate() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = StorageService(fileURL: tempDir.appendingPathComponent("test.json"))
+        let portfolio = storage.createPortfolio(name: "Test")
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let sellDate = try XCTUnwrap(df.date(from: "2026-11-13"))
+        let futureBuyDate = try XCTUnwrap(df.date(from: "2026-12-01"))
+
+        storage.addHoldingsBatch([
+            Holding(symbol: "201A.T", quantity: 500, avgPrice: 210.0, purchaseDate: futureBuyDate, account: "NISA")
+        ], to: portfolio.id)
+
+        let standaloneSell = ClosedTrade(
+            symbol: "201A.T",
+            quantity: 500,
+            buyPrice: 0.0,
+            sellPrice: 195.5,
+            buyDate: nil,
+            sellDate: sellDate,
+            account: "NISA"
+        )
+        storage.addClosedTradesBatch([standaloneSell], to: portfolio.id)
+
+        let updated = try XCTUnwrap(storage.portfolios.first(where: { $0.id == portfolio.id }))
+        XCTAssertEqual(updated.holdings.count, 1)
+        XCTAssertEqual(updated.holdings[0].quantity, 500, accuracy: 1e-6)
+        XCTAssertEqual(updated.closedTrades.count, 1)
+        XCTAssertEqual(updated.closedTrades[0].buyPrice, 0.0, accuracy: 1e-4)
+    }
 }
 
